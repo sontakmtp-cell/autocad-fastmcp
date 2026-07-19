@@ -1,9 +1,9 @@
 ;;; Lightweight, version-aware loader for the automatic dimension engine.
 ;;; The dispatcher may load this tiny file for every annotation IPC request, but
-;;; the planning engine and ActiveX commit override are parsed only once per
-;;; AutoCAD document/version.
+;;; the planning, ActiveX commit, and scoped export engines are parsed only once
+;;; per AutoCAD document/version.
 
-(setq mcp-ad-loader-target-version "phase2-2026-07-19")
+(setq mcp-ad-loader-target-version "phase3-2026-07-19")
 
 (if
   (or
@@ -19,9 +19,15 @@
     (if (not mcp-ad-activex-path)
       (error "auto_dimension_activex.lsp was not found in AutoCAD Support File Search Path")
     )
+    (setq mcp-ad-scope-path (findfile "auto_dimension_scope.lsp"))
+    (if (not mcp-ad-scope-path)
+      (error "auto_dimension_scope.lsp was not found in AutoCAD Support File Search Path")
+    )
     (load mcp-ad-engine-path)
     ;; Loaded second so it replaces only the final mutation/commit entry point.
     (load mcp-ad-activex-path)
+    ;; Loaded last so it replaces only the read-only geometry exporter.
+    (load mcp-ad-scope-path)
     (setq *mcp-auto-dimension-loader-version* mcp-ad-loader-target-version)
   )
 )
