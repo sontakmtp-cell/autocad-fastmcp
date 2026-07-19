@@ -568,6 +568,12 @@ async def _run_scoped_auto_dimension(raw: dict[str, Any], include_image: bool) -
                 else "scoped_single_export"
             ),
             **(committed.commit_result or {}),
+            **annotation_tools._normalized_dimension_commit_result(
+                committed=committed,
+                backend=backend,
+                context=context,
+                timings=timings,
+            ),
         },
     )
 

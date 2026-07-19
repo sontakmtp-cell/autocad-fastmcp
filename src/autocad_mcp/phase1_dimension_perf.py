@@ -182,6 +182,9 @@ async def _timed_new_plan(data: dict[str, Any]) -> tuple[Any, list[Any], dict[st
             use_current_selection=selection.use_current_selection,
         )
     )
+    export_metrics = copy.deepcopy(
+        getattr(backend, "_last_dimension_export_metrics", {}) or {}
+    )
     timings["export_geometry"] = _elapsed_ms(started)
 
     started = time.perf_counter()
@@ -212,7 +215,11 @@ async def _timed_new_plan(data: dict[str, Any]) -> tuple[Any, list[Any], dict[st
     timings["fingerprint"] = _elapsed_ms(started)
     timings["plan_before_store"] = _elapsed_ms(total_started)
 
-    analysis = {**analysis, "timings_ms": dict(timings)}
+    analysis = {
+        **analysis,
+        "timings_ms": dict(timings),
+        "export_metrics": export_metrics,
+    }
     target = {
         "target_part_id": selection.target_part_id,
         "region": selection.region.to_dict() if selection.region else None,
@@ -243,6 +250,7 @@ async def _timed_new_plan(data: dict[str, Any]) -> tuple[Any, list[Any], dict[st
         "drawing_fingerprint": document_id,
         "records_fingerprint": selected_fingerprint,
         "phase1_timings_ms": timings,
+        "export_metrics": export_metrics,
     }
     log.info("dimension_plan_timing", operation="new_plan", **timings)
     return plan, selected, analysis
@@ -285,6 +293,12 @@ async def _run_fast_auto_dimension(raw: dict[str, Any], include_image: bool) -> 
             "timings_ms": timings,
             "fast_path": "single_export",
             **(committed.commit_result or {}),
+            **annotation_tools._normalized_dimension_commit_result(
+                committed=committed,
+                backend=backend,
+                context=context,
+                timings=timings,
+            ),
         },
     )
 
@@ -346,6 +360,12 @@ async def _run_batch_create(raw: dict[str, Any], include_image: bool) -> ToolRes
             "timings_ms": timings,
             "fast_path": "manual_batch",
             **(committed.commit_result or {}),
+            **annotation_tools._normalized_dimension_commit_result(
+                committed=committed,
+                backend=backend,
+                timings=timings,
+                manual_batch=True,
+            ),
         },
     )
 
