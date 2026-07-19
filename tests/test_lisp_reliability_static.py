@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PYTHON_BACKEND = ROOT / "src" / "autocad_mcp" / "backends" / "file_ipc.py"
 LISP_DISPATCHER = ROOT / "lisp-code" / "mcp_dispatch.lsp"
 ATTRIBUTE_TOOLS = ROOT / "lisp-code" / "attribute_tools.lsp"
+AUTO_DIMENSION = ROOT / "lisp-code" / "auto_dimension.lsp"
 STARTUP = ROOT / "lisp-code" / "acadltdoc.lsp.example"
 SERVER = ROOT / "src" / "autocad_mcp" / "server.py"
 ATTRIBUTE_CASES = json.loads(
@@ -83,7 +84,11 @@ def test_lisp_contains_reliability_guards():
     assert '(setvar "FILEDIA" 1)' not in source
 
 
-@pytest.mark.parametrize("path", [LISP_DISPATCHER, ATTRIBUTE_TOOLS], ids=lambda path: path.name)
+@pytest.mark.parametrize(
+    "path",
+    [LISP_DISPATCHER, ATTRIBUTE_TOOLS, AUTO_DIMENSION],
+    ids=lambda path: path.name,
+)
 def test_lisp_parentheses_are_balanced(path):
     source = path.read_text(encoding="utf-8")
     balance = 0
@@ -114,6 +119,40 @@ def test_lisp_parentheses_are_balanced(path):
             assert balance >= 0
     assert balance == 0
     assert not in_string
+
+
+def test_dimension_plan_and_repair_use_dedicated_single_undo_entrypoints():
+    dispatcher = LISP_DISPATCHER.read_text(encoding="utf-8")
+    engine = AUTO_DIMENSION.read_text(encoding="utf-8")
+
+    for command in (
+        "annotation-export-dimension-geometry",
+        "annotation-commit-dimension-plan",
+        "annotation-repair-dimensions",
+    ):
+        assert command in dispatcher
+    for entrypoint in (
+        "mcp-export-dimension-geometry",
+        "mcp-commit-dimension-plan-file",
+        "mcp-repair-dimensions-file",
+    ):
+        assert entrypoint in engine
+    commit_body = engine.split("(defun mcp-commit-dimension-plan-file", 1)[1].split(
+        "(defun mcp-ad-move-dimension-definition", 1
+    )[0]
+    repair_body = engine.split("(defun mcp-repair-dimensions-file", 1)[1].split(
+        "(defun mcp-auto-dimension", 1
+    )[0]
+    for body in (commit_body, repair_body):
+        assert body.count('(command "_.UNDO" "_BEGIN")') == 1
+        assert body.count('(command "_.UNDO" "_END")') == 1
+    assert '(mcp-ad-ensure-layer dim-layer)' in repair_body
+    assert '(tblsearch "DIMSTYLE" dimstyle)' in repair_body
+    repair_dispatch = dispatcher.split(
+        "(defun mcp-cmd-annotation-repair-dimensions", 1
+    )[1].split(";; --- Entity modification commands ---", 1)[0]
+    assert '(mcp-json-get-string params "dimension_layer")' in repair_dispatch
+    assert '(mcp-json-get-string params "dimstyle")' in repair_dispatch
 
 
 def test_attribute_tools_restores_attreq_after_insert_error():

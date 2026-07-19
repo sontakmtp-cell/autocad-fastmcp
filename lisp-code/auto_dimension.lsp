@@ -1,10 +1,13 @@
 ;;; auto_dimension.lsp — Local one-call 2D automatic dimensioning engine.
-;;; Compatible with AutoCAD LT 2024+ and does not require ActiveX/COM.
+;;; Compatible with AutoCAD LT 2024+ on Windows. ActiveX is used only to read
+;;; INSERT bounding boxes; all dimension coordinates remain plain AutoLISP data.
 ;;;
 ;;; Public entry point:
 ;;;   (mcp-auto-dimension mode include-overall include-features include-holes
 ;;;     include-arcs include-centers detect-symmetry clear-existing zoom-preview
 ;;;     dimension-layer spacing source-layers report-file)
+
+(vl-load-com)
 
 (defun mcp-ad-json-escape (value / text result index char)
   (setq text (if value value ""))
@@ -304,6 +307,410 @@
         geometry-count unsupported-count)
 )
 
+;; -----------------------------------------------------------------------
+;; Side-effect-free geometry export used by detect/plan/audit workflows.
+;; -----------------------------------------------------------------------
+
+(defun mcp-ad-json-number (value)
+  (rtos value 2 8)
+)
+
+(defun mcp-ad-degrees (radians)
+  (* 180.0 (/ radians pi))
+)
+
+(defun mcp-ad-json-point (point)
+  (strcat "[" (mcp-ad-json-number (car point)) ","
+          (mcp-ad-json-number (cadr point)) "]")
+)
+
+(defun mcp-ad-json-points (points / result point)
+  (setq result "")
+  (foreach point points
+    (if (> (strlen result) 0) (setq result (strcat result ",")))
+    (setq result (strcat result (mcp-ad-json-point point)))
+  )
+  (strcat "[" result "]")
+)
+
+(defun mcp-ad-points-bounds (points / first point min-x min-y max-x max-y)
+  (setq first (car points))
+  (if first
+    (progn
+      (setq min-x (car first) min-y (cadr first)
+            max-x (car first) max-y (cadr first))
+      (foreach point (cdr points)
+        (setq min-x (min min-x (car point))
+              min-y (min min-y (cadr point))
+              max-x (max max-x (car point))
+              max-y (max max-y (cadr point)))
+      )
+      (list min-x min-y max-x max-y)
+    )
+  )
+)
+
+(defun mcp-ad-polyline-points (entity entity-type data / points item vertex vertex-data type-code point)
+  (setq points '())
+  (cond
+    ((= entity-type "LINE")
+      (setq points (list (cdr (assoc 10 data)) (cdr (assoc 11 data))))
+    )
+    ((= entity-type "LWPOLYLINE")
+      (foreach item data
+        (if (= (car item) 10)
+          (progn
+            (setq point (cdr item))
+            (setq points (cons (list (car point) (cadr point)) points))
+          )
+        )
+      )
+      (setq points (reverse points))
+    )
+    ((= entity-type "POLYLINE")
+      (setq vertex (entnext entity))
+      (while vertex
+        (setq vertex-data (entget vertex))
+        (setq type-code (cdr (assoc 0 vertex-data)))
+        (cond
+          ((= type-code "VERTEX")
+            (setq point (cdr (assoc 10 vertex-data)))
+            (setq points (cons (list (car point) (cadr point)) points))
+          )
+          ((= type-code "SEQEND") (setq vertex nil))
+        )
+        (if vertex (setq vertex (entnext vertex)))
+      )
+      (setq points (reverse points))
+    )
+  )
+  points
+)
+
+(defun mcp-ad-insert-bounds (entity / object low high result)
+  (setq object (vlax-ename->vla-object entity))
+  (setq result
+    (vl-catch-all-apply
+      '(lambda ()
+        (vla-GetBoundingBox object 'low 'high)
+        (setq low (vlax-safearray->list low))
+        (setq high (vlax-safearray->list high))
+        (list (car low) (cadr low) (car high) (cadr high))
+      )
+    )
+  )
+  (if (vl-catch-all-error-p result) nil result)
+)
+
+(defun mcp-ad-entity-json
+  (entity / data entity-type layer handle points bounds center radius major ratio
+   major-length ux uy vx vy minor-length x-radius y-radius geometry block-name item)
+  (setq data (entget entity))
+  (setq entity-type (cdr (assoc 0 data)))
+  (setq layer (cdr (assoc 8 data)))
+  (setq handle (cdr (assoc 5 data)))
+  (setq geometry "{}" bounds nil)
+  (cond
+    ((member entity-type '("LINE" "LWPOLYLINE" "POLYLINE"))
+      (setq points (mcp-ad-polyline-points entity entity-type data))
+      (setq bounds (mcp-ad-points-bounds points))
+      (setq geometry
+        (strcat "{\"points\":" (mcp-ad-json-points points)
+                ",\"closed\":"
+                (if (and (/= entity-type "LINE")
+                         (assoc 70 data)
+                         (= 1 (logand 1 (cdr (assoc 70 data)))))
+                  "true" "false") "}"))
+    )
+    ((member entity-type '("CIRCLE" "ARC"))
+      (setq center (cdr (assoc 10 data)))
+      (setq radius (cdr (assoc 40 data)))
+      (setq bounds (list (- (car center) radius) (- (cadr center) radius)
+                         (+ (car center) radius) (+ (cadr center) radius)))
+      (setq geometry
+        (strcat "{\"center\":" (mcp-ad-json-point center)
+                ",\"radius\":" (mcp-ad-json-number radius)
+                (if (= entity-type "ARC")
+                  (strcat ",\"start_angle\":" (mcp-ad-json-number (mcp-ad-degrees (cdr (assoc 50 data))))
+                          ",\"end_angle\":" (mcp-ad-json-number (mcp-ad-degrees (cdr (assoc 51 data)))))
+                  "") "}"))
+    )
+    ((= entity-type "ELLIPSE")
+      (setq center (cdr (assoc 10 data)))
+      (setq major (cdr (assoc 11 data)))
+      (setq ratio (cdr (assoc 40 data)))
+      (setq major-length (distance '(0.0 0.0 0.0) major))
+      (if (> major-length 0.0)
+        (progn
+          (setq ux (/ (car major) major-length) uy (/ (cadr major) major-length)
+                vx (- uy) vy ux minor-length (* major-length ratio)
+                x-radius (sqrt (+ (* major-length major-length ux ux)
+                                  (* minor-length minor-length vx vx)))
+                y-radius (sqrt (+ (* major-length major-length uy uy)
+                                  (* minor-length minor-length vy vy))))
+          (setq bounds (list (- (car center) x-radius) (- (cadr center) y-radius)
+                             (+ (car center) x-radius) (+ (cadr center) y-radius)))
+          (setq geometry
+            (strcat "{\"center\":" (mcp-ad-json-point center)
+                    ",\"major_axis\":" (mcp-ad-json-point major)
+                    ",\"ratio\":" (mcp-ad-json-number ratio) "}"))
+        )
+      )
+    )
+    ((= entity-type "INSERT")
+      (setq bounds (mcp-ad-insert-bounds entity))
+      (setq block-name (cdr (assoc 2 data)))
+      (setq geometry (strcat "{\"block_name\":\"" (mcp-ad-json-escape block-name) "\"}"))
+    )
+    ((= entity-type "DIMENSION")
+      (setq points '())
+      (foreach item data
+        (if (member (car item) '(10 11 13 14 15))
+          (setq points (cons (cdr item) points)))
+      )
+      (setq bounds (mcp-ad-points-bounds points))
+      (setq geometry
+        (strcat "{\"defpoint\":" (mcp-ad-json-point (cdr (assoc 10 data)))
+                (if (assoc 13 data) (strcat ",\"defpoint2\":" (mcp-ad-json-point (cdr (assoc 13 data)))) "")
+                (if (assoc 14 data) (strcat ",\"defpoint3\":" (mcp-ad-json-point (cdr (assoc 14 data)))) "")
+                (if (assoc 11 data) (strcat ",\"text_midpoint\":" (mcp-ad-json-point (cdr (assoc 11 data)))) "")
+                ",\"dimtype\":" (itoa (cdr (assoc 70 data)))
+                ",\"measurement\":" (mcp-ad-json-number (if (assoc 42 data) (cdr (assoc 42 data)) 0.0))
+                ",\"angle\":" (mcp-ad-json-number (if (assoc 50 data) (mcp-ad-degrees (cdr (assoc 50 data))) 0.0))
+                ",\"dimstyle\":\"" (mcp-ad-json-escape (if (assoc 3 data) (cdr (assoc 3 data)) "")) "\""
+                ",\"text\":\"" (mcp-ad-json-escape (if (assoc 1 data) (cdr (assoc 1 data)) "<>")) "\"}"))
+    )
+  )
+  (if bounds
+    (strcat "{\"handle\":\"" (mcp-ad-json-escape handle)
+            "\",\"type\":\"" entity-type
+            "\",\"layer\":\"" (mcp-ad-json-escape layer)
+            "\",\"bbox\":[" (mcp-ad-json-number (nth 0 bounds)) ","
+            (mcp-ad-json-number (nth 1 bounds)) ","
+            (mcp-ad-json-number (nth 2 bounds)) ","
+            (mcp-ad-json-number (nth 3 bounds)) "]"
+            ",\"geometry\":" geometry "}")
+  )
+)
+
+(defun mcp-export-dimension-geometry
+  (report-file dim-layer source-layers use-current-selection
+   / fp selection filter index entity data layer record first count)
+  "Export supported Model Space geometry without modifying the drawing."
+  (setq fp (open report-file "w"))
+  (if (not fp)
+    nil
+    (progn
+      (write-line "{\"ok\":true,\"entities\":[" fp)
+      (setq filter
+        '((0 . "LINE,LWPOLYLINE,POLYLINE,CIRCLE,ARC,ELLIPSE,INSERT,DIMENSION") (410 . "Model")))
+      (setq selection
+        (if use-current-selection (ssget "_I" filter) (ssget "_X" filter)))
+      (setq first T count 0 index 0)
+      (if selection
+        (while (< index (sslength selection))
+          (setq entity (ssname selection index))
+          (setq data (entget entity))
+          (setq layer (cdr (assoc 8 data)))
+          (if (mcp-ad-layer-allowed-p layer dim-layer source-layers)
+            (progn
+              (setq record (mcp-ad-entity-json entity))
+              (if record
+                (progn
+                  (if (not first) (write-line "," fp))
+                  (princ record fp)
+                  (setq first nil count (1+ count))
+                )
+              )
+            )
+          )
+          (setq index (1+ index))
+        )
+      )
+      (write-line (strcat "],\"count\":" (itoa count) "}") fp)
+      (close fp)
+      T
+    )
+  )
+)
+
+(defun mcp-ad-read-plan-file (plan-file / fp line instructions parsed)
+  (setq instructions '())
+  (setq fp (open plan-file "r"))
+  (if fp
+    (progn
+      (while (setq line (read-line fp))
+        (if (> (strlen line) 0)
+          (progn
+            ;; READ parses data only. The resulting list is never evaluated.
+            (setq parsed (read line))
+            (if (listp parsed) (setq instructions (cons parsed instructions)))
+          )
+        )
+      )
+      (close fp)
+    )
+  )
+  (reverse instructions)
+)
+
+(defun mcp-ad-set-last-dimension-text (text / entity data current)
+  (if (and text (> (strlen text) 0))
+    (progn
+      (setq entity (entlast))
+      (if entity
+        (progn
+          (setq data (entget entity))
+          (setq current (assoc 1 data))
+          (if current
+            (setq data (subst (cons 1 text) current data))
+            (setq data (append data (list (cons 1 text))))
+          )
+          (entmod data)
+          (entupd entity)
+        )
+      )
+    )
+  )
+)
+
+(defun mcp-ad-commit-instructions
+  (instructions / item kind entity ok created failed text)
+  (setq created 0 failed 0)
+  (foreach item instructions
+    (setq kind (nth 0 item) ok nil text nil)
+    (cond
+      ((= kind "linear")
+        (setq ok
+          (mcp-ad-run-command
+            (list "_.DIMLINEAR" (nth 1 item) (nth 2 item) (nth 3 item))))
+        (setq text (nth 5 item))
+      )
+      ((= kind "diameter")
+        (setq entity (handent (nth 1 item)))
+        (if entity
+          (setq ok (mcp-ad-run-command (list "_.DIMDIAMETER" entity (nth 2 item)))))
+        (setq text (nth 3 item))
+      )
+      ((= kind "radius")
+        (setq entity (handent (nth 1 item)))
+        (if entity
+          (setq ok (mcp-ad-run-command (list "_.DIMRADIUS" entity (nth 2 item)))))
+        (setq text (nth 3 item))
+      )
+      ((= kind "center")
+        (setq entity (handent (nth 1 item)))
+        (if entity (setq ok (mcp-ad-run-command (list "_.DIMCENTER" entity))))
+      )
+      ((= kind "text")
+        (setq entity
+          (entmakex
+            (list '(0 . "TEXT") (cons 8 (getvar "CLAYER"))
+                  (cons 10 (nth 1 item)) (cons 40 (getvar "DIMTXT"))
+                  (cons 1 (nth 2 item)) '(50 . 0.0))))
+        (setq ok (if entity T nil))
+      )
+    )
+    (if ok
+      (progn
+        (mcp-ad-set-last-dimension-text text)
+        (setq created (1+ created)))
+      (setq failed (1+ failed)))
+  )
+  (list created failed)
+)
+
+(defun mcp-ad-write-commit-report (report-file created failed / fp)
+  (setq fp (open report-file "w"))
+  (if fp
+    (progn
+      (write-line
+        (strcat "{\"ok\":true,\"dimensions_created\":" (itoa created)
+                ",\"instructions_failed\":" (itoa failed)
+                ",\"undo_group\":\"single\"}") fp)
+      (close fp)
+    )
+  )
+)
+
+(defun mcp-commit-dimension-plan-file
+  (plan-file report-file dim-layer clear-existing dimstyle scale-factor text-height arrow-size precision
+   tolerance-mode tolerance-upper tolerance-lower
+   / old-layer old-cmdecho old-dimstyle old-dimscale old-dimtxt old-dimasz old-dimdec old-dimtol
+   old-dimtp old-dimtm instructions result counts)
+  "Commit a server-generated plan as one AutoCAD UNDO group."
+  (setq old-layer (getvar "CLAYER") old-cmdecho (getvar "CMDECHO")
+        old-dimstyle (getvar "DIMSTYLE")
+        old-dimscale (getvar "DIMSCALE")
+        old-dimtxt (getvar "DIMTXT") old-dimasz (getvar "DIMASZ")
+        old-dimdec (getvar "DIMDEC") old-dimtol (getvar "DIMTOL")
+        old-dimtp (getvar "DIMTP") old-dimtm (getvar "DIMTM"))
+  (setq instructions (mcp-ad-read-plan-file plan-file))
+  (if (not instructions)
+    (progn (mcp-ad-write-error report-file "Dimension plan is empty or unreadable.") nil)
+    (progn
+      (setvar "CMDECHO" 0)
+      (command "_.UNDO" "_BEGIN")
+      (setq result
+        (vl-catch-all-apply
+          '(lambda ()
+            (mcp-ad-ensure-layer dim-layer)
+            (if clear-existing (mcp-ad-clear-generated-layer dim-layer))
+            (setvar "CLAYER" dim-layer)
+            (if (and dimstyle (not (tblsearch "DIMSTYLE" dimstyle)))
+              (mcp-ad-run-command (list "_.-DIMSTYLE" "_SAVE" dimstyle)))
+            (if (and dimstyle (not (tblsearch "DIMSTYLE" dimstyle)))
+              (list 0 (length instructions))
+              (progn
+                (if (and dimstyle (tblsearch "DIMSTYLE" dimstyle))
+                  (mcp-ad-run-command (list "_.-DIMSTYLE" "_RESTORE" dimstyle)))
+                (if (> scale-factor 0.0) (setvar "DIMSCALE" scale-factor))
+                (if (> text-height 0.0) (setvar "DIMTXT" text-height))
+                (if (> arrow-size 0.0) (setvar "DIMASZ" arrow-size))
+                (if (and (>= precision 0) (<= precision 8)) (setvar "DIMDEC" precision))
+                (if (= tolerance-mode "none")
+                  (setvar "DIMTOL" 0)
+                  (progn
+                    (setvar "DIMTOL" 1)
+                    (setvar "DIMTP" tolerance-upper)
+                    (setvar "DIMTM" tolerance-lower)))
+                (mcp-ad-commit-instructions instructions)))
+          )))
+      (if (tblsearch "LAYER" old-layer) (setvar "CLAYER" old-layer))
+      (setvar "DIMTXT" old-dimtxt)
+      (setvar "DIMSCALE" old-dimscale)
+      (setvar "DIMASZ" old-dimasz)
+      (setvar "DIMDEC" old-dimdec)
+      (setvar "DIMTOL" old-dimtol)
+      (setvar "DIMTP" old-dimtp)
+      (setvar "DIMTM" old-dimtm)
+      (if (and old-dimstyle (tblsearch "DIMSTYLE" old-dimstyle))
+        (mcp-ad-run-command (list "_.-DIMSTYLE" "_RESTORE" old-dimstyle)))
+      (command "_.UNDO" "_END")
+      (if (vl-catch-all-error-p result)
+        (progn
+          (command "_.UNDO" "1")
+          (setvar "CMDECHO" old-cmdecho)
+          (mcp-ad-write-error report-file (vl-catch-all-error-message result))
+          nil)
+        (progn
+          (setq counts result)
+          (if (> (nth 1 counts) 0)
+            (progn
+              (command "_.UNDO" "1")
+              (setvar "CMDECHO" old-cmdecho)
+              (mcp-ad-write-error report-file
+                (strcat "Dimension plan rolled back because " (itoa (nth 1 counts))
+                        " instruction(s) failed."))
+              nil)
+            (progn
+              (setvar "CMDECHO" old-cmdecho)
+              (mcp-ad-write-commit-report report-file (nth 0 counts) 0)
+              T)))
+      )
+    ))
+)
+
 (defun mcp-ad-run
   (mode include-overall include-features include-holes include-arcs include-centers
    detect-symmetry clear-existing zoom-preview dim-layer requested-spacing source-layers
@@ -567,6 +974,102 @@
       T
     )
   )
+)
+
+(defun mcp-ad-move-dimension-definition (entity dx dy / data item code point updated)
+  (setq data (entget entity) updated '())
+  (foreach item data
+    (setq code (car item))
+    (if (member code '(10 11))
+      (progn
+        (setq point (cdr item))
+        (setq updated
+          (cons (cons code (list (+ (car point) dx) (+ (cadr point) dy) (if (caddr point) (caddr point) 0.0))) updated)))
+      (setq updated (cons item updated)))
+  )
+  (if (entmod (reverse updated)) (progn (entupd entity) T) nil)
+)
+
+(defun mcp-ad-apply-repair-actions
+  (actions / action kind handle entity data current value dx dy applied failed)
+  (setq applied 0 failed 0)
+  (foreach action actions
+    (setq kind (nth 0 action) handle (nth 1 action) entity (handent handle))
+    (setq value nil)
+    (if entity
+      (cond
+        ((= kind "delete") (setq value (entdel entity)))
+        ((= kind "set_layer")
+          (setq data (entget entity) current (assoc 8 data))
+          (setq value (entmod (subst (cons 8 (nth 2 action)) current data)))
+        )
+        ((= kind "set_style")
+          (setq data (entget entity) current (assoc 3 data))
+          (if current
+            (setq value (entmod (subst (cons 3 (nth 2 action)) current data))))
+        )
+        ((= kind "move")
+          (setq dx (nth 2 action) dy (nth 3 action))
+          (setq value (mcp-ad-move-dimension-definition entity dx dy)))
+      )
+    )
+    (if value (setq applied (1+ applied)) (setq failed (1+ failed)))
+  )
+  (list applied failed)
+)
+
+(defun mcp-repair-dimensions-file
+  (actions-file report-file dim-layer dimstyle
+   / old-cmdecho old-dimstyle actions result counts fp)
+  "Apply deterministic audit repairs in one AutoCAD UNDO group."
+  (setq actions (mcp-ad-read-plan-file actions-file))
+  (if (not actions)
+    (progn (mcp-ad-write-error report-file "Dimension repair action list is empty.") nil)
+    (progn
+      (setq old-cmdecho (getvar "CMDECHO")
+            old-dimstyle (getvar "DIMSTYLE"))
+      (setvar "CMDECHO" 0)
+      (command "_.UNDO" "_BEGIN")
+      (setq result
+        (vl-catch-all-apply
+          '(lambda ()
+            (if dim-layer (mcp-ad-ensure-layer dim-layer))
+            (if (and dimstyle (not (tblsearch "DIMSTYLE" dimstyle)))
+              (mcp-ad-run-command (list "_.-DIMSTYLE" "_SAVE" dimstyle)))
+            (if (and dimstyle (not (tblsearch "DIMSTYLE" dimstyle)))
+              (list 0 (length actions))
+              (mcp-ad-apply-repair-actions actions)))))
+      (if (and old-dimstyle (tblsearch "DIMSTYLE" old-dimstyle))
+        (mcp-ad-run-command (list "_.-DIMSTYLE" "_RESTORE" old-dimstyle)))
+      (command "_.UNDO" "_END")
+      (if (vl-catch-all-error-p result)
+        (progn
+          (command "_.UNDO" "1")
+          (setvar "CMDECHO" old-cmdecho)
+          (mcp-ad-write-error report-file (vl-catch-all-error-message result))
+          nil)
+        (progn
+          (setq counts result)
+          (if (> (nth 1 counts) 0)
+            (progn
+              (command "_.UNDO" "1")
+              (setvar "CMDECHO" old-cmdecho)
+              (mcp-ad-write-error report-file
+                (strcat "Dimension repair rolled back because " (itoa (nth 1 counts))
+                        " action(s) failed."))
+              nil)
+            (progn
+              (setvar "CMDECHO" old-cmdecho)
+              (setq fp (open report-file "w"))
+              (if fp
+                (progn
+                  (write-line
+                    (strcat "{\"ok\":true,\"actions_applied\":" (itoa (nth 0 counts))
+                            ",\"actions_failed\":0,\"undo_group\":\"single\"}") fp)
+                  (close fp)))
+              T)))
+      )
+    ))
 )
 
 (defun mcp-auto-dimension
