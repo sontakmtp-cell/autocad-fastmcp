@@ -32,8 +32,11 @@ def test_activex_engine_uses_direct_entity_creation_and_single_regen():
     for command_name in ("DIMLINEAR", "DIMDIAMETER", "DIMRADIUS", "DIMCENTER"):
         assert command_name not in text
 
-    assert '"commit_engine":"activex"' in text
-    assert '"regen_count":1' in text
+    # JSON quotes are escaped inside AutoLISP source strings.
+    assert "commit_engine" in text
+    assert "activex" in text
+    assert "regen_count" in text
+    assert "\\\"regen_count\\\":1" in text
 
 
 def test_phase2_loader_loads_engine_then_activex_override():
