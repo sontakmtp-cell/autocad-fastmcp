@@ -66,6 +66,32 @@ async def test_remote_execute_lisp_creates_no_ipc_or_lisp_file(tmp_path, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_dedicated_annotation_command_remains_available_when_freeform_lisp_is_denied(
+    monkeypatch,
+):
+    dispatched = []
+
+    async def capture(self, command, params, retry_ping=False):
+        dispatched.append((command, params))
+        return CommandResult(ok=True, payload={"accepted": True})
+
+    monkeypatch.setattr(FileIPCBackend, "_dispatch", capture)
+    backend = SafeFileIPCBackend(allow_execute_lisp=False)
+
+    result = await backend.annotation_export_dimension_geometry(
+        lisp_path="C:/fixed/auto_dimension.lsp",
+        report_path="C:/internal/report.json",
+        dimension_layer="MCP-DIM",
+        use_current_selection=True,
+    )
+
+    assert result.ok is True
+    assert dispatched[0][0] == "annotation-export-dimension-geometry"
+    assert dispatched[0][1]["use_current_selection"] == "1"
+    assert all(item[0] != "execute-lisp" for item in dispatched)
+
+
+@pytest.mark.asyncio
 async def test_unsupported_command_never_calls_dispatch(monkeypatch):
     async def dispatch(*args, **kwargs):
         raise AssertionError("dispatch must not run")

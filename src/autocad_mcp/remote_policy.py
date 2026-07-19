@@ -41,6 +41,7 @@ OAUTH_READ_OPERATIONS: dict[str, frozenset[str]] = {
     "block": frozenset({"list", "get_attributes"}),
     "pid": frozenset({"list_symbols"}),
     "view": frozenset({"get_screenshot"}),
+    "annotation": frozenset({"detect_parts", "plan_dimensions", "audit_dimensions"}),
 }
 
 

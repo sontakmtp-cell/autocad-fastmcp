@@ -403,6 +403,15 @@
     ((= cmd-name "create-leader")
      (mcp-cmd-create-leader params-json))
 
+    ((= cmd-name "annotation-export-dimension-geometry")
+     (mcp-cmd-annotation-export-dimension-geometry params-json))
+
+    ((= cmd-name "annotation-commit-dimension-plan")
+     (mcp-cmd-annotation-commit-dimension-plan params-json))
+
+    ((= cmd-name "annotation-repair-dimensions")
+     (mcp-cmd-annotation-repair-dimensions params-json))
+
     ;; --- Drawing management ---
     ((= cmd-name "drawing-create")
      (mcp-cmd-drawing-create params-json))
@@ -864,6 +873,99 @@
       (cons T result)
     )
   )
+)
+
+;; --- Dedicated annotation workflow commands ---
+
+(defun mcp-cmd-annotation-export-dimension-geometry
+  (params / lisp-path report-path dimension-layer source-text source-layers
+   current-text use-current-selection loaded result)
+  (setq lisp-path (mcp-json-get-string params "lisp_path"))
+  (setq report-path (mcp-json-get-string params "report_path"))
+  (setq dimension-layer (mcp-json-get-string params "dimension_layer"))
+  (setq source-text (mcp-json-get-string params "source_layers"))
+  (setq current-text (mcp-json-get-string params "use_current_selection"))
+  (setq use-current-selection (= current-text "1"))
+  (setq source-layers
+    (if (and source-text (> (strlen source-text) 0))
+      (mcp-split-string source-text ";")
+      nil))
+  (setq loaded (vl-catch-all-apply 'load (list lisp-path)))
+  (if (vl-catch-all-error-p loaded)
+    (mcp-error "annotation_engine_load_failed" (vl-catch-all-error-message loaded))
+    (progn
+      (setq result
+        (vl-catch-all-apply
+          'mcp-export-dimension-geometry
+          (list report-path dimension-layer source-layers use-current-selection)))
+      (if (or (vl-catch-all-error-p result) (not result))
+        (mcp-error "annotation_export_failed"
+          (if (vl-catch-all-error-p result)
+            (vl-catch-all-error-message result)
+            "Geometry export did not produce a report."))
+        (cons T "{\"exported\":true}"))
+    ))
+)
+
+(defun mcp-cmd-annotation-commit-dimension-plan
+  (params / lisp-path plan-path report-path dimension-layer clear-text clear-existing
+   dimstyle scale-factor text-height arrow-size precision tolerance-mode tolerance-upper
+   tolerance-lower loaded result)
+  (setq lisp-path (mcp-json-get-string params "lisp_path"))
+  (setq plan-path (mcp-json-get-string params "plan_path"))
+  (setq report-path (mcp-json-get-string params "report_path"))
+  (setq dimension-layer (mcp-json-get-string params "dimension_layer"))
+  (setq dimstyle (mcp-json-get-string params "dimstyle"))
+  (setq scale-factor (mcp-json-get-number params "scale_factor"))
+  (setq clear-text (mcp-json-get-string params "clear_existing"))
+  (setq clear-existing (= clear-text "1"))
+  (setq text-height (mcp-json-get-number params "text_height"))
+  (setq arrow-size (mcp-json-get-number params "arrow_size"))
+  (setq precision (fix (mcp-json-get-number params "precision")))
+  (setq tolerance-mode (mcp-json-get-string params "tolerance_mode"))
+  (setq tolerance-upper (mcp-json-get-number params "tolerance_upper"))
+  (setq tolerance-lower (mcp-json-get-number params "tolerance_lower"))
+  (setq loaded (vl-catch-all-apply 'load (list lisp-path)))
+  (if (vl-catch-all-error-p loaded)
+    (mcp-error "annotation_engine_load_failed" (vl-catch-all-error-message loaded))
+    (progn
+      (setq result
+        (vl-catch-all-apply
+          'mcp-commit-dimension-plan-file
+          (list plan-path report-path dimension-layer clear-existing
+                dimstyle scale-factor text-height arrow-size precision tolerance-mode
+                tolerance-upper tolerance-lower)))
+      (if (or (vl-catch-all-error-p result) (not result))
+        (mcp-error "annotation_commit_failed"
+          (if (vl-catch-all-error-p result)
+            (vl-catch-all-error-message result)
+            "Dimension plan commit failed."))
+        (cons T "{\"committed\":true,\"undo_group\":\"single\"}"))
+    ))
+)
+
+(defun mcp-cmd-annotation-repair-dimensions
+  (params / lisp-path actions-path report-path dimension-layer dimstyle loaded result)
+  (setq lisp-path (mcp-json-get-string params "lisp_path"))
+  (setq actions-path (mcp-json-get-string params "actions_path"))
+  (setq report-path (mcp-json-get-string params "report_path"))
+  (setq dimension-layer (mcp-json-get-string params "dimension_layer"))
+  (setq dimstyle (mcp-json-get-string params "dimstyle"))
+  (setq loaded (vl-catch-all-apply 'load (list lisp-path)))
+  (if (vl-catch-all-error-p loaded)
+    (mcp-error "annotation_engine_load_failed" (vl-catch-all-error-message loaded))
+    (progn
+      (setq result
+        (vl-catch-all-apply
+          'mcp-repair-dimensions-file
+          (list actions-path report-path dimension-layer dimstyle)))
+      (if (or (vl-catch-all-error-p result) (not result))
+        (mcp-error "annotation_repair_failed"
+          (if (vl-catch-all-error-p result)
+            (vl-catch-all-error-message result)
+            "Dimension repair failed."))
+        (cons T "{\"repaired\":true,\"undo_group\":\"single\"}"))
+    ))
 )
 
 ;; --- Entity modification commands ---

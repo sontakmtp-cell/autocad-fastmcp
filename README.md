@@ -249,6 +249,14 @@ nếu chạy chế độ headless.
 - create_dimension_angular
 - create_dimension_radius
 - create_leader
+- `annotation.detect_parts` — tách và đánh số từng chi tiết
+- `annotation.plan_dimensions` — tạo preview D1/D2... nhưng chưa sửa bản vẽ
+- `annotation.commit_dimension_plan` — ghi plan đã duyệt trong một Undo group
+- `annotation.auto_dimension` — lối tắt plan và ghi ngay cho part/region/entity đã chọn
+- `annotation.dimension_profiles` — profile mm/inch/ISO và profile riêng
+- `annotation.audit_dimensions` / `annotation.repair_dimension_layout` — kiểm tra và sửa lỗi bố trí an toàn
+
+Chi tiết và ví dụ: [docs/auto-dimension.md](docs/auto-dimension.md).
 
 ---
 

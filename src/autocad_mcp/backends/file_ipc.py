@@ -600,6 +600,88 @@ class FileIPCBackend(AutoCADBackend):
     async def entity_fillet(self, entity_id1, entity_id2, radius): return await self._dispatch("entity-fillet", {"id1": entity_id1, "id2": entity_id2, "radius": radius})
     async def entity_chamfer(self, entity_id1, entity_id2, dist1, dist2): return await self._dispatch("entity-chamfer", {"id1": entity_id1, "id2": entity_id2, "dist1": dist1, "dist2": dist2})
 
+    async def annotation_export_dimension_geometry(
+        self,
+        *,
+        lisp_path: str,
+        report_path: str,
+        dimension_layer: str,
+        source_layers: str = "",
+        use_current_selection: bool = False,
+    ) -> CommandResult:
+        """Run the fixed, read-only annotation exporter through safe IPC."""
+
+        return await self._dispatch(
+            "annotation-export-dimension-geometry",
+            {
+                "lisp_path": lisp_path,
+                "report_path": report_path,
+                "dimension_layer": dimension_layer,
+                "source_layers": source_layers,
+                "use_current_selection": "1" if use_current_selection else "0",
+            },
+        )
+
+    async def annotation_commit_dimension_plan(
+        self,
+        *,
+        lisp_path: str,
+        plan_path: str,
+        report_path: str,
+        dimension_layer: str,
+        dimstyle: str,
+        scale_factor: float,
+        clear_existing: bool,
+        text_height: float,
+        arrow_size: float,
+        precision: int,
+        tolerance_mode: str,
+        tolerance_upper: float,
+        tolerance_lower: float,
+    ) -> CommandResult:
+        """Commit one validated plan through a dedicated single-UNDO command."""
+
+        return await self._dispatch(
+            "annotation-commit-dimension-plan",
+            {
+                "lisp_path": lisp_path,
+                "plan_path": plan_path,
+                "report_path": report_path,
+                "dimension_layer": dimension_layer,
+                "dimstyle": dimstyle,
+                "scale_factor": scale_factor,
+                "clear_existing": "1" if clear_existing else "0",
+                "text_height": text_height,
+                "arrow_size": arrow_size,
+                "precision": precision,
+                "tolerance_mode": tolerance_mode,
+                "tolerance_upper": tolerance_upper,
+                "tolerance_lower": tolerance_lower,
+            },
+        )
+
+    async def annotation_repair_dimensions(
+        self,
+        *,
+        lisp_path: str,
+        actions_path: str,
+        report_path: str,
+        dimension_layer: str,
+        dimstyle: str,
+    ) -> CommandResult:
+        """Apply a server-audited repair batch through one safe IPC command."""
+
+        return await self._dispatch(
+            "annotation-repair-dimensions",
+            {
+                "lisp_path": lisp_path,
+                "actions_path": actions_path,
+                "report_path": report_path,
+                "dimension_layer": dimension_layer,
+                "dimstyle": dimstyle,
+            },
+        )
+
     # Layer operations
     async def layer_list(self): return await self._dispatch("layer-list", {})
     async def layer_create(self, name, color="white", linetype="CONTINUOUS"): return await self._dispatch("layer-create", locals_without_self(locals()))
