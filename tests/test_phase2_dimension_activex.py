@@ -42,8 +42,8 @@ def test_activex_engine_uses_direct_entity_creation_and_single_regen():
 def test_loader_keeps_engine_before_activex_override():
     text = LOADER_LISP.read_text(encoding="utf-8")
 
-    engine_index = text.index('(findfile "auto_dimension.lsp")')
-    activex_index = text.index('(findfile "auto_dimension_activex.lsp")')
+    engine_index = text.index('(mcp-ad-find-sibling "auto_dimension.lsp")')
+    activex_index = text.index('(mcp-ad-find-sibling "auto_dimension_activex.lsp")')
     engine_load_index = text.index('(load mcp-ad-engine-path)')
     activex_load_index = text.index('(load mcp-ad-activex-path)')
 

@@ -64,5 +64,6 @@ def test_loader_is_small_and_version_aware():
     text = loader.read_text(encoding="utf-8")
 
     assert "*mcp-auto-dimension-loader-version*" in text
-    assert '(findfile "auto_dimension.lsp")' in text
-    assert len(text.splitlines()) < 40
+    assert '(mcp-ad-find-sibling "auto_dimension.lsp")' in text
+    assert "mcp-ad-loader-path" in text
+    assert len(text.splitlines()) < 55
