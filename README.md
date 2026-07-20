@@ -149,7 +149,7 @@ Hoặc dùng script tunnel Phase 3:
 powershell -ExecutionPolicy Bypass -File .\scripts\run-phase3-dev.ps1
 ```
 
-### Production OAuth
+### Production OAuth + ChatGPT
 
 Server là **resource server** (không tự host login). Cần OIDC provider (Auth0, Okta, Cognito, …) phát hành JWT + JWKS.
 
@@ -165,7 +165,68 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run-phase4-oauth.ps1 `
 - Scopes: `autocad.read`, `autocad.write`
 - `execute_lisp` **luôn bị chặn** trên mọi remote profile
 
-Chi tiết: [docs/phase2-remote-policy.md](docs/phase2-remote-policy.md), [docs/phase4-oauth.md](docs/phase4-oauth.md), [docs/ke-hoach-chatgpt-http-bridge.md](docs/ke-hoach-chatgpt-http-bridge.md).
+#### Kết nối ChatGPT (Windows — khuyến nghị)
+
+ChatGPT gọi MCP qua **HTTPS công khai**. MCP chỉ bind `127.0.0.1:8765`; cần **Cloudflare named tunnel** (không dùng Quick Tunnel `*.trycloudflare.com` cho OAuth domain cố định).
+
+**Cài cloudflared** (một lần):
+
+```powershell
+winget install --id Cloudflare.cloudflared
+```
+
+**Mỗi phiên làm việc — 2 cửa sổ:**
+
+| Cửa sổ | File | Việc |
+|---|---|---|
+| 1 | `start_mcp_chatgpt.bat` | MCP OAuth production trên `127.0.0.1:8765` |
+| 2 | `start_cloudflare_tunnel.bat` | Login Cloudflare (lần đầu) → tạo tunnel/config/DNS → `tunnel run` |
+
+`start_cloudflare_tunnel.bat` gọi `scripts/setup-cloudflare-tunnel.ps1`:
+
+1. Mở browser / in link **Cloudflare login** nếu chưa có `~\.cloudflared\cert.pem`
+2. Chọn zone domain (ví dụ `kythuatvang.com`) → **Authorize**
+3. Tạo/chọn named tunnel, ghi `config.yml` (`hostname` → `http://127.0.0.1:8765`)
+4. Route DNS (ghi đè record cũ bằng CNAME tunnel nếu cần)
+5. Chạy tunnel (giữ cửa sổ mở)
+
+URL gắn vào ChatGPT Developer mode (OAuth):
+
+```text
+https://cad.kythuatvang.com/mcp
+```
+
+(Wrapper `start_mcp_chatgpt.bat` đang cấu hình site-specific cho domain/issuer Auth0 của repo này — chỉnh bat/script nếu dùng domain khác.)
+
+**Kiểm tra public trước khi connect ChatGPT:**
+
+```powershell
+curl.exe -sS -i "https://cad.kythuatvang.com/.well-known/oauth-protected-resource"
+# kỳ vọng: 200 + JSON scopes/issuer
+
+curl.exe -sS -i "https://cad.kythuatvang.com/mcp"
+# kỳ vọng: 401 khi chưa có token (OAuth bật)
+```
+
+| HTTP | Ý nghĩa |
+|---|---|
+| **530** | Tunnel chưa `run` / DNS chưa gắn named tunnel |
+| **502** | Tunnel OK nhưng MCP (`:8765`) chưa chạy |
+| **401** trên `/mcp` | Đúng — client phải login OAuth |
+| **200** metadata | Resource server reachable |
+
+Tuỳ chọn PowerShell:
+
+```powershell
+# Chỉ setup, không giữ tunnel
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-cloudflare-tunnel.ps1 -SkipRun
+
+# Hostname / tunnel name tuỳ chỉnh
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-cloudflare-tunnel.ps1 `
+  -Hostname "cad.example.com" -TunnelName "autocad-mcp"
+```
+
+Chi tiết OAuth/policy: [docs/phase2-remote-policy.md](docs/phase2-remote-policy.md), [docs/phase4-oauth.md](docs/phase4-oauth.md), [docs/ke-hoach-chatgpt-http-bridge.md](docs/ke-hoach-chatgpt-http-bridge.md).
 
 > `AUTOCAD_MCP_TRANSPORT=sse` được nhận trong config nhưng **chưa implement** — dùng `stdio` hoặc `streamable-http`.
 
@@ -370,9 +431,11 @@ Script hỗ trợ:
 
 | Script | Mục đích |
 |---|---|
-| `scripts/run-phase3-dev.ps1` | HTTP dev + Cloudflare tunnel demo |
-| `scripts/run-phase4-oauth.ps1` | HTTP production OAuth |
-| `start_mcp_chatgpt.bat` | Wrapper nhanh Phase 4 (cấu hình site-specific) |
+| `scripts/run-phase3-dev.ps1` | HTTP dev + Cloudflare **Quick Tunnel** demo (No Auth) |
+| `scripts/run-phase4-oauth.ps1` | HTTP production OAuth (local `:8765`) |
+| `scripts/setup-cloudflare-tunnel.ps1` | Login CF + named tunnel + DNS + `tunnel run` |
+| `start_mcp_chatgpt.bat` | Wrapper Phase 4 OAuth (site-specific) |
+| `start_cloudflare_tunnel.bat` | Wrapper named tunnel cho ChatGPT HTTPS |
 
 ---
 
@@ -408,6 +471,7 @@ Một số đường dimension tối ưu dùng ActiveX khi có; xem `lisp-code/a
 - Dual backend: File IPC + ezdxf
 - Dual transport: stdio + Streamable HTTP
 - Remote policy (dev No-Auth allowlist, production OAuth scopes)
+- ChatGPT path: OAuth MCP + Cloudflare **named** tunnel helpers (`start_cloudflare_tunnel.bat`)
 - Part-aware auto-dimension: detect → plan → commit / one-shot / audit-repair
 - File IPC reliability: session/request IDs, structured `error_code`, per-document dispatcher probe
 - `system.tool_manifest` / `runtime` / `health` diagnostics
