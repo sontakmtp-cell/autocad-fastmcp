@@ -1,93 +1,63 @@
 # AutoCAD MCP Server
 
-Máy chủ MCP cho **tự động hóa AutoCAD LT** và **tạo DXF headless**.
+Máy chủ [MCP](https://modelcontextprotocol.io/) cho **tự động hóa AutoCAD LT** và **tạo DXF headless**.
 
-Hai backend, một API:
+Một API, hai backend vẽ và hai transport kết nối:
 
-| Backend | Runtime | Cần AutoCAD? | Screenshot |
-|---------|---------|-------------|------------|
-| **File IPC** | Windows Python | Có — AutoCAD LT 2024+ (Windows) | Win32 PrintWindow |
-| **ezdxf** | Mọi nền tảng | Không (headless) | matplotlib render |
+| | Tùy chọn | Ghi chú |
+|---|---|---|
+| **Backend** | **File IPC** | Windows + AutoCAD LT 2024+; điều khiển qua ActiveX/COM + AutoLISP |
+| | **ezdxf** | Mọi nền tảng; DXF in-memory, không cần AutoCAD |
+| **Transport** | **stdio** (mặc định) | Claude Desktop, Claude Code, client MCP cục bộ |
+| | **streamable-http** | ChatGPT Developer mode / remote MCP qua HTTPS tunnel |
 
-Server cung cấp **8 công cụ chính** (`drawing`, `entity`, `layer`, `block`, `annotation`, `pid`, `view`, `system`) thông qua **MCP stdio transport**.  
-
-Một **MCP client** (Claude Desktop, Claude Code, v.v.) có thể kết nối và điều khiển AutoCAD bằng **yêu cầu ngôn ngữ tự nhiên**.
-
----
-
-# Prerequisites (Backend File IPC)
-
-Yêu cầu:
-
-- **Windows 10/11**  
-  (Backend File IPC dùng AutoCAD ActiveX/COM mà không cần focus cửa sổ)
-
-- **AutoCAD LT 2024 trở lên**  
-  AutoLISP được hỗ trợ từ LT 2024 trên Windows.  
-
-  ⚠ AutoCAD LT cho Mac **không hỗ trợ AutoLISP**.
-
-- **Python 3.10+**  
-  (Python chạy native trên Windows — **không dùng WSL Python**)
-
-- **uv package manager**
-
-Cài đặt:
-
-https://docs.astral.sh/uv/getting-started/installation/
+Server cung cấp **8 công cụ** (`drawing`, `entity`, `layer`, `block`, `annotation`, `pid`, `view`, `system`) với dispatch theo `operation`. Phiên bản runtime: **3.1** (LISP dispatcher reliability **v3.2**).
 
 ---
 
-💡 Backend **ezdxf headless** chạy được trên:
+## Prerequisites
 
-- Linux
-- macOS
-- WSL
+### Backend File IPC (AutoCAD thật)
 
-và **không cần AutoCAD**, chỉ dùng để tạo file DXF offline.
+- **Windows 10/11** (không dùng WSL Python cho File IPC)
+- **AutoCAD LT 2024+** trên Windows — AutoLISP chỉ có từ LT 2024; **AutoCAD LT cho Mac không hỗ trợ AutoLISP**
+- **Python 3.10+** (native Windows)
+- **[uv](https://docs.astral.sh/uv/getting-started/installation/)** package manager
+
+### Backend ezdxf (headless)
+
+Chạy trên Linux, macOS, WSL hoặc Windows — **không cần AutoCAD**, chỉ tạo/sửa DXF offline.
 
 ---
 
-# Quick Start
+## Quick Start
 
-## 1. Clone và cài đặt
+### 1. Clone và cài đặt
 
 ```powershell
-git clone https://github.com/ks40-academy/autocad-mcp.git
+git clone https://github.com/sontakmtp-cell/autocad-mcp.git
 cd autocad-mcp
 uv sync
 ```
 
----
+### 2. Auto-load LISP dispatcher (mỗi document)
 
-# 2. Auto-load LISP dispatcher for every document
+State AutoLISP thuộc từng bản vẽ. Load `mcp_dispatch.lsp` một lần không đủ khi mở/tạo DWG mới. Cấu hình startup theo document:
 
-AutoLISP state belongs to each AutoCAD document. Loading `mcp_dispatch.lsp` in
-one DWG does not guarantee it exists after opening or creating another DWG.
-Configure document startup once instead of using APPLOAD as recovery:
-
-1. Add `<repo>/lisp-code` to **Support File Search Path**.
-2. Add the same directory to `TRUSTEDPATHS`. Do not disable `SECURELOAD`.
-3. Copy `lisp-code/acadltdoc.lsp.example` to `acadltdoc.lsp` in a Support File
-   Search Path.
-4. Restart AutoCAD LT and open a drawing. Each document should print:
+1. Thêm `<repo>/lisp-code` vào **Support File Search Path**.
+2. Thêm cùng thư mục vào `TRUSTEDPATHS`. **Không** tắt `SECURELOAD`.
+3. Copy `lisp-code/acadltdoc.lsp.example` thành `acadltdoc.lsp` trong một Support File Search Path.
+4. Restart AutoCAD LT, mở bản vẽ. Mỗi document nên in:
 
 ```text
 === MCP Dispatch v3.2 reliability overrides loaded ===
 ```
 
-The example uses `(findfile "mcp_dispatch.lsp")` followed by `(load ...)`, so it
-contains no machine-specific path. Startup Suite and repeated APPLOAD are not
-needed. If startup is missing in a newly active document, MCP reports
-`dispatcher_missing_in_active_document`; it never opens APPLOAD automatically.
+Example dùng `(findfile "mcp_dispatch.lsp")` rồi `(load ...)`, không hard-code path máy. Startup Suite / APPLOAD lặp lại không cần. Nếu document đang active thiếu dispatcher, MCP báo `dispatcher_missing_in_active_document` — server **không** tự mở APPLOAD.
 
----
+### 3. Cấu hình MCP client (stdio)
 
-# 3. Cấu hình MCP client
-
-Ví dụ cấu hình trong:
-
-`claude_desktop_config.json`
+Ví dụ `claude_desktop_config.json`:
 
 ```json
 {
@@ -101,18 +71,12 @@ Ví dụ cấu hình trong:
 }
 ```
 
-### Lưu ý quan trọng
-
 - `command` phải trỏ tới **Windows Python trong venv**
-- Không dùng **WSL Python**
+- Không dùng WSL Python khi cần File IPC
 
----
+#### Client chạy trong WSL
 
-# Chạy từ WSL
-
-Nếu MCP client chạy trong WSL (ví dụ Claude Code):
-
-khởi động server thông qua `cmd.exe`
+Khởi động server qua `cmd.exe` + Windows Python:
 
 ```json
 {
@@ -132,334 +96,326 @@ khởi động server thông qua `cmd.exe`
 }
 ```
 
----
+### 4. Kiểm tra
 
-# 4. Kiểm tra hoạt động
+Từ MCP client:
 
-Từ MCP client gọi:
-
-```
+```text
 system(operation="status")
 ```
 
-Kết quả:
+- `backend: "file_ipc"` — AutoCAD đang chạy và được phát hiện
+- `backend: "ezdxf"` — chế độ headless
 
+Diagnostics bổ sung:
+
+```text
+system(operation="health")
+system(operation="tool_manifest")
+system(operation="runtime")
 ```
-backend: "file_ipc"
-```
-
-nếu AutoCAD đang chạy
-
-hoặc
-
-```
-backend: "ezdxf"
-```
-
-nếu chạy chế độ headless.
 
 ---
 
-# Tools
+## Transport HTTP (ChatGPT / remote)
 
-## drawing — Quản lý file bản vẽ
+Transport mặc định vẫn là **stdio**. Để mở MCP qua mạng:
+
+| Profile | Auth | Mục đích |
+|---|---|---|
+| `off` | — | Chỉ local; stdio hoặc HTTP không remote policy |
+| `dev` | No Auth (`ALLOW_NO_AUTH=1`) | Demo ngắn hạn, **chỉ operation đọc** allowlist |
+| `production` | OAuth 2.1 / OIDC | Remote thật (ChatGPT, tunnel HTTPS) |
+
+### Dev demo (No Authentication)
+
+```powershell
+$env:AUTOCAD_MCP_BACKEND = "ezdxf"   # hoặc auto / file_ipc
+$env:AUTOCAD_MCP_TRANSPORT = "streamable-http"
+$env:AUTOCAD_MCP_HOST = "127.0.0.1"
+$env:AUTOCAD_MCP_PORT = "8765"
+$env:AUTOCAD_MCP_PATH = "/mcp"
+$env:AUTOCAD_MCP_REMOTE_PROFILE = "dev"
+$env:AUTOCAD_MCP_AUTH_MODE = "none"
+$env:AUTOCAD_MCP_ALLOW_NO_AUTH = "1"
+$env:AUTOCAD_MCP_ALLOWED_HOSTS = "127.0.0.1"
+
+uv run python -m autocad_mcp
+```
+
+Hoặc dùng script tunnel Phase 3:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-phase3-dev.ps1
+```
+
+### Production OAuth
+
+Server là **resource server** (không tự host login). Cần OIDC provider (Auth0, Okta, Cognito, …) phát hành JWT + JWKS.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run-phase4-oauth.ps1 `
+  -PublicBaseUrl "https://cad.example.com" `
+  -OAuthIssuer "https://issuer.example" `
+  -OAuthAudience "https://cad.example.com"
+```
+
+- Endpoint MCP: `https://cad.example.com/mcp`
+- Metadata: `https://cad.example.com/.well-known/oauth-protected-resource`
+- Scopes: `autocad.read`, `autocad.write`
+- `execute_lisp` **luôn bị chặn** trên mọi remote profile
+
+Chi tiết: [docs/phase2-remote-policy.md](docs/phase2-remote-policy.md), [docs/phase4-oauth.md](docs/phase4-oauth.md), [docs/ke-hoach-chatgpt-http-bridge.md](docs/ke-hoach-chatgpt-http-bridge.md).
+
+> `AUTOCAD_MCP_TRANSPORT=sse` được nhận trong config nhưng **chưa implement** — dùng `stdio` hoặc `streamable-http`.
+
+---
+
+## Tools
+
+Mỗi tool nhận `operation` (string) và thường có `data` (object) + `include_screenshot` (bool).
+
+### drawing — Quản lý file bản vẽ
 
 | Operation | Mô tả | File IPC | ezdxf |
-|-----------|------|----------|-------|
-| create | Reset bản vẽ sạch | Yes | Yes |
-| open | Mở bản vẽ | Yes | Yes (DXF) |
-| info | Thông tin entity và layer | Yes | Yes |
-| save | Lưu bản vẽ | Yes | Yes |
-| save_as_dxf | Xuất DXF | Yes | Yes |
-| plot_pdf | Xuất PDF | Yes | No |
-| purge | Xóa đối tượng không dùng | Yes | Yes |
-| get_variables | Lấy biến hệ thống | Yes | Yes |
-| undo | Hoàn tác | Yes | No |
-| redo | Làm lại | Yes | No |
+|---|---|---|---|
+| `create` | Bản vẽ mới / reset | Yes | Yes |
+| `open` | Mở bản vẽ | Yes | Yes (DXF) |
+| `info` | Extents, entity, layer, block | Yes | Yes |
+| `save` | Lưu (`path?`) | Yes | Yes |
+| `save_as_dxf` | Xuất DXF | Yes | Yes |
+| `plot_pdf` | Xuất PDF | Yes | No |
+| `purge` | Xóa đối tượng không dùng | Yes | Yes |
+| `get_variables` | Đọc biến hệ thống | Yes | Yes |
+| `undo` / `redo` | Hoàn tác / làm lại | Yes | No |
 
----
+### entity — Đối tượng hình học
 
-# entity — Quản lý đối tượng
+**Tạo:** `create_line`, `create_circle`, `create_polyline`, `create_rectangle`, `create_arc`, `create_ellipse`, `create_mtext`, `create_hatch`
 
-### Tạo
+**Đọc:** `list`, `count`, `get`
 
-- create_line
-- create_circle
-- create_polyline
-- create_rectangle
-- create_arc
-- create_ellipse
-- create_mtext
-- create_hatch
+**Sửa:** `copy`, `move`, `rotate`, `scale`, `mirror`, `offset`\*, `array`, `fillet`\*, `chamfer`\*, `erase`
 
-### Đọc
+\* `offset`, `fillet`, `chamfer` chỉ File IPC.
 
-- list
-- count
-- get
+### layer — Layer
 
-### Chỉnh sửa
+`list`, `create`, `set_current`, `set_properties`, `freeze`, `thaw`, `lock`, `unlock`
 
-- copy
-- move
-- rotate
-- scale
-- mirror
-- offset*
-- array
-- fillet*
-- chamfer*
-- erase
-
-⚠ `offset`, `fillet`, `chamfer` chỉ dùng với File IPC.
-
----
-
-# layer — Quản lý layer
-
-- list
-- create
-- set_current
-- set_properties
-- freeze
-- thaw
-- lock
-- unlock
-
----
-
-# block — Thao tác block
+### block — Block
 
 | Operation | File IPC | ezdxf |
-|----------|----------|-------|
-| list | Yes | Yes |
-| insert | Yes | Yes |
-| insert_with_attributes | Yes | Yes |
-| get_attributes | Yes | Yes |
-| update_attribute | Yes | Yes |
-| define | No | Yes |
+|---|---|---|
+| `list` | Yes | Yes |
+| `insert` | Yes | Yes |
+| `insert_with_attributes` | Yes | Yes |
+| `get_attributes` | Yes | Yes |
+| `update_attribute` | Yes | Yes |
+| `define` | No | Yes |
 
----
+### annotation — Chú thích & auto-dimension
 
-# annotation — Chú thích
+**Cơ bản**
 
-- create_text
-- create_dimension_linear
-- create_dimension_aligned
-- create_dimension_angular
-- create_dimension_radius
-- create_leader
-- `annotation.detect_parts` — tách và đánh số từng chi tiết
-- `annotation.plan_dimensions` — tạo preview D1/D2... nhưng chưa sửa bản vẽ
-- `annotation.commit_dimension_plan` — ghi plan đã duyệt trong một Undo group
-- `annotation.auto_dimension` — lối tắt plan và ghi ngay cho part/region/entity đã chọn
-- `annotation.dimension_profiles` — profile mm/inch/ISO và profile riêng
-- `annotation.audit_dimensions` / `annotation.repair_dimension_layout` — kiểm tra và sửa lỗi bố trí an toàn
+- `create_text`
+- `create_dimension_linear` / `aligned` / `angular` / `radius`
+- `create_leader`
 
-Chi tiết và ví dụ: [docs/auto-dimension.md](docs/auto-dimension.md).
+**Workflow dimension tự động (part-aware)**
 
----
+| Operation | Vai trò |
+|---|---|
+| `detect_parts` | Gom geometry 2D thành `part_1`, `part_2`, … (read-only) |
+| `plan_dimensions` | Preview plan `D1`, `D2`, … — **không** sửa bản vẽ |
+| `commit_dimension_plan` | Ghi plan đã duyệt (một Undo group trên File IPC) |
+| `auto_dimension` | Lối tắt detect → plan → commit |
+| `batch_create_dimensions` | Ghi nhiều dimension một request / một Undo group |
+| `dimension_profiles` | `list` / `get` / `save` / `delete` profile mm·inch·ISO |
+| `audit_dimensions` | Kiểm tra chất lượng bố trí (read-only) |
+| `repair_dimension_layout` | Sửa an toàn theo `audit_id` (trùng lặp, layer, lane) |
 
-# pid — P&ID
+Selector cho plan/auto (chọn **một**): `target_part_id` | `entity_ids` | `region` | `selection: "current"`.
 
-Thư viện ký hiệu CTO.
+Profile built-in: `mechanical_mm`, `mechanical_inch`, `iso_simple`. Profile tùy chỉnh mặc định lưu tại `%LOCALAPPDATA%\autocad-mcp\dimension_profiles.json` (hoặc `AUTOCAD_MCP_DIMENSION_PROFILES`).
 
-Các lệnh:
+Chi tiết và ví dụ JSON: [docs/auto-dimension.md](docs/auto-dimension.md).
 
-- setup_layers
-- insert_symbol
-- list_symbols
-- draw_process_line
-- connect_equipment
-- add_flow_arrow
-- add_equipment_tag
-- add_line_number
-- insert_valve
-- insert_instrument
-- insert_pump
-- insert_tank
+### pid — P&ID (thư viện CTO)
 
----
+`setup_layers`, `insert_symbol`, `list_symbols`, `draw_process_line`, `connect_equipment`, `add_flow_arrow`, `add_equipment_tag`, `add_line_number`, `insert_valve`, `insert_instrument`, `insert_pump`, `insert_tank`
 
-⚠ Cần cài thư viện:
+Cần cài thư viện [CAD Tools Online](https://www.cadtoolsonline.com/) vào:
 
-https://www.cadtoolsonline.com/
-
-vào thư mục
-
-```
+```text
 C:\PIDv4-CTO\
 ```
 
----
-
-# view — Viewport & Screenshot
+### view — Viewport & screenshot
 
 | Operation | Mô tả |
-|-----------|------|
-| zoom_extents | Zoom toàn bộ |
-| zoom_window | Zoom theo cửa sổ |
-| get_screenshot | Chụp ảnh AutoCAD |
+|---|---|
+| `zoom_extents` | Zoom toàn bộ |
+| `zoom_window` | Zoom cửa sổ `x1,y1,x2,y2` |
+| `get_screenshot` | Chụp PNG |
 
-File IPC dùng:
+- File IPC: Win32 `PrintWindow` (kể cả khi AutoCAD minimize)
+- ezdxf: matplotlib render
 
-```
-PrintWindow (Win32)
-```
+### system — Server
 
-Có thể chụp ngay cả khi AutoCAD bị minimize.
+| Operation | Mô tả |
+|---|---|
+| `status` / `get_backend` | Backend, capabilities |
+| `health` | Health check nhanh (có `error_code` ổn định) |
+| `runtime` | Platform, Python path, backend env |
+| `tool_manifest` | Tools đã đăng ký, annotation ops, feature status |
+| `init` | Re-init backend |
+| `execute_lisp` | Chạy AutoLISP tùy ý — **chỉ File IPC / stdio local**; remote luôn deny |
 
-ezdxf dùng:
+Ví dụ `execute_lisp`:
 
-```
-matplotlib render
+```text
+system(operation="execute_lisp", data={"code": "(+ 1 2)"})
 ```
 
 ---
 
-# system — Quản lý server
+## Architecture
 
-- status
-- health
-- get_backend
-- runtime
-- init
-- execute_lisp
-
----
-
-## execute_lisp
-
-Chạy AutoLISP bất kỳ:
-
-Ví dụ
-
-```
-(+ 1 2)
-```
-
-Gửi:
-
-```
-data: {code: "(+ 1 2)"}
-```
-
-Biến server thành **nền tảng automation mở rộng**.
-
----
-
-# Architecture
-
-```
-MCP Client (Claude)
+```text
+MCP Client (Claude / ChatGPT / …)
         │
-        │ stdio (JSON-RPC)
-        ▼
-Python MCP Server (autocad_mcp)
-        │
-        ├── File IPC Backend
-        │       │
-        │       └── C:/temp/*.json
-        │               │
-        │               ▼
-        │        mcp_dispatch.lsp (AutoCAD)
-        │
-        └── ezdxf Backend
+        ├── stdio (JSON-RPC)          ← mặc định
+        └── streamable-http (/mcp)    ← remote + tunnel HTTPS
                 │
                 ▼
-           in-memory DXF
+        remote policy / OAuth / path guard
+                │
+                ▼
+     Python MCP Server (autocad_mcp 3.1)
+                │
+        ├── File IPC Backend (Windows)
+        │         │  C:/temp/*session*/*request*.json
+        │         ▼
+        │   mcp_dispatch.lsp (AutoCAD LT)
+        │   + auto_dimension*.lsp
+        │
+        └── ezdxf Backend
+                  ▼
+             in-memory DXF
 ```
 
-File IPC routes a fixed, whitelisted dispatcher expression through AutoCAD's
-ActiveX/COM document API. The primary route is `Document.PostCommand`, which
-queues execution for an idle document. `Document.SendCommand` is an explicit
-API fallback when `PostCommand` is unavailable; there is no silent keyboard,
-clipboard, focus, or Win32 `WM_CHAR` fallback.
+**File IPC**
 
-Before routing, the backend checks `GetAcadState().IsQuiescent` and
-`CMDACTIVE`. A pre-existing user command returns `autocad_busy`; MCP sends no
-ESC. IPC request files include both a process/session ID and request ID, and the
-LISP entry point opens that exact file instead of selecting an arbitrary pending
-file.
+- Route expression whitelist qua ActiveX: ưu tiên `Document.PostCommand`, fallback tường minh `Document.SendCommand`
+- **Không** dùng keyboard, clipboard, focus hay `WM_CHAR`
+- Trước khi gửi: kiểm tra `IsQuiescent` / `CMDACTIVE` → `autocad_busy` nếu user đang có lệnh (MCP **không** gửi ESC)
+- Request file mang process/session ID + request ID; LISP mở đúng file đó
 
-See `docs/file-ipc-error-model.md` and `docs/file-ipc-manual-test.md`.
+Mã lỗi ổn định: [docs/file-ipc-error-model.md](docs/file-ipc-error-model.md).  
+Checklist tay: [docs/file-ipc-manual-test.md](docs/file-ipc-manual-test.md).
 
 ---
 
-# Environment Variables
+## Environment Variables
+
+### Backend & IPC
 
 | Variable | Default | Mô tả |
-|---------|--------|------|
-| AUTOCAD_MCP_BACKEND | auto | chọn backend |
-| AUTOCAD_MCP_IPC_DIR | C:/temp | thư mục IPC |
-| AUTOCAD_MCP_IPC_TIMEOUT | 10 | timeout |
-| AUTOCAD_MCP_COM_PROGID | auto | optional running AutoCAD COM ProgID override |
-| AUTOCAD_MCP_ONLY_TEXT | false | tắt screenshot |
+|---|---|---|
+| `AUTOCAD_MCP_BACKEND` | `auto` | `auto` \| `file_ipc` \| `ezdxf` |
+| `AUTOCAD_MCP_IPC_DIR` | `C:/temp` | Thư mục file IPC |
+| `AUTOCAD_MCP_IPC_TIMEOUT` | `10` | Timeout giây (clamp 1–300) |
+| `AUTOCAD_MCP_COM_PROGID` | (auto) | Override COM ProgID AutoCAD đang chạy |
+| `AUTOCAD_MCP_ONLY_TEXT` | `false` | Tắt đính kèm screenshot |
+| `AUTOCAD_MCP_DIMENSION_PROFILES` | `%LOCALAPPDATA%\…` | Path file profile dimension tùy chỉnh |
+| `AUTOCAD_MCP_DEBUG_DETECT_FILE` | — | Ghi snapshot debug backend detection |
+| `AUTOCAD_MCP_ENTRYPOINT` | (auto) | Nhãn entrypoint trong `tool_manifest` |
+
+Nếu đổi `AUTOCAD_MCP_IPC_DIR`, cập nhật tương ứng biến `*mcp-ipc-dir*` trong `lisp-code/mcp_dispatch.lsp`.
+
+### Transport & remote
+
+| Variable | Default | Mô tả |
+|---|---|---|
+| `AUTOCAD_MCP_TRANSPORT` | `stdio` | `stdio` \| `streamable-http` (`sse` chưa implement) |
+| `AUTOCAD_MCP_HOST` | `127.0.0.1` | Bind host HTTP |
+| `AUTOCAD_MCP_PORT` | `8765` | Port HTTP |
+| `AUTOCAD_MCP_PATH` | `/mcp` | Path MCP endpoint |
+| `AUTOCAD_MCP_STATELESS_HTTP` | `false` | Stateless HTTP mode |
+| `AUTOCAD_MCP_REMOTE_PROFILE` | `off` | `off` \| `dev` \| `production` |
+| `AUTOCAD_MCP_AUTH_MODE` | `none` | `none` \| `oauth` |
+| `AUTOCAD_MCP_ALLOW_NO_AUTH` | `false` | Bật No Auth (chỉ với profile `dev`) |
+| `AUTOCAD_MCP_ALLOWED_HOSTS` | — | Host allowlist (`;`-separated) |
+| `AUTOCAD_MCP_ALLOWED_DIRS` | — | Thư mục file cho open/save remote (`;`-separated) |
+| `AUTOCAD_MCP_PUBLIC_BASE_URL` | — | Resource URL HTTPS công khai (OAuth) |
+| `AUTOCAD_MCP_MAX_IMAGE_BYTES` | `5242880` | Giới hạn ảnh remote (5 MB) |
+| `AUTOCAD_MCP_OAUTH_ISSUER` | — | OIDC issuer |
+| `AUTOCAD_MCP_OAUTH_AUDIENCE` | — | JWT `aud` |
+| `AUTOCAD_MCP_OAUTH_SCOPES` | `autocad.read autocad.write` | Scopes chấp nhận |
 
 ---
 
-⚠ Nếu đổi:
-
-```
-AUTOCAD_MCP_IPC_DIR
-```
-
-phải sửa luôn biến:
-
-```
-*mcp-ipc-dir*
-```
-
-trong file
-
-```
-mcp_dispatch.lsp
-```
-
----
-
-# Development
+## Development
 
 ```powershell
 uv sync
 uv run pytest tests/ -v
 ```
 
+CI: `.github/workflows/test.yml`.
+
+Script hỗ trợ:
+
+| Script | Mục đích |
+|---|---|
+| `scripts/run-phase3-dev.ps1` | HTTP dev + Cloudflare tunnel demo |
+| `scripts/run-phase4-oauth.ps1` | HTTP production OAuth |
+| `start_mcp_chatgpt.bat` | Wrapper nhanh Phase 4 (cấu hình site-specific) |
+
 ---
 
-# AutoCAD LT AutoLISP Compatibility
+## AutoCAD LT AutoLISP Compatibility
 
-AutoLISP được thêm vào **AutoCAD LT 2024 (Windows)**.
+AutoLISP có trên **AutoCAD LT 2024+ (Windows)**.
 
 | Hỗ trợ | Không hỗ trợ |
-|------|-------------|
-| .lsp | VLIDE |
-| vl-* functions | vlax-* |
-| File I/O | Express Tools |
-| entget | 3D operations |
-| selection sets | AutoLISP trên Mac |
+|---|---|
+| `.lsp`, `vl-*`, file I/O, `entget`, selection sets | VLIDE, Express Tools đầy đủ, 3D nâng cao, AutoLISP trên Mac |
+
+Một số đường dimension tối ưu dùng ActiveX khi có; xem `lisp-code/auto_dimension_activex.lsp`.
 
 ---
 
-# What's New v3.1
+## Documentation
 
-Các cập nhật chính:
-
-- execute_lisp
-- undo / redo
-- open drawing
-- create drawing reset
-- save path
-- get_variables fix
-- polyline fix
-- ActiveX/COM dispatch without UI keystrokes or ESC
-- Structured File IPC errors and per-document dispatcher probes
-- UTF8 fallback
-- IPC timeout config
-- thread-safe init
+| Tài liệu | Nội dung |
+|---|---|
+| [docs/auto-dimension.md](docs/auto-dimension.md) | Workflow part-aware dimension |
+| [docs/file-ipc-error-model.md](docs/file-ipc-error-model.md) | Mã lỗi File IPC |
+| [docs/file-ipc-manual-test.md](docs/file-ipc-manual-test.md) | Kiểm thử tay IPC |
+| [docs/phase2-remote-policy.md](docs/phase2-remote-policy.md) | Remote allowlist / path guard |
+| [docs/phase4-oauth.md](docs/phase4-oauth.md) | OAuth production + ChatGPT |
+| [docs/ke-hoach-chatgpt-http-bridge.md](docs/ke-hoach-chatgpt-http-bridge.md) | Kế hoạch HTTP bridge tổng thể |
+| [docs/phase0-baseline.md](docs/phase0-baseline.md) | Baseline phase 0 |
 
 ---
 
-# License
+## What's included (current)
+
+- 8 tool MCP thống nhất, operation dispatch
+- Dual backend: File IPC + ezdxf
+- Dual transport: stdio + Streamable HTTP
+- Remote policy (dev No-Auth allowlist, production OAuth scopes)
+- Part-aware auto-dimension: detect → plan → commit / one-shot / audit-repair
+- File IPC reliability: session/request IDs, structured `error_code`, per-document dispatcher probe
+- `system.tool_manifest` / `runtime` / `health` diagnostics
+- `execute_lisp` cho automation mở rộng (local only)
+- Wheel packaging kèm `lisp-code` (`hatchling` force-include)
+
+---
+
+## License
 
 MIT
