@@ -169,13 +169,19 @@
   (not (vl-catch-all-error-p result))
 )
 
-(defun mcp-ad-ensure-layer (layer / old-cmdecho)
-  (if (not (tblsearch "LAYER" layer))
-    (progn
-      (setq old-cmdecho (getvar "CMDECHO"))
-      (setvar "CMDECHO" 0)
-      (command "_.-LAYER" "_NEW" layer "_COLOR" "2" layer "")
-      (setvar "CMDECHO" old-cmdecho)
+(defun mcp-ad-ensure-layer (layer)
+  "Create dimension layer via entmake — never open interactive -LAYER prompts."
+  (if (and layer (not (tblsearch "LAYER" layer)))
+    (entmake
+      (list
+        '(0 . "LAYER")
+        '(100 . "AcDbSymbolTableRecord")
+        '(100 . "AcDbLayerTableRecord")
+        (cons 2 layer)
+        (cons 70 0)
+        (cons 62 2) ; yellow
+        (cons 6 "Continuous")
+      )
     )
   )
 )

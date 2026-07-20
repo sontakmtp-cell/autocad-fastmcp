@@ -16,7 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from autocad_mcp.backends.base import BackendCapabilities, CommandResult
-from autocad_mcp.backends.file_ipc import FileIPCBackend
+from autocad_mcp.backends.file_ipc import FileIPCBackend, normalize_layer_color
 
 
 # ---------------------------------------------------------------------------
@@ -537,6 +537,53 @@ class TestVariableNameStripping:
         names = None
         names_str = "" if not names else ";".join(names)
         assert names_str == ""
+
+
+class TestNormalizeLayerColor:
+    """Guard against -LAYER hanging when agents pass ACI ints or bad names."""
+
+    def test_named_colors(self):
+        assert normalize_layer_color("red") == "1"
+        assert normalize_layer_color("YELLOW") == "2"
+        assert normalize_layer_color("white") == "7"
+        assert normalize_layer_color("magenta") == "6"
+
+    def test_integer_aci(self):
+        assert normalize_layer_color(1) == "1"
+        assert normalize_layer_color(6) == "6"
+        assert normalize_layer_color(255) == "255"
+
+    def test_digit_string(self):
+        assert normalize_layer_color("3") == "3"
+        assert normalize_layer_color("150") == "150"
+
+    def test_defaults_and_invalid(self):
+        assert normalize_layer_color(None) == "7"
+        assert normalize_layer_color("") == "7"
+        assert normalize_layer_color("chartreuse") == "7"
+        assert normalize_layer_color(0) == "7"
+        assert normalize_layer_color(999) == "7"
+        assert normalize_layer_color(True) == "7"
+
+    @pytest.mark.asyncio
+    async def test_layer_create_dispatches_aci_string(self):
+        backend = FileIPCBackend()
+        backend._dispatch = AsyncMock(return_value=CommandResult(ok=True, payload={"name": "EQUIPMENT"}))
+        await backend.layer_create("EQUIPMENT", color=6, linetype="CONTINUOUS")
+        backend._dispatch.assert_awaited_once_with(
+            "layer-create",
+            {"name": "EQUIPMENT", "color": "6", "linetype": "CONTINUOUS"},
+        )
+
+    @pytest.mark.asyncio
+    async def test_layer_set_properties_normalizes_color(self):
+        backend = FileIPCBackend()
+        backend._dispatch = AsyncMock(return_value=CommandResult(ok=True))
+        await backend.layer_set_properties("EQUIPMENT", color="red", linetype="DASHED")
+        backend._dispatch.assert_awaited_once_with(
+            "layer-set-properties",
+            {"name": "EQUIPMENT", "color": "1", "linetype": "DASHED"},
+        )
 
 
 class TestAnnotationResourcePaths:

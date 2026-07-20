@@ -4,18 +4,18 @@ The annotation workflow supports both the original one-call path and an
 approval-first path:
 
 ```text
-annotation.detect_parts
-annotation.plan_dimensions
-annotation.commit_dimension_plan
-annotation.auto_dimension
-annotation.dimension_profiles
-annotation.audit_dimensions
-annotation.repair_dimension_layout
+annotation_detect_parts
+annotation_plan_dimensions
+annotation_commit_dimension_plan
+annotation_auto_dimension
+annotation_dimension_profiles
+annotation_audit_dimensions
+annotation_repair_dimension_layout
 ```
 
 ## 1. Select the intended part
 
-`annotation.detect_parts` clusters touching/enclosed 2D geometry into stable
+`annotation_detect_parts` clusters touching/enclosed 2D geometry into stable
 `part_1`, `part_2`, ... identifiers and attaches an indexed PNG preview. Parts
 are ordered left-to-right and then bottom-to-top.
 
@@ -48,7 +48,7 @@ as one bounded entity; its nested geometry is not exploded yet.
 
 ## 2. Preview, revise, then commit
 
-`annotation.plan_dimensions` calculates dimension intent in memory and returns a
+`annotation_plan_dimensions` calculates dimension intent in memory and returns a
 PNG with stable `D1`, `D2`, ... labels. It does not create, erase, move, or style
 an AutoCAD entity.
 
@@ -93,7 +93,7 @@ AutoCAD `UNDO` group. A repeated commit of the same in-process plan is
 idempotent. Draft plans are held in server memory, so a server restart requires
 creating a new plan. If AutoCAD finishes a commit but the server process dies
 before receiving its report, the plan has no persistent transaction marker and
-must be audited before retrying. `annotation.auto_dimension` remains available
+must be audited before retrying. `annotation_auto_dimension` remains available
 as the immediate plan-and-commit shortcut and accepts the same selectors/profile.
 
 ## 3. Mechanical feature intent
@@ -122,7 +122,7 @@ Built-ins:
 - `mechanical_inch`
 - `iso_simple`
 
-Use `annotation.dimension_profiles` with `data.action` equal to `list`, `get`,
+Use `annotation_dimension_profiles` with `data.action` equal to `list`, `get`,
 `save`, or `delete`. Custom profiles persist to
 `%LOCALAPPDATA%\autocad-mcp\dimension_profiles.json` by default, or to the path
 in `AUTOCAD_MCP_DIMENSION_PROFILES`.
@@ -135,13 +135,13 @@ the intended drafting standard; it does not rescale existing drawing geometry.
 
 ## 5. Audit and repair
 
-`annotation.audit_dimensions` checks duplicate dimensions, wrong layer/style,
+`annotation_audit_dimensions` checks duplicate dimensions, wrong layer/style,
 text and line overlap, dimension lines crossing geometry, missing overall/hole
 location dimensions, detached geometry references, and displayed chain totals.
 The attached preview uses green for valid dimensions, yellow for review, and red
 for errors.
 
-`annotation.repair_dimension_layout` applies only deterministic fixes: delete a
+`annotation_repair_dimension_layout` applies only deterministic fixes: delete a
 duplicate, set the expected layer/style, or move a crowded dimension to the next
 lane. Pass the `audit_id` returned by the audit; repair refuses to run if the
 drawing changed after that audit. File IPC applies the selected repair batch in

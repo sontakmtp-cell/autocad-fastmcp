@@ -2,7 +2,7 @@
 
 The module is deliberately backend-neutral.  Backends convert their entities to
 ``EntityRecord`` objects, then the same stable clustering and selection rules are
-used by ``annotation.detect_parts`` and automatic dimensioning.
+used by ``annotation_detect_parts`` and automatic dimensioning.
 """
 
 from __future__ import annotations

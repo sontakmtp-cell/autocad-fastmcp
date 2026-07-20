@@ -83,27 +83,35 @@
 ;; Simple JSON parser (extracts string values by key)
 ;; -----------------------------------------------------------------------
 
-(defun mcp-json-get-string (json key / search-str pos end-pos value)
-  "Extract a string value for a given key from JSON text."
+(defun mcp-json-get-string (json key / search-str pos end-pos i ch)
+  "Extract a string value for a given key from JSON text.
+   Returns nil when the value is missing or not a JSON string
+   (numbers/null/true/false). Never peeks into the next key name."
   (setq search-str (strcat "\"" key "\""))
   (setq pos (vl-string-search search-str json))
   (if (null pos) nil
     (progn
-      ;; Find the colon after key
+      ;; Find the colon after key (0-based)
       (setq pos (vl-string-search ":" json pos))
       (if (null pos) nil
         (progn
-          ;; Find opening quote of value
-          (setq pos (vl-string-search "\"" json (1+ pos)))
-          (if (null pos) nil
+          ;; 1-based index of first char after colon
+          (setq i (+ pos 2))
+          ;; Skip whitespace
+          (while (and (<= i (strlen json))
+                      (member (substr json i 1) '(" " "\t" "\n" "\r")))
+            (setq i (1+ i))
+          )
+          (setq ch (if (<= i (strlen json)) (substr json i 1) ""))
+          ;; Only accept a real JSON string value (opening quote)
+          (if (/= ch "\"")
+            nil
             (progn
-              (setq pos (+ pos 2))  ; 0-based search result + 2 = 1-based position after quote
-              ;; Find closing quote (skip escaped quotes)
+              (setq pos (1+ i)) ; 1-based position after opening quote
               (setq end-pos pos)
               (while (and (<= end-pos (strlen json))
                           (or (= end-pos pos)
                               (/= (substr json end-pos 1) "\"")))
-                ;; Handle escaped characters
                 (if (= (substr json end-pos 1) "\\")
                   (setq end-pos (+ end-pos 2))
                   (setq end-pos (1+ end-pos))
@@ -115,6 +123,77 @@
         )
       )
     )
+  )
+)
+
+(defun mcp-json-get-color (json / s n pos i ch num-start num-end)
+  "Extract a layer color from JSON as a string (name or ACI digits).
+   Accepts both JSON strings (\"red\") and numbers (1)."
+  (setq s (mcp-json-get-string json "color"))
+  (if s
+    s
+    (progn
+      (setq pos (vl-string-search "\"color\"" json))
+      (if (null pos) nil
+        (progn
+          (setq pos (vl-string-search ":" json pos))
+          (if (null pos) nil
+            (progn
+              (setq i (+ pos 2))
+              (while (and (<= i (strlen json))
+                          (member (substr json i 1) '(" " "\t" "\n" "\r")))
+                (setq i (1+ i))
+              )
+              (setq ch (if (<= i (strlen json)) (substr json i 1) ""))
+              (if (not (member ch '("0" "1" "2" "3" "4" "5" "6" "7" "8" "9" "-" "+")))
+                nil
+                (progn
+                  (setq num-start i num-end i)
+                  (while (and (<= num-end (strlen json))
+                              (member (substr json num-end 1)
+                                      '("0" "1" "2" "3" "4" "5" "6" "7" "8" "9" "." "-" "+")))
+                    (setq num-end (1+ num-end))
+                  )
+                  (itoa (fix (atof (substr json num-start (- num-end num-start)))))
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+)
+
+(defun mcp-color-to-aci (color / s n)
+  "Convert color name or numeric string to ACI index 1-255. Default 7 (white)."
+  (cond
+    ((null color) 7)
+    ((= (type color) 'INT)
+     (if (and (>= color 1) (<= color 255)) color 7))
+    ((= (type color) 'REAL)
+     (setq n (fix color))
+     (if (and (>= n 1) (<= n 255)) n 7))
+    ((= (type color) 'STR)
+     (setq s (strcase color T))
+     (cond
+       ((= s "red") 1)
+       ((= s "yellow") 2)
+       ((= s "green") 3)
+       ((= s "cyan") 4)
+       ((= s "blue") 5)
+       ((= s "magenta") 6)
+       ((= s "white") 7)
+       ((= s "black") 7)
+       ((= s "grey") 8)
+       ((= s "gray") 8)
+       ;; Pure digit string → ACI number
+       ((and (> (strlen s) 0) (= s (itoa (atoi s))))
+        (setq n (atoi s))
+        (if (and (>= n 1) (<= n 255)) n 7))
+       (T 7)
+     ))
+    (T 7)
   )
 )
 
@@ -336,7 +415,7 @@
     ((= cmd-name "pid-setup-layers")
      (if c:setup-pid-layers
        (progn (c:setup-pid-layers) (cons T "\"P&ID layers created\""))
-       (cons nil "pid_tools.lsp not loaded")))
+       (mcp-cmd-pid-setup-layers)))
 
     ((= cmd-name "pid-insert-symbol")
      (mcp-cmd-pid-insert-symbol params-json))
@@ -472,12 +551,17 @@
 
 (defun mcp-cmd-layer-create (params / name color linetype)
   (setq name (mcp-json-get-string params "name"))
-  (setq color (mcp-json-get-string params "color"))
+  (setq color (mcp-json-get-color params))
   (setq linetype (mcp-json-get-string params "linetype"))
-  (if (not color) (setq color "white"))
-  (if (not linetype) (setq linetype "CONTINUOUS"))
-  (ensure_layer_exists name color linetype)
-  (cons T (strcat "{\"name\":\"" name "\"}"))
+  (if (not color) (setq color "7"))
+  (if (not linetype) (setq linetype "Continuous"))
+  (if (not name)
+    (cons nil "Layer name required")
+    (progn
+      (mcp-ensure-layer name color linetype)
+      (cons T (strcat "{\"name\":\"" name "\",\"color\":" (itoa (mcp-color-to-aci color)) "}"))
+    )
+  )
 )
 
 (defun mcp-cmd-layer-set-current (params / name)
@@ -1088,15 +1172,48 @@
 
 ;; --- Layer operations ---
 
-(defun mcp-cmd-layer-set-properties (params / name color linetype lineweight)
+(defun mcp-cmd-layer-set-properties (params / name color linetype lineweight el aci lt-name)
+  "Set layer properties via table entmod — never open interactive -LAYER prompts."
   (setq name (mcp-json-get-string params "name"))
-  (setq color (mcp-json-get-string params "color"))
+  (setq color (mcp-json-get-color params))
   (setq linetype (mcp-json-get-string params "linetype"))
   (setq lineweight (mcp-json-get-string params "lineweight"))
-  (if color (command "_.-LAYER" "_COLOR" color name ""))
-  (if linetype (command "_.-LAYER" "_LTYPE" linetype name ""))
-  (if lineweight (command "_.-LAYER" "_LWEIGHT" lineweight name ""))
-  (cons T (strcat "{\"name\":\"" name "\"}"))
+  (if (not name)
+    (cons nil "Layer name required")
+    (if (not (tblsearch "LAYER" name))
+      (cons nil (strcat "Layer '" name "' not found"))
+      (progn
+        (setq el (entget (tblobjname "LAYER" name)))
+        (if color
+          (progn
+            (setq aci (mcp-color-to-aci color))
+            (setq el (subst (cons 62 aci) (assoc 62 el) el))
+          )
+        )
+        (if linetype
+          (progn
+            (setq lt-name linetype)
+            (if (not (tblsearch "LTYPE" lt-name))
+              (setq lt-name "Continuous"))
+            (setq el (subst (cons 6 lt-name) (assoc 6 el) el))
+          )
+        )
+        (if (and lineweight (/= lineweight ""))
+          ;; DXF 370 is lineweight in hundredths of mm; accept numeric string
+          (if (= lineweight (itoa (atoi lineweight)))
+            (setq el
+              (if (assoc 370 el)
+                (subst (cons 370 (atoi lineweight)) (assoc 370 el) el)
+                (append el (list (cons 370 (atoi lineweight))))
+              )
+            )
+          )
+        )
+        (entmod el)
+        (cons T (strcat "{\"name\":\"" name "\"}"))
+      )
+    )
+  )
 )
 
 (defun mcp-cmd-layer-freeze (params / name)
@@ -1428,13 +1545,36 @@
 ;; Utility helpers (defined if not already loaded from external files)
 ;; -----------------------------------------------------------------------
 
-(if (not ensure_layer_exists)
-  (defun ensure_layer_exists (name color linetype)
-    "Create layer if it doesn't exist."
-    (if (not (tblsearch "LAYER" name))
-      (command "_.-LAYER" "_NEW" name "_COLOR" color name "_LTYPE" linetype name "")
+(defun mcp-ensure-layer (name color linetype / aci lt-name)
+  "Create layer if missing via entmake (no interactive -LAYER command).
+   color may be ACI int/real, digit string, or English name (red/white/...)."
+  (if (and name (not (tblsearch "LAYER" name)))
+    (progn
+      (setq aci (mcp-color-to-aci color))
+      (setq lt-name (if (and linetype (/= linetype "")) linetype "Continuous"))
+      ;; Linetype must exist in the drawing table; fall back to Continuous.
+      (if (not (tblsearch "LTYPE" lt-name))
+        (setq lt-name "Continuous")
+      )
+      (entmake
+        (list
+          '(0 . "LAYER")
+          '(100 . "AcDbSymbolTableRecord")
+          '(100 . "AcDbLayerTableRecord")
+          (cons 2 name)
+          (cons 70 0)
+          (cons 62 aci)
+          (cons 6 lt-name)
+        )
+      )
     )
   )
+)
+
+;; Always redefine: older copies used interactive -LAYER and could hang prompts.
+(defun ensure_layer_exists (name color linetype)
+  "Create layer if it doesn't exist."
+  (mcp-ensure-layer name color linetype)
 )
 
 (if (not set_current_layer)
@@ -1442,6 +1582,29 @@
     "Set a layer as current."
     (setvar "CLAYER" name)
   )
+)
+
+(defun mcp-cmd-pid-setup-layers ( / layers pair count)
+  "Create standard P&ID layers without external pid_tools.lsp."
+  (setq layers
+    (list
+      (list "PID-EQUIPMENT" 6 "Continuous")
+      (list "PID-PROCESS-PIPING" 4 "Continuous")
+      (list "PID-UTILITY-PIPING" 3 "Continuous")
+      (list "PID-INSTRUMENTS" 5 "Continuous")
+      (list "PID-ELECTRICAL" 1 "Continuous")
+      (list "PID-ANNOTATION" 7 "Continuous")
+      (list "PID-VALVES" 2 "Continuous")
+    )
+  )
+  (setq count 0)
+  (foreach pair layers
+    (if (not (tblsearch "LAYER" (car pair)))
+      (setq count (1+ count))
+    )
+    (mcp-ensure-layer (car pair) (cadr pair) (caddr pair))
+  )
+  (cons T (strcat "{\"layers_created\":" (itoa count) ",\"layers\":7}"))
 )
 
 (if (not set_attribute_value)

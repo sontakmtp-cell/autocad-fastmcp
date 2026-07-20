@@ -692,9 +692,27 @@ class FileIPCBackend(AutoCADBackend):
 
     # Layer operations
     async def layer_list(self): return await self._dispatch("layer-list", {})
-    async def layer_create(self, name, color="white", linetype="CONTINUOUS"): return await self._dispatch("layer-create", locals_without_self(locals()))
+    async def layer_create(self, name, color="white", linetype="CONTINUOUS"):
+        return await self._dispatch(
+            "layer-create",
+            {
+                "name": name,
+                "color": normalize_layer_color(color),
+                "linetype": linetype or "CONTINUOUS",
+            },
+        )
+
     async def layer_set_current(self, name): return await self._dispatch("layer-set-current", {"name": name})
-    async def layer_set_properties(self, name, color=None, linetype=None, lineweight=None): return await self._dispatch("layer-set-properties", locals_without_self(locals()))
+
+    async def layer_set_properties(self, name, color=None, linetype=None, lineweight=None):
+        params: dict[str, Any] = {"name": name}
+        if color is not None:
+            params["color"] = normalize_layer_color(color)
+        if linetype is not None:
+            params["linetype"] = linetype
+        if lineweight is not None:
+            params["lineweight"] = str(lineweight)
+        return await self._dispatch("layer-set-properties", params)
     async def layer_freeze(self, name): return await self._dispatch("layer-freeze", {"name": name})
     async def layer_thaw(self, name): return await self._dispatch("layer-thaw", {"name": name})
     async def layer_lock(self, name): return await self._dispatch("layer-lock", {"name": name})
@@ -747,3 +765,39 @@ class FileIPCBackend(AutoCADBackend):
 
 def locals_without_self(values: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in values.items() if key != "self"}
+
+
+_LAYER_COLOR_NAMES = {
+    "red": "1",
+    "yellow": "2",
+    "green": "3",
+    "cyan": "4",
+    "blue": "5",
+    "magenta": "6",
+    "white": "7",
+    "black": "7",
+    "grey": "8",
+    "gray": "8",
+}
+
+
+def normalize_layer_color(color: str | int | float | None) -> str:
+    """Normalize a layer color to an ACI index string (1-255).
+
+    File IPC previously forwarded named colors and bare integers into AutoLISP.
+    When color was a JSON number, the LISP string parser could mis-read the next
+    key name (e.g. ``linetype``) as the color value and leave ``-LAYER`` hung at
+    the color prompt. Always send a digit string so LISP can entmake reliably.
+    """
+    if color is None or isinstance(color, bool):
+        return "7"
+    if isinstance(color, (int, float)):
+        n = int(color)
+        return str(n) if 1 <= n <= 255 else "7"
+    text = str(color).strip()
+    if not text:
+        return "7"
+    if text.isdigit():
+        n = int(text)
+        return text if 1 <= n <= 255 else "7"
+    return _LAYER_COLOR_NAMES.get(text.lower(), "7")

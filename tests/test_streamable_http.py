@@ -22,14 +22,14 @@ from autocad_mcp.http_server import create_app
 
 
 ADVANCED_ANNOTATION_TOOLS = {
-    "annotation.detect_parts",
-    "annotation.plan_dimensions",
-    "annotation.commit_dimension_plan",
-    "annotation.auto_dimension",
-    "annotation.batch_create_dimensions",
-    "annotation.dimension_profiles",
-    "annotation.audit_dimensions",
-    "annotation.repair_dimension_layout",
+    "annotation_detect_parts",
+    "annotation_plan_dimensions",
+    "annotation_commit_dimension_plan",
+    "annotation_auto_dimension",
+    "annotation_batch_create_dimensions",
+    "annotation_dimension_profiles",
+    "annotation_audit_dimensions",
+    "annotation_repair_dimension_layout",
 }
 
 
@@ -171,7 +171,7 @@ async def test_tool_manifest_operation_is_read_only_diagnostic(http_endpoint):
     payload = json.loads(_text_content(result)[0])
     assert payload["ok"] is True
     assert payload["feature_status"]["phase1_dimension_perf_installed"] is True
-    assert "annotation.auto_dimension" in payload["registered_tools"]
+    assert "annotation_auto_dimension" in payload["registered_tools"]
     assert "auto_dimension" in payload["advanced_annotation_operations"]
 
 

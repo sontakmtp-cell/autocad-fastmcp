@@ -77,11 +77,19 @@ def test_lisp_contains_reliability_guards():
         "c:mcp-dispatch-request",
         "acad_strlsort",
         "command_not_completed",
+        "mcp-json-get-color",
+        "mcp-color-to-aci",
+        "mcp-ensure-layer",
+        "mcp-cmd-pid-setup-layers",
     )
     for marker in required:
         assert marker in source
     assert "(setq *error*" not in source.lower()
     assert '(setvar "FILEDIA" 1)' not in source
+    # Layer create must not use interactive -LAYER color prompts
+    assert '(command "_.-LAYER" "_NEW"' not in source
+    assert '(command "_.-LAYER" "_COLOR"' not in source
+    assert "entmake" in source
 
 
 @pytest.mark.parametrize(

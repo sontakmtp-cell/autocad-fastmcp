@@ -464,7 +464,7 @@ async def _run_annotation(
     if operation == "repair_dimension_layout":
         audit_id = str(raw.get("audit_id", "")).strip()
         if not audit_id:
-            raise ValueError("audit_id from annotation.audit_dimensions is required")
+            raise ValueError("audit_id from annotation_audit_dimensions is required")
         context = _audit_context.get(audit_id)
         if context is None:
             raise ValueError("Unknown or expired audit_id; run audit_dimensions again")
@@ -535,7 +535,7 @@ async def _run_annotation(
 
 
 @mcp.tool(
-    name="annotation.detect_parts",
+    name="annotation_detect_parts",
     annotations={
         "title": "Detect Independent Drawing Parts",
         "readOnlyHint": True,
@@ -558,7 +558,7 @@ async def annotation_detect_parts(
 
 
 @mcp.tool(
-    name="annotation.plan_dimensions",
+    name="annotation_plan_dimensions",
     annotations={
         "title": "Plan Dimensions Without Editing the Drawing",
         "readOnlyHint": True,
@@ -581,7 +581,7 @@ async def annotation_plan_dimensions(
 
 
 @mcp.tool(
-    name="annotation.commit_dimension_plan",
+    name="annotation_commit_dimension_plan",
     annotations={
         "title": "Commit an Approved Dimension Plan",
         "readOnlyHint": False,
@@ -604,7 +604,7 @@ async def annotation_commit_dimension_plan(
 
 
 @mcp.tool(
-    name="annotation.auto_dimension",
+    name="annotation_auto_dimension",
     annotations={
         "title": "Part-aware Automatic Mechanical Dimensioning",
         "readOnlyHint": False,
@@ -627,7 +627,7 @@ async def annotation_auto_dimension(
 
 
 @mcp.tool(
-    name="annotation.dimension_profiles",
+    name="annotation_dimension_profiles",
     annotations={
         "title": "Manage Reusable Dimension Profiles",
         "readOnlyHint": False,
@@ -647,7 +647,7 @@ async def annotation_dimension_profiles(data: dict | None = None) -> ToolResult:
 
 
 @mcp.tool(
-    name="annotation.audit_dimensions",
+    name="annotation_audit_dimensions",
     annotations={
         "title": "Audit Dimension Quality",
         "readOnlyHint": True,
@@ -670,7 +670,7 @@ async def annotation_audit_dimensions(
 
 
 @mcp.tool(
-    name="annotation.repair_dimension_layout",
+    name="annotation_repair_dimension_layout",
     annotations={
         "title": "Repair Deterministic Dimension Layout Issues",
         "readOnlyHint": False,

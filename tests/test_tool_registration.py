@@ -21,14 +21,14 @@ EXPECTED_TOOLS = {
     "pid",
     "view",
     "system",
-    "annotation.detect_parts",
-    "annotation.plan_dimensions",
-    "annotation.commit_dimension_plan",
-    "annotation.auto_dimension",
-    "annotation.batch_create_dimensions",
-    "annotation.dimension_profiles",
-    "annotation.audit_dimensions",
-    "annotation.repair_dimension_layout",
+    "annotation_detect_parts",
+    "annotation_plan_dimensions",
+    "annotation_commit_dimension_plan",
+    "annotation_auto_dimension",
+    "annotation_batch_create_dimensions",
+    "annotation_dimension_profiles",
+    "annotation_audit_dimensions",
+    "annotation_repair_dimension_layout",
 }
 
 

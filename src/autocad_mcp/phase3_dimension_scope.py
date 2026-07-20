@@ -101,7 +101,7 @@ def _load_geometry_snapshot(
     _prune_cache()
     entry = _GEOMETRY_CACHE.get(token)
     if entry is None:
-        raise ValueError("geometry_cache_token is unknown or expired; run annotation.detect_parts again")
+        raise ValueError("geometry_cache_token is unknown or expired; run annotation_detect_parts again")
     if entry.drawing_id != drawing_fingerprint(backend):
         raise ValueError("geometry_cache_token belongs to a different active drawing")
     if entry.dimension_layer != str(dimension_layer):
@@ -644,12 +644,12 @@ def install() -> None:
 
     guidance = (
         "Performance rule: pass region, entity_ids, or selection='current' whenever "
-        "possible. After annotation.detect_parts, reuse geometry_cache_token together "
+        "possible. After annotation_detect_parts, reuse geometry_cache_token together "
         "with target_part_id so the same full drawing is not exported twice."
     )
     phase1_dimension_perf._append_tool_guidance("annotation", guidance)
-    phase1_dimension_perf._append_tool_guidance("annotation.detect_parts", guidance)
-    phase1_dimension_perf._append_tool_guidance("annotation.auto_dimension", guidance)
+    phase1_dimension_perf._append_tool_guidance("annotation_detect_parts", guidance)
+    phase1_dimension_perf._append_tool_guidance("annotation_auto_dimension", guidance)
 
     _INSTALLED = True
     log.info(

@@ -474,17 +474,17 @@ def install() -> None:
     annotation_tools._run_annotation = _patched_run_annotation
     guidance = (
         "Performance rule: when two or more dimensions are needed, use "
-        "annotation.batch_create_dimensions or annotation.auto_dimension once. "
+        "annotation_batch_create_dimensions or annotation_auto_dimension once. "
         "Do not call create_dimension_* repeatedly."
     )
     _append_tool_guidance("annotation", guidance)
-    _append_tool_guidance("annotation.auto_dimension", guidance)
+    _append_tool_guidance("annotation_auto_dimension", guidance)
     _INSTALLED = True
     log.info("dimension_phase1_performance_installed", loader=str(_LOADER_PATH))
 
 
 @mcp.tool(
-    name="annotation.batch_create_dimensions",
+    name="annotation_batch_create_dimensions",
     annotations={
         "title": "Batch Create Dimensions in One AutoCAD Commit",
         "readOnlyHint": False,
