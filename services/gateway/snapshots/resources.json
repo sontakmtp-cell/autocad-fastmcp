@@ -1,0 +1,46 @@
+[
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "description": "Read bounded capabilities for a known CAD device.",
+    "mimeType": "application/json",
+    "name": "CAD device capabilities",
+    "uriTemplate": "cad://devices/{device_id}/capabilities"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "description": "Read the bounded JSON summary for a known CAD snapshot.",
+    "mimeType": "application/json",
+    "name": "CAD snapshot summary",
+    "uriTemplate": "cad://snapshots/{snapshot_id}/summary"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "description": "Read a bounded, filtered page of entities from a known CAD snapshot.",
+    "mimeType": "application/json",
+    "name": "CAD snapshot entities",
+    "uriTemplate": "cad://snapshots/{snapshot_id}/entities{?cursor,limit,types,layers}"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "description": "Read a bounded PNG preview artifact referenced by a CAD snapshot.",
+    "mimeType": "image/png",
+    "name": "CAD artifact",
+    "uriTemplate": "cad://artifacts/{artifact_id}"
+  }
+]

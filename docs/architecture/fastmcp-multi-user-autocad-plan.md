@@ -1201,20 +1201,22 @@ Mỗi phase dưới đây chỉ bắt đầu sau khi phase trước đạt exit 
 
 ### Phase 2 — FastMCP public facade local single-user
 
-- **Mục tiêu/phạm vi:** hoàn thiện public v1 schema ở local mode với 3-5 tool đầu: list, observe, query, prepare, job status.
+- **Trạng thái:** đã triển khai local; CI matrix đa nền tảng/Python vẫn là gate vận hành tiếp theo.
+- **Mục tiêu/phạm vi:** public v1 local chỉ có đúng 3 tool đọc: `cad_list_devices`, `cad_observe`, `cad_query`. `cad_get_job` hoãn Phase 3; `cad_prepare_program` hoãn Phase 6.
 - **Luồng sau phase:** ChatGPT/test client -> FastMCP -> in-process application service -> ezdxf hoặc local runtime adapter.
 - **Tái sử dụng:** HTTP/host/auth tests và observation/screenshot adapter.
-- **Phần mới:** typed public models, resources, prompts thử nghiệm, correlation middleware.
+- **Phần mới:** `services/gateway/` độc lập, typed public models, snapshot/revision/query resources, prompts thử nghiệm, correlation middleware và launcher local.
 - **FastMCP:** đầy đủ interface/lifecycle/testing; chưa dùng composition/proxy.
-- **Ranh giới:** vẫn single process, chưa có outbound Agent.
-- **Hoàn thành khi:** public schema nhỏ/stable, tool annotations đúng, không expose primitive/legacy tools.
-- **Kiểm thử:** schema snapshots, malformed input, resource ownership fake, response size.
+- **Ranh giới:** vẫn single process, no-auth chỉ loopback, chưa có SQLite/WebSocket/outbound Agent, chưa có write/preview commit/production OAuth.
+- **Hoàn thành khi:** public schema nhỏ/stable, tool annotations đúng, không expose primitive/legacy tools; local demo dùng backend `ezdxf` thật và query được theo type/layer.
+- **Kiểm thử:** schema hash snapshots, malformed input, resource ownership với principal khác nhau, response size, JWT fixture `autocad.read`, Streamable HTTP stateful/stateless.
 - **Rủi ro:** tool schema/CAD Program envelope phình; ChatGPT không dùng resource/prompt như mong đợi.
 - **Chưa làm:** remote write/risk-consent flow/multi-user.
 - **Phụ thuộc:** service seam.
 - **Feature flag/compatibility:** `AUTOCAD_MCP_INTERFACE=legacy|public_v1`; không `dual` production.
 - **Rollback:** switch về legacy entrypoint.
-- **Demo:** local single-user observe/query DXF qua public v1.
+- **Evidence:** `docs/architecture/phase2-fastmcp-public-facade-evidence.md`.
+- **Demo:** local single-user observe/query DXF qua public v1 với đúng 3 tool, 4 resource template và 2 prompt.
 
 ### Phase 3 — Durable Gateway + simulated outbound Agent
 

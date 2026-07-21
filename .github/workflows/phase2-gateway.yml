@@ -1,0 +1,38 @@
+name: FastMCP Phase 2 Gateway
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gateway:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: services/gateway
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+      - name: Sync isolated Gateway lockfile
+        run: uv sync --locked --group test
+      - name: Verify exact FastMCP version
+        run: uv run --locked --group test python -c "import fastmcp; assert fastmcp.__version__ == '3.4.4'"
+      - name: Run Phase 2 Gateway tests
+        run: uv run --locked --group test pytest -q
+      - name: Build Gateway package
+        run: uv build --wheel
+      - name: Verify schema snapshots are unchanged
+        run: git diff --exit-code -- services/gateway/snapshots

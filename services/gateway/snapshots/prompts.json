@@ -1,0 +1,24 @@
+[
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "arguments": [],
+    "description": "Guide a read-only inspection and planning conversation before any drawing change.",
+    "name": "plan_cad_change",
+    "title": "Plan a CAD change"
+  },
+  {
+    "_meta": {
+      "fastmcp": {
+        "tags": []
+      }
+    },
+    "arguments": [],
+    "description": "Guide read-only validation follow-up without changing the drawing.",
+    "name": "repair_after_validation",
+    "title": "Repair after validation"
+  }
+]
