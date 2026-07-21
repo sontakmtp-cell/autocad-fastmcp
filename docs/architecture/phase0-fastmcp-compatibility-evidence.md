@@ -1,13 +1,12 @@
 # Phase 0 FastMCP facade compatibility evidence
 
 Date: 2026-07-21  
-Decision gate: **GO for the local six-runtime compatibility matrix**
+Decision gate: **GO**
 
-This report records the implementation and the evidence available from the
-Windows workstation plus disposable Linux containers. The six-runtime local
-matrix is green. GitHub-hosted execution is a separate release-plumbing
-check because this workflow currently exists on branch `fast`, while the
-repository default branch is `main`.
+This report records the implementation and the evidence from the Windows
+workstation, disposable Linux containers, and the hosted GitHub Actions run.
+The six-runtime local matrix and the six-job hosted matrix are green on
+`main`.
 
 ## Scope delivered
 
@@ -93,16 +92,13 @@ Workflow: `.github/workflows/phase0-fastmcp.yml`.
 | --- | --- | --- | --- |
 | Linux (`python:3.x-slim` Docker equivalent) | passed, 14 | passed, 14 | passed, 14 |
 | Windows workstation equivalent | passed, 14 | passed, 14 | passed, 14 |
+| GitHub Actions `ubuntu-latest` | passed, 14 | passed, 14 | passed, 14 |
+| GitHub Actions `windows-latest` | passed, 14 | passed, 14 | passed, 14 |
 
 The workflow independently locks/syncs the POC, checks exact FastMCP
-version, runs tests, and verifies snapshots do not change. The local run used
-the same lockfile, exact-version check, and pytest command as the workflow.
-
-An attempted `gh workflow run phase0-fastmcp.yml --ref fast` was rejected by
-GitHub with HTTP 404 because the workflow is not present on the default
-branch. No code failure was observed. To obtain hosted-run evidence later,
-merge or otherwise register this workflow on `main`; that is repository
-release plumbing and does not change the Phase 0 facade result.
+version, runs tests, and verifies snapshots do not change. The hosted run
+used the same lockfile and test commands as the local matrix:
+`29832408444` ([GitHub Actions run](https://github.com/sontakmtp-cell/autocad-fastmcp/actions/runs/29832408444)).
 
 ## Deliberate limits
 
@@ -112,8 +108,7 @@ operations, reverse-proxy production behavior, and a real Linux runner.
 
 ## Conclusion
 
-The local spike is technically green across all six required OS-family and
-Python combinations. FastMCP 3.4.4 can carry the proposed three-tool facade
-without touching the legacy server, so the Phase 0 compatibility gate is
-`GO`. Hosted GitHub execution remains a follow-up operational check because
-the workflow is currently only on the non-default `fast` branch.
+The spike is technically green across all six required OS-family and Python
+combinations locally and in hosted GitHub Actions. FastMCP 3.4.4 can carry the
+proposed three-tool facade without touching the legacy server, so the Phase 0
+compatibility gate is `GO`.
