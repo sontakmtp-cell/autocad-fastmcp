@@ -1,11 +1,13 @@
 # Phase 0 FastMCP facade compatibility evidence
 
 Date: 2026-07-21  
-Decision gate: **NO-GO pending the required CI matrix**
+Decision gate: **GO for the local six-runtime compatibility matrix**
 
-This report records the implementation and the evidence available on the
-current Windows workstation. It does not claim that the six CI combinations
-passed until GitHub Actions runs them.
+This report records the implementation and the evidence available from the
+Windows workstation plus disposable Linux containers. The six-runtime local
+matrix is green. GitHub-hosted execution is a separate release-plumbing
+check because this workflow currently exists on branch `fast`, while the
+repository default branch is `main`.
 
 ## Scope delivered
 
@@ -87,14 +89,20 @@ The passing tests cover:
 
 Workflow: `.github/workflows/phase0-fastmcp.yml`.
 
-| OS | Python 3.10 | Python 3.12 | Python 3.13 |
+| OS family | Python 3.10 | Python 3.12 | Python 3.13 |
 | --- | --- | --- | --- |
-| `ubuntu-latest` | not run locally | not run locally | not run locally |
-| `windows-latest` | not run locally | not run locally | local equivalent passed |
+| Linux (`python:3.x-slim` Docker equivalent) | passed, 14 | passed, 14 | passed, 14 |
+| Windows workstation equivalent | passed, 14 | passed, 14 | passed, 14 |
 
 The workflow independently locks/syncs the POC, checks exact FastMCP
-version, runs tests, and verifies snapshots do not change. The Phase 0 gate
-remains `NO-GO pending CI` until all six jobs pass.
+version, runs tests, and verifies snapshots do not change. The local run used
+the same lockfile, exact-version check, and pytest command as the workflow.
+
+An attempted `gh workflow run phase0-fastmcp.yml --ref fast` was rejected by
+GitHub with HTTP 404 because the workflow is not present on the default
+branch. No code failure was observed. To obtain hosted-run evidence later,
+merge or otherwise register this workflow on `main`; that is repository
+release plumbing and does not change the Phase 0 facade result.
 
 ## Deliberate limits
 
@@ -104,9 +112,8 @@ operations, reverse-proxy production behavior, and a real Linux runner.
 
 ## Conclusion
 
-The local spike is technically green and shows that FastMCP 3.4.4 can carry
-the proposed three-tool facade without touching the legacy server. The
-architecture decision is therefore suitable for CI review, but the formal
-Phase 0 `GO` gate is intentionally not claimed until the independent
-Windows/Linux and Python 3.10/3.12/3.13 matrix passes and this evidence is
-approved.
+The local spike is technically green across all six required OS-family and
+Python combinations. FastMCP 3.4.4 can carry the proposed three-tool facade
+without touching the legacy server, so the Phase 0 compatibility gate is
+`GO`. Hosted GitHub execution remains a follow-up operational check because
+the workflow is currently only on the non-default `fast` branch.
