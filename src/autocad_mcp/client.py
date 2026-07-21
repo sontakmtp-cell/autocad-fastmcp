@@ -12,6 +12,7 @@ import uuid
 from typing import Any
 
 import structlog
+from cad_core import CadServiceResponse
 from mcp.types import ImageContent, TextContent
 from mcp.server.auth.middleware.auth_context import get_access_token
 
@@ -285,6 +286,7 @@ def _format_result(
     result: CommandResult,
     include_screenshot: bool = False,
     screenshot_data: str | None = None,
+    screenshot_mime_type: str = "image/png",
 ) -> list[TextContent | ImageContent] | str:
     """Format a CommandResult for MCP response.
 
@@ -301,9 +303,60 @@ def _format_result(
         ImageContent(
             type="image",
             data=screenshot_data,
-            mimeType="image/png",
+            mimeType=screenshot_mime_type,
         ),
     ]
+
+
+def _validate_screenshot_payload(payload: str) -> dict[str, Any] | None:
+    """Validate a neutral service attachment at the MCP boundary."""
+
+    config = _current_transport_config()
+    if config.transport != "streamable-http" or config.remote_profile == "off":
+        return None
+    try:
+        image_bytes = len(base64.b64decode(payload, validate=True))
+    except (ValueError, TypeError):
+        log.warning("screenshot_rejected", reason="invalid_base64")
+        return {"ok": False, "error": "Screenshot payload is invalid."}
+    if image_bytes > config.max_image_bytes:
+        log.warning(
+            "screenshot_rejected",
+            image_bytes=image_bytes,
+            max_image_bytes=config.max_image_bytes,
+        )
+        return {
+            "ok": False,
+            "error": "Screenshot exceeds the configured remote image size limit.",
+            "max_image_bytes": config.max_image_bytes,
+        }
+    return None
+
+
+def format_service_response(
+    response: CadServiceResponse,
+    *,
+    direct_screenshot: bool = False,
+) -> list[TextContent | ImageContent] | str:
+    """Format a transport-neutral service response for legacy MCP clients."""
+
+    if not response.attachments:
+        return _json(response.result.to_dict())
+
+    attachment = response.attachments[0]
+    validation_error = _validate_screenshot_payload(attachment.data)
+    if validation_error is not None:
+        return _json(validation_error)
+    if direct_screenshot:
+        return format_screenshot_response(
+            CommandResult(ok=True, payload=attachment.data)
+        )
+    return _format_result(
+        response.result,
+        include_screenshot=True,
+        screenshot_data=attachment.data,
+        screenshot_mime_type=attachment.mime_type,
+    )
 
 
 async def add_screenshot_if_available(

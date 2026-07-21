@@ -12,10 +12,10 @@ import time
 from typing import Any, Mapping
 
 import structlog
+from cad_core import CadServiceResponse, CommandResult
 
 from autocad_mcp import auto_dimension_tool as annotation_tools
-from autocad_mcp.backends.base import CommandResult
-from autocad_mcp.client import _safe, add_screenshot_if_available, get_backend
+from autocad_mcp.client import _safe, get_backend
 from autocad_mcp.config import LISP_DIR
 from autocad_mcp.dimension_workflow import (
     build_dimension_candidates,
@@ -26,7 +26,7 @@ from autocad_mcp.dimension_workflow import (
     records_fingerprint,
 )
 from autocad_mcp.part_detection import GeometrySelection, detect_parts, select_records
-from autocad_mcp.server import ToolResult, mcp
+from autocad_mcp.server import ToolResult, _legacy_execute, mcp
 
 log = structlog.get_logger()
 
@@ -256,7 +256,9 @@ async def _timed_new_plan(data: dict[str, Any]) -> tuple[Any, list[Any], dict[st
     return plan, selected, analysis
 
 
-async def _run_fast_auto_dimension(raw: dict[str, Any], include_image: bool) -> ToolResult:
+async def _run_fast_auto_dimension(
+    raw: dict[str, Any], include_image: bool
+) -> CadServiceResponse:
     total_started = time.perf_counter()
     plan, _records, _analysis = await annotation_tools._new_plan(raw)
     context = annotation_tools._plan_context[plan.plan_id]
@@ -303,14 +305,18 @@ async def _run_fast_auto_dimension(raw: dict[str, Any], include_image: bool) -> 
     )
 
     started = time.perf_counter()
-    response = await add_screenshot_if_available(result, include_image)
+    response = await annotation_tools._service_response_with_screenshot(
+        result, include_image
+    )
     timings["screenshot"] = _elapsed_ms(started)
     timings["total"] = _elapsed_ms(total_started)
     log.info("dimension_phase1_timing", operation="auto_dimension", **timings)
     return response
 
 
-async def _run_batch_create(raw: dict[str, Any], include_image: bool) -> ToolResult:
+async def _run_batch_create(
+    raw: dict[str, Any], include_image: bool
+) -> CadServiceResponse:
     total_started = time.perf_counter()
     timings: dict[str, float] = {}
 
@@ -370,20 +376,21 @@ async def _run_batch_create(raw: dict[str, Any], include_image: bool) -> ToolRes
     )
 
     started = time.perf_counter()
-    response = await add_screenshot_if_available(result, include_image)
+    response = await annotation_tools._service_response_with_screenshot(
+        result, include_image
+    )
     timings["screenshot"] = _elapsed_ms(started)
     timings["total"] = _elapsed_ms(total_started)
     log.info("dimension_phase1_timing", operation="batch_create_dimensions", **timings)
     return response
 
 
-@_safe("annotation")
 async def _run_phase1_operation(
     *,
     operation: str,
     data: dict | None,
     include_image: bool,
-) -> ToolResult:
+) -> CadServiceResponse:
     raw = data or {}
     if operation == "auto_dimension":
         return await _run_fast_auto_dimension(raw, include_image)
@@ -397,7 +404,7 @@ async def _patched_run_annotation(
     operation: str,
     data: dict | None,
     include_image: bool,
-) -> ToolResult:
+) -> CadServiceResponse:
     if operation in {"auto_dimension", "batch_create_dimensions"}:
         return await _run_phase1_operation(
             operation=operation,
@@ -493,6 +500,7 @@ def install() -> None:
         "openWorldHint": False,
     },
 )
+@_safe("annotation")
 async def annotation_batch_create_dimensions(
     data: dict,
     include_screenshot: bool = True,
@@ -504,8 +512,9 @@ async def annotation_batch_create_dimensions(
     either plan-shaped form (geometry/placement) or compact coordinate form.
     """
 
-    return await annotation_tools._run_annotation(
-        operation="batch_create_dimensions",
-        data=data,
-        include_image=include_screenshot,
+    return await _legacy_execute(
+        "annotation",
+        "batch_create_dimensions",
+        {"data": data},
+        include_screenshot=include_screenshot,
     )

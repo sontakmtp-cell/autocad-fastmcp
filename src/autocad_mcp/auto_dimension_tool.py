@@ -9,11 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import ezdxf
-from mcp.types import ImageContent, TextContent
+from cad_core import CadImageAttachment, CadServiceResponse, CommandResult
 
 from autocad_mcp.autodim import AutoDimensionOptions
-from autocad_mcp.backends.base import CommandResult
-from autocad_mcp.client import _json, _safe, add_screenshot_if_available, get_backend
+from autocad_mcp.client import _safe, get_backend
 from autocad_mcp.dimension_intelligence import (
     audit_dimensions as run_dimension_audit,
     repair_dimension_layout as run_dimension_repair,
@@ -33,7 +32,7 @@ from autocad_mcp.dimension_workflow import (
     render_plan_preview,
 )
 from autocad_mcp.part_detection import GeometrySelection, detect_parts, select_records
-from autocad_mcp.server import ToolResult, mcp
+from autocad_mcp.server import ToolResult, _legacy_execute, mcp
 
 
 def _profile_path() -> Path | None:
@@ -79,13 +78,29 @@ def _resolve_profile(data: dict[str, Any]) -> DimensionProfile:
     return _profiles.get(name, resolved_overrides or None)
 
 
-def _preview_result(payload: dict[str, Any], image_data: str, enabled: bool) -> ToolResult:
-    if not enabled:
-        return _json({"ok": True, "payload": payload})
-    return [
-        TextContent(type="text", text=_json({"ok": True, "payload": payload})),
-        ImageContent(type="image", data=image_data, mimeType="image/png"),
-    ]
+def _preview_result(
+    payload: dict[str, Any], image_data: str, enabled: bool
+) -> CadServiceResponse:
+    attachments = ()
+    if enabled:
+        attachments = (CadImageAttachment(mime_type="image/png", data=image_data),)
+    return CadServiceResponse(CommandResult(ok=True, payload=payload), attachments)
+
+
+async def _service_response_with_screenshot(
+    result: CommandResult,
+    include_image: bool,
+) -> CadServiceResponse:
+    if not include_image:
+        return CadServiceResponse(result)
+    backend = await get_backend()
+    screenshot = await backend.get_screenshot()
+    if screenshot.ok and isinstance(screenshot.payload, str) and screenshot.payload:
+        return CadServiceResponse(
+            result,
+            (CadImageAttachment(mime_type="image/png", data=screenshot.payload),),
+        )
+    return CadServiceResponse(result)
 
 
 def _dimension_type_counts(dimensions: list[Any]) -> dict[str, int]:
@@ -274,13 +289,12 @@ async def _validate_commit_context(
         )
 
 
-@_safe("annotation")
 async def _run_annotation(
     *,
     operation: str,
     data: dict | None,
     include_image: bool,
-) -> ToolResult:
+) -> CadServiceResponse:
     raw = data or {}
 
     if operation == "detect_parts":
@@ -319,8 +333,11 @@ async def _run_annotation(
             if _boolean(raw.get("discard")):
                 _plans.discard(existing_plan_id)
                 _plan_context.pop(existing_plan_id, None)
-                return _json(
-                    {"ok": True, "payload": {"plan_id": existing_plan_id, "discarded": True}}
+                return CadServiceResponse(
+                    CommandResult(
+                        ok=True,
+                        payload={"plan_id": existing_plan_id, "discarded": True},
+                    )
                 )
             plan = _plans.revise(
                 existing_plan_id,
@@ -370,7 +387,7 @@ async def _run_annotation(
             expected_revision=expected_revision,
         )
         result = CommandResult(ok=True, payload=plan.to_dict())
-        return await add_screenshot_if_available(result, include_image)
+        return await _service_response_with_screenshot(result, include_image)
 
     if operation == "auto_dimension":
         plan, _records, _analysis = await _new_plan(raw)
@@ -401,16 +418,16 @@ async def _run_annotation(
                 ),
             },
         )
-        return await add_screenshot_if_available(result, include_image)
+        return await _service_response_with_screenshot(result, include_image)
 
     if operation == "dimension_profiles":
         action = str(raw.get("action", "list")).strip().lower()
         if action == "list":
             profiles = [profile.to_dict() for profile in _profiles.list_profiles()]
-            return _json({"ok": True, "payload": {"profiles": profiles}})
+            return CadServiceResponse(CommandResult(ok=True, payload={"profiles": profiles}))
         if action == "get":
             profile = _profiles.get(str(raw.get("name", "")))
-            return _json({"ok": True, "payload": profile.to_dict()})
+            return CadServiceResponse(CommandResult(ok=True, payload=profile.to_dict()))
         if action == "save":
             profile_data = raw.get("profile")
             if not isinstance(profile_data, dict):
@@ -419,10 +436,12 @@ async def _run_annotation(
                 profile_data,
                 replace_existing=_boolean(raw.get("replace_existing")),
             )
-            return _json({"ok": True, "payload": profile.to_dict()})
+            return CadServiceResponse(CommandResult(ok=True, payload=profile.to_dict()))
         if action == "delete":
             deleted = _profiles.delete(str(raw.get("name", "")))
-            return _json({"ok": True, "payload": {"deleted": deleted}})
+            return CadServiceResponse(
+                CommandResult(ok=True, payload={"deleted": deleted})
+            )
         raise ValueError("action must be list, get, save, or delete")
 
     if operation == "audit_dimensions":
@@ -529,7 +548,7 @@ async def _run_annotation(
             payload["commit_result"] = applied
         _audit_context.pop(audit_id, None)
         result = CommandResult(ok=True, payload=payload)
-        return await add_screenshot_if_available(result, include_image)
+        return await _service_response_with_screenshot(result, include_image)
 
     raise ValueError(f"Unknown annotation operation: {operation}")
 
@@ -544,16 +563,18 @@ async def _run_annotation(
         "openWorldHint": False,
     },
 )
+@_safe("annotation")
 async def annotation_detect_parts(
     data: dict | None = None,
     include_preview: bool = True,
 ) -> ToolResult:
     """Cluster Model Space geometry and return part_1, part_2... with an indexed preview."""
 
-    return await _run_annotation(
-        operation="detect_parts",
-        data=data,
-        include_image=include_preview,
+    return await _legacy_execute(
+        "annotation",
+        "detect_parts",
+        {"data": data},
+        include_screenshot=include_preview,
     )
 
 
@@ -567,16 +588,18 @@ async def annotation_detect_parts(
         "openWorldHint": False,
     },
 )
+@_safe("annotation")
 async def annotation_plan_dimensions(
     data: dict | None = None,
     include_preview: bool = True,
 ) -> ToolResult:
     """Create or revise a D1/D2... plan; no AutoCAD entity is created."""
 
-    return await _run_annotation(
-        operation="plan_dimensions",
-        data=data,
-        include_image=include_preview,
+    return await _legacy_execute(
+        "annotation",
+        "plan_dimensions",
+        {"data": data},
+        include_screenshot=include_preview,
     )
 
 
@@ -590,16 +613,18 @@ async def annotation_plan_dimensions(
         "openWorldHint": False,
     },
 )
+@_safe("annotation")
 async def annotation_commit_dimension_plan(
     data: dict,
     include_screenshot: bool = True,
 ) -> ToolResult:
     """Commit one approved plan exactly once; File IPC uses one AutoCAD UNDO group."""
 
-    return await _run_annotation(
-        operation="commit_dimension_plan",
-        data=data,
-        include_image=include_screenshot,
+    return await _legacy_execute(
+        "annotation",
+        "commit_dimension_plan",
+        {"data": data},
+        include_screenshot=include_screenshot,
     )
 
 
@@ -613,16 +638,18 @@ async def annotation_commit_dimension_plan(
         "openWorldHint": False,
     },
 )
+@_safe("annotation")
 async def annotation_auto_dimension(
     data: dict | None = None,
     include_screenshot: bool = True,
 ) -> ToolResult:
     """Plan and immediately commit dimensions for one selected part/region/entity set."""
 
-    return await _run_annotation(
-        operation="auto_dimension",
-        data=data,
-        include_image=include_screenshot,
+    return await _legacy_execute(
+        "annotation",
+        "auto_dimension",
+        {"data": data},
+        include_screenshot=include_screenshot,
     )
 
 
@@ -636,13 +663,14 @@ async def annotation_auto_dimension(
         "openWorldHint": False,
     },
 )
+@_safe("annotation")
 async def annotation_dimension_profiles(data: dict | None = None) -> ToolResult:
     """List/get/save/delete mechanical_mm, mechanical_inch, iso_simple or custom profiles."""
 
-    return await _run_annotation(
-        operation="dimension_profiles",
-        data=data,
-        include_image=False,
+    return await _legacy_execute(
+        "annotation",
+        "dimension_profiles",
+        {"data": data},
     )
 
 
@@ -656,16 +684,18 @@ async def annotation_dimension_profiles(data: dict | None = None) -> ToolResult:
         "openWorldHint": False,
     },
 )
+@_safe("annotation")
 async def annotation_audit_dimensions(
     data: dict | None = None,
     include_preview: bool = True,
 ) -> ToolResult:
     """Find duplicates, overlap, crossings, missing intent, detached refs and style errors."""
 
-    return await _run_annotation(
-        operation="audit_dimensions",
-        data=data,
-        include_image=include_preview,
+    return await _legacy_execute(
+        "annotation",
+        "audit_dimensions",
+        {"data": data},
+        include_screenshot=include_preview,
     )
 
 
@@ -679,14 +709,16 @@ async def annotation_audit_dimensions(
         "openWorldHint": False,
     },
 )
+@_safe("annotation")
 async def annotation_repair_dimension_layout(
     data: dict | None = None,
     include_screenshot: bool = True,
 ) -> ToolResult:
     """Remove duplicates and fix safe layer/style/lane issues from a fresh audit."""
 
-    return await _run_annotation(
-        operation="repair_dimension_layout",
-        data=data,
-        include_image=include_screenshot,
+    return await _legacy_execute(
+        "annotation",
+        "repair_dimension_layout",
+        {"data": data},
+        include_screenshot=include_screenshot,
     )

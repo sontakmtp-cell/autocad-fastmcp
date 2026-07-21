@@ -1,49 +1,12 @@
-"""Abstract base class for AutoCAD backends + CommandResult envelope."""
+"""Abstract base class for AutoCAD backends."""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import Any
+from cad_core import BackendCapabilities, CommandResult
 
 
-@dataclass
-class CommandResult:
-    """Structured result envelope from backend operations."""
-
-    ok: bool
-    payload: Any = None
-    error: str | None = None
-    error_code: str | None = None
-    details: dict[str, Any] | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        d: dict[str, Any] = {"ok": self.ok}
-        if self.ok:
-            d["payload"] = self.payload
-        else:
-            d["error"] = self.error
-            if self.error_code:
-                d["error_code"] = self.error_code
-            if self.details:
-                d["details"] = self.details
-        return d
-
-
-@dataclass
-class BackendCapabilities:
-    """Declares what a backend supports."""
-
-    can_read_drawing: bool = False
-    can_modify_entities: bool = False
-    can_create_entities: bool = True
-    can_screenshot: bool = False
-    can_save: bool = False
-    can_plot_pdf: bool = False
-    can_zoom: bool = False
-    can_query_entities: bool = False
-    can_file_operations: bool = False
-    can_undo: bool = False
+__all__ = ["AutoCADBackend", "BackendCapabilities", "CommandResult"]
 
 
 class AutoCADBackend(ABC):

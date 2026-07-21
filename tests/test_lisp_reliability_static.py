@@ -182,8 +182,9 @@ def test_startup_file_is_path_independent_and_dialog_free():
 
 def test_server_uses_real_health_probe():
     source = SERVER.read_text(encoding="utf-8")
-    health_branch = source.split('elif operation == "health":', 1)[1].split(
-        'elif operation == "runtime":', 1
+    health_branch = source.split('if operation == "health":', 1)[1].split(
+        'if operation == "runtime":', 1
     )[0]
-    assert "result = await backend.health()" in health_branch
+    assert 'await _legacy_execute("system", operation' in health_branch
+    assert "backend.health()" not in health_branch
     assert "result = await backend.status()" not in health_branch

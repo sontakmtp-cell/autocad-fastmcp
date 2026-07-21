@@ -5,6 +5,7 @@ description = "Independent FastMCP 3.4.4 compatibility spike for the AutoCAD Gat
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "autocad-mcp",
+    "cad-core",
     "fastmcp==3.4.4",
     "httpx>=0.27,<1.0",
     "PyJWT[crypto]>=2.11.0,<3.0",
@@ -29,6 +30,7 @@ allow-direct-references = true
 
 [tool.uv.sources]
 autocad-mcp = { path = "../..", editable = false }
+cad-core = { path = "../../packages/cad_core", editable = false }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -7,7 +7,7 @@ import json
 from dataclasses import dataclass
 from typing import Any
 
-from autocad_mcp.backends.base import CommandResult
+from cad_core import CadApplicationService, CadInvocation, CommandResult
 from autocad_mcp.backends.ezdxf_backend import EzdxfBackend
 
 from .contracts import (
@@ -32,11 +32,26 @@ class Principal:
     scopes: tuple[str, ...]
 
 
+class _BackendRuntime:
+    """Small Phase 0 runtime adapter for the shared application service."""
+
+    def __init__(self, backend: EzdxfBackend) -> None:
+        self.backend = backend
+
+    async def call(self, operation: str, *args: Any) -> CommandResult:
+        return await getattr(self.backend, operation)(*args)
+
+    async def reinitialize(self) -> CommandResult:
+        return await self.backend.initialize()
+
+
 class Phase0Services:
     """Fresh-per-test fake store with one headless DXF fixture."""
 
     def __init__(self) -> None:
         self.backend = EzdxfBackend()
+        self.runtime = _BackendRuntime(self.backend)
+        self.application_service = CadApplicationService(runtime=self.runtime)
         self.calls: list[dict[str, str]] = []
         self.force_backend_error = False
         self.raise_unexpected = False
@@ -44,14 +59,32 @@ class Phase0Services:
         self._initialized = False
 
     async def initialize(self) -> None:
-        result = await self.backend.initialize()
-        if not result.ok:
+        initialized = await self.application_service.execute(
+            CadInvocation(group="system", operation="init", arguments={})
+        )
+        if not initialized.result.ok:
             raise RuntimeError("failed to initialize DXF fixture")
-        await self.backend.create_line(0, 0, 100, 0)
-        await self.backend.create_circle(50, 25, 10)
-        screenshot = await self.backend.get_screenshot()
-        if screenshot.ok and isinstance(screenshot.payload, str):
-            self._preview_png = base64.b64decode(screenshot.payload)
+        await self.application_service.execute(
+            CadInvocation(
+                group="entity",
+                operation="create_line",
+                arguments={"x1": 0, "y1": 0, "x2": 100, "y2": 0},
+            )
+        )
+        await self.application_service.execute(
+            CadInvocation(
+                group="entity",
+                operation="create_circle",
+                arguments={
+                    "data": {"cx": 50, "cy": 25, "radius": 10},
+                },
+            )
+        )
+        screenshot = await self.application_service.execute(
+            CadInvocation(group="view", operation="get_screenshot", arguments={})
+        )
+        if screenshot.attachments:
+            self._preview_png = base64.b64decode(screenshot.attachments[0].data)
         self._initialized = True
 
     def _record(self, operation: str, principal: Principal, correlation_id: str) -> None:
@@ -124,6 +157,11 @@ class Phase0Services:
             return failure
         if request.device_id not in {"cad-online-01", "cad-offline-01"}:
             return CommandResult(ok=False, error="device does not exist", error_code="not_found")
+        observed = await self.application_service.execute(
+            CadInvocation(group="drawing", operation="info", arguments={})
+        )
+        if not observed.result.ok:
+            return observed.result
         snapshot_id = f"snapshot-{request.device_id}"
         artifact_id = f"artifact-{request.device_id}-preview"
         output = CadObserveOutput(
