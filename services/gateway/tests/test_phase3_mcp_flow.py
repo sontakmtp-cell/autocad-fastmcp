@@ -310,13 +310,14 @@ async def test_phase3_wss_loopback_accepts_test_certificate(tmp_path):
     tls.check_hostname = False
     tls.verify_mode = ssl.CERT_NONE
     agent = LiveFixtureAgent(f"wss://127.0.0.1:{port}/agent/ws", "device-a", "token-a", tls)
-    agent_task = asyncio.create_task(agent.run())
+    agent_task = None
     try:
         for _ in range(200):
             if server.started:
                 break
             await asyncio.sleep(0.05)
         assert server.started
+        agent_task = asyncio.create_task(agent.run())
         for _ in range(200):
             if len(await services.registry.all()) == 1:
                 break
@@ -325,8 +326,9 @@ async def test_phase3_wss_loopback_accepts_test_certificate(tmp_path):
             await asyncio.sleep(0.05)
         assert len(await services.registry.all()) == 1
     finally:
-        agent_task.cancel()
-        await asyncio.gather(agent_task, return_exceptions=True)
+        if agent_task is not None:
+            agent_task.cancel()
+            await asyncio.gather(agent_task, return_exceptions=True)
         server.should_exit = True
         await asyncio.wait_for(server_task, timeout=10)
 
