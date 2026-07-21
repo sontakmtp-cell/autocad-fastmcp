@@ -54,6 +54,9 @@ Thumbs.db
 # Claude Code
 .claude/
 
+# Codex
+.codex/
+
 # User-specific configuration
 claude_desktop_config.json
 .env
