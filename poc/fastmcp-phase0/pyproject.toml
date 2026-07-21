@@ -1,0 +1,35 @@
+[project]
+name = "autocad-fastmcp-phase0"
+version = "0.1.0"
+description = "Independent FastMCP 3.4.4 compatibility spike for the AutoCAD Gateway facade"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "autocad-mcp",
+    "fastmcp==3.4.4",
+    "httpx>=0.27,<1.0",
+    "PyJWT[crypto]>=2.11.0,<3.0",
+    "asgi-lifespan>=2.1,<3.0",
+]
+
+[dependency-groups]
+test = [
+    "pytest>=8.0,<9.0",
+    "pytest-asyncio>=0.23,<2.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fastmcp_phase0"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.uv.sources]
+autocad-mcp = { path = "../..", editable = false }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

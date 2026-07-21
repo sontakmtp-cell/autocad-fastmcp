@@ -1,0 +1,36 @@
+name: FastMCP Phase 0
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: poc/fastmcp-phase0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+      - name: Sync isolated POC lockfile
+        run: uv sync --locked --group test
+      - name: Verify exact FastMCP version
+        run: uv run --locked --group test python -c "import fastmcp; assert fastmcp.__version__ == '3.4.4'"
+      - name: Run Phase 0 tests
+        run: uv run --locked --group test pytest -q
+      - name: Verify schema snapshots are unchanged
+        run: git diff --exit-code -- poc/fastmcp-phase0/snapshots

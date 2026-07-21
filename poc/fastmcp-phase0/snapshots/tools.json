@@ -1,0 +1,152 @@
+[
+  {
+    "_meta": {"fastmcp": {"tags": []}},
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Use this when you need the bounded list of available CAD devices.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "capability": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "online_only": {"default": false, "type": "boolean"}
+      },
+      "type": "object"
+    },
+    "name": "cad_list_devices",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {"default": "cad.mcp/0.1", "title": "Contract Version", "type": "string"},
+        "correlation_id": {"title": "Correlation Id", "type": "string"},
+        "default_device_id": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null, "title": "Default Device Id"},
+        "devices": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {"items": {"type": "string"}, "title": "Capabilities", "type": "array"},
+              "device_id": {"title": "Device Id", "type": "string"},
+              "display_name": {"title": "Display Name", "type": "string"},
+              "status": {"enum": ["online", "offline"], "title": "Status", "type": "string"}
+            },
+            "required": ["device_id", "display_name", "status", "capabilities"],
+            "title": "DeviceInfo",
+            "type": "object"
+          },
+          "title": "Devices",
+          "type": "array"
+        }
+      },
+      "required": ["correlation_id", "devices"],
+      "title": "CadListDevicesOutput",
+      "type": "object"
+    },
+    "title": "List CAD devices"
+  },
+  {
+    "_meta": {"fastmcp": {"tags": []}},
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Use this when you need a bounded read-only CAD snapshot and its artifact references.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "device_id": {"type": "string"},
+        "include_preview_image": {"default": false, "type": "boolean"},
+        "observation_level": {"default": "summary", "enum": ["summary", "detail"], "type": "string"}
+      },
+      "required": ["device_id"],
+      "type": "object"
+    },
+    "name": "cad_observe",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_refs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "artifact_id": {"title": "Artifact Id", "type": "string"},
+              "mime_type": {"title": "Mime Type", "type": "string"},
+              "uri": {"title": "Uri", "type": "string"}
+            },
+            "required": ["artifact_id", "uri", "mime_type"],
+            "title": "ArtifactRef",
+            "type": "object"
+          },
+          "title": "Artifact Refs",
+          "type": "array"
+        },
+        "contract_version": {"default": "cad.mcp/0.1", "title": "Contract Version", "type": "string"},
+        "correlation_id": {"title": "Correlation Id", "type": "string"},
+        "device_id": {"title": "Device Id", "type": "string"},
+        "document_revision": {"title": "Document Revision", "type": "string"},
+        "snapshot_id": {"title": "Snapshot Id", "type": "string"},
+        "summary_uri": {"title": "Summary Uri", "type": "string"}
+      },
+      "required": ["correlation_id", "device_id", "snapshot_id", "document_revision", "summary_uri", "artifact_refs"],
+      "title": "CadObserveOutput",
+      "type": "object"
+    },
+    "title": "Observe a CAD device"
+  },
+  {
+    "_meta": {"fastmcp": {"tags": []}},
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Use this when you need the bounded status of a known CAD job.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "event_cursor": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
+        "job_id": {"type": "string"}
+      },
+      "required": ["job_id"],
+      "type": "object"
+    },
+    "name": "cad_get_job",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "contract_version": {"default": "cad.mcp/0.1", "title": "Contract Version", "type": "string"},
+        "correlation_id": {"title": "Correlation Id", "type": "string"},
+        "error": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "code": {"title": "Code", "type": "string"},
+                "message": {"title": "Message", "type": "string"}
+              },
+              "required": ["code", "message"],
+              "title": "JobError",
+              "type": "object"
+            },
+            {"type": "null"}
+          ],
+          "default": null
+        },
+        "job_id": {"title": "Job Id", "type": "string"},
+        "next_cursor": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null, "title": "Next Cursor"},
+        "progress": {"maximum": 1.0, "minimum": 0.0, "title": "Progress", "type": "number"},
+        "result": {"anyOf": [{"additionalProperties": true, "type": "object"}, {"type": "null"}], "default": null, "title": "Result"},
+        "state": {"enum": ["queued", "running", "completed", "failed"], "title": "State", "type": "string"}
+      },
+      "required": ["correlation_id", "job_id", "state", "progress"],
+      "title": "CadGetJobOutput",
+      "type": "object"
+    },
+    "title": "Get CAD job status"
+  }
+]

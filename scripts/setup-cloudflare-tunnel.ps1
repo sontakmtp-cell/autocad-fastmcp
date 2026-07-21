@@ -40,35 +40,73 @@ function Write-WarnLine {
 function Resolve-Cloudflared {
     param([string]$ExplicitPath)
 
-    if ($ExplicitPath) {
-        if (-not (Test-Path -LiteralPath $ExplicitPath)) {
-            throw "Khong tim thay cloudflared tai: $ExplicitPath"
+    # Luon tra ve 1 string path. Get-Command co the ra NHIEU cloudflared
+    # (Program Files + WinGet) -> $cmd.Source la mang, ghep "path1 path2" se vang.
+    function ConvertTo-SingleExePath {
+        param($Value)
+        if ($null -eq $Value) {
+            return $null
         }
-        return (Resolve-Path -LiteralPath $ExplicitPath).Path
+        if ($Value -is [System.Array]) {
+            $Value = $Value | Select-Object -First 1
+        }
+        $path = [string]$Value
+        if (-not $path) {
+            return $null
+        }
+        # Neu van bi ghep 2 path, lay doan ket thuc bang cloudflared.exe dau tien.
+        if ($path -match '(?i)(^|.*?\s)([A-Za-z]:\\(?:(?!\s[A-Za-z]:\\).)*cloudflared\.exe)') {
+            $path = $Matches[2]
+        }
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            return (Resolve-Path -LiteralPath $path).Path
+        }
+        return $null
     }
 
-    $cmd = Get-Command cloudflared -CommandType Application -ErrorAction SilentlyContinue
-    if ($cmd) {
-        return $cmd.Source
+    if ($ExplicitPath) {
+        $resolved = ConvertTo-SingleExePath -Value $ExplicitPath
+        if (-not $resolved) {
+            throw "Khong tim thay cloudflared tai: $ExplicitPath"
+        }
+        return $resolved
     }
 
     $pf86 = ${env:ProgramFiles(x86)}
-    $candidates = @(
-        (Join-Path $pf86 "cloudflared\cloudflared.exe"),
-        (Join-Path $env:ProgramFiles "cloudflared\cloudflared.exe")
-    )
-    foreach ($path in $candidates) {
-        if ($path -and (Test-Path -LiteralPath $path)) {
-            return $path
+    $candidates = [System.Collections.Generic.List[string]]::new()
+
+    # Uu tien duong dan co dinh (on dinh hon PATH co nhieu ban).
+    foreach ($path in @(
+            (Join-Path $pf86 "cloudflared\cloudflared.exe"),
+            (Join-Path $env:ProgramFiles "cloudflared\cloudflared.exe")
+        )) {
+        if ($path) {
+            [void]$candidates.Add($path)
+        }
+    }
+
+    $cmds = @(Get-Command cloudflared -CommandType Application -ErrorAction SilentlyContinue)
+    foreach ($c in $cmds) {
+        if ($c -and $c.Source) {
+            [void]$candidates.Add([string]$c.Source)
         }
     }
 
     $wingetRoot = Join-Path $env:LOCALAPPDATA "Microsoft\WinGet\Packages"
     if (Test-Path -LiteralPath $wingetRoot) {
         $found = Get-ChildItem -LiteralPath $wingetRoot -Filter "cloudflared.exe" -Recurse -File -ErrorAction SilentlyContinue |
-            Select-Object -First 1
-        if ($found) {
-            return $found.FullName
+            Select-Object -First 3
+        foreach ($f in @($found)) {
+            if ($f) {
+                [void]$candidates.Add($f.FullName)
+            }
+        }
+    }
+
+    foreach ($path in $candidates) {
+        $resolved = ConvertTo-SingleExePath -Value $path
+        if ($resolved) {
+            return $resolved
         }
     }
 
@@ -463,7 +501,10 @@ Write-Host " Tunnel   : $TunnelName"
 Write-Host " Origin   : $LocalService"
 Write-Host " Cloud dir: $CloudflaredDir"
 
-$cf = Resolve-Cloudflared -ExplicitPath $CloudflaredPath
+$cf = [string](Resolve-Cloudflared -ExplicitPath $CloudflaredPath)
+if (-not $cf -or -not (Test-Path -LiteralPath $cf -PathType Leaf)) {
+    throw "cloudflared path khong hop le: [$cf]"
+}
 Write-Step "cloudflared: $cf"
 $ver = & $cf --version 2>&1 | Out-String
 Write-Host "    $($ver.Trim())" -ForegroundColor DarkGray

@@ -1,0 +1,311 @@
+"""FastMCP adapter and outer ASGI application for the compatibility spike."""
+
+from __future__ import annotations
+
+import base64
+import uuid
+from collections.abc import Callable
+from contextlib import asynccontextmanager
+from typing import Any, Literal
+
+from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
+from fastmcp.resources import ResourceContent, ResourceResult
+from fastmcp.server.auth import RemoteAuthProvider, require_scopes
+from fastmcp.server.dependencies import get_access_token
+from fastmcp.tools.tool import ToolResult
+from mcp.types import ImageContent, ResourceLink, TextContent
+from starlette.applications import Starlette
+from starlette.datastructures import Headers
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
+from starlette.routing import Mount, Route
+
+from .contracts import (
+    CadGetJobInput,
+    CadGetJobOutput,
+    CadListDevicesInput,
+    CadListDevicesOutput,
+    CadObserveInput,
+    CadObserveOutput,
+)
+from .services import Phase0Services, Principal
+
+
+CorrelationIdFactory = Callable[[], str]
+
+
+class _OuterHostOriginGuard:
+    """Return the Phase 0 contract's 403 before FastMCP sees a bad request."""
+
+    def __init__(self, app: Any, allowed_hosts: list[str] | None, allowed_origins: list[str] | None):
+        self.app = app
+        self.allowed_hosts = tuple(allowed_hosts or ())
+        self.allowed_origins = tuple(allowed_origins or ())
+
+    @staticmethod
+    def _host_matches(host: str, allowed: str) -> bool:
+        if allowed == "*":
+            return True
+        if allowed.endswith(":*"):
+            return host.startswith(allowed[:-2] + ":")
+        return host == allowed
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] != "http" or not (
+            scope["path"].startswith("/mcp")
+            or scope["path"].startswith("/.well-known/")
+        ):
+            await self.app(scope, receive, send)
+            return
+        headers = Headers(scope=scope)
+        host = headers.get("host", "")
+        if self.allowed_hosts and not any(self._host_matches(host, item) for item in self.allowed_hosts):
+            await PlainTextResponse("Host is not allowed", status_code=403)(scope, receive, send)
+            return
+        origin = headers.get("origin")
+        if origin and self.allowed_origins and origin not in self.allowed_origins:
+            await PlainTextResponse("Origin is not allowed", status_code=403)(scope, receive, send)
+            return
+        await self.app(scope, receive, send)
+
+
+def _tool_annotations(*, idempotent: bool) -> dict[str, bool]:
+    return {
+        "readOnlyHint": True,
+        "idempotentHint": idempotent,
+        "openWorldHint": False,
+        "destructiveHint": False,
+    }
+
+
+def _principal(auth: RemoteAuthProvider | None) -> Principal:
+    token = get_access_token()
+    if token is None:
+        if auth is not None:
+            raise ToolError("unauthorized: access token required")
+        return Principal(subject="local-test", scopes=("autocad.read",))
+    subject = token.claims.get("sub")
+    if not isinstance(subject, str) or not subject:
+        raise ToolError("invalid_token: subject claim required")
+    return Principal(subject=subject, scopes=tuple(token.scopes))
+
+
+def _error(result: Any) -> ToolError:
+    code = getattr(result, "error_code", None) or "backend_error"
+    if code == "not_found":
+        return ToolError("not_found: requested resource was not found")
+    if code == "backend_error":
+        return ToolError("backend_error: backend operation failed")
+    return ToolError("internal_error: operation failed")
+
+
+async def _run_service(call: Any) -> dict[str, Any]:
+    try:
+        result = await call
+    except ToolError:
+        raise
+    except Exception:
+        raise ToolError("internal_error: unexpected service failure") from None
+    if not result.ok:
+        raise _error(result)
+    if not isinstance(result.payload, dict):
+        raise ToolError("internal_error: invalid service result")
+    return result.payload
+
+
+def build_mcp_server(
+    services: Phase0Services,
+    auth: RemoteAuthProvider | None,
+    stateless_http: bool,
+    *,
+    correlation_id_factory: CorrelationIdFactory | None = None,
+) -> FastMCP:
+    """Build only the three-tool facade; transport is configured separately."""
+
+    del stateless_http
+    make_correlation_id = correlation_id_factory or (lambda: str(uuid.uuid4()))
+    auth_check = require_scopes("autocad.read") if auth is not None else None
+    mcp = FastMCP(
+        name="AutoCAD Gateway Phase 0",
+        version="0.1.0",
+        auth=auth,
+        mask_error_details=True,
+    )
+
+    @mcp.tool(
+        name="cad_list_devices",
+        title="List CAD devices",
+        description="Use this when you need the bounded list of available CAD devices.",
+        output_schema=CadListDevicesOutput.model_json_schema(),
+        annotations=_tool_annotations(idempotent=True),
+        auth=auth_check,
+    )
+    async def cad_list_devices(
+        online_only: bool = False,
+        capability: str | None = None,
+        *,
+        ctx: Context,
+    ) -> dict[str, Any]:
+        del ctx
+        principal = _principal(auth)
+        request = CadListDevicesInput(online_only=online_only, capability=capability)
+        return await _run_service(
+            services.list_devices(request, principal, make_correlation_id())
+        )
+
+    @mcp.tool(
+        name="cad_observe",
+        title="Observe a CAD device",
+        description="Use this when you need a bounded read-only CAD snapshot and its artifact references.",
+        output_schema=CadObserveOutput.model_json_schema(),
+        annotations=_tool_annotations(idempotent=False),
+        auth=auth_check,
+    )
+    async def cad_observe(
+        device_id: str,
+        observation_level: Literal["summary", "detail"] = "summary",
+        include_preview_image: bool = False,
+        *,
+        ctx: Context,
+    ) -> ToolResult:
+        del ctx
+        principal = _principal(auth)
+        request = CadObserveInput(
+            device_id=device_id,
+            observation_level=observation_level,
+            include_preview_image=include_preview_image,
+        )
+        output = await _run_service(services.observe(request, principal, make_correlation_id()))
+        result = CadObserveOutput.model_validate(output)
+        content: list[Any] = [
+            TextContent(type="text", text="CAD observation ready."),
+            ResourceLink(
+                type="resource_link",
+                name="snapshot-summary",
+                title="Snapshot summary",
+                uri=result.summary_uri,
+                mimeType="application/json",
+            ),
+        ]
+        if include_preview_image:
+            preview = await services.read_artifact(
+                result.artifact_refs[0].artifact_id,
+                principal,
+            )
+            if not preview.ok or not isinstance(preview.payload, bytes):
+                raise _error(preview)
+            if len(preview.payload) > 2_000_000:
+                raise ToolError("backend_error: preview image exceeds the Phase 0 size limit")
+            content.append(
+                ImageContent(
+                    type="image",
+                    data=base64.b64encode(preview.payload).decode("ascii"),
+                    mimeType="image/png",
+                )
+            )
+        return ToolResult(
+            content=content,
+            structured_content=result.model_dump(mode="json"),
+        )
+
+    @mcp.tool(
+        name="cad_get_job",
+        title="Get CAD job status",
+        description="Use this when you need the bounded status of a known CAD job.",
+        output_schema=CadGetJobOutput.model_json_schema(),
+        annotations=_tool_annotations(idempotent=True),
+        auth=auth_check,
+    )
+    async def cad_get_job(
+        job_id: str,
+        event_cursor: str | None = None,
+        *,
+        ctx: Context,
+    ) -> dict[str, Any]:
+        del ctx
+        principal = _principal(auth)
+        request = CadGetJobInput(job_id=job_id, event_cursor=event_cursor)
+        return await _run_service(services.get_job(request, principal, make_correlation_id()))
+
+    @mcp.resource(
+        "cad://snapshots/{snapshot_id}/summary",
+        name="CAD snapshot summary",
+        description="Read the bounded JSON summary for a known CAD snapshot.",
+        mime_type="application/json",
+        auth=auth_check,
+    )
+    async def snapshot_summary(snapshot_id: str) -> ResourceResult:
+        result = await services.read_snapshot(snapshot_id, _principal(auth))
+        if not result.ok:
+            raise _error(result)
+        if not isinstance(result.payload, str):
+            raise ToolError("internal_error: invalid snapshot result")
+        return ResourceResult(
+            [ResourceContent(content=result.payload, mime_type="application/json")]
+        )
+
+    @mcp.resource(
+        "cad://artifacts/{artifact_id}",
+        name="CAD artifact",
+        description="Read a bounded PNG artifact referenced by a CAD snapshot.",
+        mime_type="image/png",
+        auth=auth_check,
+    )
+    async def artifact(artifact_id: str) -> ResourceResult:
+        result = await services.read_artifact(artifact_id, _principal(auth))
+        if not result.ok:
+            raise _error(result)
+        if not isinstance(result.payload, bytes) or len(result.payload) > 2_000_000:
+            raise ToolError("backend_error: artifact is invalid or exceeds the Phase 0 size limit")
+        return ResourceResult(
+            [ResourceContent(content=result.payload, mime_type="image/png")]
+        )
+
+    return mcp
+
+
+def create_app(
+    services: Phase0Services,
+    auth: RemoteAuthProvider | None,
+    *,
+    stateless_http: bool = True,
+    allowed_hosts: list[str] | None = None,
+    allowed_origins: list[str] | None = None,
+    correlation_id_factory: CorrelationIdFactory | None = None,
+) -> Starlette:
+    """Create an outer ASGI app with /healthz and the FastMCP /mcp endpoint."""
+
+    mcp = build_mcp_server(
+        services,
+        auth,
+        stateless_http,
+        correlation_id_factory=correlation_id_factory,
+    )
+    mcp_app = mcp.http_app(
+        path="/mcp",
+        stateless_http=stateless_http,
+        host_origin_protection=True,
+        allowed_hosts=allowed_hosts,
+        allowed_origins=allowed_origins,
+    )
+
+    async def healthz(request: Request) -> PlainTextResponse:
+        del request
+        return PlainTextResponse("ok")
+
+    @asynccontextmanager
+    async def lifespan(app: Starlette):
+        async with mcp_app.lifespan(app):
+            yield
+
+    outer_app = Starlette(
+        routes=[
+            Route("/healthz", healthz, methods=["GET"]),
+            Mount("/", app=mcp_app),
+        ],
+        lifespan=lifespan,
+    )
+    if allowed_hosts is not None or allowed_origins is not None:
+        return _OuterHostOriginGuard(outer_app, allowed_hosts, allowed_origins)
+    return outer_app

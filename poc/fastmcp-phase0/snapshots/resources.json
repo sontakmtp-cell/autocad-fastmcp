@@ -1,0 +1,16 @@
+[
+  {
+    "_meta": {"fastmcp": {"tags": []}},
+    "description": "Read the bounded JSON summary for a known CAD snapshot.",
+    "mimeType": "application/json",
+    "name": "CAD snapshot summary",
+    "uriTemplate": "cad://snapshots/{snapshot_id}/summary"
+  },
+  {
+    "_meta": {"fastmcp": {"tags": []}},
+    "description": "Read a bounded PNG artifact referenced by a CAD snapshot.",
+    "mimeType": "image/png",
+    "name": "CAD artifact",
+    "uriTemplate": "cad://artifacts/{artifact_id}"
+  }
+]
