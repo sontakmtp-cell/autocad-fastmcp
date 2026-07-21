@@ -22,13 +22,16 @@ from pydantic import ValidationError
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
-from starlette.routing import Mount, Route
+from starlette.routing import Mount, Route, WebSocketRoute
 
 from .contracts import (
     CadListDevicesInput,
     CadListDevicesOutput,
+    CadGetJobInput,
+    CadGetJobOutput,
     CadObserveInput,
     CadObserveOutput,
+    CadObserveOutputDurable,
     CadQueryInput,
     CadQueryOutput,
     Principal,
@@ -49,6 +52,12 @@ class GatewayConfig:
     allowed_hosts: tuple[str, ...] = ("127.0.0.1:*", "localhost:*", "[::1]:*")
     allowed_origins: tuple[str, ...] = ()
     max_image_bytes: int = 5 * 1024 * 1024
+    profile: Literal["local", "phase3_poc"] = "local"
+    db_path: str | None = None
+    fixture_tokens: tuple[tuple[str, str], ...] = ()
+    fixture_owner_subject: str = "phase3-fixture-user"
+    stale_after_seconds: int = 45
+    command_timeout_seconds: int = 30
 
     @classmethod
     def from_env(cls) -> "GatewayConfig":
@@ -64,6 +73,13 @@ class GatewayConfig:
             for item in os.environ.get("AUTOCAD_MCP_PUBLIC_V1_ALLOWED_ORIGINS", "").split(";")
             if item.strip()
         )
+        fixture_tokens = tuple(
+            (parts[0].strip(), parts[1].strip())
+            for item in os.environ.get("AUTOCAD_MCP_PHASE3_FIXTURE_TOKENS", "").split(";")
+            if "=" in item
+            for parts in [item.split("=", 1)]
+            if parts[0].strip() and parts[1].strip()
+        )
         config = cls(
             host=os.environ.get("AUTOCAD_MCP_PUBLIC_V1_HOST", "127.0.0.1").strip(),
             port=int(os.environ.get("AUTOCAD_MCP_PUBLIC_V1_PORT", "8765")),
@@ -77,6 +93,14 @@ class GatewayConfig:
             max_image_bytes=int(
                 os.environ.get("AUTOCAD_MCP_MAX_IMAGE_BYTES", str(5 * 1024 * 1024))
             ),
+            profile=os.environ.get("AUTOCAD_MCP_GATEWAY_PROFILE", "local").strip() or "local",
+            db_path=os.environ.get("AUTOCAD_MCP_PHASE3_DB_PATH", "").strip() or None,
+            fixture_tokens=fixture_tokens,
+            fixture_owner_subject=os.environ.get(
+                "AUTOCAD_MCP_PHASE3_OWNER", "phase3-fixture-user"
+            ).strip(),
+            stale_after_seconds=int(os.environ.get("AUTOCAD_MCP_PHASE3_STALE_SECONDS", "45")),
+            command_timeout_seconds=int(os.environ.get("AUTOCAD_MCP_PHASE3_TIMEOUT_SECONDS", "30")),
         )
         return config.validate()
 
@@ -93,6 +117,19 @@ class GatewayConfig:
             raise ValueError("path must start with '/' and contain no whitespace")
         if self.max_image_bytes <= 0:
             raise ValueError("max_image_bytes must be greater than zero")
+        if self.profile not in {"local", "phase3_poc"}:
+            raise ValueError("profile must be local or phase3_poc")
+        if not 1 <= self.stale_after_seconds <= 3600:
+            raise ValueError("stale_after_seconds must be between 1 and 3600")
+        if not 1 <= self.command_timeout_seconds <= 600:
+            raise ValueError("command_timeout_seconds must be between 1 and 600")
+        if self.profile == "phase3_poc":
+            if not self.db_path:
+                raise ValueError("phase3_poc requires an explicit db_path")
+            if not self.fixture_tokens:
+                raise ValueError("phase3_poc requires fixture device tokens")
+            if not self.fixture_owner_subject:
+                raise ValueError("phase3_poc requires a fixture owner subject")
         return self
 
 
@@ -173,12 +210,15 @@ def _tool_annotations(*, idempotent: bool) -> dict[str, bool]:
     }
 
 
-def _principal(auth: RemoteAuthProvider | None) -> Principal:
+def _principal(auth: RemoteAuthProvider | None, services: Any | None = None) -> Principal:
     token = get_access_token()
     if token is None:
         if auth is not None:
             raise ToolError("invalid_token: access token required")
-        return Principal(subject=LOCAL_SUBJECT, scopes=("autocad.read",))
+        return Principal(
+            subject=getattr(services, "owner_subject", LOCAL_SUBJECT),
+            scopes=("autocad.read",),
+        )
     subject = token.claims.get("sub")
     if not isinstance(subject, str) or not subject:
         raise ToolError("invalid_token: subject claim required")
@@ -191,6 +231,14 @@ def _safe_error(error: GatewayError) -> ToolError:
         "not_found": "requested resource was not found",
         "backend_error": "CAD backend operation failed",
         "response_too_large": "response exceeds the configured size limit",
+        "device_offline": "the selected CAD device is offline",
+        "capability_missing": "the selected device lacks the requested capability",
+        "job_in_progress": "the job is still in progress",
+        "deadline_expired": "the job deadline has expired",
+        "dispatcher_timeout": "the Agent did not finish the job in time",
+        "idempotency_conflict": "the request conflicts with an existing job",
+        "payload_mismatch": "the command payload does not match the existing command",
+        "outcome_unknown": "the write-like operation has an unknown outcome",
         "internal_error": "operation failed",
     }
     return ToolError(f"{error.code}: {messages.get(error.code, messages['internal_error'])}")
@@ -219,9 +267,10 @@ def build_mcp_server(
 
     make_correlation_id = correlation_id_factory or (lambda: str(uuid.uuid4()))
     auth_check = require_scopes("autocad.read") if auth is not None else None
+    phase3 = bool(getattr(services, "is_phase3", False))
     mcp = FastMCP(
-        name="AutoCAD Gateway public v1",
-        version="0.2.0",
+        name="AutoCAD Gateway public v1.1" if phase3 else "AutoCAD Gateway public v1",
+        version="0.3.0" if phase3 else "0.2.0",
         auth=auth,
         mask_error_details=True,
     )
@@ -244,7 +293,7 @@ def build_mcp_server(
         request = CadListDevicesInput(online_only=online_only, capability=capability)
         result = await _run(
             services.list_devices(
-                request, _principal(auth), current_correlation_id(make_correlation_id)
+                request, _principal(auth, services), current_correlation_id(make_correlation_id)
             )
         )
         return result.model_dump(mode="json")
@@ -253,7 +302,7 @@ def build_mcp_server(
         name="cad_observe",
         title="Observe a CAD device",
         description="Create a bounded read-only CAD snapshot with stable revision and resource references.",
-        output_schema=CadObserveOutput.model_json_schema(),
+        output_schema=(CadObserveOutputDurable if phase3 else CadObserveOutput).model_json_schema(),
         annotations=_tool_annotations(idempotent=False),
         auth=auth_check,
     )
@@ -270,7 +319,7 @@ def build_mcp_server(
             observation_level=observation_level,
             include_preview_image=include_preview_image,
         )
-        principal = _principal(auth)
+        principal = _principal(auth, services)
         result = await _run(
             services.observe(request, principal, current_correlation_id(make_correlation_id))
         )
@@ -333,10 +382,38 @@ def build_mcp_server(
         )
         result = await _run(
             services.query(
-                request, _principal(auth), current_correlation_id(make_correlation_id)
+                request, _principal(auth, services), current_correlation_id(make_correlation_id)
             )
         )
         return result.model_dump(mode="json")
+
+    if phase3:
+
+        @mcp.tool(
+            name="cad_get_job",
+            title="Get a CAD job",
+            description="Read the bounded state, progress and ordered events for an observation job.",
+            output_schema=CadGetJobOutput.model_json_schema(),
+            annotations=_tool_annotations(idempotent=True),
+            auth=auth_check,
+        )
+        async def cad_get_job(
+            job_id: str,
+            event_cursor: str | None = None,
+            event_limit: int = 50,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
+            del ctx
+            request = CadGetJobInput(
+                job_id=job_id, event_cursor=event_cursor, event_limit=event_limit
+            )
+            result = await _run(
+                services.get_job(
+                    request, _principal(auth, services), current_correlation_id(make_correlation_id)
+                )
+            )
+            return result.model_dump(mode="json")
 
     @mcp.resource(
         "cad://devices/{device_id}/capabilities",
@@ -346,7 +423,7 @@ def build_mcp_server(
         auth=auth_check,
     )
     async def device_capabilities(device_id: str) -> ResourceResult:
-        value = await _run(services.read_device_capabilities(device_id, _principal(auth)))
+        value = await _run(services.read_device_capabilities(device_id, _principal(auth, services)))
         return ResourceResult([ResourceContent(content=value, mime_type="application/json")])
 
     @mcp.resource(
@@ -357,7 +434,7 @@ def build_mcp_server(
         auth=auth_check,
     )
     async def snapshot_summary(snapshot_id: str) -> ResourceResult:
-        value = await _run(services.read_snapshot_summary(snapshot_id, _principal(auth)))
+        value = await _run(services.read_snapshot_summary(snapshot_id, _principal(auth, services)))
         return ResourceResult([ResourceContent(content=value, mime_type="application/json")])
 
     @mcp.resource(
@@ -379,7 +456,7 @@ def build_mcp_server(
         value = await _run(
             services.read_snapshot_entities(
                 snapshot_id,
-                _principal(auth),
+                _principal(auth, services),
                 types=type_values,
                 layers=layer_values,
                 cursor=cursor,
@@ -397,8 +474,21 @@ def build_mcp_server(
         auth=auth_check,
     )
     async def artifact(artifact_id: str) -> ResourceResult:
-        value = await _run(services.read_artifact(artifact_id, _principal(auth)))
+        value = await _run(services.read_artifact(artifact_id, _principal(auth, services)))
         return ResourceResult([ResourceContent(content=value, mime_type="image/png")])
+
+    if phase3:
+
+        @mcp.resource(
+            "cad://jobs/{job_id}",
+            name="CAD job",
+            description="Read the bounded durable state and ordered events for a CAD job.",
+            mime_type="application/json",
+            auth=auth_check,
+        )
+        async def job_resource(job_id: str) -> ResourceResult:
+            value = await _run(services.read_job_resource(job_id, _principal(auth, services)))
+            return ResourceResult([ResourceContent(content=value, mime_type="application/json")])
 
     @mcp.prompt(
         name="plan_cad_change",
@@ -448,7 +538,7 @@ def _split_query_values(value: str | None) -> list[str]:
 
 
 def create_app(
-    services: GatewayServices,
+    services: Any,
     auth: RemoteAuthProvider | None = None,
     *,
     config: GatewayConfig | None = None,
@@ -467,6 +557,12 @@ def create_app(
             allowed_hosts=config.allowed_hosts,
             allowed_origins=config.allowed_origins,
             max_image_bytes=config.max_image_bytes,
+            profile=config.profile,
+            db_path=config.db_path,
+            fixture_tokens=config.fixture_tokens,
+            fixture_owner_subject=config.fixture_owner_subject,
+            stale_after_seconds=config.stale_after_seconds,
+            command_timeout_seconds=config.command_timeout_seconds,
         )
     configured_hosts = allowed_hosts if allowed_hosts is not None else list(config.allowed_hosts)
     configured_origins = (
@@ -493,14 +589,53 @@ def create_app(
         del request
         return PlainTextResponse("ok")
 
+    async def readyz(request: Request) -> PlainTextResponse:
+        del request
+        database = getattr(services, "database", None)
+        if database is not None and not database.is_open:
+            return PlainTextResponse("not ready", status_code=503)
+        return PlainTextResponse("ready")
+
+    async def agent_ws(websocket: Any) -> None:
+        transport = getattr(services, "job_service", None)
+        authenticator = getattr(services, "agent_authenticator", None)
+        registry = getattr(services, "registry", None)
+        if transport is None or authenticator is None or registry is None:
+            await websocket.close(code=4404, reason="Agent transport is disabled")
+            return
+        from .infrastructure.agent_transport.websocket_endpoint import serve_agent_websocket
+
+        await serve_agent_websocket(
+            websocket,
+            authenticator=authenticator,
+            registry=registry,
+            on_message=transport.handle_message,
+            on_connected=getattr(services, "on_agent_connected", transport.handle_connected),
+            on_disconnected=getattr(
+                services,
+                "on_agent_disconnected",
+                lambda connection: transport.handle_disconnect(connection.device_id),
+            ),
+        )
+
     @asynccontextmanager
     async def lifespan(app: Starlette):
         await services.initialize()
-        async with mcp_app.lifespan(app):
-            yield
+        try:
+            async with mcp_app.lifespan(app):
+                yield
+        finally:
+            shutdown = getattr(services, "shutdown", None)
+            if shutdown is not None:
+                await shutdown()
 
     outer_app: Any = Starlette(
-        routes=[Route("/healthz", healthz, methods=["GET"]), Mount("/", app=mcp_app)],
+        routes=[
+            Route("/healthz", healthz, methods=["GET"]),
+            Route("/readyz", readyz, methods=["GET"]),
+            WebSocketRoute("/agent/ws", agent_ws),
+            Mount("/", app=mcp_app),
+        ],
         lifespan=lifespan,
     )
     outer_app = OuterHostOriginGuard(

@@ -1,0 +1,26 @@
+[project]
+name = "autocad-phase3-simulated-agent"
+version = "0.1.0"
+description = "Independent outbound Agent simulator for the AutoCAD Gateway Phase 3 POC"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+    "autocad-contracts",
+    "websockets>=12,<17",
+]
+
+[dependency-groups]
+test = ["pytest>=8.0,<9.0", "pytest-asyncio>=0.23,<2.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autocad_phase3_sim_agent"]
+
+[tool.uv.sources]
+autocad-contracts = { path = "../../packages/contracts", editable = false }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

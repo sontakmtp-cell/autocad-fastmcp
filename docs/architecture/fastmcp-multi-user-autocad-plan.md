@@ -1,6 +1,6 @@
 # Kế hoạch nâng cấp AutoCAD MCP nhiều người dùng bằng FastMCP
 
-> Trạng thái: **đề xuất kiến trúc, chưa được phê duyệt để triển khai**
+> Trạng thái: **Phase 0–3 đã triển khai và kiểm chứng local; Phase 3 chưa deploy/CI matrix chưa chạy; Phase 4+ chưa triển khai**
 >
 > Ngày khảo sát: 2026-07-21
 >
@@ -1220,20 +1220,23 @@ Mỗi phase dưới đây chỉ bắt đầu sau khi phase trước đạt exit 
 
 ### Phase 3 — Durable Gateway + simulated outbound Agent
 
+- **Trạng thái cập nhật 2026-07-21:** đã triển khai và kiểm chứng local trong profile opt-in `phase3_poc`; chưa deploy, chưa chạy CI matrix GitHub và chưa mở Phase 4.
 - **Mục tiêu/phạm vi:** POC B: outer ASGI, SQLite, WSS protocol, device router và durable job state với fake Agent.
 - **Luồng sau phase:** FastMCP -> job row -> WSS fake Agent -> progress/result -> job query.
 - **Tái sử dụng:** error taxonomy và request IDs.
-- **Phần mới:** repositories, migrations, job state machine, connection registry, simulator/failure injection.
-- **FastMCP:** HTTP/auth test principal, progress/result interface.
+- **Phần mới đã có:** shared contract `cad.agent/1`, SQLite migration/repository/backup, CAS job state machine, idempotency/hash, event cursor, connection registry, fixture Agent auth, `/agent/ws`, dispatcher/reconcile/cancel/deadline/stale hooks và simulator/failure injection.
+- **FastMCP:** profile `phase3_poc` giữ đúng 4 read tools (`cad_list_devices`, `cad_observe`, `cad_query`, `cad_get_job`) và 5 resource templates, trong đó có `cad://jobs/{job_id}`; profile `local` vẫn giữ nguyên contract Phase 2.
 - **Ranh giới:** fake Agent không gọi AutoCAD; SQLite là truth.
-- **Hoàn thành khi:** route đúng fake device, timeout/cancel/reconnect/reconcile và restart Gateway không mất job.
-- **Kiểm thử:** DB migration/restore, duplicate command, dropped socket, stale heartbeat, two devices.
+- **Hoàn thành đã chứng minh:** route đúng device A/B, observe -> job -> progress/result -> snapshot -> query/resource, owner filter, duplicate/hash mismatch, reconnect read, write-like `outcome_unknown` không retry, stale/deadline, restart và backup/restore.
+- **Kiểm thử đã chạy:** Gateway `50 passed`; WSS loopback `wss://localhost` với certificate test; hai simulator subprocess độc lập; Phase 0 `14 passed`; legacy root `376 passed, 1 skipped, 9 warnings`; ba wheel build thành công; `git diff --check` sạch.
 - **Rủi ro:** coupling socket lifecycle với DB transaction; event ordering.
-- **Chưa làm:** real device credential và CAD write.
+- **Chưa làm:** CI matrix đa nền tảng/Python chưa chạy trên workstation; real device credential/pairing, OAuth production flow, public TLS/VPS, Desktop Agent Windows, AutoCAD/COM/File IPC, screenshot thật và CAD write.
 - **Phụ thuộc:** Phase 2, protocol v1 draft.
+- **Kế hoạch chi tiết:** `docs/architecture/Phase-3.md`.
+- **Evidence:** `docs/architecture/phase3-durable-gateway-evidence.md`.
 - **Feature flag/compatibility:** Gateway service mới độc lập; legacy không đổi.
 - **Rollback:** stop Gateway; không ảnh hưởng legacy local server.
-- **Demo:** job ID/progress/result và reconnect với simulated Agent.
+- **Demo đã chạy:** `cad_observe(device-a)` chỉ tới Agent A, trả job ID/progress/result; `cad_get_job` đọc ordered events; `cad_query` đọc snapshot persisted; restart/reconnect và WSS loopback đều xanh.
 
 ### Phase 4 — POC C1: Desktop Agent + AutoCAD thật, read-only
 
@@ -1540,14 +1543,13 @@ Kế hoạch implementation chỉ được coi là đạt sản phẩm multi-use
 - Legacy flow vẫn có rollback path cho tới hết pilot.
 - FastMCP exact pin/upgrade gate, reverse proxy trust, secrets, quotas, audit và operational runbook hoàn tất.
 
-## 25. Bước tiếp theo sau khi kế hoạch được duyệt
+## 25. Bước tiếp theo sau Phase 3
 
-Chỉ bắt đầu **Phase 0**:
+Chưa mở Phase 4 cho tới khi các gate còn thiếu của Phase 3 được hoàn tất:
 
-1. Chốt ADR về `fastmcp==3.4.4`, Python matrix và outer ASGI.
-2. Tạo spike package/branch không ảnh hưởng entrypoint hiện tại.
-3. Expose đúng 3 fake/local tool: `cad_list_devices`, `cad_observe`, `cad_get_job`.
-4. Chạy FastMCP in-memory/HTTP/auth/schema compatibility tests.
-5. Trình bày diff schema, dependency và POC evidence để duyệt Phase 1.
+1. Chạy CI matrix Gateway trên Windows/Linux với Python 3.10/3.12/3.13 và ghi kết quả vào evidence.
+2. Review `phase3-durable-gateway-evidence.md`, đặc biệt các giới hạn còn lại: OAuth production, public TLS/VPS, credential/pairing, Desktop Agent và AutoCAD thật.
+3. Giữ profile `local` và legacy làm mặc định; chỉ dùng `phase3_poc` với SQLite/WSS/simulator fixture loopback.
+4. Sau khi gate được duyệt, lập kế hoạch Phase 4 cho Desktop Agent Windows + AutoCAD thật read-only.
 
-Không triển khai WebSocket, DB production, Desktop Agent, CAD Program hay migration code trước khi Phase 0 evidence được xem xét.
+Phase 0–2 đã có evidence riêng; không chạy lại spike hoặc thay đổi contract Phase 2 chỉ vì Phase 3 bổ sung `cad_get_job` trong profile opt-in.
