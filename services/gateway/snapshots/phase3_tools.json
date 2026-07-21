@@ -1,0 +1,54 @@
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "List the bounded local CAD devices available for read-only observation.",
+    "input_schema_sha256": "3abab0d17b2ccbd46c3c32ff6886105d4cad8e981ea1273570f056308cdc3f9f",
+    "name": "cad_list_devices",
+    "output_schema_sha256": "0027771e1b908ceee8fe38d2f43ad159f4358d9a0054a7a89d2e191e906fe893",
+    "title": "List CAD devices"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Create a bounded read-only CAD snapshot with stable revision and resource references.",
+    "input_schema_sha256": "d7a0857bb52b461eb3c19a0b26a005e660ad66c589327db3756cbc3f44b37799",
+    "name": "cad_observe",
+    "output_schema_sha256": "114fb2563cd3c5bee779499c0badbcac26ece5860ee589d12ab7a0023645d67f",
+    "title": "Observe a CAD device"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Query a known CAD snapshot by entity type or layer with stable bounded pagination.",
+    "input_schema_sha256": "26e5f25f4bb5197f068a0bde512136021d4d552002e590aef4f99b1e604af948",
+    "name": "cad_query",
+    "output_schema_sha256": "f2a613bf544025354646a44f3c31abc24e013aad0111d61f26d4890bdff870b9",
+    "title": "Query a CAD snapshot"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read the bounded state, progress and ordered events for an observation job.",
+    "input_schema_sha256": "e904d8f9485d00332acf4f75eb238e14a6c31d419dddebe30fa8d7111ca1115a",
+    "name": "cad_get_job",
+    "output_schema_sha256": "075907b4049fe6f06c8eaf800a3fbf4a1e1529177e5fc6ae264699389c68b6f5",
+    "title": "Get a CAD job"
+  }
+]

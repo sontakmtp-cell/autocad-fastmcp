@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 CONTRACT_VERSION = "cad.mcp/1.0"
+PHASE3_CONTRACT_VERSION = "cad.mcp/1.1"
 
 
 class StrictModel(BaseModel):
@@ -70,6 +71,13 @@ class CadObserveOutput(StrictModel):
     artifact_refs: list[ArtifactRef] = Field(default_factory=list)
 
 
+class CadObserveOutputDurable(CadObserveOutput):
+    """Additive Phase 3 observe result; the local Phase 2 schema is unchanged."""
+
+    contract_version: str = PHASE3_CONTRACT_VERSION
+    job_id: str | None = None
+
+
 class CadQueryInput(StrictModel):
     snapshot_id: str = Field(min_length=1, max_length=128)
     types: list[str] = Field(default_factory=list, max_length=16)
@@ -87,3 +95,47 @@ class CadQueryOutput(StrictModel):
     total: int = Field(ge=0)
     next_cursor: str | None = None
     resource_uri: str
+
+
+class CadGetJobInput(StrictModel):
+    job_id: str = Field(min_length=1, max_length=128)
+    event_cursor: str | None = Field(default=None, max_length=32)
+    event_limit: int = Field(default=50, ge=1, le=100)
+
+
+class CadJobEvent(StrictModel):
+    sequence: int = Field(ge=1)
+    event_type: Literal["state", "progress"]
+    state: str | None = None
+    progress: dict[str, Any] | None = None
+    error_code: str | None = None
+    result: dict[str, Any] | None = None
+    created_at: str
+
+
+class CadGetJobOutput(StrictModel):
+    contract_version: str = PHASE3_CONTRACT_VERSION
+    correlation_id: str
+    job_id: str
+    device_id: str
+    kind: str
+    state: Literal[
+        "queued",
+        "dispatched",
+        "acknowledged",
+        "running",
+        "succeeded",
+        "failed",
+        "reconnect_pending",
+        "cancel_requested",
+        "cancelled",
+        "outcome_unknown",
+        "needs_attention",
+    ]
+    progress: dict[str, Any] | None = None
+    result: dict[str, Any] | None = None
+    error_code: str | None = None
+    error_summary: str | None = None
+    events: list[CadJobEvent] = Field(default_factory=list, max_length=100)
+    next_event_cursor: str | None = None
+    snapshot_id: str | None = None

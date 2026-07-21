@@ -5,16 +5,12 @@ from __future__ import annotations
 import uvicorn
 
 from .app import GatewayConfig, create_app
-from .backend import build_backend
-from .services import GatewayServices
+from .composition import build_services
 
 
 def main() -> None:
     config = GatewayConfig.from_env()
-    services = GatewayServices(
-        build_backend(),
-        max_image_bytes=config.max_image_bytes,
-    )
+    services = build_services(config)
     uvicorn.run(
         create_app(services, config=config),
         host=config.host,

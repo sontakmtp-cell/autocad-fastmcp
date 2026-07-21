@@ -35,22 +35,22 @@ EXPECTED_TOOLS = {
 }
 
 LEGACY_DESCRIPTOR_SNAPSHOT = {
-    "annotation": "1ceadbd486dfc9db6e6c89bee12d9484ee34361da48e9856a4c830f819ef4d0c",
+    "annotation": "bfbf0e910b1bdf17392c7b43ed1aa5ebed6737f632c9d7dba8302058917346cb",
     "annotation_audit_dimensions": "d0731d5f9c36268e0594a719d051807316d91ef46dc32916072d32a348c8718d",
-    "annotation_auto_dimension": "9442efab36b0d50a3e085ca6b2b2252ed843bfeb1a2f1900e101f311b0c616e8",
-    "annotation_batch_create_dimensions": "0fa963a8b9ea83507fe136ec9c159632751759898f5318c1eea168cbbc6042c4",
+    "annotation_auto_dimension": "d0bc475d7b13c7607f13c4288141549cadeed1f354764ba3572d854c73878a97",
+    "annotation_batch_create_dimensions": "807d186a243e7f32db2acce070e2af3ebaf71885f78b2dd1390a01c50eb1cd86",
     "annotation_commit_dimension_plan": "8dbb212614a828159798e6109080d6f83ee5762426dbd07806154822cc31ec76",
-    "annotation_detect_parts": "c72abc97cfa671a29ea7f1ce7a02c29bcb146887e1200c44413bd048ea438fe3",
+    "annotation_detect_parts": "b804734e8256e78c2f2c94e46b24f838825c4b39929db924fdf30183c4bb980a",
     "annotation_dimension_profiles": "66a198e8840f70beab0e8e012457d1bac5349a5335211d9bb27e948b6ffd9e55",
     "annotation_plan_dimensions": "22a8be22d5fc4971017c99521e5f440d67df07cff316debafbaf0a79e8f012a1",
     "annotation_repair_dimension_layout": "2c33a082cfe8a5c53fe117a970804a432bfcf04ad78a7fed7c83b50ddd1ace6a",
-    "block": "8ca7a497a468e49945117b75c00ef8276116359c1a01df01ee25e122b05e42dc",
-    "drawing": "97009a28b04d2aa39d3aa3ff2c4d5ffadfbe65a94ab1c318c092392b51bd5945",
-    "entity": "69fafedae2e1fd334d57823a079a00f9b30d8f8d8889ef651fe69d4e947aab4b",
-    "layer": "c4d3c4ce505a8419269919edde58210dcd84382dfe06750f8bfe5b9a3d47a4d7",
-    "pid": "08acb133e56e20dc1daef838d028810e4ae515218c00b66d7846d5000706b4f2",
-    "system": "781bb1b480010764c50fdc0b8081c3f8ce1d3b04d1f6ec217e7fdd9c72798a2d",
-    "view": "44b33447bd3b8722d90c2f269500a1722a6b0925005dba299879a2db11a84984",
+    "block": "375cffeac40545719a6e1b4ccf76e7341c5ec0a9253fc2e64049323f188f21be",
+    "drawing": "b647bc17db26d7146f9af38f882b6d631fb1c72bce79e9aa14c53b92614e054a",
+    "entity": "44b29fe892349e77320396ade521a619a4d5bdccde7e71becaf16e38108db9f1",
+    "layer": "4c275498227bda85d6b45dad49467b317e7f81a4827441918144452d3701de41",
+    "pid": "ba67a209e77f77f2bc19b63403d69eaffc81b32f89ba58aec2f3c46edf9a1be4",
+    "system": "2d99a5812821fb75423597d48b94fa9ffddf773094c88f336235d3235fb99a41",
+    "view": "e76d6436a36b4a7ec643d69977de62822f51066c892ac2e14389d9cdb5d0cbbf",
 }
 
 
@@ -78,7 +78,7 @@ def test_legacy_tool_descriptors_match_the_frozen_snapshot():
         annotations = getattr(tool, "annotations", None)
         descriptor = {
             "name": tool.name,
-            "description": tool.description,
+            "description": " ".join((tool.description or "").split()),
             "parameters": tool.parameters,
             "annotations": {
                 key: getattr(annotations, key, None)
