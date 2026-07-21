@@ -36,3 +36,4 @@ autocad-contracts = { path = "../../packages/contracts", editable = false }
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = ["phase3: tests for the opt-in durable Gateway and simulated Agent"]

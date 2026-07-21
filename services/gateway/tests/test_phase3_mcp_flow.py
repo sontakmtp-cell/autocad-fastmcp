@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import ipaddress
 import json
 import socket
 import ssl
@@ -263,7 +264,13 @@ async def test_phase3_wss_loopback_accepts_test_certificate(tmp_path):
         .not_valid_before(now - timedelta(minutes=1))
         .not_valid_after(now + timedelta(minutes=10))
         .add_extension(
-            x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False
+            x509.SubjectAlternativeName(
+                [
+                    x509.DNSName("localhost"),
+                    x509.IPAddress(ipaddress.ip_address("127.0.0.1")),
+                ]
+            ),
+            critical=False,
         )
         .sign(key, hashes.SHA256())
     )
@@ -302,17 +309,19 @@ async def test_phase3_wss_loopback_accepts_test_certificate(tmp_path):
     tls = ssl.create_default_context()
     tls.check_hostname = False
     tls.verify_mode = ssl.CERT_NONE
-    agent = LiveFixtureAgent(f"wss://localhost:{port}/agent/ws", "device-a", "token-a", tls)
+    agent = LiveFixtureAgent(f"wss://127.0.0.1:{port}/agent/ws", "device-a", "token-a", tls)
     agent_task = asyncio.create_task(agent.run())
     try:
-        for _ in range(100):
+        for _ in range(200):
             if server.started:
                 break
             await asyncio.sleep(0.05)
         assert server.started
-        for _ in range(100):
+        for _ in range(200):
             if len(await services.registry.all()) == 1:
                 break
+            if agent_task.done():
+                agent_task.result()
             await asyncio.sleep(0.05)
         assert len(await services.registry.all()) == 1
     finally:
