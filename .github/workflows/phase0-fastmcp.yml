@@ -27,6 +27,10 @@ on:
       - ".github/workflows/phase0-fastmcp.yml"
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
