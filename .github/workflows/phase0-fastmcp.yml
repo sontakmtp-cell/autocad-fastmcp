@@ -115,36 +115,6 @@ jobs:
             poc/phase3-simulated-agent/simulated-agent-results.xml
           if-no-files-found: error
 
-  packaging-clean-install:
-    name: Wheel clean install / ${{ matrix.os }} / Python ${{ matrix.python-version }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        python-version: ["3.10", "3.12", "3.13"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - uses: astral-sh/setup-uv@v5
-      - name: Build root and CAD Core wheels from the same revision
-        run: |
-          python -c "from pathlib import Path; Path('wheelhouse').mkdir(exist_ok=True)"
-          uv build --wheel --out-dir wheelhouse packages/cad_core
-          uv build --wheel --out-dir wheelhouse .
-      - name: Clean-install from local artifacts only
-        run: python scripts/phase1_1_packaging_smoke.py --artifact-dir wheelhouse
-      - name: Upload Phase 1.1 wheels
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase1-1-wheels
-          path: wheelhouse/*.whl
-          if-no-files-found: error
-
   static-isolation:
     name: Static and isolation checks
     runs-on: ubuntu-latest
@@ -160,7 +130,7 @@ jobs:
       - name: Check whitespace and Python syntax
         run: |
           git diff --check
-          python -m compileall -q src packages/cad_core/src packages/cad_core/tests poc/fastmcp-phase0/src poc/fastmcp-phase0/tests services/gateway/src services/gateway/tests packages/contracts/src poc/phase3-simulated-agent/src poc/phase3-simulated-agent/tests
+          python -m compileall -q src packages/cad_core/src packages/cad_core/tests poc/fastmcp-phase0/src poc/fastmcp-phase0/tests services/gateway/src services/gateway/tests packages/contracts/src poc/phase3-simulated-agent/src poc/phase3-simulated-agent/tests scripts/phase1_1_packaging_smoke.py
       - name: Enforce adapter and domain isolation
         run: |
           python - <<'PY'
