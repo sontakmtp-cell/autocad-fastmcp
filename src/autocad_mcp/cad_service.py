@@ -15,9 +15,38 @@ from autocad_mcp import client
 
 
 class LegacyRuntimeAdapter:
-    """Resolve and delegate backend operations without changing their behavior."""
+    """Delegate typed reads directly and retain generic dispatch for legacy writes."""
+
+    async def get_status(self) -> CommandResult:
+        backend = await client.get_backend()
+        return await backend.status()
+
+    async def health(self) -> CommandResult:
+        backend = await client.get_backend()
+        return await backend.health()
+
+    async def get_drawing_info(self) -> CommandResult:
+        backend = await client.get_backend()
+        return await backend.drawing_info()
+
+    async def list_entities(self, *, layer: str | None = None) -> CommandResult:
+        backend = await client.get_backend()
+        return await backend.entity_list(layer)
+
+    async def get_entity(self, *, entity_id: str) -> CommandResult:
+        backend = await client.get_backend()
+        return await backend.entity_get(entity_id)
+
+    async def list_layers(self) -> CommandResult:
+        backend = await client.get_backend()
+        return await backend.layer_list()
+
+    async def get_screenshot(self) -> CommandResult:
+        backend = await client.get_backend()
+        return await backend.get_screenshot()
 
     async def call(self, operation: str, *args: Any) -> CommandResult:
+        """Compatibility fallback for operations not typed in Phase 1.1."""
         backend = await client.get_backend()
         method = getattr(backend, operation)
         return await method(*args)

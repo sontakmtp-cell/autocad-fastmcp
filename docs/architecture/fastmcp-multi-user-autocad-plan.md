@@ -1553,3 +1553,12 @@ Chưa mở Phase 4 cho tới khi các gate còn thiếu của Phase 3 được h
 4. Sau khi gate được duyệt, lập kế hoạch Phase 4 cho Desktop Agent Windows + AutoCAD thật read-only.
 
 Phase 0–2 đã có evidence riêng; không chạy lại spike hoặc thay đổi contract Phase 2 chỉ vì Phase 3 bổ sung `cad_get_job` trong profile opt-in.
+
+### Phase 1.1 — CAD Core packaging, contract and adapter parity hardening
+
+Phase 1.1 is a post-implementation hardening step performed after Phase 1–3.
+It does not roll back or replace those phases. It establishes installable wheel
+artifacts for `autocad-mcp` and `autocad-cad-core`, explicit typed read seams for
+Desktop Agent preparation, runtime CAD Core isolation, and test-only facade
+parity evidence. See
+[`docs/architecture/phase1.1-cad-core-hardening-evidence.md`](phase1.1-cad-core-hardening-evidence.md).

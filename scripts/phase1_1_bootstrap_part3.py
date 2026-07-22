@@ -123,7 +123,7 @@ write(
 # Clean-install smoke script
 write(
     'scripts/phase1_1_packaging_smoke.py',
-    textwrap.dedent(r'''\
+    textwrap.dedent(r'''
     """Clean-install Phase 1.1 wheels outside the source checkout."""
 
     from __future__ import annotations

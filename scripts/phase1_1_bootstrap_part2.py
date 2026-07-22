@@ -77,7 +77,16 @@ class _BackendRuntime:
         return await self.backend.initialize()
 '''
 replace_once('services/gateway/src/autocad_gateway/services.py', runtime_block, typed_runtime_block)
-replace_once('services/gateway/src/autocad_gateway/services.py', '        status = await self.backend.status()\n', '        status = await self.application_service.get_status()\n')
+gateway_services = 'services/gateway/src/autocad_gateway/services.py'
+gateway_content = read(gateway_services)
+gateway_old_status = '        status = await self.backend.status()\n'
+gateway_new_status = '        status = await self.application_service.get_status()\n'
+if gateway_content.count(gateway_old_status) != 2:
+    raise RuntimeError(
+        f"{gateway_services}: expected two status reads, "
+        f"found {gateway_content.count(gateway_old_status)}"
+    )
+write(gateway_services, gateway_content.replace(gateway_old_status, gateway_new_status))
 replace_once(
     'services/gateway/src/autocad_gateway/services.py',
     '''        drawing = await self.application_service.execute(
@@ -156,7 +165,6 @@ replace_once(
     '''            screenshot = await self.application_service.get_screenshot()
 ''',
 )
-replace_once('services/gateway/src/autocad_gateway/services.py', '        status = await self.backend.status()\n', '        status = await self.application_service.get_status()\n')
 
 replace_once(
     'poc/fastmcp-phase0/src/fastmcp_phase0/services.py',
