@@ -1,0 +1,99 @@
+name: Phase 1.1 CAD Core Hardening
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "packages/cad_core/**"
+      - "src/autocad_mcp/**"
+      - "tests/test_cad_core_service.py"
+      - "scripts/phase1_1_packaging_smoke.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/phase1-1-cad-core-hardening.yml"
+  pull_request:
+    paths:
+      - "packages/cad_core/**"
+      - "src/autocad_mcp/**"
+      - "tests/test_cad_core_service.py"
+      - "scripts/phase1_1_packaging_smoke.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/phase1-1-cad-core-hardening.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  wheel-clean-install:
+    name: Wheel clean install / ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+      - name: Build root and CAD Core wheels from one revision
+        run: |
+          python -c "from pathlib import Path; Path('wheelhouse').mkdir(exist_ok=True)"
+          uv build --wheel --out-dir wheelhouse packages/cad_core
+          uv build --wheel --out-dir wheelhouse .
+      - name: Install from wheel artifacts outside the source checkout
+        run: python scripts/phase1_1_packaging_smoke.py --artifact-dir wheelhouse
+      - name: Upload reference wheels
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-1-wheels
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
+  standalone-core:
+    name: Standalone CAD Core / ${{ matrix.os }} / Python 3.12
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Sync package-only lock
+        run: uv sync --locked --group test --project packages/cad_core
+      - name: Run package-local isolation tests
+        run: uv run --locked --group test --project packages/cad_core pytest packages/cad_core/tests -q
+      - name: Build standalone wheel
+        run: uv build --wheel packages/cad_core
+
+  static-locks:
+    name: Static and lock checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Check whitespace and Python syntax
+        run: |
+          git diff --check
+          python -m compileall -q src packages/cad_core/src packages/cad_core/tests scripts/phase1_1_packaging_smoke.py
+      - name: Check all relevant lockfiles
+        run: |
+          uv lock --check
+          uv lock --check --project packages/cad_core
+          uv lock --check --project poc/fastmcp-phase0
+          uv lock --check --project services/gateway
+          uv lock --check --project poc/phase3-simulated-agent
