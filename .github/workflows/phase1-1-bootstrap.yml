@@ -123,7 +123,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          rm scripts/phase1_1_bootstrap_part*.py
+          git checkout -- .github/workflows/phase0-fastmcp.yml .github/workflows/phase1-1-bootstrap.yml
+          rm -f phase1-1-bootstrap.log
           git add -A
           git commit -m "Harden Phase 1.1 CAD Core packaging and read parity [skip ci]"
           git push origin HEAD:phase1.1-cad-core-hardening
