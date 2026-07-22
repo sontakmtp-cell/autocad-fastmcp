@@ -8,6 +8,7 @@ on:
       - "packages/cad_core/**"
       - "packages/contracts/**"
       - "services/gateway/**"
+      - "scripts/phase1_1_packaging_smoke.py"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/phase0-fastmcp.yml"
@@ -20,10 +21,15 @@ on:
       - "packages/cad_core/**"
       - "packages/contracts/**"
       - "services/gateway/**"
+      - "scripts/phase1_1_packaging_smoke.py"
       - "pyproject.toml"
       - "uv.lock"
       - ".github/workflows/phase0-fastmcp.yml"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -79,6 +85,14 @@ jobs:
         run: uv sync --locked --all-groups
       - name: Run legacy and CAD Core tests
         run: uv run pytest tests/ -q --junitxml=root-results.xml
+      - name: Test and build standalone CAD Core
+        working-directory: packages/cad_core
+        run: |
+          uv sync --locked --group test
+          uv run --locked --group test pytest -q --junitxml=cad-core-results.xml
+          uv build --wheel
+      - name: Build root wheel
+        run: uv build --wheel
       - name: Test and build Gateway
         working-directory: services/gateway
         run: |
@@ -100,6 +114,7 @@ jobs:
           name: phase1-3-regression-junit
           path: |
             root-results.xml
+            packages/cad_core/cad-core-results.xml
             services/gateway/gateway-results.xml
             poc/phase3-simulated-agent/simulated-agent-results.xml
           if-no-files-found: error
@@ -119,7 +134,7 @@ jobs:
       - name: Check whitespace and Python syntax
         run: |
           git diff --check
-          python -m compileall -q poc/fastmcp-phase0/src poc/fastmcp-phase0/tests
+          python -m compileall -q src packages/cad_core/src packages/cad_core/tests poc/fastmcp-phase0/src poc/fastmcp-phase0/tests services/gateway/src services/gateway/tests packages/contracts/src poc/phase3-simulated-agent/src poc/phase3-simulated-agent/tests scripts/phase1_1_packaging_smoke.py
       - name: Enforce adapter and domain isolation
         run: |
           python - <<'PY'
@@ -193,6 +208,7 @@ jobs:
       - name: Verify lockfiles and isolated POC lock
         run: |
           uv lock --check
+          uv lock --check --project packages/cad_core
           uv lock --check --project poc/fastmcp-phase0
           uv lock --check --project services/gateway
           uv lock --check --project poc/phase3-simulated-agent

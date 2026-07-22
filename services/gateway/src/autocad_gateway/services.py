@@ -73,7 +73,29 @@ class GatewayError(Exception):
 class _BackendRuntime:
     backend: Any
 
+    async def get_status(self):
+        return await self.backend.status()
+
+    async def health(self):
+        return await self.backend.health()
+
+    async def get_drawing_info(self):
+        return await self.backend.drawing_info()
+
+    async def list_entities(self, *, layer: str | None = None):
+        return await self.backend.entity_list(layer)
+
+    async def get_entity(self, *, entity_id: str):
+        return await self.backend.entity_get(entity_id)
+
+    async def list_layers(self):
+        return await self.backend.layer_list()
+
+    async def get_screenshot(self):
+        return await self.backend.get_screenshot()
+
     async def call(self, operation: str, *args: Any):
+        """Compatibility fallback for write/legacy operations."""
         return await getattr(self.backend, operation)(*args)
 
     async def reinitialize(self):
@@ -124,7 +146,7 @@ class GatewayServices:
     ) -> CadListDevicesOutput:
         if principal.subject != self.owner_subject:
             return CadListDevicesOutput(correlation_id=correlation_id, devices=[])
-        status = await self.backend.status()
+        status = await self.application_service.get_status()
         if not status.ok:
             raise GatewayError("backend_error")
         payload = status.payload if isinstance(status.payload, dict) else {}
@@ -154,20 +176,16 @@ class GatewayServices:
     ) -> CadObserveOutput:
         self._require_device(request.device_id, principal)
 
-        drawing = await self.application_service.execute(
-            CadInvocation(group="drawing", operation="info", arguments={})
-        )
-        entities_result = await self.application_service.execute(
-            CadInvocation(group="entity", operation="list", arguments={})
-        )
-        if not drawing.result.ok or not entities_result.result.ok:
+        drawing_result = await self.application_service.get_drawing_info()
+        entities_result = await self.application_service.list_entities()
+        if not drawing_result.ok or not entities_result.ok:
             raise GatewayError("backend_error")
-        if not isinstance(drawing.result.payload, dict) or not isinstance(
-            entities_result.result.payload, dict
+        if not isinstance(drawing_result.payload, dict) or not isinstance(
+            entities_result.payload, dict
         ):
             raise GatewayError("backend_error")
-        drawing_payload = self._dict_payload(drawing.result.payload)
-        entity_rows = self._dict_payload(entities_result.result.payload).get("entities", [])
+        drawing_payload = self._dict_payload(drawing_result.payload)
+        entity_rows = self._dict_payload(entities_result.payload).get("entities", [])
         if not isinstance(entity_rows, list):
             raise GatewayError("backend_error")
 
@@ -177,28 +195,22 @@ class GatewayServices:
                 continue
             normalized = self._normalize_entity(row)
             if request.observation_level == "detail":
-                detail = await self.application_service.execute(
-                    CadInvocation(
-                        group="entity",
-                        operation="get",
-                        arguments={"entity_id": normalized["entity_id"]},
-                    )
+                detail = await self.application_service.get_entity(
+                    entity_id=normalized["entity_id"]
                 )
-                if not detail.result.ok:
+                if not detail.ok:
                     raise GatewayError("backend_error")
                 normalized = self._normalize_entity(
-                    {**row, **self._dict_payload(detail.result.payload)}
+                    {**row, **self._dict_payload(detail.payload)}
                 )
             entities.append(normalized)
         entities.sort(key=lambda item: item["entity_id"])
 
         public_drawing = self._normalize_drawing(drawing_payload)
-        layer_result = await self.application_service.execute(
-            CadInvocation(group="layer", operation="list", arguments={})
-        )
-        if not layer_result.result.ok or not isinstance(layer_result.result.payload, dict):
+        layer_result = await self.application_service.list_layers()
+        if not layer_result.ok or not isinstance(layer_result.payload, dict):
             raise GatewayError("backend_error")
-        layer_payload = self._dict_payload(layer_result.result.payload)
+        layer_payload = self._dict_payload(layer_result.payload)
         public_drawing["layers"] = sorted(
             str(layer.get("name"))
             for layer in layer_payload.get("layers", [])
@@ -208,9 +220,7 @@ class GatewayServices:
         preview_bytes = None
         artifact_id = None
         if request.include_preview_image:
-            screenshot = await self.application_service.execute(
-                CadInvocation(group="view", operation="get_screenshot", arguments={})
-            )
+            screenshot = await self.application_service.get_screenshot()
             if not screenshot.attachments:
                 raise GatewayError("backend_error")
             try:
@@ -294,7 +304,7 @@ class GatewayServices:
         self, device_id: str, principal: Principal
     ) -> str:
         self._require_device(device_id, principal)
-        status = await self.backend.status()
+        status = await self.application_service.get_status()
         if not status.ok:
             raise GatewayError("backend_error")
         payload = status.payload if isinstance(status.payload, dict) else {}

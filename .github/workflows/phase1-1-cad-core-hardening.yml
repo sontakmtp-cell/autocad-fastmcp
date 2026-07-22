@@ -1,0 +1,194 @@
+name: Phase 1.1 CAD Core Hardening
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "packages/cad_core/**"
+      - "packages/contracts/**"
+      - "poc/fastmcp-phase0/**"
+      - "poc/phase3-simulated-agent/**"
+      - "services/gateway/**"
+      - "src/autocad_mcp/**"
+      - "tests/**"
+      - "scripts/phase1_1_packaging_smoke.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/phase1-1-cad-core-hardening.yml"
+  pull_request:
+    paths:
+      - "packages/cad_core/**"
+      - "packages/contracts/**"
+      - "poc/fastmcp-phase0/**"
+      - "poc/phase3-simulated-agent/**"
+      - "services/gateway/**"
+      - "src/autocad_mcp/**"
+      - "tests/**"
+      - "scripts/phase1_1_packaging_smoke.py"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/phase1-1-cad-core-hardening.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  wheel-clean-install:
+    name: Wheel clean install / ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+      - name: Build root and CAD Core wheels from one revision
+        run: |
+          python -c "from pathlib import Path; Path('wheelhouse').mkdir(exist_ok=True)"
+          uv build --wheel --out-dir wheelhouse packages/cad_core
+          uv build --wheel --out-dir wheelhouse .
+      - name: Install from wheel artifacts outside the source checkout
+        run: python scripts/phase1_1_packaging_smoke.py --artifact-dir wheelhouse
+      - name: Upload reference wheels
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-1-wheels
+          path: wheelhouse/*.whl
+          if-no-files-found: error
+
+  standalone-core:
+    name: Standalone CAD Core / ${{ matrix.os }} / Python 3.12
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Sync package-only lock
+        run: uv sync --locked --group test --project packages/cad_core
+      - name: Run package-local isolation tests
+        run: uv run --locked --group test --project packages/cad_core pytest packages/cad_core/tests -q
+      - name: Build standalone wheel
+        run: uv build --wheel packages/cad_core
+
+  phase0-compatibility:
+    name: Phase 0 parity / ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: poc/fastmcp-phase0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+      - name: Sync isolated Phase 0 lock
+        run: uv sync --locked --group test
+      - name: Verify exact FastMCP version
+        run: uv run --locked --group test python -c "import fastmcp; assert fastmcp.__version__ == '3.4.4'"
+      - name: Run Phase 0 and dual-adapter parity tests
+        run: uv run --locked --group test pytest -q --junitxml=phase1-1-phase0-results.xml
+      - name: Build Phase 0 wheel
+        run: uv build --wheel
+      - name: Verify public schema snapshots
+        run: git diff --exit-code -- snapshots
+      - name: Upload reference Phase 0 JUnit
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-1-phase0-junit
+          path: poc/fastmcp-phase0/phase1-1-phase0-results.xml
+          if-no-files-found: error
+
+  full-regression:
+    name: Root, Gateway and simulated Agent regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Test and build root project
+        run: |
+          uv sync --locked --all-groups
+          uv run pytest tests/ -q --junitxml=root-results.xml
+          uv build --wheel
+      - name: Test and build standalone CAD Core
+        working-directory: packages/cad_core
+        run: |
+          uv sync --locked --group test
+          uv run --locked --group test pytest -q --junitxml=cad-core-results.xml
+          uv build --wheel
+      - name: Test and build Gateway
+        working-directory: services/gateway
+        run: |
+          uv sync --locked --group test
+          uv run --locked --group test pytest -q --junitxml=gateway-results.xml
+          uv build --wheel
+      - name: Build shared contracts
+        working-directory: packages/contracts
+        run: uv build --wheel
+      - name: Test and build simulated Agent
+        working-directory: poc/phase3-simulated-agent
+        run: |
+          uv sync --locked --group test
+          uv run --locked --group test pytest -q --junitxml=simulated-agent-results.xml
+          uv build --wheel
+      - name: Upload Phase 1.1 regression JUnit
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-1-regression-junit
+          path: |
+            root-results.xml
+            packages/cad_core/cad-core-results.xml
+            services/gateway/gateway-results.xml
+            poc/phase3-simulated-agent/simulated-agent-results.xml
+          if-no-files-found: error
+
+  static-locks:
+    name: Static and lock checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Check whitespace and Python syntax
+        run: |
+          git diff --check
+          python -m compileall -q src packages/cad_core/src packages/cad_core/tests poc/fastmcp-phase0/src poc/fastmcp-phase0/tests services/gateway/src services/gateway/tests packages/contracts/src poc/phase3-simulated-agent/src poc/phase3-simulated-agent/tests scripts/phase1_1_packaging_smoke.py
+      - name: Check all relevant lockfiles
+        run: |
+          uv lock --check
+          uv lock --check --project packages/cad_core
+          uv lock --check --project poc/fastmcp-phase0
+          uv lock --check --project services/gateway
+          uv lock --check --project poc/phase3-simulated-agent

@@ -80,11 +80,36 @@ class UnknownCadOperation(ValueError):
         super().__init__(f"Unknown {group} operation: {operation}")
 
 
-class CadRuntimePort(Protocol):
-    """Structural port for the backend operations used by the service."""
+class CadReadPort(Protocol):
+    """Typed read-only capabilities required by the public facade and Phase 4."""
+
+    async def get_status(self) -> CommandResult:
+        """Return runtime status without string dispatch."""
+
+    async def health(self) -> CommandResult:
+        """Perform a side-effect-free runtime health check."""
+
+    async def get_drawing_info(self) -> CommandResult:
+        """Return metadata for the active drawing."""
+
+    async def list_entities(self, *, layer: str | None = None) -> CommandResult:
+        """List entities, optionally restricted to one layer."""
+
+    async def get_entity(self, *, entity_id: str) -> CommandResult:
+        """Read one entity by stable identifier."""
+
+    async def list_layers(self) -> CommandResult:
+        """List drawing layers."""
+
+    async def get_screenshot(self) -> CommandResult:
+        """Return a base64 PNG payload when supported."""
+
+
+class CadRuntimePort(CadReadPort, Protocol):
+    """Typed reads plus a temporary compatibility fallback for legacy writes."""
 
     async def call(self, operation: str, *args: Any) -> CommandResult:
-        """Call one existing backend operation by its stable method name."""
+        """Compatibility fallback for operations not migrated to typed methods."""
 
     async def reinitialize(self) -> CommandResult:
         """Reset and initialize the active runtime."""
@@ -126,6 +151,44 @@ class CadApplicationService:
         self.runtime = runtime
         self.advanced_annotation = advanced_annotation
 
+    async def get_status(self) -> CommandResult:
+        """Typed status path for public facades and the future Desktop Agent."""
+        return await self.runtime.get_status()
+
+    async def health(self) -> CommandResult:
+        """Typed health path with the legacy normalized success envelope."""
+        result = await self.runtime.health()
+        if result.ok:
+            payload = result.payload if isinstance(result.payload, dict) else {}
+            return CommandResult(ok=True, payload={"ok": True, **payload})
+        return result
+
+    async def get_drawing_info(self) -> CommandResult:
+        """Typed drawing metadata path."""
+        return await self.runtime.get_drawing_info()
+
+    async def list_entities(self, *, layer: str | None = None) -> CommandResult:
+        """Typed entity-list path."""
+        return await self.runtime.list_entities(layer=layer)
+
+    async def get_entity(self, *, entity_id: str) -> CommandResult:
+        """Typed single-entity read path."""
+        return await self.runtime.get_entity(entity_id=entity_id)
+
+    async def list_layers(self) -> CommandResult:
+        """Typed layer-list path."""
+        return await self.runtime.list_layers()
+
+    async def get_screenshot(self) -> CadServiceResponse:
+        """Typed screenshot path with a transport-neutral attachment."""
+        result = await self.runtime.get_screenshot()
+        if result.ok and isinstance(result.payload, str) and result.payload:
+            return CadServiceResponse(
+                CommandResult(ok=True, payload={"screenshot": "attached"}),
+                (CadImageAttachment(mime_type="image/png", data=result.payload),),
+            )
+        return CadServiceResponse(result)
+
     async def execute(self, invocation: CadInvocation) -> CadServiceResponse:
         """Dispatch one invocation and optionally attach a runtime screenshot."""
 
@@ -162,7 +225,7 @@ class CadApplicationService:
 
         if not invocation.include_screenshot:
             return CadServiceResponse(result)
-        screenshot = await self.runtime.call("get_screenshot")
+        screenshot = await self.runtime.get_screenshot()
         if screenshot.ok and isinstance(screenshot.payload, str) and screenshot.payload:
             return CadServiceResponse(
                 result,
@@ -176,7 +239,7 @@ class CadApplicationService:
         if operation == "create":
             return await self.runtime.call("drawing_create", data.get("name"))
         if operation == "info":
-            return await self.runtime.call("drawing_info")
+            return await self.get_drawing_info()
         if operation == "save":
             return await self.runtime.call("drawing_save", data.get("path"))
         if operation == "save_as_dxf":
@@ -216,11 +279,11 @@ class CadApplicationService:
         if operation == "create_hatch":
             return await self.runtime.call("create_hatch", args.get("entity_id"), data.get("pattern", "ANSI31"))
         if operation == "list":
-            return await self.runtime.call("entity_list", args.get("layer"))
+            return await self.list_entities(layer=args.get("layer"))
         if operation == "count":
             return await self.runtime.call("entity_count", args.get("layer"))
         if operation == "get":
-            return await self.runtime.call("entity_get", args.get("entity_id"))
+            return await self.get_entity(entity_id=args.get("entity_id"))
         if operation == "copy":
             return await self.runtime.call("entity_copy", args.get("entity_id"), data["dx"], data["dy"])
         if operation == "move":
@@ -247,7 +310,7 @@ class CadApplicationService:
         data = invocation.arguments.get("data") or {}
         operation = invocation.operation
         if operation == "list":
-            return await self.runtime.call("layer_list")
+            return await self.list_layers()
         if operation == "create":
             return await self.runtime.call("layer_create", data["name"], data.get("color", "white"), data.get("linetype", "CONTINUOUS"))
         if operation == "set_current":
@@ -327,26 +390,16 @@ class CadApplicationService:
         if operation == "zoom_window":
             return CadServiceResponse(await self.runtime.call("zoom_window", args.get("x1"), args.get("y1"), args.get("x2"), args.get("y2")))
         if operation == "get_screenshot":
-            result = await self.runtime.call("get_screenshot")
-            if result.ok and isinstance(result.payload, str) and result.payload:
-                return CadServiceResponse(
-                    CommandResult(ok=True, payload={"screenshot": "attached"}),
-                    (CadImageAttachment(mime_type="image/png", data=result.payload),),
-                )
-            return CadServiceResponse(result)
+            return await self.get_screenshot()
         raise UnknownCadOperation("view", operation)
 
     async def _system(self, invocation: CadInvocation) -> CommandResult:
         data = invocation.arguments.get("data") or {}
         operation = invocation.operation
         if operation in {"status", "get_backend"}:
-            return await self.runtime.call("status")
+            return await self.get_status()
         if operation == "health":
-            result = await self.runtime.call("health")
-            if result.ok:
-                payload = result.payload if isinstance(result.payload, dict) else {}
-                return CommandResult(ok=True, payload={"ok": True, **payload})
-            return result
+            return await self.health()
         if operation == "init":
             return await self.runtime.reinitialize()
         if operation == "execute_lisp":

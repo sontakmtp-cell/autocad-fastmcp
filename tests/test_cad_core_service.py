@@ -23,14 +23,53 @@ PNG = base64.b64encode(b"png").decode("ascii")
 
 
 class FakeRuntime:
+    TYPED_READ_NAMES = {
+        "status",
+        "health",
+        "drawing_info",
+        "entity_list",
+        "entity_get",
+        "layer_list",
+        "get_screenshot",
+    }
+
     def __init__(self) -> None:
         self.calls: list[tuple[str, tuple[Any, ...]]] = []
+        self.fallback_calls: list[tuple[str, tuple[Any, ...]]] = []
         self.reinitialize_calls = 0
 
-    async def call(self, operation: str, *args: Any) -> CommandResult:
+    def _typed_result(self, operation: str, *args: Any) -> CommandResult:
         self.calls.append((operation, args))
         if operation == "get_screenshot":
             return CommandResult(ok=True, payload=PNG)
+        return CommandResult(ok=True, payload={"operation": operation, "args": args})
+
+    async def get_status(self) -> CommandResult:
+        return self._typed_result("status")
+
+    async def health(self) -> CommandResult:
+        return self._typed_result("health")
+
+    async def get_drawing_info(self) -> CommandResult:
+        return self._typed_result("drawing_info")
+
+    async def list_entities(self, *, layer: str | None = None) -> CommandResult:
+        return self._typed_result("entity_list", layer)
+
+    async def get_entity(self, *, entity_id: str) -> CommandResult:
+        return self._typed_result("entity_get", entity_id)
+
+    async def list_layers(self) -> CommandResult:
+        return self._typed_result("layer_list")
+
+    async def get_screenshot(self) -> CommandResult:
+        return self._typed_result("get_screenshot")
+
+    async def call(self, operation: str, *args: Any) -> CommandResult:
+        if operation in self.TYPED_READ_NAMES:
+            raise AssertionError(f"typed read used compatibility fallback: {operation}")
+        self.calls.append((operation, args))
+        self.fallback_calls.append((operation, args))
         return CommandResult(ok=True, payload={"operation": operation, "args": args})
 
     async def reinitialize(self) -> CommandResult:
@@ -123,6 +162,31 @@ async def test_service_dispatches_legacy_operations(
 
     assert response.result.ok is True
     assert runtime.calls[-1] == (expected_method, expected_args)
+
+
+@pytest.mark.asyncio
+async def test_phase4_read_operations_never_use_generic_string_dispatch():
+    runtime = FakeRuntime()
+    service = CadApplicationService(runtime)
+
+    await service.get_status()
+    await service.health()
+    await service.get_drawing_info()
+    await service.list_entities(layer="READ")
+    await service.get_entity(entity_id="E-1")
+    await service.list_layers()
+    await service.get_screenshot()
+
+    assert runtime.fallback_calls == []
+    assert runtime.calls == [
+        ("status", ()),
+        ("health", ()),
+        ("drawing_info", ()),
+        ("entity_list", ("READ",)),
+        ("entity_get", ("E-1",)),
+        ("layer_list", ()),
+        ("get_screenshot", ()),
+    ]
 
 
 @pytest.mark.asyncio

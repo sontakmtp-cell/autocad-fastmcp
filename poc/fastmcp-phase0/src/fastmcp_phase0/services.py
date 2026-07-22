@@ -69,12 +69,34 @@ def is_valid_png(payload: Any) -> bool:
 
 
 class _BackendRuntime:
-    """Small Phase 0 runtime adapter for the shared application service."""
+    """Typed Phase 0 reads plus the compatibility fallback used by fixture writes."""
 
     def __init__(self, backend: EzdxfBackend) -> None:
         self.backend = backend
 
+    async def get_status(self) -> CommandResult:
+        return await self.backend.status()
+
+    async def health(self) -> CommandResult:
+        return await self.backend.health()
+
+    async def get_drawing_info(self) -> CommandResult:
+        return await self.backend.drawing_info()
+
+    async def list_entities(self, *, layer: str | None = None) -> CommandResult:
+        return await self.backend.entity_list(layer)
+
+    async def get_entity(self, *, entity_id: str) -> CommandResult:
+        return await self.backend.entity_get(entity_id)
+
+    async def list_layers(self) -> CommandResult:
+        return await self.backend.layer_list()
+
+    async def get_screenshot(self) -> CommandResult:
+        return await self.backend.get_screenshot()
+
     async def call(self, operation: str, *args: Any) -> CommandResult:
+        """Compatibility fallback for fixture writes not typed in Phase 1.1."""
         return await getattr(self.backend, operation)(*args)
 
     async def reinitialize(self) -> CommandResult:
@@ -84,10 +106,17 @@ class _BackendRuntime:
 class Phase0Services:
     """Fresh-per-test store backed by a real, headless EzdxfBackend fixture."""
 
-    def __init__(self, backend: EzdxfBackend | None = None) -> None:
+    def __init__(
+        self,
+        backend: EzdxfBackend | None = None,
+        *,
+        application_service: CadApplicationService | None = None,
+    ) -> None:
         self.backend = backend or EzdxfBackend()
         self.runtime = _BackendRuntime(self.backend)
-        self.application_service = CadApplicationService(runtime=self.runtime)
+        self.application_service = application_service or CadApplicationService(
+            runtime=self.runtime
+        )
         self.calls: list[dict[str, str]] = []
         self.force_backend_error = False
         self.raise_unexpected = False
@@ -135,10 +164,9 @@ class Phase0Services:
             ),
             "CIRCLE creation",
         )
-        screenshot = await self._required_fixture_step(
-            CadInvocation(group="view", operation="get_screenshot", arguments={}),
-            "preview rendering",
-        )
+        screenshot = await self.application_service.get_screenshot()
+        if not screenshot.result.ok:
+            raise RuntimeError("DXF fixture initialization failed at preview rendering")
         png_attachment = next(
             (item for item in screenshot.attachments if item.mime_type == "image/png"),
             None,
@@ -229,17 +257,13 @@ class Phase0Services:
         return CommandResult(ok=True, payload=output.model_dump(mode="json"))
 
     async def _observe_backend(self) -> tuple[dict[str, Any], dict[str, Any]] | None:
-        drawing = await self.application_service.execute(
-            CadInvocation(group="drawing", operation="info", arguments={})
-        )
-        if not drawing.result.ok or not isinstance(drawing.result.payload, dict):
+        drawing = await self.application_service.get_drawing_info()
+        if not drawing.ok or not isinstance(drawing.payload, dict):
             return None
-        entities = await self.application_service.execute(
-            CadInvocation(group="entity", operation="list", arguments={})
-        )
-        if not entities.result.ok or not isinstance(entities.result.payload, dict):
+        entities = await self.application_service.list_entities()
+        if not entities.ok or not isinstance(entities.payload, dict):
             return None
-        return drawing.result.payload, entities.result.payload
+        return drawing.payload, entities.payload
 
     def _build_snapshot(
         self,

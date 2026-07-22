@@ -72,3 +72,21 @@
 - Không thay OAuth Phase 4, launcher production, remote policy, LISP hay cấu hình deploy.
 - Không cần AutoCAD thật cho acceptance Phase 1; ezdxf, fake runtime và regression File IPC là đủ.
 - Không deploy sau khi hoàn thành; rollback bằng cách revert commit chuyển routing sang service, trong khi backend và legacy entrypoint vẫn còn nguyên.
+
+## Post-implementation hardening (Phase 1.1)
+
+Phase 1.1 was added after Phase 1–3 to close three implementation debts without
+rewriting those phases:
+
+- the internal `cad_core` import is now distributed by the project-specific
+  `autocad-cad-core` wheel and installed beside the `autocad-mcp` wheel from a
+  local artifact directory;
+- Phase 4 read capabilities use explicit typed port methods instead of backend
+  method-name strings and positional `*args`;
+- a test-only shared-runtime harness compares the legacy compatibility path and
+  the FastMCP/public facade path, while production continues to expose only one
+  selected facade at a time.
+
+The implementation and hosted results are recorded in
+[`phase1.1-cad-core-hardening-evidence.md`](phase1.1-cad-core-hardening-evidence.md).
+The original Phase 1 conclusions above remain historical context.
