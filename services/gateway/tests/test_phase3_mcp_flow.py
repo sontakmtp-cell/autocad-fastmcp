@@ -66,6 +66,18 @@ async def _stop_process(
         await asyncio.wait_for(process.wait(), timeout=timeout)
 
 
+async def _read_process_stderr(
+    process: asyncio.subprocess.Process, *, timeout: float = 2.0
+) -> str:
+    if process.stderr is None:
+        return ""
+    try:
+        stderr = await asyncio.wait_for(process.stderr.read(), timeout=timeout)
+    except asyncio.TimeoutError:
+        return "<stderr read timed out>"
+    return stderr.decode(errors="replace")
+
+
 class LiveFixtureAgent:
     def __init__(self, url: str, device_id: str, token: str, ssl_context=None) -> None:
         self.url = url
@@ -453,17 +465,14 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
                 "simulator environment sync failed: "
                 + sync_stderr.decode(errors="replace")[-4000:]
             )
+        simulator_python = Path(sync_environment["UV_PROJECT_ENVIRONMENT"]) / (
+            "Scripts/python.exe" if os.name == "nt" else "bin/python"
+        )
+        assert simulator_python.is_file()
         for device_id, token in config.fixture_tokens:
             processes.append(
                 await asyncio.create_subprocess_exec(
-                    "uv",
-                    "run",
-                    "--project",
-                    str(simulator_project),
-                    "--locked",
-                    "--offline",
-                    "--no-sync",
-                    "python",
+                    str(simulator_python),
                     "-m",
                     "autocad_phase3_sim_agent",
                     "--url",
@@ -489,11 +498,7 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
             )
             diagnostics = []
             for process in processes:
-                stderr = (
-                    (await process.stderr.read()).decode(errors="replace")
-                    if process.stderr is not None
-                    else ""
-                )
+                stderr = await _read_process_stderr(process)
                 diagnostics.append(
                     f"returncode={process.returncode}: {stderr[-2000:]}"
                 )
