@@ -58,7 +58,7 @@
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
-        "device_id": {"type": "string"},
+        "device_id": {"maxLength": 128, "minLength": 1, "type": "string"},
         "include_preview_image": {"default": false, "type": "boolean"},
         "observation_level": {"default": "summary", "enum": ["summary", "detail"], "type": "string"}
       },
@@ -109,8 +109,8 @@
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
-        "event_cursor": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": null},
-        "job_id": {"type": "string"}
+        "event_cursor": {"anyOf": [{"maxLength": 128, "type": "string"}, {"type": "null"}], "default": null},
+        "job_id": {"maxLength": 128, "minLength": 1, "type": "string"}
       },
       "required": ["job_id"],
       "type": "object"

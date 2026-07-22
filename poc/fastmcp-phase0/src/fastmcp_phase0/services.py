@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import base64
+import binascii
+import hashlib
 import json
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any
 
@@ -20,8 +23,11 @@ from .contracts import (
     CadObserveInput,
     CadObserveOutput,
     DeviceInfo,
-    JobError,
 )
+
+
+MAX_PREVIEW_BYTES = 2_000_000
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
 @dataclass(frozen=True)
@@ -30,6 +36,36 @@ class Principal:
 
     subject: str
     scopes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ArtifactPayload:
+    """Transport-neutral artifact bytes plus the MIME type observed by the service."""
+
+    mime_type: str
+    data: Any
+
+
+@dataclass(frozen=True)
+class _OwnedSnapshot:
+    owner_subject: str
+    content: str
+
+
+@dataclass(frozen=True)
+class _OwnedArtifact:
+    owner_subject: str
+    payload: ArtifactPayload
+
+
+def is_valid_png(payload: Any) -> bool:
+    """Return whether payload is a non-empty, bounded PNG byte sequence."""
+
+    return (
+        isinstance(payload, bytes)
+        and len(PNG_SIGNATURE) <= len(payload) <= MAX_PREVIEW_BYTES
+        and payload.startswith(PNG_SIGNATURE)
+    )
 
 
 class _BackendRuntime:
@@ -46,45 +82,76 @@ class _BackendRuntime:
 
 
 class Phase0Services:
-    """Fresh-per-test fake store with one headless DXF fixture."""
+    """Fresh-per-test store backed by a real, headless EzdxfBackend fixture."""
 
-    def __init__(self) -> None:
-        self.backend = EzdxfBackend()
+    def __init__(self, backend: EzdxfBackend | None = None) -> None:
+        self.backend = backend or EzdxfBackend()
         self.runtime = _BackendRuntime(self.backend)
         self.application_service = CadApplicationService(runtime=self.runtime)
         self.calls: list[dict[str, str]] = []
         self.force_backend_error = False
         self.raise_unexpected = False
-        self._preview_png: bytes = b""
+        self._fixture_preview = ArtifactPayload(mime_type="image/png", data=b"")
+        self._snapshots: dict[str, _OwnedSnapshot] = {}
+        self._artifacts: dict[str, _OwnedArtifact] = {}
         self._initialized = False
 
+    @property
+    def materialized_snapshot_count(self) -> int:
+        return len(self._snapshots)
+
+    async def _required_fixture_step(
+        self,
+        invocation: CadInvocation,
+        stage: str,
+    ):
+        response = await self.application_service.execute(invocation)
+        if not response.result.ok:
+            raise RuntimeError(f"DXF fixture initialization failed at {stage}")
+        return response
+
     async def initialize(self) -> None:
-        initialized = await self.application_service.execute(
-            CadInvocation(group="system", operation="init", arguments={})
+        self._initialized = False
+        self._snapshots.clear()
+        self._artifacts.clear()
+
+        await self._required_fixture_step(
+            CadInvocation(group="system", operation="init", arguments={}),
+            "backend initialization",
         )
-        if not initialized.result.ok:
-            raise RuntimeError("failed to initialize DXF fixture")
-        await self.application_service.execute(
+        await self._required_fixture_step(
             CadInvocation(
                 group="entity",
                 operation="create_line",
                 arguments={"x1": 0, "y1": 0, "x2": 100, "y2": 0},
-            )
+            ),
+            "LINE creation",
         )
-        await self.application_service.execute(
+        await self._required_fixture_step(
             CadInvocation(
                 group="entity",
                 operation="create_circle",
-                arguments={
-                    "data": {"cx": 50, "cy": 25, "radius": 10},
-                },
-            )
+                arguments={"data": {"cx": 50, "cy": 25, "radius": 10}},
+            ),
+            "CIRCLE creation",
         )
-        screenshot = await self.application_service.execute(
-            CadInvocation(group="view", operation="get_screenshot", arguments={})
+        screenshot = await self._required_fixture_step(
+            CadInvocation(group="view", operation="get_screenshot", arguments={}),
+            "preview rendering",
         )
-        if screenshot.attachments:
-            self._preview_png = base64.b64decode(screenshot.attachments[0].data)
+        png_attachment = next(
+            (item for item in screenshot.attachments if item.mime_type == "image/png"),
+            None,
+        )
+        if png_attachment is None:
+            raise RuntimeError("DXF fixture initialization failed at preview validation")
+        try:
+            preview_bytes = base64.b64decode(png_attachment.data, validate=True)
+        except (binascii.Error, ValueError, TypeError):
+            raise RuntimeError("DXF fixture initialization failed at preview validation") from None
+        if not is_valid_png(preview_bytes):
+            raise RuntimeError("DXF fixture initialization failed at preview validation")
+        self._fixture_preview = ArtifactPayload(mime_type="image/png", data=preview_bytes)
         self._initialized = True
 
     def _record(self, operation: str, principal: Principal, correlation_id: str) -> None:
@@ -109,6 +176,22 @@ class Phase0Services:
         if not self._initialized:
             return CommandResult(ok=False, error="fixture is not initialized", error_code="backend_error")
         return None
+
+    @staticmethod
+    def _safe_backend_failure() -> CommandResult:
+        return CommandResult(
+            ok=False,
+            error="backend observation failed",
+            error_code="backend_error",
+        )
+
+    @staticmethod
+    def _safe_string_list(value: Any, *, limit: int = 256) -> list[str] | None:
+        if not isinstance(value, list) or len(value) > limit:
+            return None
+        if not all(isinstance(item, str) and len(item) <= 255 for item in value):
+            return None
+        return value
 
     async def list_devices(
         self,
@@ -145,6 +228,78 @@ class Phase0Services:
         )
         return CommandResult(ok=True, payload=output.model_dump(mode="json"))
 
+    async def _observe_backend(self) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        drawing = await self.application_service.execute(
+            CadInvocation(group="drawing", operation="info", arguments={})
+        )
+        if not drawing.result.ok or not isinstance(drawing.result.payload, dict):
+            return None
+        entities = await self.application_service.execute(
+            CadInvocation(group="entity", operation="list", arguments={})
+        )
+        if not entities.result.ok or not isinstance(entities.result.payload, dict):
+            return None
+        return drawing.result.payload, entities.result.payload
+
+    def _build_snapshot(
+        self,
+        *,
+        device_id: str,
+        correlation_id: str,
+        drawing: dict[str, Any],
+        entity_query: dict[str, Any],
+    ) -> tuple[str, str, str] | None:
+        raw_entities = entity_query.get("entities")
+        drawing_count = drawing.get("entity_count")
+        query_count = entity_query.get("count")
+        if not isinstance(raw_entities, list):
+            return None
+        if not isinstance(drawing_count, int) or isinstance(drawing_count, bool):
+            return None
+        if not isinstance(query_count, int) or isinstance(query_count, bool):
+            return None
+        if drawing_count != query_count or query_count != len(raw_entities):
+            return None
+
+        entity_types: list[str] = []
+        for entity in raw_entities:
+            if not isinstance(entity, dict):
+                return None
+            entity_type = entity.get("type")
+            if not isinstance(entity_type, str) or not entity_type:
+                return None
+            entity_types.append(entity_type)
+
+        layers = self._safe_string_list(drawing.get("layers"))
+        blocks = self._safe_string_list(drawing.get("blocks"))
+        dxf_version = drawing.get("dxf_version")
+        if layers is None or blocks is None or not isinstance(dxf_version, str):
+            return None
+
+        observed_state = {
+            "device_id": device_id,
+            "entity_count": drawing_count,
+            "entity_summary": dict(sorted(Counter(entity_types).items())),
+            "layers": layers,
+            "blocks": blocks,
+            "dxf_version": dxf_version,
+        }
+        canonical_state = json.dumps(
+            observed_state,
+            ensure_ascii=True,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        revision = hashlib.sha256(canonical_state.encode("utf-8")).hexdigest()
+        snapshot_id = f"snapshot-{device_id}-{correlation_id}"
+        summary = {
+            "contract_version": CONTRACT_VERSION,
+            "snapshot_id": snapshot_id,
+            "document_revision": revision,
+            **observed_state,
+        }
+        return snapshot_id, revision, json.dumps(summary, ensure_ascii=True, sort_keys=True)
+
     async def observe(
         self,
         request: CadObserveInput,
@@ -157,18 +312,26 @@ class Phase0Services:
             return failure
         if request.device_id not in {"cad-online-01", "cad-offline-01"}:
             return CommandResult(ok=False, error="device does not exist", error_code="not_found")
-        observed = await self.application_service.execute(
-            CadInvocation(group="drawing", operation="info", arguments={})
+
+        observed = await self._observe_backend()
+        if observed is None:
+            return self._safe_backend_failure()
+        snapshot_data = self._build_snapshot(
+            device_id=request.device_id,
+            correlation_id=correlation_id,
+            drawing=observed[0],
+            entity_query=observed[1],
         )
-        if not observed.result.ok:
-            return observed.result
-        snapshot_id = f"snapshot-{request.device_id}"
-        artifact_id = f"artifact-{request.device_id}-preview"
+        if snapshot_data is None:
+            return self._safe_backend_failure()
+
+        snapshot_id, revision, snapshot_json = snapshot_data
+        artifact_id = f"artifact-{snapshot_id}-preview"
         output = CadObserveOutput(
             correlation_id=correlation_id,
             device_id=request.device_id,
             snapshot_id=snapshot_id,
-            document_revision="revision-001",
+            document_revision=revision,
             summary_uri=f"cad://snapshots/{snapshot_id}/summary",
             artifact_refs=[
                 ArtifactRef(
@@ -178,6 +341,10 @@ class Phase0Services:
                 )
             ],
         )
+
+        # Materialize only after both backend observations and output validation succeed.
+        self._snapshots[snapshot_id] = _OwnedSnapshot(principal.subject, snapshot_json)
+        self._artifacts[artifact_id] = _OwnedArtifact(principal.subject, self._fixture_preview)
         return CommandResult(ok=True, payload=output.model_dump(mode="json"))
 
     async def get_job(
@@ -213,21 +380,26 @@ class Phase0Services:
             return CommandResult(ok=False, error="job does not exist", error_code="not_found")
         return CommandResult(ok=True, payload=output.model_dump(mode="json"))
 
-    async def read_snapshot(self, snapshot_id: str, principal: Principal) -> CommandResult:
-        if snapshot_id not in {"snapshot-cad-online-01", "snapshot-cad-offline-01"}:
+    async def read_snapshot(
+        self,
+        snapshot_id: str,
+        principal: Principal,
+        correlation_id: str,
+    ) -> CommandResult:
+        self._record("cad_snapshot_summary", principal, correlation_id)
+        stored = self._snapshots.get(snapshot_id)
+        if stored is None or stored.owner_subject != principal.subject:
             return CommandResult(ok=False, error="snapshot does not exist", error_code="not_found")
-        summary = {
-            "contract_version": CONTRACT_VERSION,
-            "snapshot_id": snapshot_id,
-            "document_revision": "revision-001",
-            "entity_summary": {"LINE": 1, "CIRCLE": 1},
-        }
-        return CommandResult(ok=True, payload=json.dumps(summary, sort_keys=True))
+        return CommandResult(ok=True, payload=stored.content)
 
-    async def read_artifact(self, artifact_id: str, principal: Principal) -> CommandResult:
-        if artifact_id not in {
-            "artifact-cad-online-01-preview",
-            "artifact-cad-offline-01-preview",
-        }:
+    async def read_artifact(
+        self,
+        artifact_id: str,
+        principal: Principal,
+        correlation_id: str,
+    ) -> CommandResult:
+        self._record("cad_artifact", principal, correlation_id)
+        stored = self._artifacts.get(artifact_id)
+        if stored is None or stored.owner_subject != principal.subject:
             return CommandResult(ok=False, error="artifact does not exist", error_code="not_found")
-        return CommandResult(ok=True, payload=self._preview_png)
+        return CommandResult(ok=True, payload=stored.payload)

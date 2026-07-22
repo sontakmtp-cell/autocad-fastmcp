@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 CONTRACT_VERSION = "cad.mcp/0.1"
 
+StrictBoolean = Annotated[bool, Field(strict=True)]
+DeviceId = Annotated[str, Field(strict=True, min_length=1, max_length=128)]
+JobId = Annotated[str, Field(strict=True, min_length=1, max_length=128)]
+EventCursor = Annotated[str, Field(strict=True, max_length=128)]
+ObservationLevel = Literal["summary", "detail"]
+
 
 class StrictModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
 
 class CadListDevicesInput(StrictModel):
-    online_only: bool = False
+    online_only: StrictBoolean = False
     capability: str | None = None
 
 
@@ -34,9 +40,9 @@ class CadListDevicesOutput(StrictModel):
 
 
 class CadObserveInput(StrictModel):
-    device_id: str = Field(min_length=1, max_length=128)
-    observation_level: Literal["summary", "detail"] = "summary"
-    include_preview_image: bool = False
+    device_id: DeviceId
+    observation_level: ObservationLevel = "summary"
+    include_preview_image: StrictBoolean = False
 
 
 class ArtifactRef(StrictModel):
@@ -52,12 +58,14 @@ class CadObserveOutput(StrictModel):
     snapshot_id: str
     document_revision: str
     summary_uri: str
+    # Empty is allowed for structured-only observations. The public handler must
+    # explicitly fail with preview_unavailable when an image was requested.
     artifact_refs: list[ArtifactRef]
 
 
 class CadGetJobInput(StrictModel):
-    job_id: str = Field(min_length=1, max_length=128)
-    event_cursor: str | None = Field(default=None, max_length=128)
+    job_id: JobId
+    event_cursor: EventCursor | None = None
 
 
 class JobError(StrictModel):

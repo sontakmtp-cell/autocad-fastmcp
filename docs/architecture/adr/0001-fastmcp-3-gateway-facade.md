@@ -1,48 +1,67 @@
 # ADR 0001 — FastMCP 3 Gateway facade boundary
 
-- Status: proposed after Phase 0 spike; Phase 1 is still gated
-- Date: 2026-07-21
+- Status: accepted; regression revalidated after Phase 1–3
+- Original decision date: 2026-07-21
+- Current review date: 2026-07-22
 - Scope: Gateway MCP interface only
 
 ## Context
 
-The legacy server imports the FastMCP implementation bundled in
-`mcp==1.26.0`. The proposed multi-user Gateway needs a separate compatibility
-check against PrefectHQ FastMCP `3.4.4`, whose dependency graph includes a
-newer Starlette line. The legacy entrypoint and root lockfile must therefore
-remain untouched.
+At the Phase 0 decision point, the legacy server used the FastMCP implementation
+bundled in the root MCP SDK dependency. The proposed multi-user Gateway needed a
+separate compatibility check against PrefectHQ FastMCP `3.4.4`, whose dependency
+graph included a newer Starlette line. The compatibility spike was therefore
+isolated under `poc/fastmcp-phase0/` with its own project and lockfile.
+
+Phase 1, Phase 2, and Phase 3 have since been merged into `main`. They introduced
+the shared CAD application service, the production Gateway facade, durable
+SQLite/WebSocket behavior, and the simulated Agent. This ADR now distinguishes
+the historical Phase 0 decision from the current regression status; it does not
+claim that root or legacy files remained unchanged after later phases.
 
 ## Decision
 
 1. FastMCP belongs only to the Gateway MCP interface. Domain contracts and
-   application services do not import FastMCP types or decorators.
-2. The Gateway facade pins `fastmcp==3.4.4` in its own project and lockfile.
+   application services do not import FastMCP, MCP transport, or Starlette
+   types.
+2. Phase 0 and the production Gateway pin `fastmcp==3.4.4` in their isolated
+   projects and lockfiles.
 3. An outer Starlette application owns `/healthz`, `/mcp` mounting, and the
    FastMCP lifespan. The MCP app is mounted below that outer application.
-4. Stateless Streamable HTTP is the default for the future Gateway. Stateful
-   HTTP remains a compatibility test because clients may use it.
-5. Authentication is resource-server configuration at the MCP boundary. The
-   service receives a principal created from the JWT `sub` claim and scopes;
-   it does not use `client_id` or `azp` as the user identity.
-6. The Phase 0 facade exposes only `cad_list_devices`, `cad_observe`, and
-   `cad_get_job`, plus the two bounded resource templates.
-7. A small outer host/origin guard normalizes rejected requests to the Phase 0
-   contract's `403` response and does not read `X-Forwarded-Host`. FastMCP's
+4. Stateless Streamable HTTP is the default. Stateful HTTP remains a
+   compatibility test because clients may use it.
+5. JWT verification performs signature, issuer, audience, expiry, token-format,
+   and required `sub` validation. Per-tool and per-resource authorization uses
+   FastMCP component checks such as `require_scopes("autocad.read")`.
+6. The user identity is the JWT `sub` claim. `client_id` and `azp` are never
+   accepted as identity fallbacks.
+7. The Phase 0 facade exposes only `cad_list_devices`, `cad_observe`, and
+   `cad_get_job`, plus two bounded read-only resource templates.
+8. A small outer host/origin guard normalizes rejected requests to the Phase 0
+   contract's `403` response and does not trust `X-Forwarded-Host`. FastMCP's
    own guard remains enabled as a second boundary.
-8. Phase 1 may start only after the Phase 0 evidence report is reviewed and
-   the six OS/Python CI combinations pass.
+9. Phase 0 observation evidence must be derived from the real headless
+   `EzdxfBackend` through `CadApplicationService`; snapshots may not reconstruct
+   hard-coded entity counts.
+10. Public tool signatures and Pydantic contracts share constrained annotated
+    types, and FastMCP strict input validation is enabled to reject unsafe type
+    coercion before service invocation.
 
 ## Consequences
 
-- The legacy `pyproject.toml`, `uv.lock`, entrypoint, and `src/autocad_mcp`
-  package do not need migration changes for this spike.
-- Schema and annotation compatibility can be reviewed independently of
-  production ownership, WebSocket, persistence, or AutoCAD write semantics.
-- The POC has a separate dependency graph. On the local Windows/Python 3.13
-  run it resolves FastMCP 3.4.4, MCP 1.28.1, and Starlette 1.3.1, while the
-  legacy lock remains on MCP 1.26.0 and Starlette 0.52.1.
-- Real Auth0, ChatGPT login, reverse-proxy behavior, Linux, Python 3.10,
-  Python 3.12, and Python 3.13 CI runs remain outside local evidence.
+- Phase 0 remains an isolated compatibility and regression project; it does not
+  migrate the legacy server or add production features.
+- The production public contracts from Phase 2–3 are not changed by this ADR
+  refresh.
+- Authentication failures and authorization failures have different evidence:
+  invalid JWTs fail the HTTP authentication boundary, while valid tokens that
+  lack scope are filtered and denied by FastMCP component authorization.
+- Snapshot summaries are materialized only after both `drawing.info` and
+  `entity.list` succeed and agree on the real entity count.
+- Preview artifacts are bounded, owner-scoped, MIME-checked, and PNG-signature
+  checked before they are returned.
+- CI owns the Windows/Linux and Python 3.10/3.12/3.13 proof plus root, Gateway,
+  contracts, and simulated-Agent regression gates.
 
 ## References
 
