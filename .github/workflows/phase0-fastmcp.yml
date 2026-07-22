@@ -52,11 +52,18 @@ jobs:
       - name: Verify exact FastMCP version
         run: uv run --locked --group test python -c "import fastmcp; assert fastmcp.__version__ == '3.4.4'"
       - name: Run all Phase 0 tests
-        run: uv run --locked --group test pytest -q
+        run: uv run --locked --group test pytest -q --junitxml=phase0-results.xml
       - name: Build Phase 0 wheel
         run: uv build --wheel
       - name: Verify schema snapshots are unchanged
         run: git diff --exit-code -- snapshots
+      - name: Upload Phase 0 JUnit evidence
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-junit
+          path: poc/fastmcp-phase0/phase0-results.xml
+          if-no-files-found: error
 
   root-and-phase1-3-regression:
     name: Root and Phase 1-3 regression
@@ -71,12 +78,12 @@ jobs:
       - name: Sync root lockfile
         run: uv sync --locked --all-groups
       - name: Run legacy and CAD Core tests
-        run: uv run pytest tests/ -q
+        run: uv run pytest tests/ -q --junitxml=root-results.xml
       - name: Test and build Gateway
         working-directory: services/gateway
         run: |
           uv sync --locked --group test
-          uv run --locked --group test pytest -q
+          uv run --locked --group test pytest -q --junitxml=gateway-results.xml
           uv build --wheel
       - name: Build shared contracts
         working-directory: packages/contracts
@@ -85,8 +92,17 @@ jobs:
         working-directory: poc/phase3-simulated-agent
         run: |
           uv sync --locked --group test
-          uv run --locked --group test pytest -q
+          uv run --locked --group test pytest -q --junitxml=simulated-agent-results.xml
           uv build --wheel
+      - name: Upload regression JUnit evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-3-regression-junit
+          path: |
+            root-results.xml
+            services/gateway/gateway-results.xml
+            poc/phase3-simulated-agent/simulated-agent-results.xml
+          if-no-files-found: error
 
   static-isolation:
     name: Static and isolation checks
