@@ -32,6 +32,7 @@ jobs:
 
       - name: Apply Phase 1.1 patch
         run: |
+          python scripts/phase1_1_bootstrap_part0.py
           python scripts/phase1_1_bootstrap_part1.py
           python scripts/phase1_1_bootstrap_part2.py
           python scripts/phase1_1_bootstrap_part3.py
