@@ -6,7 +6,7 @@ import base64
 import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
-from typing import Any, Literal
+from typing import Any
 
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
@@ -28,8 +28,13 @@ from .contracts import (
     CadListDevicesOutput,
     CadObserveInput,
     CadObserveOutput,
+    DeviceId,
+    EventCursor,
+    JobId,
+    ObservationLevel,
+    StrictBoolean,
 )
-from .services import Phase0Services, Principal
+from .services import ArtifactPayload, Phase0Services, Principal, is_valid_png
 
 
 CorrelationIdFactory = Callable[[], str]
@@ -86,7 +91,7 @@ def _principal(auth: RemoteAuthProvider | None) -> Principal:
             raise ToolError("unauthorized: access token required")
         return Principal(subject="local-test", scopes=("autocad.read",))
     subject = token.claims.get("sub")
-    if not isinstance(subject, str) or not subject:
+    if not isinstance(subject, str) or not subject.strip():
         raise ToolError("invalid_token: subject claim required")
     return Principal(subject=subject, scopes=tuple(token.scopes))
 
@@ -98,6 +103,21 @@ def _error(result: Any) -> ToolError:
     if code == "backend_error":
         return ToolError("backend_error: backend operation failed")
     return ToolError("internal_error: operation failed")
+
+
+def _preview_unavailable() -> ToolError:
+    return ToolError("preview_unavailable: preview image is unavailable")
+
+
+def _validated_png(result: Any) -> bytes:
+    if not getattr(result, "ok", False):
+        raise _preview_unavailable()
+    artifact = getattr(result, "payload", None)
+    if not isinstance(artifact, ArtifactPayload):
+        raise _preview_unavailable()
+    if artifact.mime_type != "image/png" or not is_valid_png(artifact.data):
+        raise _preview_unavailable()
+    return artifact.data
 
 
 async def _run_service(call: Any) -> dict[str, Any]:
@@ -131,6 +151,7 @@ def build_mcp_server(
         version="0.1.0",
         auth=auth,
         mask_error_details=True,
+        strict_input_validation=True,
     )
 
     @mcp.tool(
@@ -142,7 +163,7 @@ def build_mcp_server(
         auth=auth_check,
     )
     async def cad_list_devices(
-        online_only: bool = False,
+        online_only: StrictBoolean = False,
         capability: str | None = None,
         *,
         ctx: Context,
@@ -150,9 +171,8 @@ def build_mcp_server(
         del ctx
         principal = _principal(auth)
         request = CadListDevicesInput(online_only=online_only, capability=capability)
-        return await _run_service(
-            services.list_devices(request, principal, make_correlation_id())
-        )
+        correlation_id = make_correlation_id()
+        return await _run_service(services.list_devices(request, principal, correlation_id))
 
     @mcp.tool(
         name="cad_observe",
@@ -163,9 +183,9 @@ def build_mcp_server(
         auth=auth_check,
     )
     async def cad_observe(
-        device_id: str,
-        observation_level: Literal["summary", "detail"] = "summary",
-        include_preview_image: bool = False,
+        device_id: DeviceId,
+        observation_level: ObservationLevel = "summary",
+        include_preview_image: StrictBoolean = False,
         *,
         ctx: Context,
     ) -> ToolResult:
@@ -176,7 +196,8 @@ def build_mcp_server(
             observation_level=observation_level,
             include_preview_image=include_preview_image,
         )
-        output = await _run_service(services.observe(request, principal, make_correlation_id()))
+        correlation_id = make_correlation_id()
+        output = await _run_service(services.observe(request, principal, correlation_id))
         result = CadObserveOutput.model_validate(output)
         content: list[Any] = [
             TextContent(type="text", text="CAD observation ready."),
@@ -189,18 +210,22 @@ def build_mcp_server(
             ),
         ]
         if include_preview_image:
-            preview = await services.read_artifact(
-                result.artifact_refs[0].artifact_id,
-                principal,
+            preview_ref = next(
+                (item for item in result.artifact_refs if item.mime_type == "image/png"),
+                None,
             )
-            if not preview.ok or not isinstance(preview.payload, bytes):
-                raise _error(preview)
-            if len(preview.payload) > 2_000_000:
-                raise ToolError("backend_error: preview image exceeds the Phase 0 size limit")
+            if preview_ref is None:
+                raise _preview_unavailable()
+            preview = await services.read_artifact(
+                preview_ref.artifact_id,
+                principal,
+                correlation_id,
+            )
+            preview_bytes = _validated_png(preview)
             content.append(
                 ImageContent(
                     type="image",
-                    data=base64.b64encode(preview.payload).decode("ascii"),
+                    data=base64.b64encode(preview_bytes).decode("ascii"),
                     mimeType="image/png",
                 )
             )
@@ -218,15 +243,16 @@ def build_mcp_server(
         auth=auth_check,
     )
     async def cad_get_job(
-        job_id: str,
-        event_cursor: str | None = None,
+        job_id: JobId,
+        event_cursor: EventCursor | None = None,
         *,
         ctx: Context,
     ) -> dict[str, Any]:
         del ctx
         principal = _principal(auth)
         request = CadGetJobInput(job_id=job_id, event_cursor=event_cursor)
-        return await _run_service(services.get_job(request, principal, make_correlation_id()))
+        correlation_id = make_correlation_id()
+        return await _run_service(services.get_job(request, principal, correlation_id))
 
     @mcp.resource(
         "cad://snapshots/{snapshot_id}/summary",
@@ -236,7 +262,11 @@ def build_mcp_server(
         auth=auth_check,
     )
     async def snapshot_summary(snapshot_id: str) -> ResourceResult:
-        result = await services.read_snapshot(snapshot_id, _principal(auth))
+        result = await services.read_snapshot(
+            snapshot_id,
+            _principal(auth),
+            make_correlation_id(),
+        )
         if not result.ok:
             raise _error(result)
         if not isinstance(result.payload, str):
@@ -253,13 +283,16 @@ def build_mcp_server(
         auth=auth_check,
     )
     async def artifact(artifact_id: str) -> ResourceResult:
-        result = await services.read_artifact(artifact_id, _principal(auth))
+        result = await services.read_artifact(
+            artifact_id,
+            _principal(auth),
+            make_correlation_id(),
+        )
         if not result.ok:
             raise _error(result)
-        if not isinstance(result.payload, bytes) or len(result.payload) > 2_000_000:
-            raise ToolError("backend_error: artifact is invalid or exceeds the Phase 0 size limit")
+        payload = _validated_png(result)
         return ResourceResult(
-            [ResourceContent(content=result.payload, mime_type="image/png")]
+            [ResourceContent(content=payload, mime_type="image/png")]
         )
 
     return mcp
