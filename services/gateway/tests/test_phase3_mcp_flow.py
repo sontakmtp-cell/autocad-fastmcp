@@ -49,32 +49,34 @@ def _free_port() -> int:
 
 
 async def _stop_process(
-    process: asyncio.subprocess.Process, *, timeout: float = 5.0
+    process: subprocess.Popen, *, timeout: float = 5.0
 ) -> None:
     """Bound subprocess cleanup so a launcher cannot strand a CI runner."""
-    if process.returncode is None:
+    if process.poll() is None:
         try:
             process.terminate()
         except ProcessLookupError:
             pass
     try:
-        await asyncio.wait_for(process.wait(), timeout=timeout)
-    except asyncio.TimeoutError:
-        if process.returncode is None:
+        await asyncio.to_thread(process.wait, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if process.poll() is None:
             try:
                 process.kill()
             except ProcessLookupError:
                 pass
-        await asyncio.wait_for(process.wait(), timeout=timeout)
+        await asyncio.to_thread(process.wait, timeout=timeout)
 
 
 async def _read_process_stderr(
-    process: asyncio.subprocess.Process, *, timeout: float = 2.0
+    process: subprocess.Popen, *, timeout: float = 2.0
 ) -> str:
     if process.stderr is None:
         return ""
     try:
-        stderr = await asyncio.wait_for(process.stderr.read(), timeout=timeout)
+        stderr = await asyncio.wait_for(
+            asyncio.to_thread(process.stderr.read), timeout=timeout
+        )
     except asyncio.TimeoutError:
         return "<stderr read timed out>"
     return stderr.decode(errors="replace")
@@ -457,17 +459,19 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
         assert server.started
         for device_id, token in config.fixture_tokens:
             processes.append(
-                await asyncio.create_subprocess_exec(
-                    str(simulator_python),
-                    "-m",
-                    "autocad_phase3_sim_agent",
-                    "--url",
-                    f"ws://127.0.0.1:{port}/agent/ws",
-                    "--device-id",
-                    device_id,
-                    "--token",
-                    token,
-                    "--stop-after-terminal",
+                subprocess.Popen(
+                    [
+                        str(simulator_python),
+                        "-m",
+                        "autocad_phase3_sim_agent",
+                        "--url",
+                        f"ws://127.0.0.1:{port}/agent/ws",
+                        "--device-id",
+                        device_id,
+                        "--token",
+                        token,
+                        "--stop-after-terminal",
+                    ],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     env=simulator_environment,
