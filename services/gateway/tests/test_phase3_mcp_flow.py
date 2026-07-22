@@ -498,21 +498,16 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
                 f"only {connected} simulator Agents connected; "
                 + " | ".join(diagnostics)
             )
-        async with httpx.AsyncClient(
-            base_url=f"http://127.0.0.1:{port}", trust_env=False
-        ) as http_client:
-            with anyio.fail_after(45):
-                async with streamable_http_client(
-                    f"http://127.0.0.1:{port}/mcp", http_client=http_client
-                ) as streams:
-                    async with ClientSession(streams[0], streams[1]) as session:
-                        await session.initialize()
-                        for device_id in ("device-a", "device-b"):
-                            result = await session.call_tool(
-                                "cad_observe", {"device_id": device_id}
-                            )
-                            assert not result.isError
-                            assert result.structuredContent["job_id"]
+        from fastmcp import Client
+
+        with anyio.fail_after(45):
+            async with Client(build_mcp_server(services)) as client:
+                for device_id in ("device-a", "device-b"):
+                    result = await client.call_tool(
+                        "cad_observe", {"device_id": device_id}
+                    )
+                    assert not result.is_error
+                    assert result.structured_content["job_id"]
     finally:
         await asyncio.gather(
             *(_stop_process(process) for process in processes),
