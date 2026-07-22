@@ -86,8 +86,6 @@ jobs:
         run: uv build --wheel
 
       - name: Clean-install wheel smoke
-        id: clean_smoke
-        continue-on-error: true
         run: |
           mkdir -p wheelhouse
           uv build --wheel --out-dir wheelhouse packages/cad_core
@@ -101,12 +99,6 @@ jobs:
           name: phase1-1-smoke-log
           path: phase1-1-smoke.log
           if-no-files-found: warn
-
-      - name: Fail on clean-install error
-        if: steps.clean_smoke.outcome != 'success'
-        run: |
-          cat phase1-1-smoke.log
-          exit 1
 
       - name: Static and lock checks
         run: |
