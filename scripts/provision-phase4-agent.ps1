@@ -8,7 +8,7 @@ param(
     [ValidatePattern('^wss://')]
     [string]$GatewayWsUrl,
 
-    [string]$DeviceName = 'Máy AutoCAD Lab',
+    [string]$DeviceName = 'May AutoCAD Lab',
     [string]$PackageSource
 )
 
@@ -38,7 +38,7 @@ New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 Copy-Item -LiteralPath (Resolve-Path -LiteralPath $PackageSource) -Destination $packageTarget -Force
 $packageHash = (Get-FileHash -LiteralPath $packageTarget -Algorithm SHA256).Hash.ToLowerInvariant()
 
-$secureCredential = Read-Host 'Nhập lab device credential (không hiển thị)' -AsSecureString
+$secureCredential = Read-Host 'Nhap lab device credential (khong hien thi)' -AsSecureString
 $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureCredential)
 try {
     $plainCredential = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
@@ -66,6 +66,6 @@ $config = [ordered]@{
 }
 $config | ConvertTo-Json | Set-Content -LiteralPath $configTarget -Encoding UTF8
 
-Write-Host "Đã provision Agent tại $root"
+Write-Host "Da provision Agent tai $root"
 Write-Host "Package SHA-256: $packageHash"
-Write-Host 'Hãy thêm thư mục package vào AutoCAD Support File Search Path/TRUSTEDPATHS.'
+Write-Host 'Hay them thu muc package vao AutoCAD Support File Search Path/TRUSTEDPATHS.'

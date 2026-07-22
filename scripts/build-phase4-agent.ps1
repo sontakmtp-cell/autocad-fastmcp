@@ -14,7 +14,7 @@ $package = Join-Path $repoRoot 'lisp-code\mcp_dispatch.lsp'
 $output = [IO.Path]::GetFullPath($OutputRoot)
 $volumeRoot = [IO.Path]::GetPathRoot($output)
 if ($output.TrimEnd('\') -eq $volumeRoot.TrimEnd('\')) {
-    throw 'OutputRoot không được là thư mục gốc của ổ đĩa.'
+    throw 'OutputRoot khong duoc la thu muc goc cua o dia.'
 }
 
 New-Item -ItemType Directory -Force -Path $output | Out-Null
@@ -43,13 +43,13 @@ $built = Get-ChildItem -LiteralPath $agentRoot -Recurse -File |
     } |
     Sort-Object LastWriteTimeUtc -Descending |
     Select-Object -First 1
-if (-not $built) { throw 'pyside6-deploy không tạo được KythuatvangAutoCADAgent.exe' }
+if (-not $built) { throw 'pyside6-deploy khong tao duoc KythuatvangAutoCADAgent.exe' }
 $standaloneDir = $built.Directory.FullName
 $appOutput = Join-Path $output 'app'
 if (Test-Path -LiteralPath $appOutput) {
     $resolvedAppOutput = (Resolve-Path -LiteralPath $appOutput).Path
     if (-not $resolvedAppOutput.StartsWith($output.TrimEnd('\') + '\')) {
-        throw "Từ chối dọn app folder ngoài OutputRoot: $resolvedAppOutput"
+        throw "Tu choi don app folder ngoai OutputRoot: $resolvedAppOutput"
     }
     Remove-Item -LiteralPath $resolvedAppOutput -Recurse -Force
 }

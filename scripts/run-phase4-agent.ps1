@@ -11,7 +11,7 @@ if ([string]::IsNullOrWhiteSpace($AgentExe)) {
 }
 
 if (-not (Test-Path -LiteralPath $ConfigPath -PathType Leaf)) {
-    throw "Chưa có cấu hình Agent: $ConfigPath. Hãy chạy provision-phase4-agent.ps1 trước."
+    throw "Chua co cau hinh Agent: $ConfigPath. Hay chay provision-phase4-agent.ps1 truoc."
 }
 $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
 $env:AUTOCAD_AGENT_GATEWAY_WS_URL = [string]$config.gateway_ws_url
