@@ -5,9 +5,11 @@ import hashlib
 import ipaddress
 import json
 import os
+import site
 import socket
 import ssl
 import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -422,9 +424,20 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
     server = uvicorn.Server(uvicorn.Config(create_app(services, config=config), host=config.host, port=port, log_level="error"))
     server_task = asyncio.create_task(server.serve())
     processes = []
-    sync_environment = os.environ.copy()
-    sync_environment["UV_PROJECT_ENVIRONMENT"] = str(tmp_path / "sim-venv")
-    simulator_environment = sync_environment.copy()
+    simulator_environment = os.environ.copy()
+    simulator_python = Path(getattr(sys, "_base_executable", sys.executable))
+    assert simulator_python.is_file()
+    python_paths = [
+        str(simulator_project / "src"),
+        str(project_root / "packages" / "contracts" / "src"),
+        *site.getsitepackages(),
+    ]
+    inherited_pythonpath = simulator_environment.get("PYTHONPATH")
+    simulator_environment["PYTHONPATH"] = (
+        os.pathsep.join(python_paths)
+        if not inherited_pythonpath
+        else os.pathsep.join([*python_paths, inherited_pythonpath])
+    )
     for proxy_name in (
         "ALL_PROXY",
         "HTTPS_PROXY",
@@ -442,33 +455,6 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
                 break
             await asyncio.sleep(0.05)
         assert server.started
-        sync_process = await asyncio.create_subprocess_exec(
-            "uv",
-            "sync",
-            "--project",
-            str(simulator_project),
-            "--locked",
-            "--offline",
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            env=sync_environment,
-        )
-        try:
-            _stdout, sync_stderr = await asyncio.wait_for(
-                sync_process.communicate(), timeout=120
-            )
-        except asyncio.TimeoutError:
-            await _stop_process(sync_process)
-            pytest.fail("simulator environment sync timed out")
-        if sync_process.returncode != 0:
-            pytest.fail(
-                "simulator environment sync failed: "
-                + sync_stderr.decode(errors="replace")[-4000:]
-            )
-        simulator_python = Path(sync_environment["UV_PROJECT_ENVIRONMENT"]) / (
-            "Scripts/python.exe" if os.name == "nt" else "bin/python"
-        )
-        assert simulator_python.is_file()
         for device_id, token in config.fixture_tokens:
             processes.append(
                 await asyncio.create_subprocess_exec(
