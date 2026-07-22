@@ -27,7 +27,23 @@ async def test_restart_keeps_terminal_job_and_recovers_started_write(tmp_path):
     await first.repository.transition_job(terminal["job_id"], "dispatched")
     await first.repository.transition_job(terminal["job_id"], "acknowledged")
     await first.repository.transition_job(terminal["job_id"], "running")
-    await first.repository.transition_job(terminal["job_id"], "succeeded", result={"ok": True}, evidence=True)
+    snapshot = {
+        "snapshot_id": "snapshot-before-restart",
+        "document_revision": "revision-before-restart",
+        "observation_level": "summary",
+        "drawing": {},
+        "entity_summary": {},
+        "entities": [],
+    }
+    await first.repository.finalize_job_result(
+        job_id=terminal["job_id"],
+        device_id="device-a",
+        command_id=terminal["command_id"],
+        payload_hash=terminal["payload_hash"],
+        target="succeeded",
+        result={"snapshot": snapshot},
+        snapshot=snapshot,
+    )
     unknown = await first.repository.create_job(
         owner_subject=first.owner_subject,
         device_id="device-a",
@@ -46,6 +62,9 @@ async def test_restart_keeps_terminal_job_and_recovers_started_write(tmp_path):
     await second.initialize()
     try:
         assert (await second.repository.get_job(second.owner_subject, terminal["job_id"]))["state"] == "succeeded"
+        assert await second.repository.get_snapshot(
+            second.owner_subject, "snapshot-before-restart"
+        )
         assert (await second.repository.get_job(second.owner_subject, unknown["job_id"]))["state"] == "outcome_unknown"
         events, _ = await second.repository.list_events(second.owner_subject, terminal["job_id"])
         assert events[-1]["state"] == "succeeded"

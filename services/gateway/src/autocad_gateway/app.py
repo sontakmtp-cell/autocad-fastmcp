@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 import logging
+import re
 import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass, replace
 from ipaddress import ip_address
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from fastmcp import Context, FastMCP
@@ -21,7 +22,7 @@ from fastmcp.server.dependencies import get_access_token
 from fastmcp.server.middleware import Middleware
 from fastmcp.tools.tool import ToolResult
 from mcp.types import PromptMessage, ResourceLink, TextContent
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
@@ -33,6 +34,7 @@ from .contracts import (
     CadGetJobInput,
     CadGetJobOutput,
     CadObserveInput,
+    CadObserveInputDurable,
     CadObserveOutput,
     CadObserveOutputDurable,
     CadQueryInput,
@@ -64,6 +66,22 @@ from .services import (
 CorrelationIdFactory = Callable[[], str]
 _correlation_id: ContextVar[str | None] = ContextVar("cad_gateway_correlation_id", default=None)
 logger = logging.getLogger(__name__)
+_SAFE_PUBLIC_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_SAFE_JOB_STATES = frozenset(
+    {
+        "queued",
+        "dispatched",
+        "acknowledged",
+        "running",
+        "cancel_requested",
+        "reconnect_pending",
+        "outcome_unknown",
+        "succeeded",
+        "failed",
+        "cancelled",
+        "needs_attention",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -87,7 +105,10 @@ class GatewayConfig:
     fixture_tokens: tuple[tuple[str, str], ...] = ()
     fixture_owner_subject: str = "phase3-fixture-user"
     stale_after_seconds: int = 45
-    command_timeout_seconds: int = 30
+    request_wait_timeout_seconds: float = 30.0
+    job_deadline_seconds: float = 300.0
+    # Backward-compatible constructor alias used by the original Phase 3 tests.
+    command_timeout_seconds: float | None = None
 
     @classmethod
     def from_env(cls) -> "GatewayConfig":
@@ -160,7 +181,15 @@ class GatewayConfig:
                 "AUTOCAD_MCP_PHASE3_OWNER", "phase3-fixture-user"
             ).strip(),
             stale_after_seconds=int(os.environ.get("AUTOCAD_MCP_PHASE3_STALE_SECONDS", "45")),
-            command_timeout_seconds=int(os.environ.get("AUTOCAD_MCP_PHASE3_TIMEOUT_SECONDS", "30")),
+            request_wait_timeout_seconds=float(
+                os.environ.get(
+                    "AUTOCAD_MCP_PHASE3_REQUEST_WAIT_TIMEOUT_SECONDS",
+                    os.environ.get("AUTOCAD_MCP_PHASE3_TIMEOUT_SECONDS", "30"),
+                )
+            ),
+            job_deadline_seconds=float(
+                os.environ.get("AUTOCAD_MCP_PHASE3_JOB_DEADLINE_SECONDS", "300")
+            ),
         )
         return config.validate()
 
@@ -205,8 +234,10 @@ class GatewayConfig:
             raise ValueError("profile must be local or phase3_poc")
         if not 1 <= self.stale_after_seconds <= 3600:
             raise ValueError("stale_after_seconds must be between 1 and 3600")
-        if not 1 <= self.command_timeout_seconds <= 600:
-            raise ValueError("command_timeout_seconds must be between 1 and 600")
+        if not 0 < self.effective_request_wait_timeout_seconds <= 600:
+            raise ValueError("request_wait_timeout_seconds must be between 0 and 600")
+        if not 1 <= self.job_deadline_seconds <= 86_400:
+            raise ValueError("job_deadline_seconds must be between 1 and 86400")
         if self.profile == "phase3_poc":
             if not self.db_path:
                 raise ValueError("phase3_poc requires an explicit db_path")
@@ -215,6 +246,12 @@ class GatewayConfig:
             if not self.fixture_owner_subject:
                 raise ValueError("phase3_poc requires a fixture owner subject")
         return self
+
+    @property
+    def effective_request_wait_timeout_seconds(self) -> float:
+        if self.command_timeout_seconds is not None:
+            return float(self.command_timeout_seconds)
+        return float(self.request_wait_timeout_seconds)
 
 
 def current_correlation_id(factory: CorrelationIdFactory | None = None) -> str:
@@ -451,12 +488,19 @@ def _safe_error(error: GatewayError, correlation_id: str) -> ToolError:
         "dispatcher_timeout": "the Agent did not finish the job in time",
         "idempotency_conflict": "the request conflicts with an existing job",
         "payload_mismatch": "the command payload does not match the existing command",
+        "agent_rejected": "the Agent rejected the command",
         "outcome_unknown": "the write-like operation has an unknown outcome",
         "internal_error": "operation failed",
     }
+    public_code = error.code if error.code in messages else "internal_error"
+    details: list[str] = []
+    if error.job_id and _SAFE_PUBLIC_ID.fullmatch(error.job_id):
+        details.append(f"job_id={error.job_id}")
+    if error.job_state in _SAFE_JOB_STATES:
+        details.append(f"job_state={error.job_state}")
+    details.append(f"correlation_id={correlation_id}")
     return ToolError(
-        f"{error.code}: {messages.get(error.code, messages['internal_error'])}; "
-        f"correlation_id={correlation_id}"
+        f"{public_code}: {messages[public_code]}; " + "; ".join(details)
     )
 
 
@@ -530,30 +574,13 @@ def build_mcp_server(
         )
         return result.model_dump(mode="json")
 
-    @mcp.tool(
-        name="cad_observe",
-        title="Observe a CAD device",
-        description="Create a bounded read-only CAD snapshot with stable revision and resource references.",
-        output_schema=(CadObserveOutputDurable if phase3 else CadObserveOutput).model_json_schema(),
-        annotations=_tool_annotations(idempotent=False),
-        auth=auth_check,
-    )
-    async def cad_observe(
-        device_id: str,
-        observation_level: Literal["summary", "detail"] = "summary",
-        include_preview_image: bool = False,
-        *,
-        ctx: Context,
+    async def _call_cad_observe(
+        request: CadObserveInput | CadObserveInputDurable,
     ) -> ToolResult:
-        del ctx
         correlation_id = current_correlation_id(make_correlation_id)
         result = await _run(
             lambda: services.observe(
-                CadObserveInput(
-                    device_id=device_id,
-                    observation_level=observation_level,
-                    include_preview_image=include_preview_image,
-                ),
+                request,
                 _principal(auth, services, correlation_id),
                 correlation_id,
             ),
@@ -590,6 +617,63 @@ def build_mcp_server(
             content=content,
             structured_content=result.model_dump(mode="json"),
         )
+
+    if phase3:
+
+        @mcp.tool(
+            name="cad_observe",
+            title="Observe a CAD device",
+            description="Create a bounded read-only CAD snapshot with stable revision and resource references.",
+            output_schema=CadObserveOutputDurable.model_json_schema(),
+            annotations=_tool_annotations(idempotent=False),
+            auth=auth_check,
+        )
+        async def cad_observe_durable(
+            device_id: str,
+            observation_level: Literal["summary", "detail"] = "summary",
+            include_preview_image: bool = False,
+            idempotency_key: Annotated[
+                str | None,
+                Field(min_length=1, max_length=128),
+            ] = None,
+            *,
+            ctx: Context,
+        ) -> ToolResult:
+            del ctx
+            return await _call_cad_observe(
+                CadObserveInputDurable(
+                    device_id=device_id,
+                    observation_level=observation_level,
+                    include_preview_image=include_preview_image,
+                    idempotency_key=idempotency_key,
+                )
+            )
+
+    else:
+
+        @mcp.tool(
+            name="cad_observe",
+            title="Observe a CAD device",
+            description="Create a bounded read-only CAD snapshot with stable revision and resource references.",
+            output_schema=CadObserveOutput.model_json_schema(),
+            annotations=_tool_annotations(idempotent=False),
+            auth=auth_check,
+        )
+        async def cad_observe_local(
+            device_id: str,
+            observation_level: Literal["summary", "detail"] = "summary",
+            include_preview_image: bool = False,
+            *,
+            ctx: Context,
+        ) -> ToolResult:
+            del ctx
+            return await _call_cad_observe(
+                CadObserveInput(
+                    device_id=device_id,
+                    observation_level=observation_level,
+                    include_preview_image=include_preview_image,
+                )
+            )
 
     @mcp.tool(
         name="cad_query",
@@ -848,6 +932,9 @@ def create_app(
         database = getattr(services, "database", None)
         if database is not None and not database.is_open:
             return PlainTextResponse("not ready", status_code=503)
+        readiness = getattr(services, "is_ready", None)
+        if callable(readiness) and not readiness():
+            return PlainTextResponse("not ready", status_code=503)
         return PlainTextResponse("ready")
 
     async def agent_ws(websocket: Any) -> None:
@@ -864,7 +951,9 @@ def create_app(
             authenticator=authenticator,
             registry=registry,
             on_message=transport.handle_message,
+            validate_message=getattr(transport, "validate_message", None),
             on_connected=getattr(services, "on_agent_connected", transport.handle_connected),
+            on_heartbeat=getattr(services, "on_agent_heartbeat", None),
             on_disconnected=getattr(
                 services,
                 "on_agent_disconnected",

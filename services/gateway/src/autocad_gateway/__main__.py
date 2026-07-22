@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uvicorn
+from autocad_contracts import MAX_WEBSOCKET_MESSAGE_BYTES
 
 from .app import GatewayConfig, create_app
 from .composition import build_services
@@ -17,6 +18,8 @@ def main() -> None:
         port=config.port,
         log_level="info",
         access_log=False,
+        ws_max_size=MAX_WEBSOCKET_MESSAGE_BYTES,
+        ws_max_queue=16,
     )
 
 

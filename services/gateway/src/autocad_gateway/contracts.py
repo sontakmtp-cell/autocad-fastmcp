@@ -13,6 +13,7 @@ PHASE3_CONTRACT_VERSION = "cad.mcp/1.1"
 MAX_ENTITY_TYPE_LENGTH = 64
 MAX_LAYER_NAME_LENGTH = 255
 MAX_FILTER_BYTES = 4096
+MAX_IDEMPOTENCY_KEY_LENGTH = 128
 _PUBLIC_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 _CURSOR = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -64,6 +65,26 @@ class CadObserveInput(StrictModel):
     @classmethod
     def validate_device_id(cls, value: str) -> str:
         return _bounded_public_id(value, "device_id")
+
+
+class CadObserveInputDurable(CadObserveInput):
+    """Additive Phase 3 input; the local Phase 2 schema stays frozen."""
+
+    idempotency_key: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_IDEMPOTENCY_KEY_LENGTH,
+    )
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def validate_idempotency_key(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        canonical = value.strip()
+        if not canonical or any(character.isspace() for character in canonical):
+            raise ValueError("idempotency_key is malformed")
+        return canonical
 
 
 class ArtifactRef(StrictModel):

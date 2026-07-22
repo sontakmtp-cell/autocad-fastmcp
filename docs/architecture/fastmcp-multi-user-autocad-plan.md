@@ -1,6 +1,6 @@
 # Kế hoạch nâng cấp AutoCAD MCP nhiều người dùng bằng FastMCP
 
-> Trạng thái: **Phase 0–3 đã triển khai và kiểm chứng local; Phase 3 chưa deploy/CI matrix chưa chạy; Phase 4+ chưa triển khai**
+> Trạng thái: **Phase 0–3.1 đã triển khai và kiểm chứng local; Phase 3.1 đang chờ hosted CI matrix; Phase 4+ chưa triển khai**
 >
 > Ngày khảo sát: 2026-07-21
 >
@@ -1238,6 +1238,19 @@ Mỗi phase dưới đây chỉ bắt đầu sau khi phase trước đạt exit 
 - **Rollback:** stop Gateway; không ảnh hưởng legacy local server.
 - **Demo đã chạy:** `cad_observe(device-a)` chỉ tới Agent A, trả job ID/progress/result; `cad_get_job` đọc ordered events; `cad_query` đọc snapshot persisted; restart/reconnect và WSS loopback đều xanh.
 
+### Phase 3.1 — Durable lifecycle hardening
+
+- **Trạng thái cập nhật 2026-07-22:** implementation và full local verification xanh; hosted Ubuntu/Windows × Python 3.10/3.12/3.13 là gate cuối trước Phase 4.
+- **Mục tiêu/phạm vi:** sửa freshness/idempotency của observe, tách MCP wait khỏi durable deadline, loại waiter/dispatch race, atomic finalization, hoàn thiện reconnect/cancel/ACK, durable heartbeat/session, capability lifecycle, migration runner và supervised readiness.
+- **Semantics mới:** observe không có explicit identity luôn tạo job/snapshot mới; retry có cùng `idempotency_key` chỉ reuse cùng request fingerprint; wait timeout trả `job_id` để poll và không fail job; chỉ reconcile `not_started` được redispatch.
+- **Durable truth:** SQLite tiếp tục giữ job/event/result/snapshot/session/capability; registry chỉ giữ socket, presence, sequence dedupe và freshness tạm thời.
+- **Public delta:** chỉ profile `phase3_poc` thêm optional bounded `cad_observe.idempotency_key`; local Phase 2 giữ nguyên schema/semantics.
+- **Simulator:** reconnect loop thật, ledger/sequence sống qua reconnect, reconcile not-started/started/terminal và failure matrix qua WebSocket thật; không import Gateway/FastMCP/AutoCAD.
+- **Migration:** giữ nguyên `0001`; thêm `0002_phase31.sql` và runner ordered/checksummed/atomic hỗ trợ các migration kế tiếp.
+- **Local evidence:** Gateway `166 passed`; simulator `33 passed`; root `378 passed`; Phase 0 `51 passed`; CAD Core `1 passed`; tất cả wheel/sdist, compile, isolation, snapshots, lockfiles và `git diff --check` xanh.
+- **Ranh giới:** vẫn POC single-writer/fixture-token; không Desktop Agent thật, AutoCAD thật, production auth/pairing, public write, Redis/PostgreSQL hay signed package manifest.
+- **Kế hoạch/evidence:** `docs/architecture/Phase-3.1.md` và `docs/architecture/phase3.1-durable-lifecycle-hardening-evidence.md`.
+
 ### Phase 4 — POC C1: Desktop Agent + AutoCAD thật, read-only
 
 - **Mục tiêu/phạm vi:** ngay sau POC B, package Agent Windows tối thiểu, mở outbound WSS, đọc AutoCAD presence/document state và chạy một AutoLISP cấp 1 read-only đã đóng gói/versioned như `get_drawing_info`.
@@ -1543,16 +1556,16 @@ Kế hoạch implementation chỉ được coi là đạt sản phẩm multi-use
 - Legacy flow vẫn có rollback path cho tới hết pilot.
 - FastMCP exact pin/upgrade gate, reverse proxy trust, secrets, quotas, audit và operational runbook hoàn tất.
 
-## 25. Bước tiếp theo sau Phase 3
+## 25. Bước tiếp theo sau Phase 3.1
 
-Chưa mở Phase 4 cho tới khi các gate còn thiếu của Phase 3 được hoàn tất:
+Chưa mở Phase 4 cho tới khi gate hosted cuối của Phase 3.1 được hoàn tất:
 
-1. Chạy CI matrix Gateway trên Windows/Linux với Python 3.10/3.12/3.13 và ghi kết quả vào evidence.
-2. Review `phase3-durable-gateway-evidence.md`, đặc biệt các giới hạn còn lại: OAuth production, public TLS/VPS, credential/pairing, Desktop Agent và AutoCAD thật.
+1. Chạy CI matrix Phase 3.1 trên Windows/Linux với Python 3.10/3.12/3.13 và ghi link/kết quả từng job vào evidence.
+2. Review `phase3.1-durable-lifecycle-hardening-evidence.md`, đặc biệt các giới hạn còn lại: OAuth production, public TLS/VPS, credential/pairing, Desktop Agent và AutoCAD thật.
 3. Giữ profile `local` và legacy làm mặc định; chỉ dùng `phase3_poc` với SQLite/WSS/simulator fixture loopback.
-4. Sau khi gate được duyệt, lập kế hoạch Phase 4 cho Desktop Agent Windows + AutoCAD thật read-only.
+4. Chỉ sau khi toàn bộ hosted jobs xanh mới đổi quyết định Phase 4 read-only từ `NO-GO` sang `GO`; không merge trong bước hardening này nếu chưa có yêu cầu riêng.
 
-Phase 0–2 đã có evidence riêng; không chạy lại spike hoặc thay đổi contract Phase 2 chỉ vì Phase 3 bổ sung `cad_get_job` trong profile opt-in.
+Phase 0–3 đã có evidence riêng; không chạy lại spike hoặc thay đổi contract Phase 2 chỉ vì Phase 3.1 bổ sung request identity trong profile opt-in.
 
 ### Phase 1.1 — CAD Core packaging, contract and adapter parity hardening
 

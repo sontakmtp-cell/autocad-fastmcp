@@ -26,7 +26,8 @@ def build_services(config: GatewayConfig) -> Any:
             ConnectionRegistry(stale_after_seconds=config.stale_after_seconds),
             device_tokens=tokens,
             owner_subject=config.fixture_owner_subject,
-            command_timeout_seconds=config.command_timeout_seconds,
+            request_wait_timeout_seconds=config.effective_request_wait_timeout_seconds,
+            job_deadline_seconds=config.job_deadline_seconds,
         )
     return GatewayServices(
         build_backend(),

@@ -109,8 +109,17 @@ ALLOWED_DRAWING_FIELDS = frozenset(
 class GatewayError(Exception):
     """Safe domain error that may cross the MCP boundary."""
 
-    def __init__(self, code: str, message: str = "operation failed") -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str = "operation failed",
+        *,
+        job_id: str | None = None,
+        job_state: str | None = None,
+    ) -> None:
         self.code = code
+        self.job_id = job_id
+        self.job_state = job_state
         super().__init__(message)
 
 

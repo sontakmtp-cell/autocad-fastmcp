@@ -36,6 +36,9 @@ async def job_context(tmp_path):
     websocket = FakeWebSocket()
     connection = AgentConnection("device-a", "session-a", websocket, "cad.agent/1")
     await registry.add(connection)
+    await repository.create_session(
+        device_id="device-a", session_id="session-a", protocol_version="cad.agent/1"
+    )
     service = DurableJobService(repository, registry)
     yield repository, service, connection, websocket
     await database.close()
@@ -53,15 +56,18 @@ async def test_dispatch_ack_progress_result_and_reconcile(job_context):
     await service.handle_message(connection, AckMessage(**{
         "session_id": "session-a", "device_id": "device-a", "job_id": job["job_id"],
         "command_id": job["command_id"], "status": "accepted", "idempotency_key": job["idempotency_key"],
-        "payload_hash": job["payload_hash"],
+        "payload_hash": job["payload_hash"], "sequence": 1,
     }))
     await service.handle_message(connection, ProgressMessage(
         session_id="session-a", device_id="device-a", job_id=job["job_id"], command_id=job["command_id"],
-        sequence=1, phase="complete", percent=100, message="done",
+        sequence=2, payload_hash=job["payload_hash"], phase="complete", percent=100, message="done",
     ))
     await service.handle_message(connection, ResultMessage(
         session_id="session-a", device_id="device-a", job_id=job["job_id"], command_id=job["command_id"],
-        status="succeeded", payload_hash=job["payload_hash"], result={"ok": True},
+        sequence=3, status="succeeded", payload_hash=job["payload_hash"], result={"snapshot": {
+            "snapshot_id": "snapshot-dispatch", "document_revision": "revision-dispatch",
+            "observation_level": "summary", "drawing": {}, "entity_summary": {}, "entities": [],
+        }},
     ))
     assert (await repository.get_job("owner", job["job_id"]))["state"] == "succeeded"
     assert command["device_id"] == "device-a"
@@ -97,7 +103,7 @@ async def test_read_reconnect_not_started_is_queued_then_dispatched_again(job_co
     await repository.transition_job(job["job_id"], "reconnect_pending")
     await service.handle_reconcile_result(connection, ReconcileResultMessage(
         session_id="session-a", device_id="device-a", command_id=job["command_id"],
-        status="not_started", payload_hash=job["payload_hash"],
+        job_id=job["job_id"], sequence=1, status="not_started", payload_hash=job["payload_hash"],
     ))
     assert (await repository.get_job("owner", job["job_id"]))["state"] == "dispatched"
     assert len(websocket.messages) == 2

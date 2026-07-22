@@ -1,0 +1,181 @@
+name: Phase 3.1 Durable Lifecycle Hardening
+
+on:
+  pull_request:
+    paths:
+      - "packages/contracts/**"
+      - "poc/phase3-simulated-agent/**"
+      - "poc/fastmcp-phase0/**"
+      - "services/gateway/**"
+      - "packages/cad_core/**"
+      - "src/**"
+      - "tests/**"
+      - "docs/architecture/Phase-3.1.md"
+      - "docs/architecture/phase3.1-durable-lifecycle-hardening-evidence.md"
+      - "docs/architecture/fastmcp-multi-user-autocad-plan.md"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/phase3-1-durable-lifecycle-hardening.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/contracts/**"
+      - "poc/phase3-simulated-agent/**"
+      - "poc/fastmcp-phase0/**"
+      - "services/gateway/**"
+      - "packages/cad_core/**"
+      - "src/**"
+      - "tests/**"
+      - "docs/architecture/Phase-3.1.md"
+      - "docs/architecture/phase3.1-durable-lifecycle-hardening-evidence.md"
+      - "docs/architecture/fastmcp-multi-user-autocad-plan.md"
+      - "pyproject.toml"
+      - "uv.lock"
+      - ".github/workflows/phase3-1-durable-lifecycle-hardening.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Sync isolated Gateway environment
+        working-directory: services/gateway
+        run: |
+          uv sync --locked --group test
+          uv run --locked --group test python -c "import fastmcp; assert fastmcp.__version__ == '3.4.4'"
+
+      - name: Test Gateway Phase 2 regression
+        working-directory: services/gateway
+        run: uv run --locked --group test pytest -q -m "not phase3"
+
+      - name: Test Gateway Phase 3-3.1
+        working-directory: services/gateway
+        run: uv run --locked --group test pytest -q -m phase3
+
+      - name: Build Gateway wheel
+        working-directory: services/gateway
+        run: uv build --wheel
+
+      - name: Build shared contracts
+        working-directory: packages/contracts
+        run: |
+          uv sync --locked
+          uv run --locked python -c "from autocad_contracts import canonical_capability_hash; assert canonical_capability_hash(['observe'])"
+          uv build --wheel
+
+      - name: Test and build independent simulated Agent
+        working-directory: poc/phase3-simulated-agent
+        run: |
+          uv sync --locked --group test
+          uv run --locked --group test pytest -q
+          uv build --wheel
+
+      - name: Run root regression and build
+        run: |
+          uv sync --locked --all-groups
+          uv run pytest tests/ -q
+          uv build --wheel
+
+      - name: Run Phase 0 compatibility regression
+        working-directory: poc/fastmcp-phase0
+        run: |
+          uv sync --locked --group test
+          uv run --locked --group test python -c "import fastmcp; assert fastmcp.__version__ == '3.4.4'"
+          uv run --locked --group test pytest -q
+          uv build --wheel
+
+      - name: Verify checked-in schema snapshots
+        run: git diff --exit-code -- poc/fastmcp-phase0/snapshots services/gateway/snapshots
+
+      - name: Upload reference build evidence
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-1-reference-wheels
+          path: |
+            dist/*.whl
+            poc/fastmcp-phase0/dist/*.whl
+            poc/phase3-simulated-agent/dist/*.whl
+            packages/contracts/dist/*.whl
+            services/gateway/dist/*.whl
+          if-no-files-found: error
+
+  static-isolation-locks:
+    name: Static, isolation, snapshots and lockfiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Check whitespace and Python syntax
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --check "${{ github.event.pull_request.base.sha }}...HEAD"
+          else
+            git diff --check HEAD^
+          fi
+          python -m compileall -q src packages/cad_core/src packages/cad_core/tests packages/contracts/src poc/fastmcp-phase0/src poc/fastmcp-phase0/tests poc/phase3-simulated-agent/src poc/phase3-simulated-agent/tests services/gateway/src services/gateway/tests
+      - name: Enforce package and transport isolation
+        run: |
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+
+          pure_roots = [
+              Path("packages/cad_core/src"),
+              Path("packages/contracts/src"),
+              Path("services/gateway/src/autocad_gateway/domain"),
+              Path("services/gateway/src/autocad_gateway/infrastructure/sqlite"),
+              Path("poc/phase3-simulated-agent/src"),
+          ]
+          forbidden = {"fastmcp", "mcp", "starlette", "autocad_gateway", "autocad_mcp"}
+          violations = []
+          for root in pure_roots:
+              for path in root.rglob("*.py"):
+                  tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+                  for node in ast.walk(tree):
+                      modules = []
+                      if isinstance(node, ast.Import):
+                          modules = [alias.name for alias in node.names]
+                      elif isinstance(node, ast.ImportFrom) and node.module:
+                          modules = [node.module]
+                      for module in modules:
+                          top = module.split(".", 1)[0]
+                          if top in forbidden:
+                              violations.append(f"{path}: {module}")
+          assert not violations, "Package boundary violations:\n" + "\n".join(violations)
+          PY
+      - name: Check immutable snapshots and lockfiles
+        run: |
+          git diff --exit-code -- poc/fastmcp-phase0/snapshots services/gateway/snapshots
+          uv lock --check
+          uv lock --check --project packages/cad_core
+          uv lock --check --project packages/contracts
+          uv lock --check --project poc/fastmcp-phase0
+          uv lock --check --project services/gateway
+          uv lock --check --project poc/phase3-simulated-agent

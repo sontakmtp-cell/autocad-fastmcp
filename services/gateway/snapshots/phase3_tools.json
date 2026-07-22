@@ -20,7 +20,7 @@
       "readOnlyHint": true
     },
     "description": "Create a bounded read-only CAD snapshot with stable revision and resource references.",
-    "input_schema_sha256": "d7a0857bb52b461eb3c19a0b26a005e660ad66c589327db3756cbc3f44b37799",
+    "input_schema_sha256": "396c4c9ac16413dbc26af13ed82c8f8db0e1b1c96ff31e731ed701fa8ece00a4",
     "name": "cad_observe",
     "output_schema_sha256": "114fb2563cd3c5bee779499c0badbcac26ece5860ee589d12ab7a0023645d67f",
     "title": "Observe a CAD device"

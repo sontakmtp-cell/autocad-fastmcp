@@ -15,6 +15,7 @@ PHASE3_TEST_FILES = frozenset(
         "test_gateway_restart.py",
         "test_job_state_machine.py",
         "test_phase3_mcp_flow.py",
+        "test_phase31_application_hardening.py",
         "test_sqlite_repositories.py",
         "test_stale_and_deadline.py",
     }

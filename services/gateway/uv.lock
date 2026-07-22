@@ -116,7 +116,7 @@ test = [{ name = "pytest", specifier = ">=8.0,<9.0" }]
 
 [[package]]
 name = "autocad-contracts"
-version = "0.1.0"
+version = "0.1.1"
 source = { directory = "../../packages/contracts" }
 dependencies = [
     { name = "pydantic" },
