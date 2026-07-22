@@ -58,14 +58,23 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@v5
 
-      - name: Test and build Gateway Phase 2-3.1
+      - name: Sync isolated Gateway environment
         working-directory: services/gateway
         run: |
           uv sync --locked --group test
           uv run --locked --group test python -c "import fastmcp; assert fastmcp.__version__ == '3.4.4'"
-          uv run --locked --group test pytest -q -m "not phase3"
-          uv run --locked --group test pytest -q -m phase3
-          uv build --wheel
+
+      - name: Test Gateway Phase 2 regression
+        working-directory: services/gateway
+        run: uv run --locked --group test pytest -q -m "not phase3"
+
+      - name: Test Gateway Phase 3-3.1
+        working-directory: services/gateway
+        run: uv run --locked --group test pytest -q -m phase3
+
+      - name: Build Gateway wheel
+        working-directory: services/gateway
+        run: uv build --wheel
 
       - name: Build shared contracts
         working-directory: packages/contracts
