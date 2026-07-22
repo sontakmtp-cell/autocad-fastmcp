@@ -481,6 +481,7 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
                     device_id,
                     "--token",
                     token,
+                    "--stop-after-terminal",
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     env=simulator_environment,
@@ -514,9 +515,12 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
             ) as streams:
                 async with ClientSession(streams[0], streams[1]) as session:
                     await session.initialize()
-                    result = await session.call_tool("cad_observe", {"device_id": "device-b"})
-                    assert not result.isError
-                    assert result.structuredContent["job_id"]
+                    for device_id in ("device-a", "device-b"):
+                        result = await session.call_tool(
+                            "cad_observe", {"device_id": device_id}
+                        )
+                        assert not result.isError
+                        assert result.structuredContent["job_id"]
     finally:
         await asyncio.gather(
             *(_stop_process(process) for process in processes),
