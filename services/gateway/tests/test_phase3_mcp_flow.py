@@ -46,6 +46,26 @@ def _free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+async def _stop_process(
+    process: asyncio.subprocess.Process, *, timeout: float = 5.0
+) -> None:
+    """Bound subprocess cleanup so a launcher cannot strand a CI runner."""
+    if process.returncode is None:
+        try:
+            process.terminate()
+        except ProcessLookupError:
+            pass
+    try:
+        await asyncio.wait_for(process.wait(), timeout=timeout)
+    except asyncio.TimeoutError:
+        if process.returncode is None:
+            try:
+                process.kill()
+            except ProcessLookupError:
+                pass
+        await asyncio.wait_for(process.wait(), timeout=timeout)
+
+
 class LiveFixtureAgent:
     def __init__(self, url: str, device_id: str, token: str, ssl_context=None) -> None:
         self.url = url
@@ -426,8 +446,7 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
                 sync_process.communicate(), timeout=120
             )
         except asyncio.TimeoutError:
-            sync_process.terminate()
-            await sync_process.wait()
+            await _stop_process(sync_process)
             pytest.fail("simulator environment sync timed out")
         if sync_process.returncode != 0:
             pytest.fail(
@@ -464,11 +483,9 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
             await asyncio.sleep(0.05)
         connected = len(await services.registry.all())
         if connected != 2:
-            for process in processes:
-                if process.returncode is None:
-                    process.terminate()
             await asyncio.gather(
-                *(process.wait() for process in processes), return_exceptions=True
+                *(_stop_process(process) for process in processes),
+                return_exceptions=True,
             )
             diagnostics = []
             for process in processes:
@@ -496,9 +513,9 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
                     assert not result.isError
                     assert result.structuredContent["job_id"]
     finally:
-        for process in processes:
-            if process.returncode is None:
-                process.terminate()
-        await asyncio.gather(*(process.wait() for process in processes), return_exceptions=True)
+        await asyncio.gather(
+            *(_stop_process(process) for process in processes),
+            return_exceptions=True,
+        )
         server.should_exit = True
         await asyncio.wait_for(server_task, timeout=10)
