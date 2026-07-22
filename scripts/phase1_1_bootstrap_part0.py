@@ -19,3 +19,17 @@ write(gateway_services, gateway_content.replace(gateway_old_status, gateway_new_
 text = text.replace(needle, replacement, 1)
 text = text.replace(needle, "", 1)
 path.write_text(text, encoding="utf-8", newline="\n")
+
+part3 = Path(__file__).with_name("phase1_1_bootstrap_part3.py")
+part3_text = part3.read_text(encoding="utf-8")
+raw_dedent = "    textwrap.dedent(r'''\\\n"
+plain_dedent = "    textwrap.dedent(r'''\n"
+if part3_text.count(raw_dedent) != 1:
+    raise RuntimeError(
+        f"expected one raw-string dedent marker, found {part3_text.count(raw_dedent)}"
+    )
+part3.write_text(
+    part3_text.replace(raw_dedent, plain_dedent, 1),
+    encoding="utf-8",
+    newline="\n",
+)
