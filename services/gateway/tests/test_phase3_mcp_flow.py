@@ -13,6 +13,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import anyio
 import httpx
 import pytest
 import uvicorn
@@ -500,17 +501,18 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
         async with httpx.AsyncClient(
             base_url=f"http://127.0.0.1:{port}", trust_env=False
         ) as http_client:
-            async with streamable_http_client(
-                f"http://127.0.0.1:{port}/mcp", http_client=http_client
-            ) as streams:
-                async with ClientSession(streams[0], streams[1]) as session:
-                    await session.initialize()
-                    for device_id in ("device-a", "device-b"):
-                        result = await session.call_tool(
-                            "cad_observe", {"device_id": device_id}
-                        )
-                        assert not result.isError
-                        assert result.structuredContent["job_id"]
+            with anyio.fail_after(45):
+                async with streamable_http_client(
+                    f"http://127.0.0.1:{port}/mcp", http_client=http_client
+                ) as streams:
+                    async with ClientSession(streams[0], streams[1]) as session:
+                        await session.initialize()
+                        for device_id in ("device-a", "device-b"):
+                            result = await session.call_tool(
+                                "cad_observe", {"device_id": device_id}
+                            )
+                            assert not result.isError
+                            assert result.structuredContent["job_id"]
     finally:
         await asyncio.gather(
             *(_stop_process(process) for process in processes),
