@@ -6,7 +6,7 @@
 >
 > Ngày rà soát: 2026-07-21
 >
-> Trạng thái: **đề xuất UI/UX và ranh giới tích hợp; chưa phê duyệt để triển khai**
+> Trạng thái: **phần Desktop Agent Lab read-only của Phase 4 C1 đã được triển khai ngày 2026-07-22; Portal, write lock, risk mode, pairing production và các UI Phase 5+ vẫn là đề xuất, chưa phê duyệt để triển khai**
 >
 > Phạm vi: Desktop Agent, Web Portal, trang quản trị, onboarding, confirmation/approval và trạng thái người dùng; **không thay đổi code hay dependency**
 

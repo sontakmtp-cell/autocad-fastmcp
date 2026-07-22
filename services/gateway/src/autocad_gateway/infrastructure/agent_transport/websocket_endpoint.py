@@ -138,9 +138,9 @@ async def serve_agent_websocket(
             await _send_error(websocket, "auth_failed", "device does not match fixture token")
             await _safe_close(websocket, code=4403, reason="device mismatch")
             return
-        if not hmac.compare_digest(hello.fixture_proof, token):
+        if not authenticator.verify_hello(hello, token):
             await _send_error(websocket, "auth_failed", "fixture proof does not match token")
-            await _safe_close(websocket, code=4403, reason="fixture proof mismatch")
+            await _safe_close(websocket, code=4403, reason="device proof mismatch")
             return
         selected = negotiate_protocol(hello.protocol_min_version, hello.protocol_max_version)
         if selected is None:
@@ -167,6 +167,13 @@ async def serve_agent_websocket(
             capabilities=capabilities,
             capability_hash=capability_hash,
             last_sequence=hello.last_processed_sequence,
+            agent_version=hello.agent_version,
+            runtime_state=hello.runtime_state,
+            document_name=hello.document_name,
+            paused=bool(hello.paused),
+            current_command_id=hello.current_command_id,
+            packages=tuple(item.model_dump(mode="json") for item in hello.packages),
+            package_manifest_hash=hello.package_manifest_hash,
         )
         await registry.add(connection)
         await websocket.send_json(
@@ -179,7 +186,15 @@ async def serve_agent_websocket(
             )
         )
         if on_connected:
-            await on_connected(connection)
+            try:
+                await on_connected(connection)
+            except Exception as error:
+                code = getattr(error, "code", "incompatible")
+                if code not in {"package_mismatch", "capability_mismatch", "incompatible"}:
+                    code = "incompatible"
+                await _send_error(websocket, code, "Agent is incompatible with Gateway policy")
+                await _safe_close(websocket, code=4406, reason=code)
+                return
 
         while True:
             raw = await _receive_text(websocket)
@@ -236,6 +251,10 @@ async def serve_agent_websocket(
                     sequence=message.sequence,
                     busy=message.busy,
                     current_job_id=message.current_job_id,
+                    runtime_state=message.runtime_state,
+                    document_name=message.document_name,
+                    paused=message.paused,
+                    current_command_id=message.current_command_id,
                 )
                 if not marked:
                     await _safe_close(websocket, code=4001, reason="connection replaced")

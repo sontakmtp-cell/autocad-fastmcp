@@ -25,3 +25,28 @@ def build_fixture_auth(
         resource_base_url=server_base_url,
         scopes_supported=["autocad.read"],
     )
+
+
+def build_phase4_auth(
+    *, issuer: str, audience: str, jwks_uri: str, public_origin: str
+) -> RemoteAuthProvider:
+    """Build the fail-closed Auth0-compatible verifier for the C1 profile."""
+
+    origin = public_origin.rstrip("/")
+    verifier = JWTVerifier(
+        jwks_uri=jwks_uri,
+        issuer=issuer,
+        audience=audience,
+        algorithm="RS256",
+        required_scopes=["autocad.read"],
+        base_url=origin,
+        ssrf_safe=True,
+    )
+    return RemoteAuthProvider(
+        token_verifier=verifier,
+        authorization_servers=[issuer],
+        base_url=origin,
+        resource_base_url=origin,
+        scopes_supported=["autocad.read"],
+        resource_name="Kỹ Thuật Vàng AutoCAD",
+    )

@@ -35,6 +35,7 @@ MAX_JSON_CONTAINER_ITEMS = 10_000
 MAX_JSON_STRING_BYTES = 65_536
 MAX_JSON_KEY_BYTES = 256
 MAX_SEQUENCE = 1_000_000_000
+MAX_PACKAGES = 32
 
 _CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
@@ -130,6 +131,38 @@ def canonical_capability_hash(capabilities: list[str] | tuple[str, ...]) -> str:
     return sha256(canonical_json(manifest).encode("utf-8")).hexdigest()
 
 
+class PackageManifestEntry(BaseModel):
+    """One immutable package advertised by a real Desktop Agent."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    package_id: str = Field(min_length=1, max_length=128, pattern=_CAPABILITY_PATTERN.pattern)
+    version: str = Field(min_length=1, max_length=64)
+    sha256: str = Field(pattern=_SHA256_PATTERN)
+
+
+def canonical_packages(
+    packages: list[PackageManifestEntry | dict[str, Any]] | tuple[PackageManifestEntry, ...],
+) -> tuple[PackageManifestEntry, ...]:
+    if len(packages) > MAX_PACKAGES:
+        raise ValueError("package manifest exceeds the protocol limit")
+    normalized = [
+        item if isinstance(item, PackageManifestEntry) else PackageManifestEntry.model_validate(item)
+        for item in packages
+    ]
+    keys = [(item.package_id, item.version) for item in normalized]
+    if len(keys) != len(set(keys)):
+        raise ValueError("package manifest entries must be unique")
+    return tuple(sorted(normalized, key=lambda item: (item.package_id, item.version, item.sha256)))
+
+
+def canonical_package_manifest_hash(
+    packages: list[PackageManifestEntry | dict[str, Any]] | tuple[PackageManifestEntry, ...],
+) -> str:
+    manifest = [item.model_dump(mode="json") for item in canonical_packages(packages)]
+    return sha256(canonical_json(manifest).encode("utf-8")).hexdigest()
+
+
 def revision_payload(
     *,
     document_identity: dict[str, Any],
@@ -217,6 +250,14 @@ class HelloMessage(AgentEnvelope):
     capability_hash: str = Field(pattern=_SHA256_PATTERN)
     capabilities: list[str] = Field(default_factory=list, max_length=MAX_CAPABILITIES)
     last_processed_sequence: int = Field(default=0, ge=0, le=MAX_SEQUENCE)
+    device_proof: str | None = Field(default=None, min_length=1, max_length=256)
+    agent_version: str | None = Field(default=None, min_length=1, max_length=64)
+    runtime_state: str | None = Field(default=None, min_length=1, max_length=64)
+    document_name: str | None = Field(default=None, max_length=255)
+    paused: bool | None = None
+    current_command_id: str | None = Field(default=None, max_length=128)
+    packages: list[PackageManifestEntry] = Field(default_factory=list, max_length=MAX_PACKAGES)
+    package_manifest_hash: str | None = Field(default=None, pattern=_SHA256_PATTERN)
 
     @field_validator("capabilities", mode="before")
     @classmethod
@@ -224,6 +265,21 @@ class HelloMessage(AgentEnvelope):
         if not isinstance(value, (list, tuple)):
             raise ValueError("capabilities must be a list")
         return list(canonical_capabilities(value))
+
+    @field_validator("packages", mode="before")
+    @classmethod
+    def _canonicalize_packages(cls, value: Any) -> list[PackageManifestEntry]:
+        if not isinstance(value, (list, tuple)):
+            raise ValueError("packages must be a list")
+        return list(canonical_packages(value))
+
+    @model_validator(mode="after")
+    def _package_hash_matches(self) -> "HelloMessage":
+        if self.package_manifest_hash is not None:
+            expected = canonical_package_manifest_hash(self.packages)
+            if self.package_manifest_hash != expected:
+                raise ValueError("package manifest hash does not match its canonical content")
+        return self
 
 
 class WelcomeMessage(AgentEnvelope):
@@ -247,6 +303,10 @@ class HeartbeatMessage(AgentEnvelope):
     busy: bool = False
     last_processed_sequence: int = Field(default=0, ge=0, le=MAX_SEQUENCE)
     current_job_id: str | None = Field(default=None, max_length=128)
+    runtime_state: str | None = Field(default=None, min_length=1, max_length=64)
+    document_name: str | None = Field(default=None, max_length=255)
+    paused: bool | None = None
+    current_command_id: str | None = Field(default=None, max_length=128)
 
     @model_validator(mode="after")
     def _processed_sequence_is_not_future(self) -> "HeartbeatMessage":

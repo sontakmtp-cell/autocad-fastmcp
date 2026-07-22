@@ -1,6 +1,6 @@
 # Kế hoạch nâng cấp AutoCAD MCP nhiều người dùng bằng FastMCP
 
-> Trạng thái: **Phase 0–3.1 đã triển khai và kiểm chứng local; Phase 3.1 đang chờ hosted CI matrix; Phase 4+ chưa triển khai**
+> Trạng thái: **Phase 0–3.1 đã triển khai và kiểm chứng local; Phase 3.1 đang chờ hosted CI matrix; Phase 4 C1 đã có implementation, AutoCAD failure matrix và reconnect/restart local nhưng chưa hoàn tất standalone VM/public ChatGPT E2E; Phase 5+ chưa triển khai**
 >
 > Ngày khảo sát: 2026-07-21
 >
@@ -1252,6 +1252,8 @@ Mỗi phase dưới đây chỉ bắt đầu sau khi phase trước đạt exit 
 - **Kế hoạch/evidence:** `docs/architecture/Phase-3.1.md` và `docs/architecture/phase3.1-durable-lifecycle-hardening-evidence.md`.
 
 ### Phase 4 — POC C1: Desktop Agent + AutoCAD thật, read-only
+
+- **Trạng thái cập nhật 2026-07-22:** contract `cad.mcp/1.2`, migration `0003`, headless Agent, UI lab, DPAPI, package `3.3-c1`, build standalone và Windows CI đã được triển khai. Gateway local → WSS → Agent → AutoCAD Mechanical 2025 thật đã đọc thành công summary; AutoCAD failure matrix, hard pause/resume, reconnect/restart và 10 mẫu latency đều xanh local. Phase vẫn `NO-GO` để nghiệm thu đầy đủ vì chưa hoàn tất Windows 11 VM sạch, VPS/Auth0, MCP protocol client và ChatGPT Web. Chi tiết tại [phase4-c1-implementation-evidence.md](./phase4-c1-implementation-evidence.md).
 
 - **Mục tiêu/phạm vi:** ngay sau POC B, package Agent Windows tối thiểu, mở outbound WSS, đọc AutoCAD presence/document state và chạy một AutoLISP cấp 1 read-only đã đóng gói/versioned như `get_drawing_info`.
 - **Luồng sau phase:** ChatGPT Web (kèm protocol test client để tái lập lỗi) -> VPS Gateway -> WSS -> Desktop Agent -> packaged AutoLISP -> AutoCAD -> typed result trở lại; không mở port/tunnel trên máy user.

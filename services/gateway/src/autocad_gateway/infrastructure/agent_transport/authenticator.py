@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+from typing import Any
+
 
 class FixtureAuthError(ValueError):
     pass
@@ -21,6 +25,28 @@ class FixtureDeviceAuthenticator:
                 return device_id
         raise FixtureAuthError("fixture authentication failed")
 
+    def verify_hello(self, hello: Any, token: str) -> bool:
+        return hmac.compare_digest(hello.fixture_proof, token)
+
     @property
     def device_ids(self) -> tuple[str, ...]:
         return tuple(self._tokens)
+
+
+class LabDeviceAuthenticator(FixtureDeviceAuthenticator):
+    """One-device C1 authenticator with a bound hello proof.
+
+    This remains a lab credential, not production pairing.  The proof avoids
+    repeating the raw credential in the protocol payload.
+    """
+
+    def verify_hello(self, hello: Any, token: str) -> bool:
+        proof = getattr(hello, "device_proof", None)
+        if not isinstance(proof, str):
+            return False
+        expected = hmac.new(
+            token.encode("utf-8"),
+            f"{hello.device_id}:{hello.message_id}".encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
+        return hmac.compare_digest(proof, expected)

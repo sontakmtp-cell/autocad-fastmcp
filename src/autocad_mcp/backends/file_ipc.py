@@ -83,7 +83,7 @@ def find_autocad_window() -> int | None:
     def callback(hwnd, result):
         if win32gui.IsWindowVisible(hwnd):
             text = win32gui.GetWindowText(hwnd).lower()
-            if "autocad" in text:
+            if "autocad" in text and _window_process_name(hwnd) in {"acad.exe", "acadlt.exe"}:
                 result.append(hwnd)
         return True
 
@@ -92,6 +92,55 @@ def find_autocad_window() -> int | None:
     except Exception:
         return None
     return windows[0] if windows else None
+
+
+def _window_process_name(hwnd: int) -> str | None:
+    try:
+        import win32api
+        import win32con
+        import win32process
+
+        _, process_id = win32process.GetWindowThreadProcessId(hwnd)
+        handle = win32api.OpenProcess(
+            win32con.PROCESS_QUERY_INFORMATION | win32con.PROCESS_VM_READ,
+            False,
+            process_id,
+        )
+        try:
+            return Path(win32process.GetModuleFileNameEx(handle, 0)).name.lower()
+        finally:
+            handle.Close()
+    except Exception:
+        return None
+
+
+def has_owned_modal_dialog(app_hwnd: int | None) -> bool:
+    """Detect an enabled top-level dialog whose disabled owner is AutoCAD."""
+    if sys.platform != "win32" or not app_hwnd:
+        return False
+    try:
+        import win32gui
+    except ImportError:
+        return False
+    try:
+        if win32gui.IsWindowEnabled(app_hwnd):
+            return False
+        found: list[int] = []
+
+        def callback(hwnd, result):
+            if (
+                hwnd != app_hwnd
+                and win32gui.IsWindowVisible(hwnd)
+                and win32gui.IsWindowEnabled(hwnd)
+                and win32gui.GetWindow(hwnd, 4) == app_hwnd  # GW_OWNER
+            ):
+                result.append(hwnd)
+            return True
+
+        win32gui.EnumWindows(callback, found)
+        return bool(found)
+    except Exception:
+        return False
 
 
 def encode_attributes(attributes: dict[str, Any] | None) -> str:
@@ -297,6 +346,7 @@ class FileIPCBackend(AutoCADBackend):
         except Exception:
             app_hwnd = window
         window_found = bool(app_hwnd or window)
+        owned_modal = has_owned_modal_dialog(app_hwnd)
 
         try:
             document = app.ActiveDocument
@@ -313,7 +363,7 @@ class FileIPCBackend(AutoCADBackend):
             cmdactive = int(document.GetVariable("CMDACTIVE"))
         except Exception:
             pass
-        modal = bool(cmdactive is not None and (cmdactive & 8))
+        modal = owned_modal or bool(cmdactive is not None and (cmdactive & 8))
         try:
             idle = bool(app.GetAcadState().IsQuiescent)
             if cmdactive not in (None, 0):
@@ -453,6 +503,34 @@ class FileIPCBackend(AutoCADBackend):
             deadline = time.monotonic() + TIMEOUT
             while time.monotonic() < deadline:
                 if result_file.exists():
+                    current = self._inspect_runtime()
+                    transition_deadline = min(deadline, time.monotonic() + 0.5)
+                    while (
+                        current.error_code == "no_active_document"
+                        and time.monotonic() < transition_deadline
+                    ):
+                        await asyncio.sleep(POLL_INTERVAL)
+                        current = self._inspect_runtime()
+                    if current.error_code:
+                        return _error(current.error_code, current.error or current.error_code)
+                    if current.modal_dialog_active:
+                        return _error(
+                            "modal_dialog_active",
+                            "AutoCAD entered a modal dialog while waiting for IPC.",
+                        )
+                    if current.snapshot and current.snapshot.identity != expected_document.identity:
+                        return _error(
+                            "active_document_changed",
+                            "The active AutoCAD document changed while the request was running.",
+                            previous_document=expected_document.name,
+                            active_document=current.snapshot.name,
+                        )
+                    if current.idle is False:
+                        return _error(
+                            "autocad_busy",
+                            "AutoCAD is busy after command routing.",
+                            cmdactive=current.cmdactive,
+                        )
                     parsed = self._read_result(result_file)
                     if isinstance(parsed, CommandResult):
                         return parsed

@@ -17,17 +17,25 @@ from .contracts import (
     CadEntity,
     CadGetJobInput,
     CadGetJobOutput,
+    CadGetJobOutputC1,
     CadJobEvent,
     CadListDevicesInput,
     CadListDevicesOutput,
+    CadListDevicesOutputC1,
     CadObserveInput,
     CadObserveInputDurable,
     CadObserveOutputDurable,
+    CadObserveOutputC1,
     CadQueryInput,
     CadQueryOutput,
     DeviceInfo,
+    DeviceInfoC1,
+    ExecutionEvidence,
+    PackageEvidence,
     PHASE3_CONTRACT_VERSION,
+    PHASE4_CONTRACT_VERSION,
     Principal,
+    RevisionEvidence,
 )
 from .services import GatewayError
 from .snapshots import canonical_json, cursor_filter_hash, decode_cursor, encode_cursor
@@ -44,12 +52,23 @@ logger = logging.getLogger(__name__)
 _SAFE_JOB_ERROR_CODES = frozenset(
     {
         "agent_rejected",
+        "active_document_changed",
+        "autocad_busy",
+        "autocad_not_running",
         "backend_error",
         "capability_missing",
+        "command_routing_failed",
         "deadline_expired",
         "device_offline",
+        "dispatcher_not_loaded",
+        "dispatcher_timeout",
         "idempotency_conflict",
+        "ipc_result_invalid",
+        "modal_dialog_active",
+        "no_active_document",
         "payload_mismatch",
+        "package_mismatch",
+        "paused_by_user",
     }
 )
 
@@ -69,6 +88,10 @@ class DurableGatewayServices:
         request_wait_timeout_seconds: float = 30,
         job_deadline_seconds: float = 300,
         maintenance_interval_seconds: float | None = None,
+        profile: str = "phase3_poc",
+        agent_authenticator: Any | None = None,
+        required_package: dict[str, str] | None = None,
+        display_name: str | None = None,
     ) -> None:
         self.database = database
         self.registry = registry
@@ -77,10 +100,15 @@ class DurableGatewayServices:
             self.repository,
             registry,
             request_wait_timeout_seconds=request_wait_timeout_seconds,
+            required_package=required_package,
         )
         self.device_tokens = dict(device_tokens)
-        self.agent_authenticator = FixtureDeviceAuthenticator(self.device_tokens)
+        self.agent_authenticator = agent_authenticator or FixtureDeviceAuthenticator(self.device_tokens)
         self.owner_subject = owner_subject
+        self.profile = profile
+        self.is_phase4 = profile == "phase4_c1"
+        self.required_package = dict(required_package or {})
+        self.display_name = display_name
         self.job_deadline_seconds = max(1.0, min(float(job_deadline_seconds), 86_400.0))
         self.maintenance_interval_seconds = maintenance_interval_seconds
         self._initialized = False
@@ -96,9 +124,9 @@ class DurableGatewayServices:
             await self.repository.seed_device(
                 owner_subject=self.owner_subject,
                 device_id=device_id,
-                display_name=f"Simulated {device_id}",
-                capabilities=PHASE3_CAPABILITIES,
-                fixture_auth_ref=f"fixture:{device_id}",
+                display_name=self.display_name or f"Simulated {device_id}",
+                capabilities=["observe"] if self.is_phase4 else PHASE3_CAPABILITIES,
+                fixture_auth_ref=(f"lab:{device_id}" if self.is_phase4 else f"fixture:{device_id}"),
             )
         for job in await self.repository.all_nonterminal_jobs():
             if job["state"] in {"dispatched", "acknowledged", "running", "cancel_requested"}:
@@ -188,6 +216,9 @@ class DurableGatewayServices:
         )
 
     async def on_agent_connected(self, connection: Any) -> None:
+        if self.is_phase4 and not self._package_matches(connection):
+            await self.repository.set_device_status(connection.device_id, "incompatible")
+            raise DurableJobError("package_mismatch")
         session = await self.repository.activate_session(
             device_id=connection.device_id,
             session_id=connection.session_id,
@@ -195,6 +226,12 @@ class DurableGatewayServices:
             capabilities=list(connection.capabilities),
             capability_hash=connection.capability_hash,
             last_sequence=connection.last_sequence,
+            agent_version=connection.agent_version,
+            packages=list(connection.packages),
+            package_manifest_hash=connection.package_manifest_hash,
+            runtime_state=connection.runtime_state,
+            document_name=connection.document_name,
+            paused=connection.paused,
         )
         if session["capability_changed"]:
             logger.info(
@@ -211,6 +248,9 @@ class DurableGatewayServices:
             connection.session_id,
             device_id=connection.device_id,
             sequence=message.sequence,
+            runtime_state=message.runtime_state,
+            document_name=message.document_name,
+            paused=message.paused,
         )
         if not updated:
             raise DurableJobError("invalid_message")
@@ -228,25 +268,44 @@ class DurableGatewayServices:
 
     async def list_devices(
         self, request: CadListDevicesInput, principal: Principal, correlation_id: str
-    ) -> CadListDevicesOutput:
+    ) -> CadListDevicesOutput | CadListDevicesOutputC1:
         if principal.subject != self.owner_subject:
-            return CadListDevicesOutput(
-                contract_version=PHASE3_CONTRACT_VERSION,
+            output_type = CadListDevicesOutputC1 if self.is_phase4 else CadListDevicesOutput
+            return output_type(
+                contract_version=self.contract_version,
                 correlation_id=correlation_id,
                 devices=[],
             )
         devices = await self.repository.list_devices(
             principal.subject, online_only=request.online_only, capability=request.capability
         )
-        return CadListDevicesOutput(
-            contract_version=PHASE3_CONTRACT_VERSION,
+        output_type = CadListDevicesOutputC1 if self.is_phase4 else CadListDevicesOutput
+        device_type = DeviceInfoC1 if self.is_phase4 else DeviceInfo
+        return output_type(
+            contract_version=self.contract_version,
             correlation_id=correlation_id,
             devices=[
-                DeviceInfo(
+                device_type(
                     device_id=value["device_id"],
                     display_name=value["display_name"],
-                    status="online" if value["status"] == "online" else "offline",
+                    status=(
+                        value["status"]
+                        if self.is_phase4 and value["status"] == "incompatible"
+                        else "online" if value["status"] == "online" else "offline"
+                    ),
                     capabilities=value["capabilities"],
+                    **(
+                        {
+                            "runtime_state": value.get("runtime_state"),
+                            "document_name": value.get("document_name"),
+                            "last_seen_at": value.get("runtime_updated_at"),
+                            "agent_version": value.get("agent_version"),
+                            "package_summary": value.get("packages", []),
+                            "paused": value.get("paused", False),
+                        }
+                        if self.is_phase4
+                        else {}
+                    ),
                 )
                 for value in devices
             ],
@@ -258,7 +317,7 @@ class DurableGatewayServices:
         request: CadObserveInput | CadObserveInputDurable,
         principal: Principal,
         correlation_id: str,
-    ) -> CadObserveOutputDurable:
+    ) -> CadObserveOutputDurable | CadObserveOutputC1:
         device = await self._require_device(request.device_id, principal)
         if "observe" not in device["capabilities"]:
             raise GatewayError("capability_missing")
@@ -268,6 +327,8 @@ class DurableGatewayServices:
             "observation_level": request.observation_level,
             "include_preview_image": request.include_preview_image,
         }
+        if self.is_phase4:
+            payload["package"] = self.required_package
         explicit_key = getattr(request, "idempotency_key", None)
         key = explicit_key or f"observe-{uuid.uuid4()}"
         deadline_at = (
@@ -317,13 +378,42 @@ class DurableGatewayServices:
         snapshot = job["result"].get("snapshot")
         if not isinstance(snapshot, dict):
             raise GatewayError("backend_error")
+        entity_count = int(
+            snapshot.get("entity_summary", {}).get(
+                "entity_count", len(snapshot.get("entities", []))
+            )
+        )
+        if self.is_phase4:
+            evidence = job["result"].get("execution_evidence", {})
+            package = evidence.get("package") or self.required_package
+            return CadObserveOutputC1(
+                correlation_id=correlation_id,
+                device_id=request.device_id,
+                snapshot_id=str(snapshot["snapshot_id"]),
+                document_revision=str(snapshot["document_revision"]),
+                observation_level=request.observation_level,
+                entity_count=entity_count,
+                summary_uri=f"cad://snapshots/{snapshot['snapshot_id']}/summary",
+                entities_uri=f"cad://snapshots/{snapshot['snapshot_id']}/entities",
+                artifact_refs=[],
+                job_id=job["job_id"],
+                revision_evidence=RevisionEvidence.model_validate(
+                    snapshot.get("revision_evidence", {})
+                ),
+                execution_evidence=ExecutionEvidence(
+                    agent_version=str(evidence.get("agent_version", "unknown")),
+                    command_id=job["command_id"],
+                    package=PackageEvidence.model_validate(package),
+                    runtime_state=evidence.get("runtime_state"),
+                ),
+            )
         return CadObserveOutputDurable(
             correlation_id=correlation_id,
             device_id=request.device_id,
             snapshot_id=str(snapshot["snapshot_id"]),
             document_revision=str(snapshot["document_revision"]),
             observation_level=request.observation_level,
-            entity_count=len(snapshot.get("entities", [])),
+            entity_count=entity_count,
             summary_uri=f"cad://snapshots/{snapshot['snapshot_id']}/summary",
             entities_uri=f"cad://snapshots/{snapshot['snapshot_id']}/entities",
             artifact_refs=[],
@@ -336,6 +426,8 @@ class DurableGatewayServices:
         snapshot = await self.repository.get_snapshot(principal.subject, request.snapshot_id)
         if snapshot is None:
             raise GatewayError("not_found")
+        if self.is_phase4 and snapshot.get("revision_evidence", {}).get("revision_strength") == "summary_only":
+            raise GatewayError("capability_missing")
         selected = [
             entity
             for entity in snapshot["entities"]
@@ -382,7 +474,7 @@ class DurableGatewayServices:
 
     async def get_job(
         self, request: CadGetJobInput, principal: Principal, correlation_id: str
-    ) -> CadGetJobOutput:
+    ) -> CadGetJobOutput | CadGetJobOutputC1:
         job = await self.repository.get_job(principal.subject, request.job_id)
         if job is None:
             raise GatewayError("not_found")
@@ -401,7 +493,7 @@ class DurableGatewayServices:
         snapshot_id = None
         if isinstance(result, dict) and isinstance(result.get("snapshot"), dict):
             snapshot_id = result["snapshot"].get("snapshot_id")
-        return CadGetJobOutput(
+        common = dict(
             correlation_id=correlation_id,
             job_id=job["job_id"],
             device_id=job["device_id"],
@@ -415,12 +507,23 @@ class DurableGatewayServices:
             next_event_cursor=next_cursor,
             snapshot_id=snapshot_id,
         )
+        if self.is_phase4:
+            evidence = result.get("execution_evidence", {}) if isinstance(result, dict) else {}
+            package = evidence.get("package")
+            return CadGetJobOutputC1(
+                **common,
+                agent_version=evidence.get("agent_version"),
+                command_id=job["command_id"],
+                package=PackageEvidence.model_validate(package) if package else None,
+                runtime_evidence=evidence or None,
+            )
+        return CadGetJobOutput(**common)
 
     async def read_device_capabilities(self, device_id: str, principal: Principal) -> str:
         value = await self._require_device(device_id, principal)
         return json.dumps(
             {
-                "contract_version": PHASE3_CONTRACT_VERSION,
+                "contract_version": self.contract_version,
                 "device_id": device_id,
                 "status": value["status"],
                 "capabilities": value["capabilities"],
@@ -435,7 +538,7 @@ class DurableGatewayServices:
             raise GatewayError("not_found")
         return canonical_json(
             {
-                "contract_version": PHASE3_CONTRACT_VERSION,
+                "contract_version": self.contract_version,
                 "snapshot_id": snapshot["snapshot_id"],
                 "device_id": snapshot["device_id"],
                 "job_id": snapshot["job_id"],
@@ -443,7 +546,10 @@ class DurableGatewayServices:
                 "observation_level": snapshot["observation_level"],
                 "drawing": snapshot["drawing"],
                 "entity_summary": snapshot["entity_summary"],
-                "entity_count": len(snapshot["entities"]),
+                "entity_count": snapshot.get("entity_summary", {}).get(
+                    "entity_count", len(snapshot["entities"])
+                ),
+                "revision_evidence": snapshot.get("revision_evidence"),
             }
         )
 
@@ -490,6 +596,15 @@ class DurableGatewayServices:
         if value is None:
             raise GatewayError("not_found")
         return value
+
+    @property
+    def contract_version(self) -> str:
+        return PHASE4_CONTRACT_VERSION if self.is_phase4 else PHASE3_CONTRACT_VERSION
+
+    def _package_matches(self, connection: Any) -> bool:
+        if not self.required_package:
+            return True
+        return self.required_package in list(connection.packages)
 
     @staticmethod
     def _safe_job_error_code(error_code: str | None) -> str:

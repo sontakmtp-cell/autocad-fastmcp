@@ -31,12 +31,15 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from .contracts import (
     CadListDevicesInput,
     CadListDevicesOutput,
+    CadListDevicesOutputC1,
     CadGetJobInput,
     CadGetJobOutput,
+    CadGetJobOutputC1,
     CadObserveInput,
     CadObserveInputDurable,
     CadObserveOutput,
     CadObserveOutputDurable,
+    CadObserveOutputC1,
     CadQueryInput,
     CadQueryOutput,
     Principal,
@@ -100,7 +103,7 @@ class GatewayConfig:
     snapshot_ttl_seconds: float = SNAPSHOT_TTL_SECONDS_DEFAULT
     max_snapshot_count: int = MAX_SNAPSHOT_COUNT_DEFAULT
     max_snapshot_store_bytes: int = MAX_SNAPSHOT_STORE_BYTES_DEFAULT
-    profile: Literal["local", "phase3_poc"] = "local"
+    profile: Literal["local", "phase3_poc", "phase4_c1"] = "local"
     db_path: str | None = None
     fixture_tokens: tuple[tuple[str, str], ...] = ()
     fixture_owner_subject: str = "phase3-fixture-user"
@@ -109,6 +112,15 @@ class GatewayConfig:
     job_deadline_seconds: float = 300.0
     # Backward-compatible constructor alias used by the original Phase 3 tests.
     command_timeout_seconds: float | None = None
+    oauth_issuer: str | None = None
+    oauth_audience: str | None = None
+    oauth_jwks_uri: str | None = None
+    public_origin: str | None = None
+    required_package_id: str | None = None
+    required_package_version: str | None = None
+    required_package_sha256: str | None = None
+    write_disabled: bool = True
+    device_display_name: str = "Máy AutoCAD Lab"
 
     @classmethod
     def from_env(cls) -> "GatewayConfig":
@@ -131,6 +143,17 @@ class GatewayConfig:
             for parts in [item.split("=", 1)]
             if parts[0].strip() and parts[1].strip()
         )
+        profile = os.environ.get("AUTOCAD_MCP_GATEWAY_PROFILE", "local").strip() or "local"
+        if profile == "phase4_c1":
+            device_id = os.environ.get("AUTOCAD_MCP_PHASE4_DEVICE_ID", "").strip()
+            device_credential = os.environ.get(
+                "AUTOCAD_MCP_PHASE4_DEVICE_CREDENTIAL", ""
+            ).strip()
+            fixture_tokens = (
+                ((device_id, device_credential),)
+                if device_id and device_credential
+                else ()
+            )
         config = cls(
             host=os.environ.get("AUTOCAD_MCP_PUBLIC_V1_HOST", "127.0.0.1").strip(),
             port=int(os.environ.get("AUTOCAD_MCP_PUBLIC_V1_PORT", "8765")),
@@ -174,11 +197,20 @@ class GatewayConfig:
                     str(MAX_SNAPSHOT_STORE_BYTES_DEFAULT),
                 )
             ),
-            profile=os.environ.get("AUTOCAD_MCP_GATEWAY_PROFILE", "local").strip() or "local",
-            db_path=os.environ.get("AUTOCAD_MCP_PHASE3_DB_PATH", "").strip() or None,
+            profile=profile,
+            db_path=(
+                os.environ.get("AUTOCAD_MCP_PHASE4_DB_PATH", "").strip()
+                if profile == "phase4_c1"
+                else os.environ.get("AUTOCAD_MCP_PHASE3_DB_PATH", "").strip()
+            ) or None,
             fixture_tokens=fixture_tokens,
             fixture_owner_subject=os.environ.get(
-                "AUTOCAD_MCP_PHASE3_OWNER", "phase3-fixture-user"
+                (
+                    "AUTOCAD_MCP_PHASE4_OWNER_SUBJECT"
+                    if profile == "phase4_c1"
+                    else "AUTOCAD_MCP_PHASE3_OWNER"
+                ),
+                "phase3-fixture-user",
             ).strip(),
             stale_after_seconds=int(os.environ.get("AUTOCAD_MCP_PHASE3_STALE_SECONDS", "45")),
             request_wait_timeout_seconds=float(
@@ -190,6 +222,26 @@ class GatewayConfig:
             job_deadline_seconds=float(
                 os.environ.get("AUTOCAD_MCP_PHASE3_JOB_DEADLINE_SECONDS", "300")
             ),
+            oauth_issuer=os.environ.get("AUTOCAD_MCP_PHASE4_OAUTH_ISSUER", "").strip() or None,
+            oauth_audience=os.environ.get("AUTOCAD_MCP_PHASE4_OAUTH_AUDIENCE", "").strip() or None,
+            oauth_jwks_uri=os.environ.get("AUTOCAD_MCP_PHASE4_OAUTH_JWKS_URI", "").strip() or None,
+            public_origin=os.environ.get("AUTOCAD_MCP_PHASE4_PUBLIC_ORIGIN", "").strip() or None,
+            required_package_id=os.environ.get(
+                "AUTOCAD_MCP_PHASE4_PACKAGE_ID", "autocad.lisp.drawing_info"
+            ).strip() or None,
+            required_package_version=os.environ.get(
+                "AUTOCAD_MCP_PHASE4_PACKAGE_VERSION", "3.3-c1"
+            ).strip() or None,
+            required_package_sha256=os.environ.get(
+                "AUTOCAD_MCP_PHASE4_PACKAGE_SHA256", ""
+            ).strip() or None,
+            write_disabled=os.environ.get("AUTOCAD_MCP_PHASE4_WRITE_DISABLED", "1")
+            .strip()
+            .lower()
+            in {"1", "true", "yes", "on"},
+            device_display_name=os.environ.get(
+                "AUTOCAD_MCP_PHASE4_DEVICE_DISPLAY_NAME", "Máy AutoCAD Lab"
+            ).strip(),
         )
         return config.validate()
 
@@ -230,8 +282,8 @@ class GatewayConfig:
         )
         if self.max_snapshot_bytes > self.max_snapshot_store_bytes:
             raise ValueError("max_snapshot_bytes must not exceed max_snapshot_store_bytes")
-        if self.profile not in {"local", "phase3_poc"}:
-            raise ValueError("profile must be local or phase3_poc")
+        if self.profile not in {"local", "phase3_poc", "phase4_c1"}:
+            raise ValueError("profile must be local, phase3_poc or phase4_c1")
         if not 1 <= self.stale_after_seconds <= 3600:
             raise ValueError("stale_after_seconds must be between 1 and 3600")
         if not 0 < self.effective_request_wait_timeout_seconds <= 600:
@@ -245,7 +297,54 @@ class GatewayConfig:
                 raise ValueError("phase3_poc requires fixture device tokens")
             if not self.fixture_owner_subject:
                 raise ValueError("phase3_poc requires a fixture owner subject")
+        if self.profile == "phase4_c1":
+            required = {
+                "db_path": self.db_path,
+                "lab device credential": self.fixture_tokens,
+                "lab owner subject": self.fixture_owner_subject,
+                "OAuth issuer": self.oauth_issuer,
+                "OAuth audience": self.oauth_audience,
+                "OAuth JWKS URI": self.oauth_jwks_uri,
+                "public origin": self.public_origin,
+                "package ID": self.required_package_id,
+                "package version": self.required_package_version,
+                "package SHA-256": self.required_package_sha256,
+                "device display name": self.device_display_name,
+            }
+            missing = [name for name, value in required.items() if not value]
+            if missing:
+                raise ValueError("phase4_c1 requires " + ", ".join(missing))
+            if len(self.fixture_tokens) != 1:
+                raise ValueError("phase4_c1 requires exactly one lab device")
+            if not self.write_disabled:
+                raise ValueError("phase4_c1 requires write_disabled=true")
+            if not re.fullmatch(r"[0-9a-f]{64}", self.required_package_sha256 or ""):
+                raise ValueError("phase4_c1 package SHA-256 must be 64 lowercase hex characters")
+            for name, value in {
+                "OAuth issuer": self.oauth_issuer,
+                "OAuth JWKS URI": self.oauth_jwks_uri,
+                "public origin": self.public_origin,
+            }.items():
+                parsed = urlsplit(value or "")
+                if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
+                    raise ValueError(f"phase4_c1 {name} must be a canonical HTTPS URL")
+            if urlsplit(self.public_origin or "").path not in {"", "/"}:
+                raise ValueError("phase4_c1 public origin must not contain a path")
         return self
+
+    @property
+    def required_package(self) -> dict[str, str]:
+        if not (
+            self.required_package_id
+            and self.required_package_version
+            and self.required_package_sha256
+        ):
+            return {}
+        return {
+            "package_id": self.required_package_id,
+            "version": self.required_package_version,
+            "sha256": self.required_package_sha256,
+        }
 
     @property
     def effective_request_wait_timeout_seconds(self) -> float:
@@ -413,6 +512,25 @@ class OuterHostOriginGuard:
         )
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] == "websocket" and scope["path"] == "/agent/ws":
+            headers = {key.decode().lower(): value.decode() for key, value in scope["headers"]}
+            host = headers.get("host", "")
+            origin = headers.get("origin")
+            host_allowed = any(self._host_matches(host, item) for item in self.allowed_hosts)
+            origin_allowed = origin is None or any(
+                _origin_matches(origin, item) for item in self.allowed_origins
+            )
+            if not host_allowed or not origin_allowed:
+                await send(
+                    {
+                        "type": "websocket.close",
+                        "code": 4403,
+                        "reason": "host or origin is not allowed",
+                    }
+                )
+                return
+            await self.app(scope, receive, send)
+            return
         if scope["type"] != "http" or not (
             scope["path"] == self.protected_path
             or scope["path"].startswith(self.protected_path + "/")
@@ -489,6 +607,16 @@ def _safe_error(error: GatewayError, correlation_id: str) -> ToolError:
         "idempotency_conflict": "the request conflicts with an existing job",
         "payload_mismatch": "the command payload does not match the existing command",
         "agent_rejected": "the Agent rejected the command",
+        "active_document_changed": "the active AutoCAD document changed during the read",
+        "autocad_busy": "AutoCAD is running another command",
+        "autocad_not_running": "AutoCAD is not running",
+        "command_routing_failed": "the Agent could not route the read command to AutoCAD",
+        "dispatcher_not_loaded": "the required AutoLISP dispatcher is not loaded",
+        "package_mismatch": "the Agent package does not match the required version",
+        "ipc_result_invalid": "AutoCAD returned invalid bounded read evidence",
+        "modal_dialog_active": "AutoCAD has a modal dialog open",
+        "no_active_document": "AutoCAD has no active document",
+        "paused_by_user": "the local user paused remote tasks",
         "outcome_unknown": "the write-like operation has an unknown outcome",
         "internal_error": "operation failed",
     }
@@ -540,9 +668,16 @@ def build_mcp_server(
     make_correlation_id = correlation_id_factory or (lambda: str(uuid.uuid4()))
     auth_check = require_scopes("autocad.read") if auth is not None else None
     phase3 = bool(getattr(services, "is_phase3", False))
+    phase4 = bool(getattr(services, "is_phase4", False))
     mcp = FastMCP(
-        name="AutoCAD Gateway public v1.1" if phase3 else "AutoCAD Gateway public v1",
-        version="0.3.0" if phase3 else "0.2.0",
+        name=(
+            "AutoCAD Gateway public v1.2"
+            if phase4
+            else "AutoCAD Gateway public v1.1"
+            if phase3
+            else "AutoCAD Gateway public v1"
+        ),
+        version="0.4.0" if phase4 else "0.3.0" if phase3 else "0.2.0",
         auth=auth,
         mask_error_details=True,
     )
@@ -552,7 +687,11 @@ def build_mcp_server(
         name="cad_list_devices",
         title="List CAD devices",
         description="List the bounded local CAD devices available for read-only observation.",
-        output_schema=CadListDevicesOutput.model_json_schema(),
+        output_schema=(
+            CadListDevicesOutputC1.model_json_schema()
+            if phase4
+            else CadListDevicesOutput.model_json_schema()
+        ),
         annotations=_tool_annotations(idempotent=True),
         auth=auth_check,
     )
@@ -624,7 +763,11 @@ def build_mcp_server(
             name="cad_observe",
             title="Observe a CAD device",
             description="Create a bounded read-only CAD snapshot with stable revision and resource references.",
-            output_schema=CadObserveOutputDurable.model_json_schema(),
+            output_schema=(
+                CadObserveOutputC1.model_json_schema()
+                if phase4
+                else CadObserveOutputDurable.model_json_schema()
+            ),
             annotations=_tool_annotations(idempotent=False),
             auth=auth_check,
         )
@@ -716,7 +859,11 @@ def build_mcp_server(
             name="cad_get_job",
             title="Get a CAD job",
             description="Read the bounded state, progress and ordered events for an observation job.",
-            output_schema=CadGetJobOutput.model_json_schema(),
+            output_schema=(
+                CadGetJobOutputC1.model_json_schema()
+                if phase4
+                else CadGetJobOutput.model_json_schema()
+            ),
             annotations=_tool_annotations(idempotent=True),
             auth=auth_check,
         )
@@ -900,6 +1047,8 @@ def create_app(
     correlation_id_factory: CorrelationIdFactory | None = None,
 ) -> Starlette:
     config = (config or GatewayConfig.from_env()).validate()
+    if config.profile == "phase4_c1" and auth is None:
+        raise ValueError("phase4_c1 requires OAuth authentication")
     if stateless_http is not None:
         config = replace(config, stateless_http=stateless_http)
     configured_hosts = allowed_hosts if allowed_hosts is not None else list(config.allowed_hosts)

@@ -1,0 +1,62 @@
+name: Phase 4 C1 Agent
+
+on:
+  push:
+    paths:
+      - "apps/desktop_agent/**"
+      - "packages/contracts/**"
+      - "services/gateway/**"
+      - "lisp-code/mcp_dispatch.lsp"
+      - "scripts/build-phase4-agent.ps1"
+      - ".github/workflows/phase4-c1-agent.yml"
+  pull_request:
+    paths:
+      - "apps/desktop_agent/**"
+      - "packages/contracts/**"
+      - "services/gateway/**"
+      - "lisp-code/mcp_dispatch.lsp"
+      - "scripts/build-phase4-agent.ps1"
+      - ".github/workflows/phase4-c1-agent.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-agent:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Sync Desktop Agent
+        working-directory: apps/desktop_agent
+        run: uv sync --locked --python 3.12 --group test --group ui-test
+      - name: Test Desktop Agent
+        working-directory: apps/desktop_agent
+        run: uv run --no-sync pytest -q
+      - name: Test Phase 4 Gateway contract
+        working-directory: services/gateway
+        run: |
+          uv sync --locked --group test
+          uv run --no-sync pytest -q tests/test_phase4_c1.py tests/test_sqlite_repositories.py
+      - name: Build standalone Agent
+        shell: powershell
+        run: .\scripts\build-phase4-agent.ps1 -OutputRoot "$env:RUNNER_TEMP\phase4-agent"
+      - name: Validate release manifest
+        shell: powershell
+        run: |
+          $manifest = Get-Content "$env:RUNNER_TEMP\phase4-agent\manifest.json" -Raw | ConvertFrom-Json
+          if ($manifest.schema -ne 'cad.agent.release/1') { throw 'Unexpected release manifest schema' }
+          if (-not (Test-Path "$env:RUNNER_TEMP\phase4-agent\app\KythuatvangAutoCADAgent.exe")) { throw 'Standalone executable is missing' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: phase4-c1-agent-windows-x64
+          path: ${{ runner.temp }}/phase4-agent
+          if-no-files-found: error

@@ -161,3 +161,54 @@ def test_no_auth_gateway_rejects_non_loopback():
             object(),
             config=GatewayConfig(host="0.0.0.0"),
         )
+
+
+@pytest.mark.asyncio
+async def test_agent_websocket_host_and_origin_fail_closed():
+    called = False
+    sent = []
+
+    async def inner(scope, receive, send):
+        nonlocal called
+        called = True
+
+    async def receive():
+        return {"type": "websocket.connect"}
+
+    async def send(message):
+        sent.append(message)
+
+    guard = OuterHostOriginGuard(
+        inner,
+        ["cad.example"],
+        ["https://agent.example"],
+    )
+    await guard(
+        {
+            "type": "websocket",
+            "path": "/agent/ws",
+            "headers": [(b"host", b"evil.example")],
+        },
+        receive,
+        send,
+    )
+    assert called is False
+    assert sent == [{
+        "type": "websocket.close",
+        "code": 4403,
+        "reason": "host or origin is not allowed",
+    }]
+
+    await guard(
+        {
+            "type": "websocket",
+            "path": "/agent/ws",
+            "headers": [
+                (b"host", b"cad.example"),
+                (b"origin", b"https://agent.example"),
+            ],
+        },
+        receive,
+        send,
+    )
+    assert called is True

@@ -1640,10 +1640,61 @@
 (princ)
 
 ;;; -----------------------------------------------------------------------
-;;; MCP Dispatch reliability overrides (v3.2)
+;;; Phase 4 C1 read-only drawing-info package (v3.3-c1)
 ;;; -----------------------------------------------------------------------
 
-(setq *mcp-dispatch-version* "3.2")
+(setq *mcp-dispatch-version* "3.3-c1")
+(setq *mcp-drawing-info-package-id* "autocad.lisp.drawing_info")
+(setq *mcp-drawing-info-package-version* "3.3-c1")
+
+(defun mcp-c1-bounded-layer-name (name / value)
+  (setq value (if name name ""))
+  (if (> (strlen value) 255) (substr value 1 255) value)
+)
+
+(defun mcp-cmd-drawing-info ( / count layers layer-list layer-count emitted truncated name ss)
+  "Return a bounded read-only drawing summary for the Phase 4 C1 Agent."
+  (setq ss (ssget "_X"))
+  (setq count (if ss (sslength ss) 0))
+  (setq layer-list "")
+  (setq layer-count 0)
+  (setq emitted 0)
+  (setq truncated nil)
+  (setq layers (tblnext "LAYER" T))
+  (while layers
+    (setq layer-count (1+ layer-count))
+    (if (< emitted 256)
+      (progn
+        (setq name (mcp-c1-bounded-layer-name (cdr (assoc 2 layers))))
+        (if (> (strlen layer-list) 0)
+          (setq layer-list (strcat layer-list ",\"" (mcp-escape-string name) "\""))
+          (setq layer-list (strcat "\"" (mcp-escape-string name) "\""))
+        )
+        (setq emitted (1+ emitted))
+      )
+      (setq truncated T)
+    )
+    (setq layers (tblnext "LAYER"))
+  )
+  (cons T
+    (strcat
+      "{\"document_name\":\"" (mcp-escape-string (getvar "DWGNAME")) "\""
+      ",\"entity_count\":" (itoa count)
+      ",\"layers\":[" layer-list "]"
+      ",\"layer_count\":" (itoa layer-count)
+      ",\"truncated\":" (if truncated "true" "false")
+      ",\"dispatcher_version\":\"" *mcp-dispatch-version* "\""
+      ",\"package_id\":\"" *mcp-drawing-info-package-id* "\""
+      ",\"package_version\":\"" *mcp-drawing-info-package-version* "\"}"
+    )
+  )
+)
+
+;;; -----------------------------------------------------------------------
+;;; MCP Dispatch reliability overrides retained by v3.3-c1
+;;; -----------------------------------------------------------------------
+
+(setq *mcp-dispatch-version* "3.3-c1")
 
 (defun mcp-error (code message)
   (cons nil (strcat "MCPERR:" code ":" message))
@@ -2153,5 +2204,5 @@
   (princ)
 )
 
-(princ "\n=== MCP Dispatch v3.2 reliability overrides loaded ===")
+(princ "\n=== MCP Dispatch v3.3-c1 read-only package loaded ===")
 (princ)

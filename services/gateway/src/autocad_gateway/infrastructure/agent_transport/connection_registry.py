@@ -35,6 +35,13 @@ class AgentConnection:
     last_sequence: int = 0
     busy: bool = False
     current_job_id: str | None = None
+    agent_version: str | None = None
+    runtime_state: str | None = None
+    document_name: str | None = None
+    paused: bool = False
+    current_command_id: str | None = None
+    packages: tuple[dict[str, str], ...] = ()
+    package_manifest_hash: str | None = None
     replaced_session_id: str | None = None
     send_timeout_seconds: float = 5.0
     _send_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
@@ -160,6 +167,10 @@ class ConnectionRegistry:
         sequence: int,
         busy: bool,
         current_job_id: str | None,
+        runtime_state: str | None = None,
+        document_name: str | None = None,
+        paused: bool | None = None,
+        current_command_id: str | None = None,
     ) -> bool:
         async with self._lock:
             connection = self._connections.get(device_id)
@@ -169,6 +180,11 @@ class ConnectionRegistry:
             connection.last_sequence = max(connection.last_sequence, sequence)
             connection.busy = busy
             connection.current_job_id = current_job_id
+            connection.runtime_state = runtime_state
+            connection.document_name = document_name
+            if paused is not None:
+                connection.paused = paused
+            connection.current_command_id = current_command_id
             return True
 
     async def stale_connections(self) -> list[AgentConnection]:
