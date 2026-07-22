@@ -21,6 +21,10 @@ on:
       - "uv.lock"
       - ".github/workflows/phase1-1-cad-core-hardening.yml"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
