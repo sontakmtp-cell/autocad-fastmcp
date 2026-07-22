@@ -1,4 +1,4 @@
-"""Safe error mapping and validation checks."""
+"""Safe error mapping and strict validation checks."""
 
 from __future__ import annotations
 
@@ -47,11 +47,37 @@ async def test_backend_and_unexpected_errors_are_masked(local_server, services):
 
 
 @pytest.mark.asyncio
-async def test_invalid_input_does_not_call_service(local_server, services):
+@pytest.mark.parametrize(
+    ("tool_name", "arguments"),
+    [
+        ("cad_observe", {"device_id": ""}),
+        ("cad_observe", {"device_id": "x" * 129}),
+        ("cad_observe", {"device_id": "cad-online-01", "undeclared": True}),
+        (
+            "cad_observe",
+            {"device_id": "cad-online-01", "include_preview_image": "false"},
+        ),
+        (
+            "cad_observe",
+            {"device_id": "cad-online-01", "include_preview_image": 1},
+        ),
+        (
+            "cad_observe",
+            {"device_id": "cad-online-01", "observation_level": "everything"},
+        ),
+        ("cad_list_devices", {"online_only": "false"}),
+        ("cad_list_devices", {"online_only": 1}),
+        ("cad_get_job", {"job_id": ""}),
+        ("cad_get_job", {"job_id": "j" * 129}),
+        ("cad_get_job", {"job_id": "job-running-01", "event_cursor": "c" * 129}),
+        ("cad_get_job", {"job_id": "job-running-01", "undeclared": 1}),
+    ],
+)
+async def test_invalid_input_does_not_call_service(local_server, services, tool_name, arguments):
     async with Client(local_server) as client:
         result = await client.call_tool(
-            "cad_observe",
-            {"device_id": ""},
+            tool_name,
+            arguments,
             raise_on_error=False,
         )
     assert result.is_error
