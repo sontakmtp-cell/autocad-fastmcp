@@ -26,7 +26,7 @@ from .contracts import (
     Principal,
 )
 from .services import GatewayError
-from .snapshots import canonical_json, decode_cursor, encode_cursor
+from .snapshots import canonical_json, cursor_filter_hash, decode_cursor, encode_cursor
 from .infrastructure.agent_transport.connection_registry import ConnectionRegistry
 from .infrastructure.agent_transport.authenticator import FixtureDeviceAuthenticator
 from .infrastructure.sqlite.database import SqliteDatabase
@@ -200,7 +200,10 @@ class DurableGatewayServices:
         selected = [
             entity
             for entity in snapshot["entities"]
-            if (not request.types or entity["entity_type"] in request.types)
+            if (
+                not request.types
+                or str(entity["entity_type"]).upper() in request.types
+            )
             and (not request.layers or entity["layer"] in request.layers)
         ]
         offset = 0
@@ -209,9 +212,15 @@ class DurableGatewayServices:
                 cursor = decode_cursor(request.cursor)
             except Exception:
                 raise GatewayError("invalid_request") from None
-            if cursor.get("snapshot_id") != request.snapshot_id or cursor.get("types") != request.types or cursor.get("layers") != request.layers:
+            if (
+                cursor.get("snapshot_id") != request.snapshot_id
+                or cursor.get("filter_hash")
+                != cursor_filter_hash(request.types, request.layers)
+            ):
                 raise GatewayError("invalid_request")
             offset = cursor["offset"]
+        if offset > len(selected):
+            raise GatewayError("invalid_request")
         page = selected[offset : offset + request.limit]
         next_cursor = None
         if offset + request.limit < len(selected):

@@ -2,6 +2,8 @@ name: FastMCP Phase 2 Gateway
 
 on:
   pull_request:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -58,3 +60,26 @@ jobs:
           uv sync --locked --group test
           uv run --locked --group test pytest -q
           uv build --wheel
+
+  legacy-and-phase0-regression:
+    name: Legacy and Phase 0 regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v5
+      - name: Run legacy and CAD Core tests
+        run: uv run pytest tests/ -q
+      - name: Run isolated Phase 0 compatibility tests
+        working-directory: poc/fastmcp-phase0
+        run: |
+          uv sync --locked --group test
+          uv run --locked --group test python -c "import fastmcp; assert fastmcp.__version__ == '3.4.4'"
+          uv run --locked --group test pytest -q
+      - name: Verify checked-in schema snapshots and whitespace
+        run: |
+          git diff --exit-code -- poc/fastmcp-phase0/snapshots services/gateway/snapshots
+          git diff --check

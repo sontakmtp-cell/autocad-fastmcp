@@ -28,7 +28,17 @@ def build_services(config: GatewayConfig) -> Any:
             owner_subject=config.fixture_owner_subject,
             command_timeout_seconds=config.command_timeout_seconds,
         )
-    return GatewayServices(build_backend(), max_image_bytes=config.max_image_bytes)
+    return GatewayServices(
+        build_backend(),
+        max_image_bytes=config.max_image_bytes,
+        max_entities=config.max_entities,
+        max_entity_detail_calls=config.max_entity_detail_calls,
+        observation_timeout_seconds=config.observation_timeout_seconds,
+        max_snapshot_bytes=config.max_snapshot_bytes,
+        snapshot_ttl_seconds=config.snapshot_ttl_seconds,
+        max_snapshot_count=config.max_snapshot_count,
+        max_snapshot_store_bytes=config.max_snapshot_store_bytes,
+    )
 
 
 def build_agent_authenticator(config: GatewayConfig) -> FixtureDeviceAuthenticator | None:

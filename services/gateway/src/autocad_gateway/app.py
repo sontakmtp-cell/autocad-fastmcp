@@ -3,19 +3,22 @@
 from __future__ import annotations
 
 import os
+import logging
 import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar, Token
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from ipaddress import ip_address
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from fastmcp import Context, FastMCP
-from fastmcp.exceptions import ToolError
+from fastmcp.exceptions import ToolError, ValidationError as FastMCPValidationError
 from fastmcp.resources import ResourceContent, ResourceResult
 from fastmcp.server.auth import RemoteAuthProvider, require_scopes
 from fastmcp.server.dependencies import get_access_token
+from fastmcp.server.middleware import Middleware
 from fastmcp.tools.tool import ToolResult
 from mcp.types import PromptMessage, ResourceLink, TextContent
 from pydantic import ValidationError
@@ -36,11 +39,31 @@ from .contracts import (
     CadQueryOutput,
     Principal,
 )
-from .services import GatewayError, GatewayServices, LOCAL_SUBJECT
+from .services import (
+    MAX_ENTITIES_DEFAULT,
+    MAX_ENTITIES_UPPER,
+    MAX_ENTITY_DETAIL_CALLS_DEFAULT,
+    MAX_ENTITY_DETAIL_CALLS_UPPER,
+    MAX_IMAGE_BYTES_UPPER,
+    MAX_SNAPSHOT_BYTES_DEFAULT,
+    MAX_SNAPSHOT_BYTES_UPPER,
+    MAX_SNAPSHOT_COUNT_DEFAULT,
+    MAX_SNAPSHOT_COUNT_UPPER,
+    MAX_SNAPSHOT_STORE_BYTES_DEFAULT,
+    MAX_SNAPSHOT_STORE_BYTES_UPPER,
+    OBSERVATION_TIMEOUT_SECONDS_DEFAULT,
+    OBSERVATION_TIMEOUT_SECONDS_UPPER,
+    SNAPSHOT_TTL_SECONDS_DEFAULT,
+    SNAPSHOT_TTL_SECONDS_UPPER,
+    GatewayError,
+    GatewayServices,
+    LOCAL_SUBJECT,
+)
 
 
 CorrelationIdFactory = Callable[[], str]
 _correlation_id: ContextVar[str | None] = ContextVar("cad_gateway_correlation_id", default=None)
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -52,6 +75,13 @@ class GatewayConfig:
     allowed_hosts: tuple[str, ...] = ("127.0.0.1:*", "localhost:*", "[::1]:*")
     allowed_origins: tuple[str, ...] = ()
     max_image_bytes: int = 5 * 1024 * 1024
+    max_entities: int = MAX_ENTITIES_DEFAULT
+    max_entity_detail_calls: int = MAX_ENTITY_DETAIL_CALLS_DEFAULT
+    observation_timeout_seconds: float = OBSERVATION_TIMEOUT_SECONDS_DEFAULT
+    max_snapshot_bytes: int = MAX_SNAPSHOT_BYTES_DEFAULT
+    snapshot_ttl_seconds: float = SNAPSHOT_TTL_SECONDS_DEFAULT
+    max_snapshot_count: int = MAX_SNAPSHOT_COUNT_DEFAULT
+    max_snapshot_store_bytes: int = MAX_SNAPSHOT_STORE_BYTES_DEFAULT
     profile: Literal["local", "phase3_poc"] = "local"
     db_path: str | None = None
     fixture_tokens: tuple[tuple[str, str], ...] = ()
@@ -93,6 +123,36 @@ class GatewayConfig:
             max_image_bytes=int(
                 os.environ.get("AUTOCAD_MCP_MAX_IMAGE_BYTES", str(5 * 1024 * 1024))
             ),
+            max_entities=int(
+                os.environ.get("AUTOCAD_MCP_MAX_OBSERVATION_ENTITIES", str(MAX_ENTITIES_DEFAULT))
+            ),
+            max_entity_detail_calls=int(
+                os.environ.get(
+                    "AUTOCAD_MCP_MAX_ENTITY_DETAIL_CALLS",
+                    str(MAX_ENTITY_DETAIL_CALLS_DEFAULT),
+                )
+            ),
+            observation_timeout_seconds=float(
+                os.environ.get(
+                    "AUTOCAD_MCP_OBSERVATION_TIMEOUT_SECONDS",
+                    str(OBSERVATION_TIMEOUT_SECONDS_DEFAULT),
+                )
+            ),
+            max_snapshot_bytes=int(
+                os.environ.get("AUTOCAD_MCP_MAX_SNAPSHOT_BYTES", str(MAX_SNAPSHOT_BYTES_DEFAULT))
+            ),
+            snapshot_ttl_seconds=float(
+                os.environ.get("AUTOCAD_MCP_SNAPSHOT_TTL_SECONDS", str(SNAPSHOT_TTL_SECONDS_DEFAULT))
+            ),
+            max_snapshot_count=int(
+                os.environ.get("AUTOCAD_MCP_MAX_SNAPSHOT_COUNT", str(MAX_SNAPSHOT_COUNT_DEFAULT))
+            ),
+            max_snapshot_store_bytes=int(
+                os.environ.get(
+                    "AUTOCAD_MCP_MAX_SNAPSHOT_STORE_BYTES",
+                    str(MAX_SNAPSHOT_STORE_BYTES_DEFAULT),
+                )
+            ),
             profile=os.environ.get("AUTOCAD_MCP_GATEWAY_PROFILE", "local").strip() or "local",
             db_path=os.environ.get("AUTOCAD_MCP_PHASE3_DB_PATH", "").strip() or None,
             fixture_tokens=fixture_tokens,
@@ -115,8 +175,32 @@ class GatewayConfig:
             raise ValueError("port must be between 1 and 65535")
         if not self.path.startswith("/") or any(char.isspace() for char in self.path):
             raise ValueError("path must start with '/' and contain no whitespace")
-        if self.max_image_bytes <= 0:
-            raise ValueError("max_image_bytes must be greater than zero")
+        _validate_limit("max_image_bytes", self.max_image_bytes, MAX_IMAGE_BYTES_UPPER)
+        _validate_limit("max_entities", self.max_entities, MAX_ENTITIES_UPPER)
+        _validate_limit(
+            "max_entity_detail_calls",
+            self.max_entity_detail_calls,
+            MAX_ENTITY_DETAIL_CALLS_UPPER,
+        )
+        _validate_limit(
+            "observation_timeout_seconds",
+            self.observation_timeout_seconds,
+            OBSERVATION_TIMEOUT_SECONDS_UPPER,
+        )
+        _validate_limit("max_snapshot_bytes", self.max_snapshot_bytes, MAX_SNAPSHOT_BYTES_UPPER)
+        _validate_limit(
+            "snapshot_ttl_seconds", self.snapshot_ttl_seconds, SNAPSHOT_TTL_SECONDS_UPPER
+        )
+        _validate_limit(
+            "max_snapshot_count", self.max_snapshot_count, MAX_SNAPSHOT_COUNT_UPPER
+        )
+        _validate_limit(
+            "max_snapshot_store_bytes",
+            self.max_snapshot_store_bytes,
+            MAX_SNAPSHOT_STORE_BYTES_UPPER,
+        )
+        if self.max_snapshot_bytes > self.max_snapshot_store_bytes:
+            raise ValueError("max_snapshot_bytes must not exceed max_snapshot_store_bytes")
         if self.profile not in {"local", "phase3_poc"}:
             raise ValueError("profile must be local or phase3_poc")
         if not 1 <= self.stale_after_seconds <= 3600:
@@ -140,6 +224,84 @@ def current_correlation_id(factory: CorrelationIdFactory | None = None) -> str:
     return (factory or (lambda: str(uuid.uuid4())))()
 
 
+def _validate_limit(name: str, value: float, upper: float) -> None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 < value <= upper:
+        raise ValueError(f"{name} must be between 1 and {upper}")
+
+
+def _parse_authority(
+    value: str, *, allow_wildcard_port: bool
+) -> tuple[str, int | str | None]:
+    authority = value.strip()
+    if not authority or any(character.isspace() for character in authority):
+        raise ValueError("invalid authority")
+    if any(character in authority for character in "/?#@"):
+        raise ValueError("invalid authority")
+    port_text: str | None = None
+    if authority.startswith("["):
+        closing = authority.find("]")
+        if closing < 0:
+            raise ValueError("invalid authority")
+        host_text = authority[1:closing]
+        remainder = authority[closing + 1 :]
+        if remainder:
+            if not remainder.startswith(":") or not remainder[1:]:
+                raise ValueError("invalid authority")
+            port_text = remainder[1:]
+        host_name = str(ip_address(host_text)).lower()
+    else:
+        if authority.count(":") > 1:
+            raise ValueError("IPv6 Host must be bracketed")
+        if ":" in authority:
+            host_text, port_text = authority.rsplit(":", 1)
+        else:
+            host_text = authority
+        if not host_text or host_text.endswith("."):
+            raise ValueError("invalid authority")
+        try:
+            host_name = str(ip_address(host_text)).lower()
+        except ValueError:
+            host_name = host_text.lower()
+            if any(not (character.isalnum() or character in ".-") for character in host_name):
+                raise ValueError("invalid authority")
+    if port_text is None:
+        port: int | str | None = None
+    elif port_text == "*" and allow_wildcard_port:
+        port = "*"
+    elif port_text.isascii() and port_text.isdigit() and 1 <= int(port_text) <= 65535:
+        port = int(port_text)
+    else:
+        raise ValueError("invalid authority")
+    return host_name, port
+
+
+def _origin_matches(origin: str, allowed: str) -> bool:
+    try:
+        return _canonical_origin(origin) == _canonical_origin(allowed)
+    except ValueError:
+        return False
+
+
+def _canonical_origin(value: str) -> tuple[str, str, int | None]:
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme.lower() not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path not in {"", "/"}
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("invalid origin")
+    try:
+        port = parsed.port
+    except ValueError as error:
+        raise ValueError("invalid origin") from error
+    default_port = 80 if parsed.scheme.lower() == "http" else 443
+    return parsed.scheme.lower(), parsed.hostname.lower(), port or default_port
+
+
 class CorrelationMiddleware:
     """Create and clean up one correlation ID for each HTTP request."""
 
@@ -155,6 +317,34 @@ class CorrelationMiddleware:
             _correlation_id.reset(token)
 
 
+class CorrelationErrorMiddleware(Middleware):
+    """Give in-memory MCP calls a correlation context and map schema errors safely."""
+
+    def __init__(self, factory: CorrelationIdFactory) -> None:
+        self.factory = factory
+
+    async def on_call_tool(self, context: Any, call_next: Any) -> Any:
+        return await self._run_with_correlation(context, call_next)
+
+    async def on_read_resource(self, context: Any, call_next: Any) -> Any:
+        return await self._run_with_correlation(context, call_next)
+
+    async def _run_with_correlation(self, context: Any, call_next: Any) -> Any:
+        token: Token[str | None] | None = None
+        if _correlation_id.get() is None:
+            token = _correlation_id.set(self.factory())
+        correlation_id = current_correlation_id(self.factory)
+        try:
+            return await call_next(context)
+        except FastMCPValidationError:
+            raise ToolError(
+                f"invalid_request: request is invalid; correlation_id={correlation_id}"
+            ) from None
+        finally:
+            if token is not None:
+                _correlation_id.reset(token)
+
+
 class OuterHostOriginGuard:
     """Reject a bad Host/Origin before FastMCP can create a session."""
 
@@ -163,29 +353,39 @@ class OuterHostOriginGuard:
         app: Any,
         allowed_hosts: list[str],
         allowed_origins: list[str],
+        protected_path: str = "/mcp",
     ) -> None:
         self.app = app
         self.allowed_hosts = tuple(allowed_hosts)
         self.allowed_origins = tuple(allowed_origins)
+        self.protected_path = protected_path.rstrip("/") or "/"
 
     @staticmethod
     def _host_matches(host: str, allowed: str) -> bool:
         if allowed == "*":
             return True
-        if allowed.endswith(":*"):
-            return host.startswith(allowed[:-2] + ":")
-        return host == allowed or host.split(":", 1)[0] == allowed
+        try:
+            host_name, host_port = _parse_authority(host, allow_wildcard_port=False)
+            allowed_name, allowed_port = _parse_authority(
+                allowed, allow_wildcard_port=True
+            )
+        except ValueError:
+            return False
+        return host_name == allowed_name and (
+            allowed_port == "*" or allowed_port == host_port
+        )
 
     async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
         if scope["type"] != "http" or not (
-            scope["path"].startswith("/mcp")
+            scope["path"] == self.protected_path
+            or scope["path"].startswith(self.protected_path + "/")
             or scope["path"].startswith("/.well-known/")
         ):
             await self.app(scope, receive, send)
             return
         headers = {key.decode().lower(): value.decode() for key, value in scope["headers"]}
         host = headers.get("host", "")
-        if self.allowed_hosts and not any(
+        if not self.allowed_hosts or not any(
             self._host_matches(host, item) for item in self.allowed_hosts
         ):
             await PlainTextResponse("Host is not allowed", status_code=403)(
@@ -193,7 +393,10 @@ class OuterHostOriginGuard:
             )
             return
         origin = headers.get("origin")
-        if origin and self.allowed_origins and origin not in self.allowed_origins:
+        if origin and (
+            not self.allowed_origins
+            or not any(_origin_matches(origin, allowed) for allowed in self.allowed_origins)
+        ):
             await PlainTextResponse("Origin is not allowed", status_code=403)(
                 scope, receive, send
             )
@@ -210,27 +413,37 @@ def _tool_annotations(*, idempotent: bool) -> dict[str, bool]:
     }
 
 
-def _principal(auth: RemoteAuthProvider | None, services: Any | None = None) -> Principal:
+def _principal(
+    auth: RemoteAuthProvider | None,
+    services: Any | None = None,
+    correlation_id: str | None = None,
+) -> Principal:
+    correlation_id = correlation_id or current_correlation_id()
     token = get_access_token()
     if token is None:
         if auth is not None:
-            raise ToolError("invalid_token: access token required")
+            raise ToolError(
+                f"invalid_token: access token required; correlation_id={correlation_id}"
+            )
         return Principal(
             subject=getattr(services, "owner_subject", LOCAL_SUBJECT),
             scopes=("autocad.read",),
         )
     subject = token.claims.get("sub")
     if not isinstance(subject, str) or not subject:
-        raise ToolError("invalid_token: subject claim required")
+        raise ToolError(f"invalid_token: subject claim required; correlation_id={correlation_id}")
     return Principal(subject=subject, scopes=tuple(token.scopes))
 
 
-def _safe_error(error: GatewayError) -> ToolError:
+def _safe_error(error: GatewayError, correlation_id: str) -> ToolError:
     messages = {
         "invalid_request": "request is invalid",
         "not_found": "requested resource was not found",
         "backend_error": "CAD backend operation failed",
         "response_too_large": "response exceeds the configured size limit",
+        "observation_too_large": "the CAD observation exceeds configured limits",
+        "observation_budget_exceeded": "the CAD observation exceeded its execution budget",
+        "preview_unavailable": "a valid PNG preview is unavailable",
         "device_offline": "the selected CAD device is offline",
         "capability_missing": "the selected device lacks the requested capability",
         "job_in_progress": "the job is still in progress",
@@ -241,20 +454,35 @@ def _safe_error(error: GatewayError) -> ToolError:
         "outcome_unknown": "the write-like operation has an unknown outcome",
         "internal_error": "operation failed",
     }
-    return ToolError(f"{error.code}: {messages.get(error.code, messages['internal_error'])}")
+    return ToolError(
+        f"{error.code}: {messages.get(error.code, messages['internal_error'])}; "
+        f"correlation_id={correlation_id}"
+    )
 
 
-async def _run(call: Any) -> Any:
+async def _run(call: Callable[[], Any], correlation_id: str) -> Any:
     try:
-        return await call
+        return await call()
     except ToolError:
         raise
     except ValidationError:
-        raise ToolError("invalid_request: request is invalid") from None
+        raise ToolError(
+            f"invalid_request: request is invalid; correlation_id={correlation_id}"
+        ) from None
     except GatewayError as error:
-        raise _safe_error(error) from None
+        logger.info(
+            "Gateway operation rejected",
+            extra={"correlation_id": correlation_id, "error_code": error.code},
+        )
+        raise _safe_error(error, correlation_id) from None
     except Exception:
-        raise ToolError("internal_error: operation failed") from None
+        logger.exception(
+            "Unexpected Gateway operation failure",
+            extra={"correlation_id": correlation_id},
+        )
+        raise ToolError(
+            f"internal_error: operation failed; correlation_id={correlation_id}"
+        ) from None
 
 
 def build_mcp_server(
@@ -274,6 +502,7 @@ def build_mcp_server(
         auth=auth,
         mask_error_details=True,
     )
+    mcp.add_middleware(CorrelationErrorMiddleware(make_correlation_id))
 
     @mcp.tool(
         name="cad_list_devices",
@@ -290,11 +519,14 @@ def build_mcp_server(
         ctx: Context,
     ) -> dict[str, Any]:
         del ctx
-        request = CadListDevicesInput(online_only=online_only, capability=capability)
+        correlation_id = current_correlation_id(make_correlation_id)
         result = await _run(
-            services.list_devices(
-                request, _principal(auth, services), current_correlation_id(make_correlation_id)
-            )
+            lambda: services.list_devices(
+                CadListDevicesInput(online_only=online_only, capability=capability),
+                _principal(auth, services, correlation_id),
+                correlation_id,
+            ),
+            correlation_id,
         )
         return result.model_dump(mode="json")
 
@@ -314,14 +546,18 @@ def build_mcp_server(
         ctx: Context,
     ) -> ToolResult:
         del ctx
-        request = CadObserveInput(
-            device_id=device_id,
-            observation_level=observation_level,
-            include_preview_image=include_preview_image,
-        )
-        principal = _principal(auth, services)
+        correlation_id = current_correlation_id(make_correlation_id)
         result = await _run(
-            services.observe(request, principal, current_correlation_id(make_correlation_id))
+            lambda: services.observe(
+                CadObserveInput(
+                    device_id=device_id,
+                    observation_level=observation_level,
+                    include_preview_image=include_preview_image,
+                ),
+                _principal(auth, services, correlation_id),
+                correlation_id,
+            ),
+            correlation_id,
         )
         content: list[Any] = [
             TextContent(type="text", text="CAD observation ready."),
@@ -373,17 +609,20 @@ def build_mcp_server(
         ctx: Context,
     ) -> dict[str, Any]:
         del ctx
-        request = CadQueryInput(
-            snapshot_id=snapshot_id,
-            types=types or [],
-            layers=layers or [],
-            cursor=cursor,
-            limit=limit,
-        )
+        correlation_id = current_correlation_id(make_correlation_id)
         result = await _run(
-            services.query(
-                request, _principal(auth, services), current_correlation_id(make_correlation_id)
-            )
+            lambda: services.query(
+                CadQueryInput(
+                    snapshot_id=snapshot_id,
+                    types=types or [],
+                    layers=layers or [],
+                    cursor=cursor,
+                    limit=limit,
+                ),
+                _principal(auth, services, correlation_id),
+                correlation_id,
+            ),
+            correlation_id,
         )
         return result.model_dump(mode="json")
 
@@ -405,13 +644,18 @@ def build_mcp_server(
             ctx: Context,
         ) -> dict[str, Any]:
             del ctx
-            request = CadGetJobInput(
-                job_id=job_id, event_cursor=event_cursor, event_limit=event_limit
-            )
+            correlation_id = current_correlation_id(make_correlation_id)
             result = await _run(
-                services.get_job(
-                    request, _principal(auth, services), current_correlation_id(make_correlation_id)
-                )
+                lambda: services.get_job(
+                    CadGetJobInput(
+                        job_id=job_id,
+                        event_cursor=event_cursor,
+                        event_limit=event_limit,
+                    ),
+                    _principal(auth, services, correlation_id),
+                    correlation_id,
+                ),
+                correlation_id,
             )
             return result.model_dump(mode="json")
 
@@ -423,7 +667,13 @@ def build_mcp_server(
         auth=auth_check,
     )
     async def device_capabilities(device_id: str) -> ResourceResult:
-        value = await _run(services.read_device_capabilities(device_id, _principal(auth, services)))
+        correlation_id = current_correlation_id(make_correlation_id)
+        value = await _run(
+            lambda: services.read_device_capabilities(
+                device_id, _principal(auth, services, correlation_id)
+            ),
+            correlation_id,
+        )
         return ResourceResult([ResourceContent(content=value, mime_type="application/json")])
 
     @mcp.resource(
@@ -434,7 +684,13 @@ def build_mcp_server(
         auth=auth_check,
     )
     async def snapshot_summary(snapshot_id: str) -> ResourceResult:
-        value = await _run(services.read_snapshot_summary(snapshot_id, _principal(auth, services)))
+        correlation_id = current_correlation_id(make_correlation_id)
+        value = await _run(
+            lambda: services.read_snapshot_summary(
+                snapshot_id, _principal(auth, services, correlation_id)
+            ),
+            correlation_id,
+        )
         return ResourceResult([ResourceContent(content=value, mime_type="application/json")])
 
     @mcp.resource(
@@ -451,18 +707,18 @@ def build_mcp_server(
         types: str | None = None,
         layers: str | None = None,
     ) -> ResourceResult:
-        type_values = _split_query_values(types)
-        layer_values = _split_query_values(layers)
+        correlation_id = current_correlation_id(make_correlation_id)
         value = await _run(
-            services.read_snapshot_entities(
+            lambda: services.read_snapshot_entities(
                 snapshot_id,
-                _principal(auth, services),
-                types=type_values,
-                layers=layer_values,
+                _principal(auth, services, correlation_id),
+                types=_split_query_values(types),
+                layers=_split_query_values(layers),
                 cursor=cursor,
                 limit=limit,
-                correlation_id=current_correlation_id(make_correlation_id),
-            )
+                correlation_id=correlation_id,
+            ),
+            correlation_id,
         )
         return ResourceResult([ResourceContent(content=value, mime_type="application/json")])
 
@@ -474,7 +730,13 @@ def build_mcp_server(
         auth=auth_check,
     )
     async def artifact(artifact_id: str) -> ResourceResult:
-        value = await _run(services.read_artifact(artifact_id, _principal(auth, services)))
+        correlation_id = current_correlation_id(make_correlation_id)
+        value = await _run(
+            lambda: services.read_artifact(
+                artifact_id, _principal(auth, services, correlation_id)
+            ),
+            correlation_id,
+        )
         return ResourceResult([ResourceContent(content=value, mime_type="image/png")])
 
     if phase3:
@@ -487,7 +749,13 @@ def build_mcp_server(
             auth=auth_check,
         )
         async def job_resource(job_id: str) -> ResourceResult:
-            value = await _run(services.read_job_resource(job_id, _principal(auth, services)))
+            correlation_id = current_correlation_id(make_correlation_id)
+            value = await _run(
+                lambda: services.read_job_resource(
+                    job_id, _principal(auth, services, correlation_id)
+                ),
+                correlation_id,
+            )
             return ResourceResult([ResourceContent(content=value, mime_type="application/json")])
 
     @mcp.prompt(
@@ -532,9 +800,9 @@ def build_mcp_server(
 
 
 def _split_query_values(value: str | None) -> list[str]:
-    if not value:
+    if value is None or value == "":
         return []
-    return [item for item in value.split(",") if item]
+    return value.split(",")
 
 
 def create_app(
@@ -549,21 +817,7 @@ def create_app(
 ) -> Starlette:
     config = (config or GatewayConfig.from_env()).validate()
     if stateless_http is not None:
-        config = GatewayConfig(
-            host=config.host,
-            port=config.port,
-            path=config.path,
-            stateless_http=stateless_http,
-            allowed_hosts=config.allowed_hosts,
-            allowed_origins=config.allowed_origins,
-            max_image_bytes=config.max_image_bytes,
-            profile=config.profile,
-            db_path=config.db_path,
-            fixture_tokens=config.fixture_tokens,
-            fixture_owner_subject=config.fixture_owner_subject,
-            stale_after_seconds=config.stale_after_seconds,
-            command_timeout_seconds=config.command_timeout_seconds,
-        )
+        config = replace(config, stateless_http=stateless_http)
     configured_hosts = allowed_hosts if allowed_hosts is not None else list(config.allowed_hosts)
     configured_origins = (
         allowed_origins if allowed_origins is not None else list(config.allowed_origins)
@@ -639,6 +893,6 @@ def create_app(
         lifespan=lifespan,
     )
     outer_app = OuterHostOriginGuard(
-        outer_app, configured_hosts, configured_origins
+        outer_app, configured_hosts, configured_origins, protected_path=config.path
     )
     return CorrelationMiddleware(outer_app, correlation_id_factory)

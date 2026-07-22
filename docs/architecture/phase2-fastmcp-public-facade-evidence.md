@@ -67,3 +67,14 @@ Gateway tests cover service revision stability, snapshot immutability boundary, 
 ## Deferred by design
 
 SQLite, WebSocket, Desktop Agent, multi-user durable ownership, write/preview/commit, `cad_get_job`, `cad_prepare_program`, Auth0 production, ChatGPT Web verification, VPS and deployment remain outside Phase 2.
+
+## Phase 2.1 hardening note
+
+Evidence ở trên là bằng chứng của implementation Phase 2 gốc ngày 2026-07-21;
+không bị viết lại. Đợt Phase 2.1 ngày 2026-07-22 giữ nguyên schema/public facade
+nhưng thay revision semantics, observation budgets, local snapshot/artifact
+lifecycle, PNG verification, Host/Origin policy, correlation-safe errors,
+backend-data validation, device state và cursor/filter canonicalization.
+
+Test evidence và các giới hạn mới được ghi riêng tại
+`docs/architecture/phase2.1-observation-hardening-evidence.md`.

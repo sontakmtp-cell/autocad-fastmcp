@@ -93,7 +93,7 @@ class LiveFixtureAgent:
                     ))
                     entities = [{
                         "entity_id": "E1",
-                        "entity_type": "LINE",
+                        "entity_type": "Line",
                         "layer": "0",
                         "geometry": {"start": [0, 0], "end": [10, 0]},
                     }]
@@ -200,7 +200,11 @@ async def test_phase3_mcp_observe_job_query_and_two_device_routing(tmp_path):
                         event["sequence"] for event in job.structuredContent["events"]
                     )
                     queried = await session.call_tool(
-                        "cad_query", {"snapshot_id": observed.structuredContent["snapshot_id"]}
+                        "cad_query",
+                        {
+                            "snapshot_id": observed.structuredContent["snapshot_id"],
+                            "types": ["line"],
+                        },
                     )
                     assert queried.structuredContent["total"] == 1
                     resource = await session.read_resource(

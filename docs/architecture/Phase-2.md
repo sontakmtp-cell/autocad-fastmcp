@@ -166,5 +166,31 @@
 
 \- Không deploy và không thay đổi cấu hình OAuth production hiện tại.
 
+## Phase 2.1 — Observation, revision and resource lifecycle hardening
+
+Phase 2 gốc giữ nguyên public surface và lịch sử ở trên. Phase 2.1 là một security
+and correctness hardening pass, không thêm capability mới:
+
+- `document_revision` dùng payload có version `cad.revision/1`, luôn dựa trên
+  canonical drawing state và entity detail bất kể client yêu cầu `summary` hay
+  `detail`;
+- local observation có entity/detail-call/deadline/normalized-byte budgets;
+- local snapshot store dùng TTL, maximum count, maximum aggregate bytes và
+  oldest-first eviction; artifact có index trực tiếp và cùng lifecycle/owner với
+  snapshot;
+- preview chỉ materialize từ attachment `image/png` có base64, PNG signature và
+  decoded-size hợp lệ;
+- Host được parse như authority chính xác, Origin có header phải nằm trong
+  explicit allowlist, và outer guard vẫn chạy trước FastMCP session handling;
+- tool/resource errors trả safe code, safe summary và request correlation ID;
+- malformed backend values fail closed; device chỉ online khi backend xác nhận
+  document, reachability và trạng thái không busy/modal;
+- filters được trim, deduplicate và canonicalize; cursor `cad.cursor/1` chứa hash
+  filter bounded thay vì lặp toàn bộ query.
+
+Không đổi `cad.mcp/1.0`, ba tool, bốn resource templates, hai prompts hay schema
+snapshots. Profile `phase3_poc` vẫn dùng `cad.mcp/1.1`, SQLite và Agent transport
+riêng. Chi tiết implementation, test evidence, giới hạn và deferred decisions nằm
+tại `docs/architecture/phase2.1-observation-hardening-evidence.md`.
 
 

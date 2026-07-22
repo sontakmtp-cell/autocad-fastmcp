@@ -8,7 +8,7 @@ from asgi_lifespan import LifespanManager
 from mcp import ClientSession
 from mcp.client.streamable_http import streamable_http_client
 
-from autocad_gateway.app import GatewayConfig, create_app
+from autocad_gateway.app import GatewayConfig, OuterHostOriginGuard, create_app
 
 
 async def _round_trip(app):
@@ -76,6 +76,68 @@ async def test_host_and_origin_guard_happens_before_tools(services):
                 json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
             )
             assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_origin_is_fail_closed_when_allowlist_is_empty_and_exact_when_configured(services):
+    denied = create_app(
+        services,
+        config=GatewayConfig(stateless_http=True, allowed_hosts=("testserver",)),
+    )
+    async with LifespanManager(denied):
+        transport = httpx.ASGITransport(app=denied)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+            headers={"Origin": "https://hostile.test"},
+        ) as client:
+            response = await client.post("/mcp", json={})
+            assert response.status_code == 403
+
+    allowed = create_app(
+        services,
+        config=GatewayConfig(
+            stateless_http=True,
+            allowed_hosts=("testserver",),
+            allowed_origins=("https://chatgpt.com",),
+        ),
+    )
+    async with LifespanManager(allowed):
+        transport = httpx.ASGITransport(app=allowed)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+            headers={"Origin": "https://chatgpt.com"},
+        ) as client:
+            response = await client.post(
+                "/mcp",
+                headers={"Accept": "application/json, text/event-stream"},
+                json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}},
+            )
+            assert response.status_code != 403
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+            headers={"Origin": "https://chatgpt.com.evil.test"},
+        ) as client:
+            response = await client.post("/mcp", json={})
+            assert response.status_code == 403
+
+
+@pytest.mark.parametrize(
+    ("host", "allowed", "matches"),
+    [
+        ("127.0.0.1:8765", "127.0.0.1:*", True),
+        ("localhost:8765", "localhost:*", True),
+        ("[::1]:8765", "[::1]:*", True),
+        ("localhost.evil.test:8765", "localhost:*", False),
+        ("127.0.0.1.evil.test:8765", "127.0.0.1:*", False),
+        ("127.0.0.1:80.evil", "127.0.0.1:*", False),
+        ("[::1].evil:8765", "[::1]:*", False),
+    ],
+)
+def test_host_matching_parses_exact_authorities(host, allowed, matches):
+    assert OuterHostOriginGuard._host_matches(host, allowed) is matches
 
 
 @pytest.mark.asyncio
