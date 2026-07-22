@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from autocad_contracts import (
     CommandMessage,
     HelloMessage,
+    canonical_capability_hash,
     canonical_payload_hash,
     negotiate_protocol,
     parse_agent_message,
@@ -33,6 +34,10 @@ def test_version_negotiation_and_discriminated_parse():
     assert negotiate_protocol("cad.agent/1", "cad.agent/1") == "cad.agent/1"
     assert negotiate_protocol("cad.agent/2", "cad.agent/2") is None
     value = parse_agent_message(
-        HelloMessage(device_id="device-a", fixture_proof="fixture", capability_hash="hash").model_dump()
+        HelloMessage(
+            device_id="device-a",
+            fixture_proof="fixture",
+            capability_hash=canonical_capability_hash([]),
+        ).model_dump()
     )
     assert isinstance(value, HelloMessage)

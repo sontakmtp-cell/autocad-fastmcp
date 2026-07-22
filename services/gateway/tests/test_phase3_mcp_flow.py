@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import ipaddress
 import json
+import os
 import socket
 import ssl
 import subprocess
@@ -30,6 +31,7 @@ from autocad_contracts import (
     ReconcileResultMessage,
     ResultMessage,
     WelcomeMessage,
+    canonical_capability_hash,
     canonical_json,
     parse_agent_message,
 )
@@ -52,6 +54,7 @@ class LiveFixtureAgent:
         self.ssl_context = ssl_context
         self.commands: list[str] = []
         self._sequence = 0
+        self.fixture_variant = 0
 
     async def run(self) -> None:
         async with websockets.connect(
@@ -62,8 +65,9 @@ class LiveFixtureAgent:
             hello = HelloMessage(
                 device_id=self.device_id,
                 fixture_proof=self.token,
-                capability_hash="fixture-capabilities",
+                capability_hash=canonical_capability_hash(["observe", "query"]),
                 capabilities=["observe", "query"],
+                last_processed_sequence=self._sequence,
             )
             await websocket.send(json.dumps(hello.model_dump(mode="json", exclude_none=True)))
             welcome = parse_agent_message(await websocket.recv())
@@ -77,6 +81,7 @@ class LiveFixtureAgent:
                         device_id=self.device_id,
                         job_id=message.job_id,
                         command_id=message.command_id,
+                        sequence=self._next(),
                         status="accepted",
                         idempotency_key=message.idempotency_key,
                         payload_hash=message.payload_hash,
@@ -87,6 +92,7 @@ class LiveFixtureAgent:
                         job_id=message.job_id,
                         command_id=message.command_id,
                         sequence=self._next(),
+                        payload_hash=message.payload_hash,
                         phase="inspect",
                         percent=50,
                         message="fixture inspect",
@@ -95,14 +101,17 @@ class LiveFixtureAgent:
                         "entity_id": "E1",
                         "entity_type": "Line",
                         "layer": "0",
-                        "geometry": {"start": [0, 0], "end": [10, 0]},
+                        "geometry": {
+                            "start": [self.fixture_variant, 0],
+                            "end": [10 + self.fixture_variant, 0],
+                        },
                     }]
                     drawing = {"entity_count": 1, "layers": ["0"], "name": self.device_id}
                     revision = hashlib.sha256(
                         canonical_json({"drawing": drawing, "entities": entities}).encode()
                     ).hexdigest()
                     snapshot = {
-                        "snapshot_id": f"snapshot-{self.device_id}",
+                        "snapshot_id": f"snapshot-{message.job_id}",
                         "document_revision": revision,
                         "observation_level": message.payload.get("observation_level", "summary"),
                         "drawing": drawing,
@@ -115,6 +124,7 @@ class LiveFixtureAgent:
                         job_id=message.job_id,
                         command_id=message.command_id,
                         sequence=self._next(),
+                        payload_hash=message.payload_hash,
                         phase="complete",
                         percent=100,
                         message="fixture complete",
@@ -124,18 +134,21 @@ class LiveFixtureAgent:
                         device_id=self.device_id,
                         job_id=message.job_id,
                         command_id=message.command_id,
+                        sequence=self._next(),
                         status="succeeded",
                         payload_hash=message.payload_hash,
                         result={"snapshot": snapshot},
                     ))
                 elif isinstance(message, ReconcileMessage):
-                    for command_id in message.command_ids:
+                    for command in message.commands:
                         await self._send(websocket, ReconcileResultMessage(
                             session_id=message.session_id,
                             device_id=self.device_id,
-                            command_id=command_id,
+                            job_id=command.job_id,
+                            command_id=command.command_id,
+                            sequence=self._next(),
                             status="not_started",
-                            payload_hash="0" * 64,
+                            payload_hash=command.payload_hash,
                         ))
 
     def _next(self) -> int:
@@ -181,7 +194,9 @@ async def test_phase3_mcp_observe_job_query_and_two_device_routing(tmp_path):
                 break
             await asyncio.sleep(0.05)
         assert len(await services.registry.all()) == 2
-        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}") as http_client:
+        async with httpx.AsyncClient(
+            base_url=f"http://127.0.0.1:{port}", trust_env=False
+        ) as http_client:
             async with streamable_http_client(
                 f"http://127.0.0.1:{port}/mcp", http_client=http_client
             ) as streams:
@@ -207,11 +222,30 @@ async def test_phase3_mcp_observe_job_query_and_two_device_routing(tmp_path):
                         },
                     )
                     assert queried.structuredContent["total"] == 1
+
+                    agents[0].fixture_variant = 1
+                    observed_again = await session.call_tool(
+                        "cad_observe", {"device_id": "device-a"}
+                    )
+                    assert not observed_again.isError
+                    assert observed_again.structuredContent["job_id"] != observed.structuredContent["job_id"]
+                    assert observed_again.structuredContent["snapshot_id"] != observed.structuredContent["snapshot_id"]
+                    assert observed_again.structuredContent["document_revision"] != observed.structuredContent["document_revision"]
+                    queried_again = await session.call_tool(
+                        "cad_query",
+                        {
+                            "snapshot_id": observed_again.structuredContent["snapshot_id"],
+                            "types": ["line"],
+                        },
+                    )
+                    assert queried_again.structuredContent["entities"][0]["geometry"][
+                        "start"
+                    ] == [1, 0]
                     resource = await session.read_resource(
                         f"cad://jobs/{observed.structuredContent['job_id']}"
                     )
                     assert json.loads(resource.contents[0].text)["state"] == "succeeded"
-        assert len(agents[0].commands) == 1
+        assert len(agents[0].commands) == 2
         assert agents[1].commands == []
     finally:
         for task in agent_tasks:
@@ -356,28 +390,103 @@ async def test_phase3_standalone_simulator_processes_complete_mcp_flow(tmp_path)
     server = uvicorn.Server(uvicorn.Config(create_app(services, config=config), host=config.host, port=port, log_level="error"))
     server_task = asyncio.create_task(server.serve())
     processes = []
+    sync_environment = os.environ.copy()
+    sync_environment["UV_PROJECT_ENVIRONMENT"] = str(tmp_path / "sim-venv")
+    simulator_environment = sync_environment.copy()
+    for proxy_name in (
+        "ALL_PROXY",
+        "HTTPS_PROXY",
+        "HTTP_PROXY",
+        "all_proxy",
+        "https_proxy",
+        "http_proxy",
+    ):
+        simulator_environment.pop(proxy_name, None)
+    simulator_environment["NO_PROXY"] = "127.0.0.1,localhost"
+    simulator_environment["no_proxy"] = "127.0.0.1,localhost"
     try:
         for _ in range(100):
             if server.started:
                 break
             await asyncio.sleep(0.05)
         assert server.started
+        sync_process = await asyncio.create_subprocess_exec(
+            "uv",
+            "sync",
+            "--project",
+            str(simulator_project),
+            "--locked",
+            "--offline",
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            env=sync_environment,
+        )
+        try:
+            _stdout, sync_stderr = await asyncio.wait_for(
+                sync_process.communicate(), timeout=120
+            )
+        except asyncio.TimeoutError:
+            sync_process.terminate()
+            await sync_process.wait()
+            pytest.fail("simulator environment sync timed out")
+        if sync_process.returncode != 0:
+            pytest.fail(
+                "simulator environment sync failed: "
+                + sync_stderr.decode(errors="replace")[-4000:]
+            )
         for device_id, token in config.fixture_tokens:
             processes.append(
                 await asyncio.create_subprocess_exec(
-                    "uv", "run", "--project", str(simulator_project), "--locked",
-                    "python", "-m", "autocad_phase3_sim_agent",
-                    "--url", f"ws://127.0.0.1:{port}/agent/ws",
-                    "--device-id", device_id, "--token", token,
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    "uv",
+                    "run",
+                    "--project",
+                    str(simulator_project),
+                    "--locked",
+                    "--offline",
+                    "--no-sync",
+                    "python",
+                    "-m",
+                    "autocad_phase3_sim_agent",
+                    "--url",
+                    f"ws://127.0.0.1:{port}/agent/ws",
+                    "--device-id",
+                    device_id,
+                    "--token",
+                    token,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    env=simulator_environment,
                 )
             )
         for _ in range(200):
             if len(await services.registry.all()) == 2:
                 break
             await asyncio.sleep(0.05)
-        assert len(await services.registry.all()) == 2
-        async with httpx.AsyncClient(base_url=f"http://127.0.0.1:{port}") as http_client:
+        connected = len(await services.registry.all())
+        if connected != 2:
+            for process in processes:
+                if process.returncode is None:
+                    process.terminate()
+            await asyncio.gather(
+                *(process.wait() for process in processes), return_exceptions=True
+            )
+            diagnostics = []
+            for process in processes:
+                stderr = (
+                    (await process.stderr.read()).decode(errors="replace")
+                    if process.stderr is not None
+                    else ""
+                )
+                diagnostics.append(
+                    f"returncode={process.returncode}: {stderr[-2000:]}"
+                )
+            pytest.fail(
+                f"only {connected} simulator Agents connected; "
+                + " | ".join(diagnostics)
+            )
+        async with httpx.AsyncClient(
+            base_url=f"http://127.0.0.1:{port}", trust_env=False
+        ) as http_client:
             async with streamable_http_client(
                 f"http://127.0.0.1:{port}/mcp", http_client=http_client
             ) as streams:
