@@ -44,12 +44,21 @@ class SharedFakeRuntime:
         self.calls.clear()
         self.fallback_calls.clear()
 
-    def _result(self, operation: str, payload: Any, args: tuple[Any, ...] = ()) -> CommandResult:
+    def _result(
+        self,
+        operation: str,
+        payload: Any,
+        args: tuple[Any, ...] = (),
+    ) -> CommandResult:
         self.calls.append((operation, args))
         if self.mode == "raise":
             raise RuntimeError("shared runtime exploded")
         if self.mode == "fail":
-            return CommandResult(ok=False, error="shared backend failure", error_code="backend_error")
+            return CommandResult(
+                ok=False,
+                error="shared backend failure",
+                error_code="backend_error",
+            )
         return CommandResult(ok=True, payload=payload)
 
     async def get_status(self) -> CommandResult:
@@ -59,13 +68,34 @@ class SharedFakeRuntime:
         return self._result("health", {"backend": "shared", "state": "ready"})
 
     async def get_drawing_info(self) -> CommandResult:
-        return self._result("drawing_info", {"entity_count": 1, "layers": ["0"], "blocks": [], "dxf_version": "AC1032"})
+        return self._result(
+            "drawing_info",
+            {
+                "entity_count": 1,
+                "layers": ["0"],
+                "blocks": [],
+                "dxf_version": "AC1032",
+            },
+        )
 
     async def list_entities(self, *, layer: str | None = None) -> CommandResult:
-        return self._result("entity_list", {"count": 1, "entities": [{"id": "E1", "type": "LINE", "layer": layer or "0"}]}, (layer,))
+        return self._result(
+            "entity_list",
+            {
+                "count": 1,
+                "entities": [
+                    {"id": "E1", "type": "LINE", "layer": layer or "0"}
+                ],
+            },
+            (layer,),
+        )
 
     async def get_entity(self, *, entity_id: str) -> CommandResult:
-        return self._result("entity_get", {"id": entity_id, "type": "LINE", "layer": "0"}, (entity_id,))
+        return self._result(
+            "entity_get",
+            {"id": entity_id, "type": "LINE", "layer": "0"},
+            (entity_id,),
+        )
 
     async def list_layers(self) -> CommandResult:
         return self._result("layer_list", {"layers": [{"name": "0"}]})
@@ -78,7 +108,11 @@ class SharedFakeRuntime:
         if self.mode == "raise":
             raise RuntimeError("shared runtime exploded")
         if self.mode == "fail":
-            return CommandResult(ok=False, error="shared backend failure", error_code="backend_error")
+            return CommandResult(
+                ok=False,
+                error="shared backend failure",
+                error_code="backend_error",
+            )
         return CommandResult(ok=True, payload={"operation": operation, "args": args})
 
     async def reinitialize(self) -> CommandResult:
@@ -97,7 +131,9 @@ async def public_adapter(service, group, operation, arguments):
     if (group, operation) == ("drawing", "info"):
         return CadServiceResponse(await service.get_drawing_info())
     if (group, operation) == ("entity", "list"):
-        return CadServiceResponse(await service.list_entities(layer=arguments.get("layer")))
+        return CadServiceResponse(
+            await service.list_entities(layer=arguments.get("layer"))
+        )
     if (group, operation) == ("view", "get_screenshot"):
         return await service.get_screenshot()
     raise UnknownCadOperation(group, operation)
@@ -113,7 +149,10 @@ async def normalize(call: Awaitable[CadServiceResponse]) -> Outcome:
     except Exception:
         return Outcome("unexpected_exception", None)
     if not response.result.ok:
-        return Outcome(response.result.error_code or "backend_error", response.result.to_dict())
+        return Outcome(
+            response.result.error_code or "backend_error",
+            response.result.to_dict(),
+        )
     attachments: list[bytes] = []
     for attachment in response.attachments:
         try:
@@ -136,7 +175,12 @@ async def normalize(call: Awaitable[CadServiceResponse]) -> Outcome:
         ("system", "health", {}, ("health", ())),
     ],
 )
-async def test_domain_parity_uses_same_service_without_generic_read_dispatch(group, operation, arguments, expected_call):
+async def test_domain_parity_uses_same_service_without_generic_read_dispatch(
+    group,
+    operation,
+    arguments,
+    expected_call,
+):
     runtime = SharedFakeRuntime()
     service = CadApplicationService(runtime)
     legacy = await normalize(legacy_adapter(service, group, operation, arguments))
@@ -150,8 +194,14 @@ async def test_domain_parity_uses_same_service_without_generic_read_dispatch(gro
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode,category", [("fail", "backend_error"), ("raise", "unexpected_exception")])
-async def test_backend_failure_and_unexpected_exception_have_domain_parity(mode, category):
+@pytest.mark.parametrize(
+    "mode,category",
+    [("fail", "backend_error"), ("raise", "unexpected_exception")],
+)
+async def test_backend_failure_and_unexpected_exception_have_domain_parity(
+    mode,
+    category,
+):
     runtime = SharedFakeRuntime()
     runtime.mode = mode
     service = CadApplicationService(runtime)
@@ -166,16 +216,27 @@ async def test_backend_failure_and_unexpected_exception_have_domain_parity(mode,
 async def test_health_success_and_failure_have_domain_parity():
     runtime = SharedFakeRuntime()
     service = CadApplicationService(runtime)
-    success_legacy = await normalize(legacy_adapter(service, "system", "health", {}))
+    success_legacy = await normalize(
+        legacy_adapter(service, "system", "health", {})
+    )
     runtime.reset()
-    success_public = await normalize(public_adapter(service, "system", "health", {}))
+    success_public = await normalize(
+        public_adapter(service, "system", "health", {})
+    )
     assert success_legacy == success_public
-    assert success_legacy.result == {"ok": True, "payload": {"ok": True, "backend": "shared", "state": "ready"}}
+    assert success_legacy.result == {
+        "ok": True,
+        "payload": {"ok": True, "backend": "shared", "state": "ready"},
+    }
     runtime.mode = "fail"
     runtime.reset()
-    failed_legacy = await normalize(legacy_adapter(service, "system", "health", {}))
+    failed_legacy = await normalize(
+        legacy_adapter(service, "system", "health", {})
+    )
     runtime.reset()
-    failed_public = await normalize(public_adapter(service, "system", "health", {}))
+    failed_public = await normalize(
+        public_adapter(service, "system", "health", {})
+    )
     assert failed_legacy.category == failed_public.category == "backend_error"
 
 
@@ -183,25 +244,44 @@ async def test_health_success_and_failure_have_domain_parity():
 async def test_unknown_operation_and_missing_field_do_not_call_runtime():
     runtime = SharedFakeRuntime()
     service = CadApplicationService(runtime)
-    legacy_unknown = await normalize(legacy_adapter(service, "drawing", "unknown", {}))
-    public_unknown = await normalize(public_adapter(service, "drawing", "unknown", {}))
+    legacy_unknown = await normalize(
+        legacy_adapter(service, "drawing", "unknown", {})
+    )
+    public_unknown = await normalize(
+        public_adapter(service, "drawing", "unknown", {})
+    )
     assert legacy_unknown.category == public_unknown.category == "unknown_operation"
-    legacy_missing = await normalize(legacy_adapter(service, "drawing", "open", {"data": {}}))
+    legacy_missing = await normalize(
+        legacy_adapter(service, "drawing", "open", {"data": {}})
+    )
     assert legacy_missing.category == "invalid_request"
     assert runtime.calls == []
     assert runtime.fallback_calls == []
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("payload", ["not-base64!", base64.b64encode(b"x" * (MAX_IMAGE_BYTES + 1)).decode("ascii")])
-async def test_invalid_or_oversized_screenshot_is_rejected_by_both_adapters(payload):
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "not-base64!",
+        base64.b64encode(b"x" * (MAX_IMAGE_BYTES + 1)).decode("ascii"),
+    ],
+    ids=["invalid-base64", "oversized"],
+)
+async def test_invalid_or_oversized_screenshot_is_rejected_by_both_adapters(
+    payload,
+):
     runtime = SharedFakeRuntime()
     runtime.screenshot = payload
     service = CadApplicationService(runtime)
-    legacy = await normalize(legacy_adapter(service, "view", "get_screenshot", {}))
+    legacy = await normalize(
+        legacy_adapter(service, "view", "get_screenshot", {})
+    )
     assert runtime.calls == [("get_screenshot", ())]
     runtime.reset()
-    public = await normalize(public_adapter(service, "view", "get_screenshot", {}))
+    public = await normalize(
+        public_adapter(service, "view", "get_screenshot", {})
+    )
     assert legacy.category == public.category == "invalid_attachment"
     assert legacy.attachments == public.attachments == ()
     assert runtime.calls == [("get_screenshot", ())]
