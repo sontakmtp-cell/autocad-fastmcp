@@ -6,8 +6,11 @@ Base branch: `main`
 
 Base commit: `c637b28c31ab30ca1c51b3967981b574c1da281d`
 
-Decision at local verification: **GO WITH CONDITIONS** pending the hosted
-Windows/Linux and Python 3.10/3.12/3.13 matrix.
+Implementation commit: `5e5739681ff731c64e75342bdcd998b7519dc0cd`
+
+Final decision: **GO**. GitHub Actions run
+[`29896504186`](https://github.com/sontakmtp-cell/autocad-fastmcp/actions/runs/29896504186)
+passed the complete Phase 2 Gateway workflow.
 
 ## Scope and confirmed findings
 
@@ -152,7 +155,7 @@ immutable IDs cannot replace an existing record or evict unrelated data. Phase
   to the Phase 4 read-only Agent work; this hardening does not pretend the POC
   Agent revision is locally recomputed by the Gateway.
 
-## Local verification performed
+## Verification performed
 
 Reference runtime: Linux, Python 3.12.13.
 
@@ -170,6 +173,9 @@ Reference runtime: Linux, Python 3.12.13.
 | Gateway schema snapshot diff | clean |
 | Python compileall | passed for Gateway source and tests |
 | `git diff --check` | clean after documentation update |
+| Hosted Gateway matrix | **6/6 passed**: Ubuntu/Windows × Python 3.10/3.12/3.13 |
+| Hosted contracts/simulator job | passed |
+| Hosted legacy/Phase 0 regression job | passed |
 
 The exact root `uv run pytest tests/ -q` test command passed 378/378 after
 setting `UV_PROJECT_ENVIRONMENT` to a temporary writable virtualenv. The managed
@@ -177,12 +183,13 @@ workspace's project-local virtualenv points through a read-only rewritten path;
 moving only the disposable environment did not change repository files or the
 test command semantics.
 
-The local environment only provides Python 3.12. Hosted CI is the evidence gate
-for Ubuntu/Windows across Python 3.10, 3.12 and 3.13. The workflow now triggers
-on pull requests, pushes to `main` and manual dispatch; it runs Phase 2 and Phase
-3 separately, verifies exact FastMCP, builds all three packages, checks schema
-drift, runs the simulator, root regression and Phase 0 regression without real
-AutoCAD.
+The local environment only provides Python 3.12. Hosted run `29896504186`
+provided the cross-platform evidence for Ubuntu/Windows across Python 3.10,
+3.12 and 3.13. Every matrix job passed Phase 2 and Phase 3 separately, exact
+FastMCP verification, Gateway wheel build and schema drift verification. The
+contracts/simulator and legacy/Phase 0 jobs also passed. The workflow now
+triggers on pull requests, pushes to `main` and manual dispatch without relying
+on real AutoCAD.
 
 ## Remaining risks and deferred decisions
 
@@ -196,5 +203,5 @@ AutoCAD.
   complete future Scene Graph or every AutoCAD entity property.
 - Cursor signing/MAC, production Auth0, Desktop Agent, CAD Program, public write,
   preview-approval-commit and production deployment remain out of scope.
-- The hosted six-cell OS/Python matrix must pass before changing the local
-  decision from **GO WITH CONDITIONS** to unconditional **GO**.
+- A real Desktop Agent and real AutoCAD remain future integration gates; they
+  are not prerequisites for this local/read-only Phase 2.1 hardening decision.
