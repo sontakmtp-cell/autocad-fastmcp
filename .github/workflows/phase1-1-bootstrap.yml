@@ -124,7 +124,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           rm scripts/phase1_1_bootstrap_part*.py
-          rm .github/workflows/phase1-1-bootstrap.yml
           git add -A
-          git commit -m "Harden Phase 1.1 CAD Core packaging and read parity"
+          git commit -m "Harden Phase 1.1 CAD Core packaging and read parity [skip ci]"
           git push origin HEAD:phase1.1-cad-core-hardening
