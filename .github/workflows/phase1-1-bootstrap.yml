@@ -34,6 +34,24 @@ jobs:
         run: |
           python scripts/phase1_1_bootstrap_part0.py
           python scripts/phase1_1_bootstrap_part1.py
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("services/gateway/src/autocad_gateway/services.py")
+          old = "        status = await self.backend.status()\n"
+          new = "        status = await self.application_service.get_status()\n"
+          content = path.read_text(encoding="utf-8")
+          old_count = content.count(old)
+          new_count = content.count(new)
+          if old_count == 2:
+              path.write_text(content.replace(old, new), encoding="utf-8", newline="\n")
+          elif old_count == 0 and new_count == 2:
+              pass
+          else:
+              raise RuntimeError(
+                  f"unexpected Gateway status call counts: old={old_count}, new={new_count}"
+              )
+          PY
           python scripts/phase1_1_bootstrap_part2.py
           python scripts/phase1_1_bootstrap_part3.py
           python scripts/phase1_1_bootstrap_part4.py
