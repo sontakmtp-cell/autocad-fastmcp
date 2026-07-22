@@ -1,510 +1,725 @@
-\# Kế hoạch triển khai Phase 4 — Real Windows Agent C1 và UI Lab
+# Kế hoạch triển khai Phase 4 — Real Windows Agent C1, UI Lab và public E2E
 
+> Trạng thái: kế hoạch triển khai đã cập nhật theo `main` sau Phase 3.1; chưa triển khai code Phase 4.
+>
+> Baseline branch: `main`
+>
+> Baseline commit: `2517ec80e95c88776bcbfb98e0b33078099ef444`
+>
+> Phạm vi: POC C1 read-only trên một máy Windows lab; không phải production multi-user.
 
+## 1. Tóm tắt
 
-\## Tóm tắt
+Phase 4 chứng minh luồng AutoCAD thật đầu tiên trên nền Durable Gateway đã được hardening ở Phase 3.1:
 
-
-
-Phase 4 sẽ được triển khai trên nền nhánh `agent/phase3-durable-gateway` sau khi nhánh này được hợp nhất và kiểm thử lại. Mục tiêu là chứng minh luồng thật:
-
-
-
-`ChatGPT Web / MCP client → cad.kythuatvang.com → VPS Gateway → outbound WSS → Windows Agent → File IPC → AutoCAD → AutoLISP chỉ đọc`
-
-
+```text
+ChatGPT Web / MCP protocol client
+    -> cad.kythuatvang.com
+    -> VPS FastMCP Gateway
+    -> outbound WSS
+    -> Windows Desktop Agent
+    -> narrow read-only CAD port
+    -> Safe File IPC / COM
+    -> packaged AutoLISP drawing-info
+    -> AutoCAD thật
+```
 
 Phạm vi bị khóa:
 
+- Một lab user, một máy Windows và một device được allowlist.
+- Chỉ hỗ trợ operation đọc `observe` bằng package `autocad.lisp.drawing_info`.
+- Không ghi bản vẽ, không chạy raw AutoLISP, không dùng `write_fixture` ngoài test Phase 3.1.
+- Agent luôn chủ động kết nối outbound; máy người dùng không mở inbound port hoặc tunnel riêng.
+- Tái sử dụng Auth0 hiện tại và public host `cad.kythuatvang.com` cho public E2E.
+- Có Agent headless, sau đó mới bổ sung UI Lab PySide6, tray, hard pause và diagnostics.
+- Artifact bàn giao là standalone folder; chưa làm installer, auto-update, production pairing, Portal hoặc production multi-user.
+- Phase 4 chỉ đạt khi cùng một yêu cầu đọc chạy thành công bằng MCP protocol client và ChatGPT Web trên cùng bản vẽ AutoCAD thật.
 
+Phase 4 không thay thế hoặc viết lại FastMCP facade, SQLite job store, state machine, reconnect protocol, simulator hay public contract đã có. Agent thật phải tuân thủ các invariant Phase 3.1 thay vì tạo một semantics riêng.
 
-\- Một người dùng, một máy Windows được allowlist.
+## 2. Điều kiện bắt đầu và baseline
 
-\- Chỉ hỗ trợ thao tác đọc `drawing-info`; không ghi bản vẽ, không chạy AutoLISP tùy ý.
+Phase 4 bắt đầu trực tiếp từ `main` tại commit baseline nêu trên. Không dùng lại nhánh `agent/phase3-durable-gateway` làm nền.
 
-\- Có ứng dụng Agent lab bằng PySide6, cửa sổ tray và hard pause.
+Trước khi sửa code Phase 4:
 
-\- Tái sử dụng Auth0 hiện tại và host `cad.kythuatvang.com`.
+1. Xác nhận các workflow tại baseline đều xanh, đặc biệt:
+   - Phase 3.1 Durable Lifecycle Hardening;
+   - FastMCP Phase 2 Gateway;
+   - FastMCP Phase 0;
+   - Phase 1.1 CAD Core Hardening;
+   - root regression.
+2. Cập nhật `phase3.1-durable-lifecycle-hardening-evidence.md` và master plan nếu chúng vẫn ghi `NO-GO pending hosted CI`.
+3. Chụp và khóa schema snapshots hiện tại của:
+   - public `cad.mcp/1.1` Phase 3 profile;
+   - local `cad.mcp/1.0` profile;
+   - shared `cad.agent/1` protocol.
+4. Chạy lại Gateway, contracts, simulator, CAD Core, Phase 0, legacy tests, package builds, lockfile checks và `git diff --check`.
+5. Mọi regression Phase 0–3.1 là điều kiện dừng.
 
-\- Sản phẩm bàn giao là thư mục standalone; chưa làm installer, auto-update, production pairing hay Portal.
+## 3. Chiến lược triển khai theo gate
 
-\- Phase 4 chỉ đạt khi cả ChatGPT Web và MCP protocol client đều đọc thành công cùng bản vẽ AutoCAD thật.
+Phase 4 vẫn là một phase sản phẩm, nhưng được chia thành bốn gate để cô lập lỗi và tránh ghép COM, Qt, Auth0, WSS và public deployment cùng lúc.
 
+### Phase 4.0 — Baseline, contract và migration delta
 
+Mục tiêu:
 
-\## Thay đổi triển khai
+- Khóa baseline Phase 3.1.
+- Chốt public contract `cad.mcp/1.2` theo hướng additive.
+- Chốt extension tương thích của `cad.agent/1`.
+- Thêm migration Gateway `0003_phase4_c1.sql`.
+- Chưa kết nối AutoCAD thật.
 
+Gate hoàn thành:
 
+- Contract snapshots chỉ thay đổi đúng các field đã duyệt.
+- `phase3_poc` simulator cũ vẫn chạy đầy đủ.
+- Local Phase 2 schema và semantics giữ nguyên.
+- Migration `0001_phase3.sql` và `0002_phase31.sql` không bị sửa.
 
-\### 1. Chốt nền Phase 3 và hợp đồng Phase 4
+### Phase 4.1 — Headless Agent C1 + AutoCAD thật
 
+Mục tiêu:
 
+- Xây Agent core không có Qt.
+- Kết nối outbound WSS tới Gateway.
+- Thực thi đúng một package đọc trên AutoCAD thật.
+- Chứng minh ledger, reconnect, duplicate và package mismatch trước khi thêm UI.
 
-\- Hợp nhất `agent/phase3-durable-gateway` vào nhánh triển khai trước khi viết Agent thật; không tái tạo lại Gateway, WSS, SQLite job store hoặc contract Phase 3.
+Gate hoàn thành:
 
-\- Chạy lại toàn bộ Gateway, contract, simulator, legacy tests và build. Mọi regression của Phase 3 là điều kiện dừng.
+- MCP protocol client chạy E2E qua Gateway, WSS, Agent, File IPC và AutoCAD thật.
+- AutoCAD closed, no document, busy, modal và document switch trả structured error.
+- Reconnect và duplicate không chạy command lần hai ngoài path `not_started` đã được reconcile.
+- Command bị cấm không chạm backend.
 
-\- Nâng public contract theo hướng cộng thêm từ `cad.mcp/1.1` lên `cad.mcp/1.2`, nhưng giữ nguyên đúng:
+### Phase 4.2 — UI Lab, DPAPI và standalone package
 
-&#x20; - 4 tools: `cad\_list\_devices`, `cad\_observe`, `cad\_query`, `cad\_get\_job`.
+Mục tiêu:
 
-&#x20; - 5 resources và 2 prompts hiện có.
+- Bọc AgentCore đã ổn định bằng UI PySide6.
+- Thêm tray, hard pause, diagnostics và DPAPI credential store.
+- Tạo standalone folder có thể chạy trên Windows 11 VM sạch.
 
-&#x20; - Không bổ sung tool ghi.
+Gate hoàn thành:
 
-\- Giữ Agent protocol là `cad.agent/1`, bổ sung các trường có kiểu và giới hạn rõ ràng cho:
+- UI không gọi WSS, COM hoặc File IPC trực tiếp.
+- UI thread không bị block khi mất mạng hoặc AutoCAD bận.
+- Hard pause sống qua restart và chặn mọi remote command mới.
+- Standalone artifact chạy được ngoài source tree.
 
-&#x20; - Phiên bản Agent, trạng thái AutoCAD, tài liệu đang mở.
+### Phase 4.3 — VPS, Auth0 và ChatGPT Web cutover
 
-&#x20; - Capability/package manifest và hash.
+Mục tiêu:
 
-&#x20; - Kết quả quan sát dạng `summary`.
+- Deploy profile `phase4_c1` lên VPS.
+- Dùng public TLS/WSS qua Cloudflare Tunnel.
+- Xác thực ChatGPT bằng Auth0 `autocad.read`.
+- Chạy public E2E và thử rollback host.
 
-&#x20; - Trạng thái pause và command đang chạy.
+Gate hoàn thành:
 
-\- Bổ sung Gateway migration `0002` để lưu phiên bản Agent, capability/package manifest, trạng thái runtime và tên bản vẽ; tuyệt đối không lưu đường dẫn đầy đủ của file DWG.
+- MCP protocol client và ChatGPT Web đọc cùng bản vẽ thành công.
+- Token sai hoặc thiếu scope không tạo DB row hay command.
+- Agent đúng device, package và document.
+- Rollback public host đã được thực hành.
 
+Không được bắt đầu gate sau nếu gate trước chưa có bằng chứng xanh.
 
+## 4. Public MCP contract `cad.mcp/1.2`
 
-\### 2. Windows Agent và thực thi AutoCAD chỉ đọc
+Public surface vẫn giữ đúng:
 
+- 4 tools: `cad_list_devices`, `cad_observe`, `cad_query`, `cad_get_job`.
+- 5 resources hiện có.
+- 2 prompts hiện có.
+- Không bổ sung tool ghi.
+- Không expose primitive, File IPC command hay package executor trực tiếp.
 
+Các thay đổi Phase 4 phải additive và chỉ bật trong profile `phase4_c1`.
 
-Tạo package độc lập tại `apps/desktop\_agent/`, dùng Python 3.12 x64 và pin `PySide6==6.11.1`.
+| Thành phần | Delta Phase 4 |
+|---|---|
+| `DeviceInfo` | Thêm optional `runtime_state`, `document_name`, `last_seen_at`, `agent_version`, `package_summary`, `paused` |
+| `cad_observe` | Trả summary drawing, `job_id` và `execution_evidence` |
+| `cad_get_job` | Thêm optional `agent_version`, `command_id`, package ID/version/SHA-256 và runtime evidence |
+| `cad_query` | Không giả lập entity detail từ summary-only observation |
 
+### 4.1. Quy tắc `cad_query` cho C1
 
+Package C1 chỉ tạo summary, không tạo entity snapshot chi tiết. Vì vậy:
 
-Agent gồm các phần tách biệt:
+- Không được trả `total=0` nếu drawing summary cho biết bản vẽ có entity.
+- Yêu cầu query entity/detail trên snapshot C1 phải trả `capability_missing` hoặc một kết quả typed ghi rõ `detail_available=false`.
+- `entity_count` của observation phải lấy từ drawing summary đã validate.
+- Không tạo danh sách entity giả, handle giả hoặc geometry rỗng để làm như detail tồn tại.
 
+Ưu tiên cho C1:
 
+```text
+cad_query(summary-only snapshot) -> capability_missing
+```
 
-\- `AgentCore`: quản lý WSS, heartbeat, reconnect, hard pause và hàng đợi command.
+Việc bổ sung query summary riêng chỉ được thực hiện nếu public schema được review và snapshot delta được duyệt.
 
-\- AutoCAD adapter: tái sử dụng `SafeFileIPCBackend` với `allow\_execute\_lisp=False`.
+### 4.2. Revision của observation C1
 
-\- SQLite ledger cục bộ: lưu command trước khi ACK và lưu kết quả terminal trước khi gửi về Gateway.
+`document_revision` vẫn được trả để giữ contract, nhưng C1 chỉ có summary observation. Nó phải kèm evidence:
 
-\- Package verifier: kiểm tra ID, phiên bản và SHA-256 của AutoLISP trước khi chạy.
+```json
+{
+  "revision_schema": "cad.revision/1",
+  "revision_strength": "summary_only",
+  "commit_safe": false
+}
+```
 
-\- Credential store: lưu lab token bằng Windows DPAPI theo tài khoản Windows hiện tại; không ghi token ra config hoặc log.
+Revision có thể dùng identity cục bộ cộng summary chuẩn hóa để phát hiện thay đổi read-only trong C1. Full path chỉ tồn tại trong Agent và không được gửi lên Gateway.
 
-\- Diagnostics exporter: tạo gói hỗ trợ đã loại bỏ dữ liệu nhạy cảm.
+Revision summary-only tuyệt đối không được dùng làm điều kiện an toàn cho write, preview, commit hoặc rollback ở Phase C2. Khi mở write, Agent phải tạo revision từ drawing/entity state đủ mạnh theo contract đã được duyệt.
 
+## 5. Gateway–Agent protocol
 
+Giữ protocol name `cad.agent/1` nếu thay đổi chỉ additive và Agent Phase 3 simulator vẫn parse được. Nếu cần field bắt buộc làm Agent cũ không thể kết nối, phải tăng protocol version thay vì âm thầm phá `cad.agent/1`.
 
-Command router chỉ chấp nhận chính xác package đọc:
+### 5.1. Extension additive
 
+Các field Phase 4 nên là optional trong shared models, nhưng profile `phase4_c1` có thể yêu cầu chúng bằng policy:
 
+- `agent_version`;
+- `runtime_state`;
+- `document_name` dạng basename;
+- `paused`;
+- `current_command_id`;
+- `packages` hoặc `package_manifest`;
+- `package_manifest_hash`;
+- observation `execution_evidence`.
 
-\- Package ID: `autocad.lisp.drawing\_info`.
+Simulator Phase 3 tiếp tục được phép dùng capability-only hello. Real Agent C1 phải gửi đầy đủ evidence mà profile `phase4_c1` yêu cầu.
 
-\- Effect: `read`.
+### 5.2. Capability và package provenance
 
-\- Observation level: `summary`.
+Capability manifest và package manifest là hai khái niệm riêng:
 
-\- Từ chối trước khi chạm File IPC đối với `detail`, preview image, `write\_fixture`, raw LISP hoặc command không có trong manifest.
+```json
+{
+  "capabilities": ["observe"],
+  "packages": [
+    {
+      "package_id": "autocad.lisp.drawing_info",
+      "version": "3.3-c1",
+      "sha256": "<64 lowercase hex>"
+    }
+  ]
+}
+```
 
-\- `cad\_query` trên snapshot summary trả trang rỗng với `total=0`; yêu cầu lấy detail trả `capability\_missing`, không giả lập dữ liệu entity.
+- Capability trả lời Agent hỗ trợ operation nào.
+- Package manifest chứng minh operation đó được cung cấp bởi package/version/hash nào.
+- Gateway canonicalize và tự tính hash; không tin hash do Agent gửi mà không đối chiếu.
+- Dispatch kiểm capability và package ngay trước khi gửi command.
+- Package mismatch làm device/session `incompatible` hoặc capability bị tắt; không được dispatch rồi mới phát hiện.
 
+### 5.3. Invariant Phase 3.1 bắt buộc giữ
 
+Real Agent phải tương thích với state machine và reconcile policy hiện có:
 
-Ledger cục bộ lưu `command\_id`, `job\_id`, idempotency key, payload hash, trạng thái, kết quả/lỗi, package version/hash và timestamp:
+- Chỉ `reconnect_pending + not_started` mới được requeue và redispatch.
+- Evidence `started` không được tự chạy lại, kể cả command đọc.
+- Terminal `succeeded`, `failed`, `cancelled`, `needs_attention` là bất biến.
+- Exact duplicate terminal result là no-op; conflicting result bị reject/audit.
+- Cancel intent phải sống qua disconnect/restart.
+- ACK `rejected`, `duplicate`, `already_terminal` có policy rõ và có thể kích hoạt reconcile.
+- Mọi Agent message phải khớp active session, device, job, command, payload hash và monotonic sequence.
+- Wait timeout của MCP caller không terminalize durable job.
+- Agent error text không được đi thẳng ra public MCP boundary.
 
+Simulator và Real Agent headless phải dùng chung contract fixtures/failure matrix càng nhiều càng tốt.
 
+## 6. Gateway profile và migration
 
-\- Cùng ID và cùng payload hash: trả lại kết quả đã lưu.
+### 6.1. Profile `phase4_c1`
 
-\- Cùng ID nhưng payload khác: trả `replay\_payload\_mismatch`.
+Thêm profile độc lập `phase4_c1`; không biến `phase3_poc` thành production profile và không dùng fixture authenticator ngoài test.
 
-\- Read command bị ngắt giữa chừng sau khi Agent khởi động lại được đánh dấu retryable và có thể chạy lại an toàn.
+Profile phải fail-fast nếu thiếu:
 
-\- Không có write command nào được ghi nhận hoặc thực thi.
+- SQLite path cố định;
+- Auth0 issuer, audience và JWKS URI;
+- public origin và allowed host;
+- đúng một lab user/device mapping;
+- lab device credential allowlist;
+- `write_disabled=true`;
+- required capability `observe`;
+- required package ID/version/hash;
+- request wait, job deadline, WSS payload và heartbeat bounds.
 
+Composition root:
 
+```text
+profile phase4_c1
+    -> FastMCP auth for human user
+    -> durable Gateway services
+    -> persistent SQLite
+    -> real Agent WSS transport
+    -> lab device authenticator
+    -> write-deny policy
+```
 
-AutoLISP dispatcher được nâng phiên bản từ `3.2` lên `3.3-c1` và bổ sung:
+`phase3_poc` vẫn dùng fixture tokens và simulator. `local` vẫn giữ behavior Phase 2.
 
+### 6.2. Migration `0003_phase4_c1.sql`
 
+Không sửa `0001_phase3.sql` hoặc `0002_phase31.sql`.
 
-\- Tên file DWG dạng basename, không có full path.
+Migration Phase 4 là `0003_phase4_c1.sql`, bổ sung tối thiểu dữ liệu cần cho C1, ví dụ:
 
-\- `entity\_count`, danh sách layer, `layer\_count` và cờ `truncated`.
+- `devices.agent_version`;
+- `devices.runtime_state`;
+- `devices.document_name`;
+- `devices.paused`;
+- package manifest/hash hoặc bảng package session riêng;
+- timestamp runtime/package update nếu cần.
 
-\- Dispatcher/package version.
+Không lưu:
 
-\- Escape chuỗi đúng định dạng và giới hạn tối đa 256 layer, 255 ký tự mỗi tên layer.
+- full path DWG;
+- token, private key hoặc DPAPI blob;
+- full AutoLISP source;
+- screenshot/base64;
+- raw Agent error/stack trace.
 
+Migration phải dùng runner ordered, immutable, checksummed và atomic đã có từ Phase 3.1. Restart và backup/restore phải giữ được dữ liệu Phase 3.1 lẫn Phase 4.
 
+## 7. Windows Desktop Agent C1
 
-`document\_revision` được tạo từ SHA-256 của identity cục bộ cộng với summary đã chuẩn hóa; identity chứa đường dẫn chỉ tồn tại nội bộ Agent.
+Tạo package độc lập:
 
+```text
+apps/desktop_agent/
+  pyproject.toml
+  src/autocad_desktop_agent/
+    core/
+    protocol/
+    ledger/
+    packages/
+    autocad/
+    diagnostics/
+    ui/
+  tests/
+```
 
+Dùng Python 3.12 x64. UI dependency chỉ được đưa vào gate 4.2.
 
-\### 3. UI Agent Lab
+### 7.1. Thành phần Agent
 
+- `AgentCore`: WSS, hello/welcome, heartbeat, reconnect, reconcile, pause và bounded command queue.
+- Local SQLite ledger: ghi command trước ACK; ghi terminal evidence trước khi gửi result.
+- Package verifier: kiểm package ID, version, SHA-256 và dispatcher-reported version.
+- Read-only AutoCAD executor: cổng hẹp chỉ cho health/status/drawing-info cần thiết.
+- Credential store: DPAPI theo Windows user ở gate 4.2; headless test có injectable credential provider.
+- Diagnostics exporter: chỉ xuất metadata đã redaction.
+- UI adapter: chỉ nhận state snapshot và gửi user intent; không chứa network/COM logic.
 
+### 7.2. Read-only boundary
 
-UI dùng PySide6 Widgets. Qt main thread chỉ vẽ giao diện; `AgentCore` chạy trong background thread riêng, có asyncio loop và COM initialization riêng. Hai phía giao tiếp bằng queue thread-safe và Qt queued signals. Không dùng WSS, File IPC hoặc COM trực tiếp trong widget.
+Không truyền full `SafeFileIPCBackend` cho command router.
 
+Agent C1 phải phụ thuộc vào `CadReadPort` hoặc một port nhỏ hơn, ví dụ:
 
+```text
+DrawingInfoExecutor
+    - inspect_runtime()
+    - health()
+    - execute_drawing_info_package()
+```
 
-Màn hình chính dùng tiếng Việt, chỉ hiển thị:
+Implementation có thể bọc `SafeFileIPCBackend(allow_execute_lisp=False)`, nhưng router chỉ nhìn thấy read-only interface. Không có generic `call()`, create, modify, erase, save, plot, open file hoặc execute_lisp trên dependency của router.
 
+Test bắt buộc chứng minh các command sau bị từ chối trước khi backend được gọi:
 
+- `detail`;
+- preview image;
+- `write_fixture`;
+- raw LISP;
+- unknown package;
+- package/hash mismatch;
+- expired deadline;
+- wrong session/device/job/command/payload hash;
+- paused Agent.
 
-\- Thiết bị.
+### 7.3. Command được phép
 
-\- Kết nối máy chủ.
+Chỉ chấp nhận:
 
-\- Trạng thái AutoCAD.
+- kind: `observe`;
+- effect class: `read`;
+- observation level: `summary`;
+- package ID: `autocad.lisp.drawing_info`;
+- package/version/hash đúng manifest active.
 
-\- Tên bản vẽ đang mở.
+Không có write command nào được ghi nhận là accepted hoặc được đưa tới File IPC.
 
-\- Tác vụ hiện tại.
+### 7.4. Local ledger
 
-\- Phiên bản Agent/package.
+Ledger lưu:
 
-\- `Thử lại`, `Tạm dừng`, `Tiếp tục`, `Chẩn đoán`, `Trợ giúp`.
+- `command_id`, `job_id`, `idempotency_key`, payload hash;
+- state `received`, `accepted`, `started`, terminal;
+- result hoặc safe error;
+- package ID/version/hash;
+- Agent/session identity;
+- sequence và timestamps;
+- durable cancel intent nếu nhận cancel.
 
+Semantics:
 
+- Cùng command identity và cùng payload hash: trả evidence đã lưu hoặc reconcile theo state.
+- Cùng ID nhưng payload khác: `replay_payload_mismatch`.
+- `not_started`: Gateway có thể redispatch theo Phase 3.1.
+- `started`: không tự thực thi lần hai sau restart; reconcile báo started/known terminal.
+- Terminal result được persist trước khi gửi về Gateway.
+- Corrupt hoặc contradictory ledger evidence làm job `needs_attention`, không đoán và không retry.
+
+### 7.5. AutoLISP package `3.3-c1`
+
+Nâng dispatcher/package từ `3.2` lên `3.3-c1` theo kiểu additive và giữ reliability overrides hiện có.
+
+Package drawing-info trả bounded JSON gồm:
+
+- document basename, không có full path;
+- `entity_count`;
+- danh sách layer tối đa 256 phần tử;
+- `layer_count`;
+- cờ `truncated`;
+- dispatcher version;
+- package ID/version;
+- optional drawing metadata cần cho summary revision.
+
+Giới hạn:
+
+- tối đa 255 ký tự cho mỗi layer name;
+- escape JSON đúng cho quote, backslash và control characters được hỗ trợ;
+- reject hoặc truncate có cờ rõ ràng;
+- không đọc file ngoài IPC/package path;
+- không eval raw code;
+- không thay đổi drawing, sysvar hoặc selection.
+
+## 8. UI Agent Lab
+
+Chỉ bắt đầu sau khi Agent headless E2E xanh.
+
+UI dùng PySide6 Widgets. Pin `PySide6==6.11.1`; pin cả toolchain build cần thiết để artifact có thể tái lập.
+
+Qt main thread chỉ vẽ giao diện. `AgentCore` chạy trong background thread riêng, có asyncio loop và COM initialization phù hợp. Hai phía giao tiếp bằng queue thread-safe và Qt queued signals.
+
+Widget không được:
+
+- mở WSS;
+- gọi File IPC;
+- gọi COM;
+- đọc token trực tiếp;
+- mutate job state ngoài việc gửi user intent.
+
+Màn hình chính tiếng Việt hiển thị:
+
+- thiết bị;
+- kết nối máy chủ;
+- trạng thái AutoCAD;
+- tên bản vẽ basename;
+- tác vụ hiện tại;
+- Agent/package version;
+- trạng thái pause/incompatible;
+- `Thử lại`, `Tạm dừng`, `Tiếp tục`, `Chẩn đoán`, `Trợ giúp`.
 
 Không đưa vào Phase 4:
 
+- nút cho phép ChatGPT chỉnh sửa;
+- risk mode;
+- production pairing/login;
+- Portal;
+- installer hoặc auto-update.
 
+Thứ tự ưu tiên UI:
 
-\- Nút cho phép ChatGPT chỉnh sửa.
-
-\- Chế độ rủi ro.
-
-\- Pairing/login.
-
-\- Portal, installer hoặc auto-update.
-
-
-
-Thứ tự ưu tiên trạng thái UI:
-
-
-
-`paused → incompatible/package mismatch → gateway offline/connecting → AutoCAD closed → no document → modal/busy → remote job running → ready`
-
-
+```text
+paused
+-> incompatible/package mismatch
+-> gateway offline/connecting
+-> AutoCAD closed
+-> no document
+-> modal/busy
+-> remote job running
+-> ready
+```
 
 Hành vi bắt buộc:
 
+- Hard pause chặn mọi command mới, kể cả command đọc.
+- Heartbeat và chẩn đoán cục bộ vẫn hoạt động khi paused.
+- Pause state được persist qua restart.
+- Hard pause không gửi `ESC` hoặc can thiệp command thủ công của user.
+- Đóng cửa sổ thu nhỏ xuống tray.
+- Tray có server/AutoCAD state, open, pause/resume, diagnostics và Exit.
+- Exit khi có command đang chạy phải hỏi xác nhận và tạo structured terminal/cancel evidence theo state thực tế; không báo failed giả nếu outcome chưa biết.
+- Manual Retry hủy backoff hiện tại và kết nối lại ngay.
 
+Diagnostics chỉ chứa:
 
-\- Hard pause chặn mọi command mới, kể cả command đọc; heartbeat và chẩn đoán cục bộ vẫn hoạt động.
+- Agent/Windows/AutoCAD version;
+- device ID đã rút gọn;
+- capability/package manifest hash;
+- heartbeat/job/command/correlation IDs;
+- safe error code;
+- timestamp và redaction report.
 
-\- Hard pause không tự gửi `ESC` hoặc can thiệp vào thao tác AutoCAD của người dùng.
+Diagnostics không chứa token, private key, DPAPI blob, full path, drawing content, screenshot, raw AutoLISP hoặc raw Agent/Gateway stack trace.
 
-\- Đóng cửa sổ chỉ thu nhỏ xuống tray.
+Dùng `pyside6-deploy`/Nuitka để tạo standalone folder. One-file chỉ là benchmark tùy chọn, không phải artifact bàn giao. Trước pilot rộng hơn phải kiểm tra nghĩa vụ Qt LGPL/commercial.
 
-\- Tray có trạng thái server/AutoCAD, mở Agent, pause/resume, diagnostics và Exit.
+## 9. Auth0, VPS và public cutover
 
-\- Nếu Exit khi có command đang chạy, UI hỏi xác nhận; nếu đồng ý thì kết thúc command bằng lỗi có cấu trúc trước khi thoát.
+### 9.1. Human OAuth
 
-\- Manual Retry hủy backoff hiện tại và kết nối lại ngay.
+Gateway dùng FastMCP `RemoteAuthProvider` và `JWTVerifier` nếu POC Auth0 hiện có tương thích.
 
+Mỗi request phải kiểm:
 
+- RS256 signature;
+- issuer;
+- audience;
+- expiry/not-before;
+- subject;
+- scope `autocad.read`.
 
-Gói diagnostics chỉ chứa phiên bản Agent/Windows/AutoCAD, device ID rút gọn, manifest hash, heartbeat/job/correlation ID, lỗi, timestamp và báo cáo redaction. Nó không được chứa token, private key, full path, nội dung bản vẽ, ảnh chụp màn hình hay toàn bộ chương trình AutoLISP.
+Adapter Auth0 có thể hợp nhất `scope`, `scp` và `permissions`, nhưng identity lấy từ validated `(iss, sub)`, không lấy từ tool args hoặc `client_id`.
 
+- Lab `sub` phải map đúng lab device.
+- Token sai/thiếu scope trả 401/challenge và không tạo job, command hoặc DB row.
+- Gateway tiếp tục từ chối mọi write dù token có `autocad.write`.
+- Tool metadata và runtime challenge phải tương thích ChatGPT OAuth.
 
+Đây là lab user authentication, chưa phải production device pairing hay two-user isolation. Production pairing, asymmetric device key, rotation và revoke thuộc Phase 5.
 
-Dùng `pyside6-deploy`/Nuitka để tạo bản standalone. Bản onefile chỉ được đo thời gian khởi động, RAM và kích thước để làm bằng chứng, không phải artifact bàn giao. Trước khi phát hành rộng hơn lab phải kiểm tra nghĩa vụ LGPL/commercial của Qt. \[PySide6](https://pypi.org/project/PySide6/), \[pyside6-deploy](https://doc.qt.io/qtforpython-6/deployment/deployment-pyside6-deploy.html), \[Qt licensing](https://doc.qt.io/qt-6/licensing.html).
+### 9.2. Device credential C1
 
+- Một lab credential map đúng một device.
+- Credential không hard-code trong source, manifest, CLI history hoặc log.
+- UI build lưu credential bằng Windows DPAPI theo current Windows user.
+- Revoke credential phải ngắt/reject reconnect của device.
+- Không gọi credential này là production pairing.
 
+### 9.3. VPS deployment
 
-\### 4. Gateway, Auth0 và triển khai VPS C1
-
-
-
-Thêm profile `phase4\_c1` và feature flag `AUTOCAD\_MCP\_REAL\_AGENT\_C1=1`. Profile phải fail-fast nếu thiếu:
-
-
-
-\- SQLite path cố định.
-
-\- Auth0 issuer, audience và JWKS URI.
-
-\- Public origin/allowed host.
-
-\- Một lab device và credential allowlist.
-
-\- Write-disabled policy.
-
-
-
-Xác thực:
-
-
-
-\- Dùng FastMCP `RemoteAuthProvider` và `JWTVerifier`.
-
-\- Kiểm tra RS256 signature, issuer, audience, expiry, subject và scope `autocad.read` trên từng request.
-
-\- Adapter Auth0 hợp nhất claim từ `scope`, `scp` và `permissions`.
-
-\- `sub` đã xác thực phải ánh xạ đúng lab device.
-
-\- Token sai hoặc thiếu scope trả 401/challenge và không được tạo job, command hay DB row.
-
-\- Gateway tiếp tục từ chối write kể cả khi token vô tình có `autocad.write`.
-
-\- Tool metadata và runtime challenge phải khai báo security scheme tương thích ChatGPT OAuth. \[OpenAI MCP authentication](https://developers.openai.com/apps-sdk/build/auth).
-
-
-
-Public API bổ sung:
-
-
-
-| Thành phần | Thay đổi Phase 4 |
-
-|---|---|
-
-| `DeviceInfo` | Thêm tùy chọn `runtime\_state`, `document\_name`, `last\_seen\_at`, capabilities |
-
-| `cad\_observe` | Trả summary drawing và `execution\_evidence` |
-
-| `cad\_get\_job` | Trả `agent\_version`, `command\_id`, package ID/version/SHA-256 |
-
-| `cad\_query` | Summary snapshot trả trang entity rỗng; detail bị từ chối rõ ràng |
-
-
-
-VPS chạy một Gateway worker với SQLite persistent volume, bind loopback. Cloudflare Tunnel kết thúc TLS/WSS và chuyển `/mcp` cùng `/agent/ws` tại `cad.kythuatvang.com`.
-
-
+- Một Gateway worker.
+- SQLite persistent volume.
+- Gateway bind loopback/private interface.
+- Cloudflare Tunnel terminate TLS/WSS.
+- Public routes:
+  - `/mcp`;
+  - `/agent/ws`;
+  - `/healthz`;
+  - `/readyz`;
+  - protected-resource metadata.
+- Trusted host/origin và forwarded-header policy fail closed.
 
 Cutover:
 
-
-
-1\. Dựng Gateway VPS và kiểm tra nội bộ trước.
-
-2\. Kết nối Agent lab bằng outbound WSS.
-
-3\. Dừng connector cũ và chuyển hostname sang VPS connector, tránh hai Gateway cùng nhận traffic.
-
-4\. Kiểm tra `/readyz` 200, protected-resource metadata 200, `/mcp` không token trả 401 và Agent hiện online.
-
-5\. Refresh metadata của app trong ChatGPT, cấp token mới rồi chạy E2E trong cuộc trò chuyện mới. \[Connect an MCP server to ChatGPT](https://developers.openai.com/apps-sdk/deploy/connect-chatgpt).
-
-
-
-Rollback giữ nguyên backend/config cũ: dừng Agent, thu hồi lab credential, chuyển Cloudflare connector về dịch vụ hiện tại và khởi động lại launcher Phase 4 OAuth cũ. Không xóa SQLite, config hay artifact bằng chứng.
-
-
-
-\### 5. Phân phối AutoLISP cho máy lab
-
-
-
-\- Artifact standalone chứa manifest và bản `mcp\_dispatch.lsp` đã version hóa.
-
-\- Script lab chỉ sao chép LISP vào thư mục cố định dưới `%LOCALAPPDATA%\\Kythuatvang\\AutoCADAgent\\packages\\...`.
-
-\- Hướng dẫn người vận hành tự thêm thư mục này vào AutoCAD Support File Search Path/TRUSTEDPATHS.
-
-\- Script không tự sửa AutoCAD profile và không dùng đường dẫn máy phát triển.
-
-\- Khi khởi động, Agent so khớp hash file, phiên bản manifest và phiên bản dispatcher do LISP báo về. Sai bất kỳ giá trị nào sẽ chuyển UI sang `incompatible`, tắt capability và không chạy command.
-
-
-
-\## Kế hoạch kiểm thử và nghiệm thu
-
-
-
-\### Tự động
-
-
-
-\- Regression đầy đủ cho Phase 3, legacy File IPC và contract snapshots.
-
-\- Contract tests cho `cad.mcp/1.2`, Hello, Heartbeat, ObservationResult, giới hạn payload và từ chối extra fields.
-
-\- Gateway tests:
-
-&#x20; - Profile fail-closed.
-
-&#x20; - Ma trận token issuer/audience/expiry/scope.
-
-&#x20; - Đúng một lab device.
-
-&#x20; - Không có write/raw LISP.
-
-&#x20; - SQLite migration/restart.
-
-&#x20; - Duplicate, stale session, reconnect và manifest mismatch.
-
-&#x20; - Entity count lấy từ drawing summary, không lấy từ mảng `entities` rỗng.
-
-\- Agent headless tests:
-
-&#x20; - Ledger crash/replay và payload mismatch.
-
-&#x20; - WSS reconnect/backoff/manual Retry.
-
-&#x20; - Hard pause được duy trì qua restart.
-
-&#x20; - Mapping toàn bộ lỗi File IPC.
-
-&#x20; - Command bị cấm không được gọi backend.
-
-\- UI tests bằng `pytest-qt` ở chế độ offscreen:
-
-&#x20; - Mapping state sang nội dung/nút.
-
-&#x20; - Widget chỉ gửi intent.
-
-&#x20; - Không block UI thread.
-
-&#x20; - Keyboard/focus.
-
-&#x20; - Close-to-tray và Exit khi đang chạy job.
-
-&#x20; - Diagnostics redaction.
-
-\- CI Windows Python 3.12:
-
-&#x20; - Unit/UI/build.
-
-&#x20; - Tạo standalone artifact.
-
-&#x20; - Xác nhận schema snapshots không trôi ngoài thay đổi đã duyệt.
-
-
-
-\### Thử nghiệm AutoCAD thật
-
-
-
-Chạy trên máy Windows lab với bản vẽ không nhạy cảm:
-
-
-
-\- Agent start/stop.
-
-\- AutoCAD đóng.
-
-\- Không có document.
-
-\- Document hợp lệ.
-
-\- AutoCAD đang chạy command thủ công.
-
-\- Modal dialog.
-
-\- Đổi document giữa lúc đọc.
-
-\- Dispatcher thiếu.
-
-\- Package hash sai.
-
-\- Mất mạng rồi reconnect.
-
-\- Gửi trùng cùng command.
-
-\- Pause, gọi từ xa bị `paused\_by\_user`, resume rồi gọi lại thành công.
-
-
-
-Kiểm tra UI ở DPI 100%, 150%, 200% và nhiều màn hình; chụp bằng chứng cho trạng thái ready, busy/modal, paused và diagnostics đã redaction. Chạy standalone trên máy phát triển và một Windows 11 VM sạch; ghi lại startup time, RAM, package size và kết quả Windows Defender/SmartScreen.
-
-
-
-\### E2E bắt buộc
-
-
-
-Thực hiện cùng một yêu cầu bằng:
-
-
-
-1\. MCP protocol client thật.
-
-2\. ChatGPT Web sau khi chọn app AutoCAD trong cuộc trò chuyện mới.
-
-
+1. Dựng Gateway VPS và kiểm nội bộ.
+2. Kết nối Agent lab bằng outbound WSS.
+3. Xác nhận package/capability/runtime state trước public traffic.
+4. Dừng connector cũ rồi chuyển hostname; không để hai Gateway cùng nhận traffic.
+5. Kiểm `/readyz` 200, metadata 200, `/mcp` không token 401 và Agent online.
+6. Refresh metadata app trong ChatGPT, cấp token mới và chạy E2E trong conversation mới.
+7. Thử rollback về connector/backend cũ.
+
+Rollback:
+
+- dừng Agent;
+- revoke lab credential;
+- chuyển Cloudflare connector về dịch vụ trước;
+- khởi động launcher cũ nếu cần;
+- không xóa SQLite, config hoặc evidence artifacts.
+
+## 10. Phân phối package AutoLISP cho máy lab
+
+- Standalone Agent chứa signed/checksummed manifest và bản `mcp_dispatch.lsp` versioned.
+- Script lab chỉ sao chép package vào thư mục cố định dưới `%LOCALAPPDATA%\Kythuatvang\AutoCADAgent\packages\...`.
+- Hướng dẫn operator thêm đúng thư mục vào AutoCAD Support File Search Path/TRUSTEDPATHS.
+- Script không tự sửa AutoCAD profile và không dùng path máy phát triển.
+- Khi khởi động, Agent đối chiếu file hash, manifest version và dispatcher-reported version.
+- Sai bất kỳ giá trị nào chuyển device sang `incompatible`, tắt capability và không chạy command.
+- Artifact phải có SHA-256 độc lập cho Agent build và từng package.
+
+## 11. Kế hoạch kiểm thử
+
+### 11.1. Regression và contract
+
+- Toàn bộ Phase 0–3.1 regression.
+- Legacy File IPC/CAD Core regression.
+- Schema snapshots cho local, Phase 3 và Phase 4 profile.
+- Contract tests cho `cad.mcp/1.2` và additive `cad.agent/1` fields.
+- Strict validation, `extra=forbid`, payload/message/depth/list/string bounds.
+- Simulator Phase 3 vẫn kết nối và hoàn thành failure matrix.
+
+### 11.2. Gateway tests
+
+- Profile `phase4_c1` fail closed.
+- Token issuer/audience/expiry/not-before/scope/sub matrix.
+- Đúng một lab user/device.
+- Không có write/raw LISP path.
+- Migration `0003`, restart và backup/restore.
+- Duplicate, stale session, reconnect, cancel intent và package mismatch.
+- Capability/package check ngay trước dispatch.
+- Entity count lấy từ summary; không suy ra từ mảng entity giả/rỗng.
+- Agent error được sanitize trước public boundary.
+
+### 11.3. Shared reconnect/failure matrix
+
+Simulator và Real Agent headless phải bao phủ tối thiểu:
+
+- success;
+- delay before ACK/result;
+- drop before ACK;
+- drop after ACK before start;
+- drop after start before result;
+- reconnect `not_started`;
+- reconnect `started`;
+- reconnect terminal succeeded/failed/cancelled;
+- duplicate ACK/progress/result;
+- out-of-order sequence;
+- payload hash mismatch;
+- stale heartbeat/session replacement;
+- cancel before start/while running/too late;
+- package/capability mismatch;
+- ledger corruption/contradictory evidence.
+
+Chỉ `not_started` được thực thi lại.
+
+### 11.4. Agent headless tests
+
+- Ledger crash/replay/payload mismatch.
+- Terminal persist-before-send.
+- WSS reconnect/backoff/manual retry.
+- Pause persist qua restart.
+- Mapping AutoCAD/File IPC errors.
+- Command bị cấm không gọi backend.
+- Router không import hoặc nhận full write-capable backend API.
+- DPAPI provider được mock ở headless test.
+
+### 11.5. UI tests
+
+Dùng `pytest-qt` offscreen:
+
+- state mapping;
+- widget chỉ gửi intent;
+- không block UI thread;
+- keyboard/focus;
+- close-to-tray;
+- Exit khi job active/unknown;
+- pause/resume persist;
+- diagnostics redaction;
+- DPI 100%, 150%, 200% và multi-monitor manual checks.
+
+### 11.6. Windows CI/build
+
+- Python 3.12 unit/UI/build.
+- Build standalone folder.
+- Pin/check lockfiles.
+- Schema snapshot diff chỉ có delta đã duyệt.
+- Smoke run artifact trên Windows runner khi khả thi.
+
+## 12. Thử nghiệm AutoCAD thật
+
+Dùng máy Windows lab và drawing không nhạy cảm:
+
+- Agent start/stop/restart.
+- AutoCAD closed.
+- No active document.
+- Document hợp lệ.
+- AutoCAD đang chạy manual command.
+- Modal dialog.
+- Đổi document trước và trong lúc đọc.
+- Dispatcher/package thiếu.
+- Package hash hoặc version sai.
+- Mất mạng rồi reconnect ở từng điểm failure matrix.
+- Gửi trùng cùng command.
+- Pause trả `paused_by_user`; resume rồi gọi mới thành công.
+- Gateway restart với cùng SQLite.
+- Agent restart với cùng local ledger.
+
+Chạy standalone trên máy phát triển và một Windows 11 VM sạch. Ghi startup time, RAM, package size và kết quả Windows Defender/SmartScreen. Phase 4 thu số liệu, chưa đặt production SLO.
+
+## 13. E2E bắt buộc
+
+Thực hiện cùng yêu cầu bằng:
+
+1. MCP protocol client thật.
+2. ChatGPT Web sau khi chọn app AutoCAD trong conversation mới.
 
 Prompt nghiệm thu:
 
-
-
 > Hãy đọc bản vẽ AutoCAD đang mở và cho biết tên bản vẽ, số entity và danh sách layer.
-
-
 
 Kết quả phải:
 
+- đến đúng device allowlist và active document;
+- có job ID, command ID, Agent version và package ID/version/SHA-256;
+- có revision evidence `summary_only`, `commit_safe=false`;
+- không chứa full path, token hoặc drawing content ngoài summary cho phép;
+- giữ structured error cho busy, modal, document switch, paused và package mismatch;
+- chứng minh máy user không mở inbound listener/tunnel;
+- có correlation IDs để truy từ MCP request tới Gateway job, Agent command và package result;
+- ghi latency của ít nhất 10 lần gọi nhỏ.
 
-
-\- Đúng máy AutoCAD allowlist và đúng document đang mở.
-
-\- Có job ID, command ID, Agent version, package ID/version/SHA-256.
-
-\- Không chứa full path, token hoặc nội dung bản vẽ ngoài summary cho phép.
-
-\- Giữ được lỗi có cấu trúc cho busy, modal, document switch và package mismatch.
-
-\- Chứng minh máy người dùng không mở inbound listener hoặc tunnel.
-
-\- Ghi lại độ trễ của 10 lần gọi nhỏ; Phase 4 chỉ thu thập số liệu, chưa đặt production SLO.
-
-
-
-\## Điều kiện NO-GO và bằng chứng bàn giao
-
-
+## 14. Điều kiện NO-GO
 
 Không nghiệm thu nếu xảy ra một trong các trường hợp:
 
+- Baseline Phase 0–3.1 regression không xanh.
+- Tài liệu/evidence vẫn tuyên bố Phase 3.1 pending dù hosted CI đã là gate bắt buộc.
+- Có đường gọi write, generic runtime `call()` hoặc raw LISP từ Agent router.
+- Command `started` bị thực thi lại sau reconnect/restart.
+- Simulator và Real Agent có reconcile semantics khác nhau.
+- Token, credential, full path hoặc drawing content nhạy cảm xuất hiện trong UI/log/DB/diagnostics.
+- Gateway route nhầm device hoặc chấp nhận stale/replaced session.
+- UI gọi COM/File IPC/WSS trực tiếp hoặc treo khi mất mạng/AutoCAD bận.
+- Package mismatch vẫn cho phép chạy.
+- `cad_query` trả `total=0` làm sai nghĩa summary có entity.
+- Summary revision bị coi là commit-safe.
+- Chỉ kiểm metadata/JWKS mà chưa thực hiện AutoCAD read thật bằng token mới.
+- Structured error hoặc package provenance không truy được từ kết quả.
+- Public cutover chưa có rollback đã thử nghiệm.
 
+## 15. Bằng chứng bàn giao
 
-\- Phase 3 chưa hợp nhất hoặc regression chưa xanh.
+Artifact nghiệm thu gồm:
 
-\- Có đường gọi write/raw LISP.
+- standalone Agent folder;
+- Agent artifact SHA-256;
+- package manifest và package SHA-256;
+- migration/contract snapshot review;
+- headless Agent và UI test results;
+- shared reconnect/failure matrix results;
+- hướng dẫn lab provisioning;
+- ảnh UI ready, busy/modal, paused và incompatible;
+- diagnostics sample đã redaction;
+- Windows packaging metrics;
+- correlation IDs của protocol-client E2E và ChatGPT Web E2E;
+- xác nhận không có inbound port/tunnel trên máy user;
+- public cutover/rollback record;
+- tài liệu giới hạn C1 và danh sách phần hoãn Phase 5+.
 
-\- Token, full path hay nội dung nhạy cảm xuất hiện trong UI, log, DB hoặc diagnostics.
+## 16. Giả định đã khóa
 
-\- Gateway định tuyến nhầm thiết bị.
-
-\- UI gọi COM/File IPC trực tiếp hoặc bị treo khi mất mạng/AutoCAD bận.
-
-\- Package mismatch vẫn cho phép chạy.
-
-\- Chỉ kiểm tra metadata/JWKS mà chưa thực hiện read thật bằng token mới.
-
-\- Không bảo toàn structured error hoặc không truy ra package hash của kết quả.
-
-\- Cutover public host chưa có rollback đã thử nghiệm.
-
-
-
-Artifact nghiệm thu gồm standalone Agent, SHA-256 artifact/package, manifest, hướng dẫn lab provisioning, ảnh UI, kết quả kiểm thử, thông số đóng gói, correlation IDs của hai luồng E2E, xác nhận không có inbound port và tài liệu giới hạn C1.
-
-
-
-\## Giả định đã khóa
-
-
-
-\- Phase 4 bắt đầu từ Phase 3 hiện có, không từ `main` cũ.
-
-\- Public host là `cad.kythuatvang.com`.
-
-\- Auth0 hiện tại được tái sử dụng; phải cấp token mới có `autocad.read`.
-
-\- Một VPS Gateway worker, một lab user và một lab device.
-
-\- Python 3.12 x64, PySide6 6.11.1, standalone folder.
-
-\- Credential C1 là lab credential bảo vệ bằng DPAPI; production pairing/device key thuộc Phase 5.
-
-\- Không deploy installer, auto-update, Portal, write approval hoặc production multi-user trong Phase 4.
-
-
-
+- Phase 4 bắt đầu từ `main@2517ec80e95c88776bcbfb98e0b33078099ef444` hoặc commit mới hơn đã giữ toàn bộ Phase 3.1.
+- Public host là `cad.kythuatvang.com`.
+- Auth0 hiện tại được tái sử dụng cho lab human OAuth; token mới phải có `autocad.read`.
+- Một VPS Gateway worker, một lab user và một lab device.
+- SQLite và in-process connection registry tiếp tục là single-writer C1 architecture.
+- Python 3.12 x64, PySide6 6.11.1 và standalone folder.
+- Credential C1 là lab credential bảo vệ bằng DPAPI; production pairing/device key thuộc Phase 5.
+- `cad.agent/1` chỉ giữ nguyên nếu extension additive thật sự backward-compatible.
+- C1 observation là summary-only và không commit-safe.
+- Không deploy installer, auto-update, Portal, write approval, CAD Program hoặc production multi-user trong Phase 4.
