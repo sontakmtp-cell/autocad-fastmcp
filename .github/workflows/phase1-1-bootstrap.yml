@@ -31,13 +31,48 @@ jobs:
       - uses: astral-sh/setup-uv@v5
 
       - name: Apply Phase 1.1 patch
+        id: apply_patch
+        continue-on-error: true
         run: |
-          python scripts/phase1_1_bootstrap_part0.py
-          python scripts/phase1_1_bootstrap_part1.py
-          python scripts/phase1_1_bootstrap_part2.py
-          python scripts/phase1_1_bootstrap_part3.py
-          python scripts/phase1_1_bootstrap_part4.py
-          python scripts/phase1_1_bootstrap_part5.py
+          set -o pipefail
+          {
+            python scripts/phase1_1_bootstrap_part0.py
+            python scripts/phase1_1_bootstrap_part1.py
+            python - <<'PY'
+          from pathlib import Path
+
+          path = Path("services/gateway/src/autocad_gateway/services.py")
+          old = "        status = await self.backend.status()\n"
+          new = "        status = await self.application_service.get_status()\n"
+          content = path.read_text(encoding="utf-8")
+          old_count = content.count(old)
+          new_count = content.count(new)
+          if old_count == 2:
+              path.write_text(content.replace(old, new), encoding="utf-8", newline="\n")
+          elif old_count == 0 and new_count == 2:
+              pass
+          else:
+              raise RuntimeError(
+                  f"unexpected Gateway status call counts: old={old_count}, new={new_count}"
+              )
+          PY
+            python scripts/phase1_1_bootstrap_part2.py
+            python scripts/phase1_1_bootstrap_part3.py
+            python scripts/phase1_1_bootstrap_part4.py
+            python scripts/phase1_1_bootstrap_part5.py
+          } 2>&1 | tee phase1-1-bootstrap.log
+
+      - name: Upload bootstrap diagnostics
+        if: steps.apply_patch.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase1-1-bootstrap-diagnostics
+          path: phase1-1-bootstrap.log
+          if-no-files-found: error
+
+      - name: Stop after bootstrap failure
+        if: steps.apply_patch.outcome == 'failure'
+        run: exit 1
 
       - name: Generate project lockfiles
         run: |
@@ -90,15 +125,7 @@ jobs:
           mkdir -p wheelhouse
           uv build --wheel --out-dir wheelhouse packages/cad_core
           uv build --wheel --out-dir wheelhouse .
-          python scripts/phase1_1_packaging_smoke.py --artifact-dir wheelhouse > phase1-1-smoke.log 2>&1
-
-      - name: Upload clean-install diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: phase1-1-smoke-log
-          path: phase1-1-smoke.log
-          if-no-files-found: warn
+          python scripts/phase1_1_packaging_smoke.py --artifact-dir wheelhouse
 
       - name: Static and lock checks
         run: |
@@ -116,7 +143,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           rm scripts/phase1_1_bootstrap_part*.py
           rm .github/workflows/phase1-1-bootstrap.yml
-          rm -f phase1-1-smoke.log
           git add -A
           git commit -m "Harden Phase 1.1 CAD Core packaging and read parity"
           git push origin HEAD:phase1.1-cad-core-hardening
