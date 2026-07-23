@@ -17,6 +17,7 @@ on:
       - "lisp-code/mcp_dispatch.lsp"
       - "scripts/build-phase4-agent.ps1"
       - ".github/workflows/phase4-c1-agent.yml"
+  workflow_dispatch:
 
 concurrency:
   group: phase4-c1-agent-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -26,9 +27,50 @@ permissions:
   contents: read
 
 jobs:
-  windows-agent:
+  windows-agent-tests:
     runs-on: windows-2022
-    timeout-minutes: 45
+    timeout-minutes: 15
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Sync Desktop Agent test environment
+        working-directory: apps/desktop_agent
+        run: uv sync --locked --python 3.12 --group test --group ui-test
+      - name: Test Desktop Agent
+        working-directory: apps/desktop_agent
+        run: uv run --no-sync pytest -q
+      - name: Test Phase 4 Gateway contract
+        working-directory: services/gateway
+        run: |
+          uv sync --locked --group test
+          uv run --no-sync pytest -q tests/test_phase4_c1.py tests/test_sqlite_repositories.py
+      - name: Validate standalone build inputs
+        shell: powershell
+        run: |
+          [void][ScriptBlock]::Create((Get-Content .\scripts\build-phase4-agent.ps1 -Raw))
+          $required = @(
+            '.\apps\desktop_agent\launcher.py',
+            '.\apps\desktop_agent\pysidedeploy.spec',
+            '.\lisp-code\mcp_dispatch.lsp'
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -LiteralPath $path)) { throw "Missing standalone build input: $path" }
+          }
+          Set-Location .\apps\desktop_agent
+          uv run --no-sync python -c "import PySide6; from autocad_desktop_agent.__main__ import main; print('standalone imports ok')"
+
+  standalone-release:
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    needs: windows-agent-tests
+    runs-on: windows-2022
+    timeout-minutes: 40
     env:
       QT_QPA_PLATFORM: offscreen
       NUITKA_CACHE_DIR: ${{ github.workspace }}\.nuitka-cache
@@ -44,20 +86,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .nuitka-cache
-          key: nuitka-${{ runner.os }}-py312-${{ hashFiles('apps/desktop_agent/uv.lock', 'apps/desktop_agent/pysidedeploy.spec') }}
+          key: nuitka-${{ runner.os }}-py312-${{ hashFiles('apps/desktop_agent/uv.lock', 'scripts/build-phase4-agent.ps1') }}
           restore-keys: |
             nuitka-${{ runner.os }}-py312-
-      - name: Sync Desktop Agent
+      - name: Sync standalone build environment
         working-directory: apps/desktop_agent
-        run: uv sync --locked --python 3.12 --group build --group test --group ui-test
-      - name: Test Desktop Agent
-        working-directory: apps/desktop_agent
-        run: uv run --no-sync pytest -q
-      - name: Test Phase 4 Gateway contract
-        working-directory: services/gateway
-        run: |
-          uv sync --locked --group test
-          uv run --no-sync pytest -q tests/test_phase4_c1.py tests/test_sqlite_repositories.py
+        run: uv sync --locked --python 3.12 --group build --group ui-test
       - name: Build standalone Agent
         shell: powershell
         timeout-minutes: 35
