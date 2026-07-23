@@ -1,8 +1,8 @@
 # Phase 4 C1 implementation evidence
 
-> Cập nhật: 2026-07-22
+> Cập nhật: 2026-07-23
 > Quyết định hiện tại: **NO-GO cho nghiệm thu Phase 4 đầy đủ**
-> Lý do: implementation, local automation, standalone local và AutoCAD failure matrix thật đã có, nhưng chưa hoàn tất Windows 11 VM sạch, VPS/Auth0, MCP protocol client và ChatGPT Web.
+> Lý do: implementation, local automation, standalone local, AutoCAD failure matrix thật và operator deployment đã có; vẫn chưa hoàn tất Windows 11 VM sạch, hosted standalone artifact, token/protocol-client evidence và rollback cutover.
 
 ## 1. Phạm vi đã triển khai
 
@@ -13,7 +13,7 @@
 - Desktop Agent Windows có outbound WSS, HMAC hello proof, durable SQLite ledger, replay/reconcile, terminal persist-before-send, hard pause persist, manual retry, diagnostics allowlist và read-only router.
 - PySide6 Widgets UI bằng tiếng Việt theo phụ lục: server, AutoCAD, document, task, version/package, support code, retry, hard pause, diagnostics, help, close-to-tray và confirm khi thoát lúc có job.
 - Package AutoLISP `autocad.lisp.drawing_info@3.3-c1` chỉ đọc summary và có SHA-256. Provision lưu lab credential bằng Windows DPAPI; script không sửa AutoCAD profile.
-- Build standalone dùng Python 3.12, PySide6 6.11.1 và Nuitka 2.8.9. Workflow Windows tạo và upload folder artifact.
+- Build standalone dùng Python 3.12, PySide6 6.11.1 và Nuitka 2.8.9. Workflow Windows có job test/validate cho PR; job build/upload standalone nặng `standalone-release` chỉ chạy bằng `workflow_dispatch` và có cache Nuitka, transcript log và manifest validation.
 
 Human OAuth metadata/challenge được cấu hình theo yêu cầu MCP authorization hiện hành về protected-resource metadata, authorization server discovery, PKCE và resource binding: [OpenAI Apps SDK authentication](https://developers.openai.com/apps-sdk/build/auth#mcp-authorization-spec-requirements).
 
@@ -40,9 +40,18 @@ Human OAuth metadata/challenge được cấu hình theo yêu cầu MCP authoriz
 | Network/restart matrix | PASS local automation | Agent WSS reconnect sau ACK báo `started` và executor chỉ chạy 1 lần; restart ledger trả `not_started/started/terminal`; Gateway restart/hardening 15 PASS; shared real-WSS reconnect matrix 7 PASS |
 | Latency AutoCAD thật | PASS local | 10/10 kết quả ổn định; min 282.46 ms, median 291.98 ms, p95 299.35 ms, max 301.55 ms |
 
+### 2.1. Hosted CI sau khi sửa workflow
+
+- Commit tham chiếu: `6a6022b` (`Run standalone exe build only on manual dispatch`).
+- PR checks của nhánh đã PASS, gồm `windows-agent-tests`, validate input standalone, regression Phase 0–3.1, wheel/lock/static checks và các matrix Python 3.10/3.12/3.13 trên Ubuntu/Windows. Run tham chiếu: [Phase 4 C1 Agent #29975105571](https://github.com/sontakmtp-cell/autocad-fastmcp/actions/runs/29975105571).
+- Job `standalone-release` hiện `skipping` trên PR theo thiết kế; job này chỉ chạy khi gọi `workflow_dispatch`. Vì vậy PR xanh không đồng nghĩa đã có artifact standalone hosted.
+- Hai commit CI liên quan: `5ffed6f` tách build nặng khỏi PR check; `6a6022b` giới hạn job release vào manual dispatch. Lần chạy `workflow_dispatch` sau cùng để xác nhận artifact/log hosted vẫn là gate còn thiếu.
+
+Operator đã báo cáo và kiểm tra việc thiết lập VPS Gateway, Cloudflare và kết nối ChatGPT. Evidence public metadata/MCP read, token scope read mới và MCP protocol-client chưa được gắn vào hồ sơ này, nên vẫn tách riêng operator report khỏi protocol evidence.
+
 Build local ghi nhận Windows Defender giữ executable ngắn hạn trong post-processing; Nuitka retry và hoàn tất. Đây là số đo lab, chưa phải xác nhận SmartScreen/Defender trên Windows 11 VM sạch.
 
-### 2.1. Trace AutoCAD thật
+### 2.2. Trace AutoCAD thật
 
 - Correlation ID: `corr-real-autocad-clean`.
 - Job ID: `job-f69e30cc-a53d-422a-af77-c91869e8ce72`.
@@ -62,9 +71,10 @@ Build local ghi nhận Windows Defender giữ executable ngắn hạn trong post
 
 - AutoCAD failure matrix thật và protocol reconnect/restart matrix local đã hoàn tất; chưa có bằng chứng mất mạng Internet/VPS thật.
 - Chưa provision credential lab thật hoặc revoke/reconnect credential trên Gateway public.
-- Chưa deploy một Gateway worker với SQLite persistent volume và Cloudflare Tunnel.
+- Operator đã thiết lập một Gateway worker, SQLite persistent volume, Cloudflare Tunnel và kết nối ChatGPT; chưa có public metadata/MCP read evidence đính kèm trong hồ sơ này.
 - Chưa chạy Auth0 issuer/audience/scope/sub matrix bằng token thật mới cấp.
-- Chưa chạy cùng prompt nghiệm thu bằng MCP protocol client và ChatGPT Web.
+- Chưa lưu bằng chứng cùng prompt nghiệm thu bằng MCP protocol client và ChatGPT Web; kết nối ChatGPT hiện mới được phân loại là operator report.
+- Chưa chạy `workflow_dispatch` để lưu artifact/log standalone hosted sau khi tách job release khỏi PR.
 - Đã có 10 mẫu latency local qua AutoCAD thật; chưa có Windows 11 VM sạch, RAM/startup, Defender/SmartScreen và rollback cutover.
 
 Không được đổi Phase 4 sang `GO` cho tới khi toàn bộ mục trên có artifact/timestamp/correlation IDs và không rò token, full path hoặc drawing content ngoài summary.

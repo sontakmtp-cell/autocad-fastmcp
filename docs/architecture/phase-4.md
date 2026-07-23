@@ -1,6 +1,6 @@
 # Kế hoạch triển khai Phase 4 — Real Windows Agent C1, UI Lab và public E2E
 
-> Trạng thái cập nhật 2026-07-22: gate 4.0 và phần code/local verification của 4.1–4.2 đã triển khai trong profile opt-in `phase4_c1`; happy path, AutoCAD failure matrix, protocol reconnect/restart và 10 mẫu latency đã chạy qua Gateway/WSS/Agent/AutoCAD Mechanical 2025 thật. Standalone trên VM sạch, VPS/Auth0, MCP client và ChatGPT Web của 4.1/4.3 vẫn `NO-GO`. Xem [Phase 4 C1 implementation evidence](./phase4-c1-implementation-evidence.md).
+> Trạng thái cập nhật 2026-07-23: gate 4.0 và phần code/local verification của 4.1–4.2 đã triển khai trong profile opt-in `phase4_c1`; happy path, AutoCAD failure matrix, protocol reconnect/restart và 10 mẫu latency đã chạy qua Gateway/WSS/Agent/AutoCAD Mechanical 2025 thật. VPS Gateway, Cloudflare và kết nối ChatGPT đã được operator thiết lập/kiểm tra. PR CI đã xanh; build standalone hosted được tách thành `standalone-release` chạy bằng `workflow_dispatch`, còn standalone trên VM sạch, hosted artifact, token/protocol-client evidence và rollback cutover vẫn `NO-GO`. Xem [Phase 4 C1 implementation evidence](./phase4-c1-implementation-evidence.md).
 >
 > Baseline branch: `main`
 >
@@ -624,8 +624,8 @@ Dùng `pytest-qt` offscreen:
 
 ### 11.6. Windows CI/build
 
-- Python 3.12 unit/UI/build.
-- Build standalone folder.
+- PR gate: Python 3.12 unit/UI, Gateway contract, PowerShell/input validation, lock/static checks và regression matrix.
+- Release gate: build standalone folder và upload artifact chạy riêng bằng `workflow_dispatch` trong job `standalone-release`; không chạy build nặng trong PR để tránh timeout.
 - Pin/check lockfiles.
 - Schema snapshot diff chỉ có delta đã duyệt.
 - Smoke run artifact trên Windows runner khi khả thi.
