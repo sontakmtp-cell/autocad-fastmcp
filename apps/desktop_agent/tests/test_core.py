@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import sqlite3
+import threading
+import time
 
 import pytest
 from autocad_contracts import (
+    CancelMessage,
     CommandMessage,
     ReconcileCommandDescriptor,
     ReconcileMessage,
@@ -207,3 +211,143 @@ async def test_restart_reconciles_not_started_started_and_terminal_without_reexe
     assert replies[-1].result_status == "succeeded"
     assert replies[-1].result == terminal_result
     assert executor.calls == restarted_executor.calls == 0
+
+def test_ui_exit_wakes_offline_runner_from_another_thread(tmp_path, monkeypatch):
+    core, _ = make_core(tmp_path)
+    errors = []
+
+    def fail_connect(*args, **kwargs):
+        raise OSError("offline")
+
+    import websockets
+
+    monkeypatch.setattr(websockets, "connect", fail_connect)
+
+    def runner():
+        try:
+            asyncio.run(core.run_forever())
+        except BaseException as error:  # pragma: no cover - asserted below
+            errors.append(error)
+
+    thread = threading.Thread(target=runner)
+    thread.start()
+    deadline = time.monotonic() + 1
+    while core._loop is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+
+    assert core._loop is not None
+    core.handle_intent(AgentIntent.EXIT)
+    thread.join(timeout=1)
+
+    assert not thread.is_alive()
+    assert errors == []
+
+
+@pytest.mark.parametrize(
+    ("intent", "event_name", "start_paused"),
+    [
+        (AgentIntent.RETRY, "_retry", False),
+        (AgentIntent.RESUME, "_retry", True),
+        (AgentIntent.EXIT, "_stop", False),
+    ],
+)
+def test_ui_intents_signal_asyncio_events_across_threads(
+    tmp_path, intent, event_name, start_paused
+):
+    core, _ = make_core(tmp_path)
+    if start_paused:
+        core.set_paused(True)
+    ready = threading.Event()
+    finished = threading.Event()
+    errors = []
+
+    def runner():
+        async def wait_for_signal():
+            core._loop = asyncio.get_running_loop()
+            ready.set()
+            await asyncio.wait_for(getattr(core, event_name).wait(), timeout=1)
+
+        try:
+            asyncio.run(wait_for_signal())
+        except BaseException as error:  # pragma: no cover - asserted below
+            errors.append(error)
+        finally:
+            finished.set()
+
+    thread = threading.Thread(target=runner)
+    thread.start()
+    assert ready.wait(timeout=1)
+
+    core.handle_intent(intent)
+
+    assert finished.wait(timeout=1)
+    thread.join(timeout=1)
+    assert errors == []
+    core._loop = None
+    core.ledger.close()
+
+
+def _record_pending_command(core, command):
+    core.ledger.record_received(
+        command_id=command.command_id,
+        job_id=command.job_id,
+        idempotency_key=command.idempotency_key,
+        payload_hash=command.payload_hash,
+        package=core.package,
+        session_id=command.session_id,
+        device_id=command.device_id,
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"session_id": "wrong-session"},
+        {"device_id": "wrong-device"},
+        {"job_id": "wrong-job"},
+    ],
+)
+async def test_cancel_binding_mismatch_fails_closed(tmp_path, updates):
+    core, _ = make_core(tmp_path)
+    command = make_command(core)
+    _record_pending_command(core, command)
+    cancel = CancelMessage(
+        session_id=updates.get("session_id", command.session_id),
+        device_id=updates.get("device_id", command.device_id),
+        job_id=updates.get("job_id", command.job_id),
+        command_id=command.command_id,
+    )
+
+    with pytest.raises(RuntimeError, match="cancel .*binding mismatch"):
+        await core._handle_cancel(Socket(), cancel)
+
+    entry = core.ledger.get(command.command_id)
+    assert entry is not None
+    assert entry.state == "received"
+    assert entry.cancel_requested is False
+
+
+@pytest.mark.asyncio
+async def test_valid_cancel_uses_bound_ledger_entry(tmp_path):
+    core, _ = make_core(tmp_path)
+    command = make_command(core)
+    _record_pending_command(core, command)
+    socket = Socket()
+
+    await core._handle_cancel(
+        socket,
+        CancelMessage(
+            session_id=command.session_id,
+            device_id=command.device_id,
+            job_id=command.job_id,
+            command_id=command.command_id,
+        ),
+    )
+
+    entry = core.ledger.get(command.command_id)
+    assert entry is not None
+    assert entry.state == "cancelled"
+    assert entry.cancel_requested is True
+    assert [message.message_type for message in socket.messages] == ["result"]
+    assert socket.messages[0].status == "cancelled"

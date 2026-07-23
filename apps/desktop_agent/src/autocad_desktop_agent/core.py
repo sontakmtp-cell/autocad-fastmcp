@@ -58,6 +58,7 @@ class AgentCore:
         self.paused = ledger.is_paused()
         self._stop = asyncio.Event()
         self._retry = asyncio.Event()
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._observers: list[Callable[[AgentViewState], None]] = []
         self._session_id: str | None = None
         self._current_command_id: str | None = None
@@ -84,7 +85,7 @@ class AgentCore:
 
     def handle_intent(self, intent: AgentIntent, diagnostics_target: Path | None = None) -> None:
         if intent == AgentIntent.RETRY:
-            self._retry.set()
+            self._set_event(self._retry)
         elif intent in {AgentIntent.PAUSE, AgentIntent.RESUME}:
             self.set_paused(intent == AgentIntent.PAUSE)
         elif intent == AgentIntent.EXPORT_DIAGNOSTICS:
@@ -100,7 +101,18 @@ class AgentCore:
                 },
             )
         elif intent == AgentIntent.EXIT:
-            self._stop.set()
+            self._set_event(self._stop)
+            self._set_event(self._retry)
+
+    def _set_event(self, event: asyncio.Event) -> None:
+        loop = self._loop
+        if loop is not None and loop.is_running():
+            try:
+                loop.call_soon_threadsafe(event.set)
+                return
+            except RuntimeError:
+                pass
+        event.set()
 
     def set_paused(self, paused: bool) -> None:
         self.paused = paused
@@ -110,11 +122,12 @@ class AgentCore:
             paused=paused,
         )
         if not paused:
-            self._retry.set()
+            self._set_event(self._retry)
 
     async def run_forever(self) -> None:
         import websockets
 
+        self._loop = asyncio.get_running_loop()
         backoff = 1
         while not self._stop.is_set():
             self._retry.clear()
@@ -153,6 +166,7 @@ class AgentCore:
                 break
             await self._wait_for_retry(backoff)
             backoff = min(backoff * 2, self.config.reconnect_max_seconds)
+        self._loop = None
         self.ledger.close()
 
     async def _wait_for_retry(self, timeout: int) -> None:
@@ -362,6 +376,13 @@ class AgentCore:
             )
 
     async def _handle_cancel(self, websocket: Any, message: CancelMessage) -> None:
+        if message.session_id != self._session_id or message.device_id != self.config.device_id:
+            raise RuntimeError("cancel binding mismatch")
+        entry = self.ledger.get(message.command_id)
+        if entry is None:
+            return
+        if entry.job_id != message.job_id or entry.device_id != message.device_id:
+            raise RuntimeError("cancel ledger binding mismatch")
         entry = self.ledger.request_cancel(message.command_id)
         if entry is None or entry.state in TERMINAL:
             return

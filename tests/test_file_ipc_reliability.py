@@ -383,3 +383,21 @@ async def test_drawing_open_uses_activex_and_tracks_new_document(backend, monkey
     assert result.payload["active_document"] == "b.dwg"
     assert backend._last_document.name == "b.dwg"
     assert old_doc.commands == []
+
+@pytest.mark.asyncio
+async def test_completed_result_waits_for_dispatcher_to_settle(backend, monkeypatch):
+    doc = FakeDocument()
+    install_result_callback(backend, doc, {"document_name": "a.dwg"})
+    states = iter(
+        [
+            runtime(doc),
+            runtime(doc, idle=False, cmdactive=1),
+            runtime(doc),
+        ]
+    )
+    monkeypatch.setattr(backend, "_inspect_runtime", lambda: next(states))
+
+    result = await backend.drawing_info()
+
+    assert result.ok is True
+    assert result.payload == {"document_name": "a.dwg"}
