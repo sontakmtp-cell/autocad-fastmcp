@@ -1,12 +1,12 @@
 # Kế hoạch nâng cấp AutoCAD MCP nhiều người dùng bằng FastMCP
 
-> Trạng thái cập nhật 2026-07-23: **Phase 0–3.1 đã triển khai; Phase 4 C1 đã có implementation, Desktop Agent chạy thành công, VPS Gateway và Cloudflare đã thiết lập, ChatGPT đã kết nối theo kiểm thử operator; Windows CI standalone đang chạy lại sau khi sửa encoding PowerShell; Phase 5+ chưa triển khai**
+> Trạng thái cập nhật 2026-07-23: **Phase 0–3.1 đã triển khai; Phase 4 C1 đã có implementation, Desktop Agent chạy thành công, VPS Gateway và Cloudflare đã thiết lập, ChatGPT đã kết nối theo kiểm thử operator; PR CI đã xanh, còn build standalone nặng được tách sang workflow chạy thủ công; Phase 5+ chưa triển khai**
 >
 > Ngày khảo sát: 2026-07-23
 >
 > Phạm vi: phân tích, kiến trúc, migration, POC và kế hoạch triển khai; Phase 4 C1 implementation và evidence được ghi nhận tại các tài liệu/code liên kết bên dưới.
 >
-> Nguồn tham chiếu chính: code và test tại commit `e95f307`; FastMCP PrefectHQ `3.4.4`
+> Nguồn tham chiếu chính: code, test và CI tại commit `6a6022b`; FastMCP PrefectHQ `3.4.4`
 
 ## 1. Executive summary
 
@@ -1253,7 +1253,7 @@ Mỗi phase dưới đây chỉ bắt đầu sau khi phase trước đạt exit 
 
 ### Phase 4 — POC C1: Desktop Agent + AutoCAD thật, read-only
 
-- **Trạng thái cập nhật 2026-07-23:** contract `cad.mcp/1.2`, migration `0003`, headless Agent, UI lab, DPAPI, package `3.3-c1`, build standalone và Windows CI đã được triển khai. Desktop Agent đã chạy thành công; VPS Gateway, Cloudflare và kết nối ChatGPT đã được operator thiết lập/kiểm tra. Gateway → WSS → Agent → AutoCAD Mechanical 2025 thật đã đọc thành công summary; AutoCAD failure matrix, hard pause/resume, reconnect/restart và 10 mẫu latency đều xanh local. Full acceptance vẫn `PENDING REVIEW` cho tới khi gắn đủ link CI, public metadata/MCP check, token scope read và evidence VM sạch. Chi tiết tại [phase4-c1-implementation-evidence.md](./phase4-c1-implementation-evidence.md).
+- **Trạng thái cập nhật 2026-07-23:** contract `cad.mcp/1.2`, migration `0003`, headless Agent, UI lab, DPAPI, package `3.3-c1`, build standalone local và Windows CI đã được triển khai. Desktop Agent đã chạy thành công; VPS Gateway, Cloudflare và kết nối ChatGPT đã được operator thiết lập/kiểm tra. Gateway → WSS → Agent → AutoCAD Mechanical 2025 thật đã đọc thành công summary; AutoCAD failure matrix, hard pause/resume, reconnect/restart và 10 mẫu latency đều xanh local. PR CI hiện xanh với `windows-agent-tests` và các regression matrix; build standalone hosted được tách sang job `standalone-release` chỉ chạy bằng `workflow_dispatch` để tránh timeout PR, nên bản build hosted đầy đủ vẫn cần chạy riêng. Full acceptance vẫn `PENDING REVIEW` cho tới khi gắn đủ link CI, public metadata/MCP check, token scope read và evidence VM sạch. Chi tiết tại [phase4-c1-implementation-evidence.md](./phase4-c1-implementation-evidence.md).
 
 - **Mục tiêu/phạm vi:** ngay sau POC B, package Agent Windows tối thiểu, mở outbound WSS, đọc AutoCAD presence/document state và chạy một AutoLISP cấp 1 read-only đã đóng gói/versioned như `get_drawing_info`.
 - **Luồng sau phase:** ChatGPT Web (kèm protocol test client để tái lập lỗi) -> VPS Gateway -> WSS -> Desktop Agent -> packaged AutoLISP -> AutoCAD -> typed result trở lại; không mở port/tunnel trên máy user.
@@ -1562,10 +1562,11 @@ Kế hoạch implementation chỉ được coi là đạt sản phẩm multi-use
 
 Phase 4 C1 đã được mở và triển khai theo operator flow. Các bước còn lại là hoàn tất evidence, không mở rộng sang Phase 5+:
 
-1. Chạy CI matrix Phase 3.1 trên Windows/Linux với Python 3.10/3.12/3.13 và ghi link/kết quả từng job vào evidence.
-2. Ghi link kiểm tra VPS/Gateway/Cloudflare/ChatGPT, public metadata/MCP read và token scope read vào evidence; tách rõ operator report với protocol-client evidence.
-3. Review `phase3.1-durable-lifecycle-hardening-evidence.md` và `phase4-c1-implementation-evidence.md`; giữ profile `local` và legacy làm mặc định, C1 là opt-in.
-4. Chỉ chuyển Phase 4 C1 từ `PENDING REVIEW` sang `GO` sau khi CI standalone, public evidence và VM sạch đạt; Phase 5 vẫn chờ C1 được nghiệm thu.
+1. Đã chạy PR CI matrix Phase 3.1 trên Windows/Linux với Python 3.10/3.12/3.13 và các check `windows-agent-tests`; ghi link/kết quả vào evidence. Job standalone nặng `standalone-release` được giữ ở `workflow_dispatch`, chưa tính là pass của PR.
+2. Chạy riêng `workflow_dispatch` cho `standalone-release` và lưu link artifact/log hosted; không dùng trạng thái `skipping` trên PR để thay cho artifact standalone.
+3. Ghi link kiểm tra VPS/Gateway/Cloudflare/ChatGPT, public metadata/MCP read và token scope read vào evidence; tách rõ operator report với protocol-client evidence.
+4. Review `phase3.1-durable-lifecycle-hardening-evidence.md` và `phase4-c1-implementation-evidence.md`; giữ profile `local` và legacy làm mặc định, C1 là opt-in.
+5. Chỉ chuyển Phase 4 C1 từ `PENDING REVIEW` sang `GO` sau khi hosted standalone, public evidence và VM sạch đạt; Phase 5 vẫn chờ C1 được nghiệm thu.
 
 Phase 0–3 đã có evidence riêng; không chạy lại spike hoặc thay đổi contract Phase 2 chỉ vì Phase 3.1 bổ sung request identity trong profile opt-in.
 
