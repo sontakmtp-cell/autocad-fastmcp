@@ -1,6 +1,6 @@
 # Kế hoạch triển khai Phase 4 — Real Windows Agent C1, UI Lab và public E2E
 
-> Trạng thái cập nhật 2026-07-23: toàn bộ implementation của gate 4.0–4.3 đã có trong profile opt-in `phase4_c1`; happy path, AutoCAD failure matrix, reconnect/restart, 10 mẫu latency, public OAuth metadata, ChatGPT Web và MCP protocol client độc lập đều đã đọc AutoCAD Mechanical 2025 thật. Bản standalone đã sửa lỗi thiếu dynamic WebSocket module, tự kiểm tra package, mở outbound WSS và chạy public E2E thành công. Nghiệm thu vẫn `PENDING REVIEW / NO-GO` cho tới khi workflow hosted cuối có artifact xanh, chạy trên Windows 11 VM sạch và thử public rollback/revoke có kiểm soát. Phase 5 chưa được mở. Xem [Phase 4 C1 implementation evidence](./phase4-c1-implementation-evidence.md).
+> Trạng thái cập nhật 2026-07-23: toàn bộ implementation của gate 4.0–4.3 đã có trong profile opt-in `phase4_c1`; happy path, AutoCAD failure matrix, reconnect/restart, 10 mẫu latency, public OAuth metadata, ChatGPT Web và MCP protocol client độc lập đều đã đọc AutoCAD Mechanical 2025 thật. Bản standalone đã sửa lỗi thiếu dynamic WebSocket module, tự kiểm tra package, mở outbound WSS và chạy public E2E thành công. GitHub Actions chỉ chạy test, tuyệt đối không build `.exe`; artifact được tạo trên máy Windows phù hợp. Nghiệm thu vẫn `PENDING REVIEW / NO-GO` cho tới khi chạy trên Windows 11 VM sạch và thử public rollback/revoke có kiểm soát. Phase 5 chưa được mở. Xem [Phase 4 C1 implementation evidence](./phase4-c1-implementation-evidence.md).
 >
 > Baseline branch: `main`
 >
@@ -625,10 +625,11 @@ Dùng `pytest-qt` offscreen:
 ### 11.6. Windows CI/build
 
 - PR gate: Python 3.12 unit/UI, Gateway contract, PowerShell/input validation, lock/static checks và regression matrix.
-- Release gate: build standalone folder và upload artifact chạy riêng bằng `workflow_dispatch` trong job `standalone-release`; không chạy build nặng trong PR để tránh timeout.
+- GitHub Actions không build hoặc upload standalone `.exe`; job `standalone-release` bị cấm vì hosted runner không hoàn tất Nuitka ổn định.
+- Release gate chạy trên máy Windows phù hợp bằng `scripts/build-phase4-agent.ps1`, sau đó kiểm manifest/hash, `--package-self-test`, Defender/SmartScreen và runtime thật.
 - Pin/check lockfiles.
 - Schema snapshot diff chỉ có delta đã duyệt.
-- Smoke run artifact trên Windows runner khi khả thi.
+- Smoke/public E2E chạy chính artifact local Windows; không dùng GitHub hosted artifact làm bằng chứng phát hành.
 
 ## 12. Thử nghiệm AutoCAD thật
 

@@ -2,7 +2,7 @@
 
 > Cập nhật: 2026-07-23
 > Quyết định hiện tại: **PENDING REVIEW / NO-GO cho nghiệm thu Phase 4 đầy đủ**
-> Lý do: implementation, standalone thật, public ChatGPT E2E và MCP protocol-client E2E đã đạt. Gate còn lại là workflow hosted cuối, Windows 11 VM sạch và rollback/revoke public có kiểm soát.
+> Lý do: implementation, standalone thật, public ChatGPT E2E và MCP protocol-client E2E đã đạt. Gate còn lại là Windows 11 VM sạch và rollback/revoke public có kiểm soát.
 
 ## 1. Phạm vi đã triển khai
 
@@ -14,7 +14,7 @@
 - PySide6 Widgets UI bằng tiếng Việt theo phụ lục: server, AutoCAD, document, task, version/package, support code, retry, hard pause, diagnostics, help, close-to-tray và confirm khi thoát lúc có job.
 - Package AutoLISP `autocad.lisp.drawing_info@3.3-c1` chỉ đọc summary và có SHA-256. Provision lưu lab credential bằng Windows DPAPI; script không sửa AutoCAD profile.
 - Build standalone dùng Python 3.12, PySide6 6.11.1 và Nuitka 2.8.9. Bản phát hành bắt buộc include toàn bộ package `websockets`, có `--package-self-test` để phát hiện thiếu dynamic import, tự chọn MSVC/MinGW, tính SHA-256 bằng .NET để chạy ổn trên Windows PowerShell 5.1 và có diagnostics stage/type không lộ secret.
-- Workflow Windows có job test/validate cho PR; job build/upload standalone nặng `standalone-release` chỉ chạy bằng `workflow_dispatch`, dùng MinGW, cache Nuitka, transcript log, manifest/hash validation và package self-test.
+- GitHub Actions chỉ chạy test/validate build inputs. Standalone `.exe` được build, hash, quét Defender và chạy E2E trên máy Windows phù hợp; không build executable bằng GitHub hosted runner.
 
 Human OAuth metadata/challenge được cấu hình theo yêu cầu MCP authorization hiện hành về protected-resource metadata, authorization server discovery, PKCE và resource binding: [OpenAI Apps SDK authentication](https://developers.openai.com/apps-sdk/build/auth#mcp-authorization-spec-requirements).
 
@@ -43,12 +43,13 @@ Human OAuth metadata/challenge được cấu hình theo yêu cầu MCP authoriz
 | Network/restart matrix | PASS local automation | Agent WSS reconnect sau ACK báo `started` và executor chỉ chạy 1 lần; restart ledger trả `not_started/started/terminal`; Gateway restart/hardening 15 PASS; shared real-WSS reconnect matrix 7 PASS |
 | Latency AutoCAD thật | PASS local | 10/10 kết quả ổn định; min 282.46 ms, median 291.98 ms, p95 299.35 ms, max 301.55 ms |
 
-### 2.1. Hosted CI sau khi sửa workflow
+### 2.1. Chính sách GitHub Actions sau khi kiểm tra hosted build
 
 - Commit implementation tham chiếu: `8a18731` (`fix: complete Phase 4 standalone runtime checks`).
 - PR checks của nhánh đã PASS, gồm `windows-agent-tests`, validate input standalone, regression Phase 0–3.1, wheel/lock/static checks và các matrix Python 3.10/3.12/3.13 trên Ubuntu/Windows. Run tham chiếu: [Phase 4 C1 Agent #29975105571](https://github.com/sontakmtp-cell/autocad-fastmcp/actions/runs/29975105571).
 - Run [#30003442857](https://github.com/sontakmtp-cell/autocad-fastmcp/actions/runs/30003442857) xác nhận `windows-agent-tests` PASS và MinGW bắt đầu build, nhưng timeout đúng 35 phút ở bước Nuitka; không có lỗi compiler.
-- Workflow đã tăng riêng timeout release lên 70 phút/job và 60 phút/build. Run cuối [#30005983743](https://github.com/sontakmtp-cell/autocad-fastmcp/actions/runs/30005983743) được dispatch tại commit `8a18731`; chỉ được đổi gate hosted sang PASS sau khi run này hoàn tất và artifact/hash/self-test đều xanh.
+- Run [#30005983743](https://github.com/sontakmtp-cell/autocad-fastmcp/actions/runs/30005983743) đã bị hủy theo quyết định operator. Job `standalone-release` được gỡ hẳn khỏi workflow.
+- Chính sách khóa: GitHub Actions chỉ chạy unit/integration/contract/static và build-input checks. Artifact phát hành Phase 4 chỉ được tạo bằng `scripts/build-phase4-agent.ps1` trên máy Windows phù hợp; local manifest/hash/package self-test/public E2E là bằng chứng executable có thẩm quyền.
 
 ### 2.2. Public OAuth, ChatGPT Web và protocol client
 
@@ -81,7 +82,6 @@ Human OAuth metadata/challenge được cấu hình theo yêu cầu MCP authoriz
 - AutoCAD failure matrix thật và protocol reconnect/restart matrix local đã hoàn tất; chưa có bằng chứng mất mạng Internet/VPS thật.
 - Credential lab thật đã provision bằng DPAPI và reconnect public nhiều lần; chưa thử revoke credential/session trên Gateway public.
 - Public metadata, 401 challenge, Auth0 discovery, token scope read, ChatGPT Web và protocol-client đã có evidence; invalid issuer/audience/sub vẫn dựa trên automated test matrix, chưa phát hành nhiều token thật sai claim.
-- `workflow_dispatch` cuối đang chạy để lưu artifact/log standalone hosted.
 - Đã có 10 mẫu latency local, số liệu RAM/startup/package và Defender trên máy Windows 11 lab; chưa có Windows 11 VM sạch và SmartScreen.
 - Chưa thực hiện public cutover rollback/revoke thật vì thao tác này làm gián đoạn endpoint đang dùng và cần quyền vận hành VPS/Cloudflare/Auth0.
 
