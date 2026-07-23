@@ -29,7 +29,12 @@ def build_core(config: AgentConfig, *, headless: bool) -> AgentCore:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Kỹ Thuật Vàng AutoCAD Desktop Agent C1")
     parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--package-self-test", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.package_self_test:
+        import websockets.asyncio.client  # noqa: F401
+
+        return
     config = AgentConfig.from_env()
     core = build_core(config, headless=args.headless)
     if args.headless:

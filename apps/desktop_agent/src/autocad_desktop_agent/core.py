@@ -131,6 +131,7 @@ class AgentCore:
         backoff = 1
         while not self._stop.is_set():
             self._retry.clear()
+            connection_stage = "package"
             if not self._refresh_package():
                 self._publish(
                     runtime_state=RuntimeState.INCOMPATIBLE,
@@ -146,7 +147,9 @@ class AgentCore:
                 support_code=None,
             )
             try:
+                connection_stage = "credential"
                 credential = self.credentials.load()
+                connection_stage = "connect"
                 async with websockets.connect(
                     self.config.gateway_ws_url,
                     additional_headers={"Authorization": f"Bearer {credential}"},
@@ -156,12 +159,35 @@ class AgentCore:
                     close_timeout=5,
                 ) as websocket:
                     backoff = 1
+                    connection_stage = "session"
                     await self._run_session(websocket, credential)
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as exc:
+                diagnostic_stage = str(
+                    self._last_ids.get("connection_stage", connection_stage)
+                )
+                self._last_ids.update(
+                    {
+                        "connection_stage": diagnostic_stage,
+                        "safe_error_code": "connection_failed",
+                        "safe_error_type": type(exc).__name__,
+                    }
+                )
+                support_codes = {
+                    "credential": "C1-AUTH-001",
+                    "connect": "C1-NET-001",
+                    "hello": "C1-PROTO-001",
+                    "presence": "C1-CAD-001",
+                }
                 if self._state.runtime_state != RuntimeState.INCOMPATIBLE:
-                    self._publish(runtime_state=RuntimeState.OFFLINE, server_connected=False)
+                    self._publish(
+                        runtime_state=RuntimeState.OFFLINE,
+                        server_connected=False,
+                        support_code=support_codes.get(
+                            diagnostic_stage, "C1-NET-002"
+                        ),
+                    )
             if self._stop.is_set():
                 break
             await self._wait_for_retry(backoff)
@@ -185,6 +211,7 @@ class AgentCore:
         return True
 
     async def _run_session(self, websocket: Any, credential: str) -> None:
+        self._last_ids["connection_stage"] = "hello"
         message_id = str(uuid.uuid4())
         proof = hmac.new(
             credential.encode("utf-8"),
@@ -213,7 +240,11 @@ class AgentCore:
         if not isinstance(welcome, WelcomeMessage):
             raise RuntimeError("Gateway did not send welcome")
         self._session_id = welcome.session_id
+        self._last_ids["connection_stage"] = "presence"
         await self._refresh_presence(server_connected=True)
+        self._last_ids["connection_stage"] = "online"
+        self._last_ids.pop("safe_error_code", None)
+        self._last_ids.pop("safe_error_type", None)
         queue: asyncio.Queue[CommandMessage] = asyncio.Queue(maxsize=self.config.queue_size)
         receiver = asyncio.create_task(self._receive_loop(websocket, queue))
         worker = asyncio.create_task(self._worker(websocket, queue))

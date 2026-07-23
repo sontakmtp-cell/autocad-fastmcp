@@ -43,6 +43,24 @@ function Test-MsvcToolchain {
     return [bool]$installation
 }
 
+function Get-Sha256 {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $sha256 = [Security.Cryptography.SHA256]::Create()
+        try {
+            return ([BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+        }
+        finally {
+            $sha256.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 if (Test-Path -LiteralPath $buildRoot) {
     $resolvedBuildRoot = (Resolve-Path -LiteralPath $buildRoot).Path
@@ -87,6 +105,7 @@ try {
         $compilerArgument,
         '--assume-yes-for-downloads',
         '--windows-console-mode=disable',
+        '--include-package=websockets',
         '--show-progress',
         "--output-dir=$buildRoot",
         '--output-filename=KythuatvangAutoCADAgent.exe',
@@ -121,7 +140,7 @@ finally {
 $packageDir = Join-Path $output 'packages\autocad.lisp.drawing_info\3.3-c1'
 New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 Copy-Item -LiteralPath $package -Destination (Join-Path $packageDir 'mcp_dispatch.lsp') -Force
-$packageHash = (Get-FileHash -LiteralPath (Join-Path $packageDir 'mcp_dispatch.lsp') -Algorithm SHA256).Hash.ToLowerInvariant()
+$packageHash = Get-Sha256 -Path (Join-Path $packageDir 'mcp_dispatch.lsp')
 
 $built = Get-ChildItem -LiteralPath $buildRoot -Recurse -File |
     Where-Object { $_.Name -in @('KythuatvangAutoCADAgent.exe', 'launcher.exe') } |
@@ -142,7 +161,7 @@ $artifactTarget = Join-Path $appOutput 'KythuatvangAutoCADAgent.exe'
 if ($built.Name -ne 'KythuatvangAutoCADAgent.exe') {
     Move-Item -LiteralPath (Join-Path $appOutput $built.Name) -Destination $artifactTarget -Force
 }
-$artifactHash = (Get-FileHash -LiteralPath $artifactTarget -Algorithm SHA256).Hash.ToLowerInvariant()
+$artifactHash = Get-Sha256 -Path $artifactTarget
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'provision-phase4-agent.ps1') -Destination $output -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'run-phase4-agent.ps1') -Destination $output -Force
 

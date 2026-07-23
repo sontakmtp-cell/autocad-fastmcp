@@ -70,7 +70,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     needs: windows-agent-tests
     runs-on: windows-2022
-    timeout-minutes: 40
+    timeout-minutes: 70
     env:
       QT_QPA_PLATFORM: offscreen
       NUITKA_CACHE_DIR: ${{ github.workspace }}\.nuitka-cache
@@ -94,7 +94,7 @@ jobs:
         run: uv sync --locked --python 3.12 --group build --group ui-test
       - name: Build standalone Agent
         shell: powershell
-        timeout-minutes: 35
+        timeout-minutes: 60
         run: |
           $log = "$env:RUNNER_TEMP\phase4-build.log"
           Start-Transcript -Path $log -Force
@@ -128,7 +128,7 @@ jobs:
         shell: powershell
         run: |
           $exe = "$env:RUNNER_TEMP\phase4-agent\app\KythuatvangAutoCADAgent.exe"
-          $process = Start-Process -FilePath $exe -ArgumentList '--help' -Wait -PassThru
+          $process = Start-Process -FilePath $exe -ArgumentList '--package-self-test' -Wait -PassThru
           if ($process.ExitCode -ne 0) { throw "Standalone smoke failed with exit code $($process.ExitCode)" }
       - uses: actions/upload-artifact@v4
         with:

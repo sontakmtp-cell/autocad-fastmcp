@@ -24,7 +24,7 @@ plugins =
 [nuitka]
 macos.permissions =
 mode = standalone
-extra_args = --assume-yes-for-downloads --windows-console-mode=disable --show-progress --show-memory --noinclude-qt-translations=True
+extra_args = --assume-yes-for-downloads --windows-console-mode=disable --show-progress --show-memory --noinclude-qt-translations=True --include-package=websockets
 
 [buildozer]
 mode = debug

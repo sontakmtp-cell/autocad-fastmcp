@@ -19,7 +19,9 @@ ALLOWED_FIELDS = frozenset(
         "job_id",
         "command_id",
         "correlation_id",
+        "connection_stage",
         "safe_error_code",
+        "safe_error_type",
     }
 )
 

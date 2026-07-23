@@ -120,10 +120,18 @@ async def test_hard_pause_rejects_before_executor_and_persists(tmp_path):
 def test_diagnostics_is_allowlist_only(tmp_path):
     core, _ = make_core(tmp_path)
     target = tmp_path / "diagnostics.json"
-    core._last_ids = {"job_id": "job-1", "token": "must-not-leak", "full_path": r"C:\secret.dwg"}
+    core._last_ids = {
+        "job_id": "job-1",
+        "connection_stage": "connect",
+        "safe_error_type": "OSError",
+        "token": "must-not-leak",
+        "full_path": r"C:\secret.dwg",
+    }
     core.handle_intent(AgentIntent.EXPORT_DIAGNOSTICS, target)
     text = target.read_text(encoding="utf-8")
     assert "job-1" in text
+    assert '"connection_stage": "connect"' in text
+    assert '"safe_error_type": "OSError"' in text
     assert "must-not-leak" not in text
     assert "secret.dwg" not in text
 
@@ -241,6 +249,32 @@ def test_ui_exit_wakes_offline_runner_from_another_thread(tmp_path, monkeypatch)
 
     assert not thread.is_alive()
     assert errors == []
+
+
+@pytest.mark.asyncio
+async def test_connection_failure_publishes_safe_diagnostics(tmp_path, monkeypatch):
+    core, _ = make_core(tmp_path)
+
+    def fail_connect(*args, **kwargs):
+        raise OSError("offline")
+
+    import websockets
+
+    monkeypatch.setattr(websockets, "connect", fail_connect)
+    task = asyncio.create_task(core.run_forever())
+    for _ in range(100):
+        if core.view_state.support_code == "C1-NET-001":
+            break
+        await asyncio.sleep(0.01)
+
+    assert core.view_state.runtime_state == RuntimeState.OFFLINE
+    assert core.view_state.support_code == "C1-NET-001"
+    assert core._last_ids["connection_stage"] == "connect"
+    assert core._last_ids["safe_error_code"] == "connection_failed"
+    assert core._last_ids["safe_error_type"] == "OSError"
+
+    core.handle_intent(AgentIntent.EXIT)
+    await asyncio.wait_for(task, timeout=1)
 
 
 @pytest.mark.parametrize(
