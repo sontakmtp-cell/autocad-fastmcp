@@ -32,12 +32,8 @@ try {
     uv run --no-sync python -m nuitka --version
     if ($LASTEXITCODE -ne 0) { throw "Nuitka version check failed with exit code $LASTEXITCODE" }
 
-    Write-Host "[$(Get-Date -Format o)] Resolved pyside6-deploy command"
-    uv run --no-sync pyside6-deploy $launcher --config-file $deployConfig --mode standalone --nuitka-version 2.8.9 --name KythuatvangAutoCADAgent --dry-run --force
-    if ($LASTEXITCODE -ne 0) { throw "pyside6-deploy dry-run failed with exit code $LASTEXITCODE" }
-
     Write-Host "[$(Get-Date -Format o)] Starting standalone compilation"
-    uv run --no-sync pyside6-deploy $launcher --config-file $deployConfig --mode standalone --nuitka-version 2.8.9 --name KythuatvangAutoCADAgent --verbose --force
+    uv run --no-sync pyside6-deploy $launcher --config-file $deployConfig --mode standalone --nuitka-version 2.8.9 --name KythuatvangAutoCADAgent --verbose --keep-deployment-files
     if ($LASTEXITCODE -ne 0) { throw "pyside6-deploy failed with exit code $LASTEXITCODE" }
     Write-Host "[$(Get-Date -Format o)] Standalone compilation completed"
 }
