@@ -9,8 +9,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $agentRoot = Join-Path $repoRoot 'apps\desktop_agent'
 $launcher = Join-Path $agentRoot 'launcher.py'
-$deployTemplate = Join-Path $agentRoot 'pysidedeploy.spec'
-$deployConfig = Join-Path $agentRoot '.pysidedeploy.build.spec'
+$buildRoot = Join-Path $agentRoot 'build\phase4-agent'
 $package = Join-Path $repoRoot 'lisp-code\mcp_dispatch.lsp'
 $output = [IO.Path]::GetFullPath($OutputRoot)
 $volumeRoot = [IO.Path]::GetPathRoot($output)
@@ -19,7 +18,15 @@ if ($output.TrimEnd('\') -eq $volumeRoot.TrimEnd('\')) {
 }
 
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-Copy-Item -LiteralPath $deployTemplate -Destination $deployConfig -Force
+if (Test-Path -LiteralPath $buildRoot) {
+    $resolvedBuildRoot = (Resolve-Path -LiteralPath $buildRoot).Path
+    if (-not $resolvedBuildRoot.StartsWith($agentRoot.TrimEnd('\') + '\')) {
+        throw "Tu choi don build folder ngoai AgentRoot: $resolvedBuildRoot"
+    }
+    Remove-Item -LiteralPath $resolvedBuildRoot -Recurse -Force
+}
+New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
+
 Push-Location $agentRoot
 try {
     if (-not $SkipSync) {
@@ -33,15 +40,23 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Nuitka version check failed with exit code $LASTEXITCODE" }
 
     Write-Host "[$(Get-Date -Format o)] Starting standalone compilation"
-    uv run --no-sync pyside6-deploy $launcher --config-file $deployConfig --mode standalone --nuitka-version 2.8.9 --name KythuatvangAutoCADAgent --verbose --keep-deployment-files
-    if ($LASTEXITCODE -ne 0) { throw "pyside6-deploy failed with exit code $LASTEXITCODE" }
+    uv run --no-sync python -m nuitka `
+        --standalone `
+        --enable-plugin=pyside6 `
+        --msvc=14.3 `
+        --assume-yes-for-downloads `
+        --windows-console-mode=disable `
+        --show-progress `
+        --show-memory `
+        --noinclude-qt-translations=True `
+        --output-dir=$buildRoot `
+        --output-filename=KythuatvangAutoCADAgent.exe `
+        $launcher
+    if ($LASTEXITCODE -ne 0) { throw "Nuitka standalone build failed with exit code $LASTEXITCODE" }
     Write-Host "[$(Get-Date -Format o)] Standalone compilation completed"
 }
 finally {
     Pop-Location
-    if (Test-Path -LiteralPath $deployConfig) {
-        Remove-Item -LiteralPath $deployConfig -Force
-    }
 }
 
 $packageDir = Join-Path $output 'packages\autocad.lisp.drawing_info\3.3-c1'
@@ -49,14 +64,11 @@ New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 Copy-Item -LiteralPath $package -Destination (Join-Path $packageDir 'mcp_dispatch.lsp') -Force
 $packageHash = (Get-FileHash -LiteralPath (Join-Path $packageDir 'mcp_dispatch.lsp') -Algorithm SHA256).Hash.ToLowerInvariant()
 
-$built = Get-ChildItem -LiteralPath $agentRoot -Recurse -File |
-    Where-Object {
-        $_.Name -in @('KythuatvangAutoCADAgent.exe', 'launcher.exe') -and
-        $_.FullName -notlike '*\.venv\*'
-    } |
+$built = Get-ChildItem -LiteralPath $buildRoot -Recurse -File |
+    Where-Object { $_.Name -in @('KythuatvangAutoCADAgent.exe', 'launcher.exe') } |
     Sort-Object LastWriteTimeUtc -Descending |
     Select-Object -First 1
-if (-not $built) { throw 'pyside6-deploy khong tao duoc KythuatvangAutoCADAgent.exe' }
+if (-not $built) { throw 'Nuitka khong tao duoc KythuatvangAutoCADAgent.exe' }
 $standaloneDir = $built.Directory.FullName
 $appOutput = Join-Path $output 'app'
 if (Test-Path -LiteralPath $appOutput) {
