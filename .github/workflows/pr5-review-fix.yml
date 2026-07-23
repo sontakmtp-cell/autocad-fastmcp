@@ -1,0 +1,37 @@
+name: PR 5 Review Fix
+
+on:
+  push:
+    branches:
+      - agent/phase4-c1-desktop-agent-gateway
+
+permissions:
+  contents: write
+
+jobs:
+  apply-review-fixes:
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[pr5-review-fix]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply focused review patch
+        run: python scripts/pr5_review_fix.py
+
+      - name: Compile changed Python
+        run: |
+          python -m compileall -q src/autocad_mcp/backends/file_ipc.py
+          python -m compileall -q apps/desktop_agent/src/autocad_desktop_agent/core.py
+          python -m compileall -q apps/desktop_agent/tests/test_core.py
+          python -m compileall -q tests/test_file_ipc_reliability.py
+
+      - name: Commit review fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: address PR #5 review comments [pr5-review-fix]"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
