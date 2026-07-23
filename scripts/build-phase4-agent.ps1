@@ -2,7 +2,9 @@
 param(
     [string]$OutputRoot = (Join-Path $PSScriptRoot '..\dist\phase4-agent'),
     [string]$PythonVersion = '3.12',
-    [switch]$SkipSync
+    [switch]$SkipSync,
+    [ValidateSet('auto', 'msvc', 'mingw64')]
+    [string]$Compiler = 'auto'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,7 +68,13 @@ try {
     $stdoutPath = Join-Path $buildRoot 'nuitka.stdout.log'
     $stderrPath = Join-Path $buildRoot 'nuitka.stderr.log'
     $uvCommand = (Get-Command uv -ErrorAction Stop).Source
-    $compilerArgument = if (Test-MsvcToolchain) { '--msvc=latest' } else { '--mingw64' }
+    $compilerArgument = switch ($Compiler) {
+        'msvc' { '--msvc=latest' }
+        'mingw64' { '--mingw64' }
+        default {
+            if (Test-MsvcToolchain) { '--msvc=latest' } else { '--mingw64' }
+        }
+    }
     Write-Host "[$(Get-Date -Format o)] Compiler selection: $compilerArgument"
     $nuitkaArgs = @(
         'run',

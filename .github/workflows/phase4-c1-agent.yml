@@ -99,7 +99,7 @@ jobs:
           $log = "$env:RUNNER_TEMP\phase4-build.log"
           Start-Transcript -Path $log -Force
           try {
-            & .\scripts\build-phase4-agent.ps1 -OutputRoot "$env:RUNNER_TEMP\phase4-agent" -SkipSync
+            & .\scripts\build-phase4-agent.ps1 -OutputRoot "$env:RUNNER_TEMP\phase4-agent" -SkipSync -Compiler mingw64
           }
           finally {
             Stop-Transcript
