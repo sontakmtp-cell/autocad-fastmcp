@@ -39,20 +39,45 @@ try {
     uv run --no-sync python -m nuitka --version
     if ($LASTEXITCODE -ne 0) { throw "Nuitka version check failed with exit code $LASTEXITCODE" }
 
-    Write-Host "[$(Get-Date -Format o)] Starting standalone compilation"
-    uv run --no-sync python -m nuitka `
-        --standalone `
-        --enable-plugin=pyside6 `
-        --msvc=14.3 `
-        --assume-yes-for-downloads `
-        --windows-console-mode=disable `
-        --show-progress `
-        --show-memory `
-        --noinclude-qt-translations=True `
-        --output-dir=$buildRoot `
-        --output-filename=KythuatvangAutoCADAgent.exe `
+    $stdoutPath = Join-Path $buildRoot 'nuitka.stdout.log'
+    $stderrPath = Join-Path $buildRoot 'nuitka.stderr.log'
+    $uvCommand = (Get-Command uv -ErrorAction Stop).Source
+    $nuitkaArgs = @(
+        'run',
+        '--no-sync',
+        'python',
+        '-m',
+        'nuitka',
+        '--mode=standalone',
+        '--enable-plugin=pyside6',
+        '--msvc=latest',
+        '--assume-yes-for-downloads',
+        '--windows-console-mode=disable',
+        '--show-progress',
+        "--output-dir=$buildRoot",
+        '--output-filename=KythuatvangAutoCADAgent.exe',
         $launcher
-    if ($LASTEXITCODE -ne 0) { throw "Nuitka standalone build failed with exit code $LASTEXITCODE" }
+    )
+
+    Write-Host "[$(Get-Date -Format o)] Starting standalone compilation"
+    $process = Start-Process `
+        -FilePath $uvCommand `
+        -ArgumentList $nuitkaArgs `
+        -NoNewWindow `
+        -Wait `
+        -PassThru `
+        -RedirectStandardOutput $stdoutPath `
+        -RedirectStandardError $stderrPath
+
+    if (Test-Path -LiteralPath $stdoutPath) {
+        Get-Content -LiteralPath $stdoutPath | ForEach-Object { Write-Host $_ }
+    }
+    if (Test-Path -LiteralPath $stderrPath) {
+        Get-Content -LiteralPath $stderrPath | ForEach-Object { Write-Host $_ }
+    }
+    if ($process.ExitCode -ne 0) {
+        throw "Nuitka standalone build failed with exit code $($process.ExitCode)"
+    }
     Write-Host "[$(Get-Date -Format o)] Standalone compilation completed"
 }
 finally {
