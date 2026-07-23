@@ -24,7 +24,7 @@ plugins =
 [nuitka]
 macos.permissions =
 mode = standalone
-extra_args = --mingw64 --assume-yes-for-downloads --windows-console-mode=disable --quiet --noinclude-qt-translations
+extra_args = --msvc=14.3 --assume-yes-for-downloads --windows-console-mode=disable --show-progress --show-memory --noinclude-qt-translations=True
 
 [buildozer]
 mode = debug
