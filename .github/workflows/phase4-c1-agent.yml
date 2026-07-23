@@ -18,6 +18,10 @@ on:
       - "scripts/build-phase4-agent.ps1"
       - ".github/workflows/phase4-c1-agent.yml"
 
+concurrency:
+  group: phase4-c1-agent-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -27,6 +31,7 @@ jobs:
     timeout-minutes: 45
     env:
       QT_QPA_PLATFORM: offscreen
+      NUITKA_CACHE_DIR: ${{ github.workspace }}\.nuitka-cache
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -35,9 +40,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Restore Nuitka cache
+        uses: actions/cache@v4
+        with:
+          path: .nuitka-cache
+          key: nuitka-${{ runner.os }}-py312-${{ hashFiles('apps/desktop_agent/uv.lock', 'apps/desktop_agent/pysidedeploy.spec') }}
+          restore-keys: |
+            nuitka-${{ runner.os }}-py312-
       - name: Sync Desktop Agent
         working-directory: apps/desktop_agent
-        run: uv sync --locked --python 3.12 --group test --group ui-test
+        run: uv sync --locked --python 3.12 --group build --group test --group ui-test
       - name: Test Desktop Agent
         working-directory: apps/desktop_agent
         run: uv run --no-sync pytest -q
@@ -48,7 +60,8 @@ jobs:
           uv run --no-sync pytest -q tests/test_phase4_c1.py tests/test_sqlite_repositories.py
       - name: Build standalone Agent
         shell: powershell
-        run: .\scripts\build-phase4-agent.ps1 -OutputRoot "$env:RUNNER_TEMP\phase4-agent"
+        timeout-minutes: 35
+        run: .\scripts\build-phase4-agent.ps1 -OutputRoot "$env:RUNNER_TEMP\phase4-agent" -SkipSync
       - name: Validate release manifest
         shell: powershell
         run: |
