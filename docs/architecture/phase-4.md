@@ -1,6 +1,6 @@
 # Kế hoạch triển khai Phase 4 — Real Windows Agent C1, UI Lab và public E2E
 
-> Trạng thái cập nhật 2026-07-23: gate 4.0 và phần code/local verification của 4.1–4.2 đã triển khai trong profile opt-in `phase4_c1`; happy path, AutoCAD failure matrix, protocol reconnect/restart và 10 mẫu latency đã chạy qua Gateway/WSS/Agent/AutoCAD Mechanical 2025 thật. VPS Gateway, Cloudflare và kết nối ChatGPT đã được operator thiết lập/kiểm tra. PR CI đã xanh; build standalone hosted được tách thành `standalone-release` chạy bằng `workflow_dispatch`, còn standalone trên VM sạch, hosted artifact, token/protocol-client evidence và rollback cutover vẫn `NO-GO`. Xem [Phase 4 C1 implementation evidence](./phase4-c1-implementation-evidence.md).
+> Trạng thái cập nhật 2026-07-23: toàn bộ implementation của gate 4.0–4.3 đã có trong profile opt-in `phase4_c1`; happy path, AutoCAD failure matrix, reconnect/restart, 10 mẫu latency, public OAuth metadata, ChatGPT Web và MCP protocol client độc lập đều đã đọc AutoCAD Mechanical 2025 thật. Bản standalone đã sửa lỗi thiếu dynamic WebSocket module, tự kiểm tra package, mở outbound WSS và chạy public E2E thành công. Nghiệm thu vẫn `PENDING REVIEW / NO-GO` cho tới khi workflow hosted cuối có artifact xanh, chạy trên Windows 11 VM sạch và thử public rollback/revoke có kiểm soát. Phase 5 chưa được mở. Xem [Phase 4 C1 implementation evidence](./phase4-c1-implementation-evidence.md).
 >
 > Baseline branch: `main`
 >
