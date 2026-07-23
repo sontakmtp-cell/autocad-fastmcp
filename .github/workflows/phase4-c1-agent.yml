@@ -116,7 +116,20 @@ jobs:
         run: |
           $manifest = Get-Content "$env:RUNNER_TEMP\phase4-agent\manifest.json" -Raw | ConvertFrom-Json
           if ($manifest.schema -ne 'cad.agent.release/1') { throw 'Unexpected release manifest schema' }
-          if (-not (Test-Path "$env:RUNNER_TEMP\phase4-agent\app\KythuatvangAutoCADAgent.exe")) { throw 'Standalone executable is missing' }
+          $exe = "$env:RUNNER_TEMP\phase4-agent\$($manifest.artifact -replace '/', '\')"
+          $package = "$env:RUNNER_TEMP\phase4-agent\$($manifest.package.path -replace '/', '\')"
+          if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw 'Standalone executable is missing' }
+          if (-not (Test-Path -LiteralPath $package -PathType Leaf)) { throw 'AutoLISP package is missing' }
+          $exeHash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $packageHash = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($exeHash -ne $manifest.artifact_sha256) { throw 'Standalone executable hash mismatch' }
+          if ($packageHash -ne $manifest.package.sha256) { throw 'AutoLISP package hash mismatch' }
+      - name: Smoke run standalone executable
+        shell: powershell
+        run: |
+          $exe = "$env:RUNNER_TEMP\phase4-agent\app\KythuatvangAutoCADAgent.exe"
+          $process = Start-Process -FilePath $exe -ArgumentList '--help' -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "Standalone smoke failed with exit code $($process.ExitCode)" }
       - uses: actions/upload-artifact@v4
         with:
           name: phase4-c1-agent-windows-x64

@@ -17,6 +17,30 @@ if ($output.TrimEnd('\') -eq $volumeRoot.TrimEnd('\')) {
     throw 'OutputRoot khong duoc la thu muc goc cua o dia.'
 }
 
+function Test-MsvcToolchain {
+    if (Get-Command cl.exe -ErrorAction SilentlyContinue) {
+        return $true
+    }
+
+    $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
+    if (-not $programFilesX86) {
+        return $false
+    }
+    $vswhere = Join-Path $programFilesX86 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (-not (Test-Path -LiteralPath $vswhere)) {
+        return $false
+    }
+
+    $installation = & $vswhere `
+        -latest `
+        -products '*' `
+        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+        -property installationPath `
+        2>$null |
+        Select-Object -First 1
+    return [bool]$installation
+}
+
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 if (Test-Path -LiteralPath $buildRoot) {
     $resolvedBuildRoot = (Resolve-Path -LiteralPath $buildRoot).Path
@@ -42,6 +66,8 @@ try {
     $stdoutPath = Join-Path $buildRoot 'nuitka.stdout.log'
     $stderrPath = Join-Path $buildRoot 'nuitka.stderr.log'
     $uvCommand = (Get-Command uv -ErrorAction Stop).Source
+    $compilerArgument = if (Test-MsvcToolchain) { '--msvc=latest' } else { '--mingw64' }
+    Write-Host "[$(Get-Date -Format o)] Compiler selection: $compilerArgument"
     $nuitkaArgs = @(
         'run',
         '--no-sync',
@@ -50,7 +76,7 @@ try {
         'nuitka',
         '--mode=standalone',
         '--enable-plugin=pyside6',
-        '--msvc=latest',
+        $compilerArgument,
         '--assume-yes-for-downloads',
         '--windows-console-mode=disable',
         '--show-progress',
