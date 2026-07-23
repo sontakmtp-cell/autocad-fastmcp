@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   windows-agent:
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 45
     env:
       QT_QPA_PLATFORM: offscreen
@@ -61,7 +61,24 @@ jobs:
       - name: Build standalone Agent
         shell: powershell
         timeout-minutes: 35
-        run: .\scripts\build-phase4-agent.ps1 -OutputRoot "$env:RUNNER_TEMP\phase4-agent" -SkipSync
+        run: |
+          $log = "$env:RUNNER_TEMP\phase4-build.log"
+          try {
+            & .\scripts\build-phase4-agent.ps1 -OutputRoot "$env:RUNNER_TEMP\phase4-agent" -SkipSync *>&1 |
+              Tee-Object -FilePath $log
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          catch {
+            $_ | Out-String | Tee-Object -FilePath $log -Append
+            throw
+          }
+      - name: Upload standalone build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase4-c1-build-log
+          path: ${{ runner.temp }}/phase4-build.log
+          if-no-files-found: warn
       - name: Validate release manifest
         shell: powershell
         run: |
