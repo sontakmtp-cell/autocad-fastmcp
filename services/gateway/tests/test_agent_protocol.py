@@ -7,6 +7,7 @@ from autocad_contracts import (
     CommandMessage,
     HelloMessage,
     canonical_capability_hash,
+    canonical_package_manifest_hash,
     canonical_payload_hash,
     negotiate_protocol,
     parse_agent_message,
@@ -41,3 +42,30 @@ def test_version_negotiation_and_discriminated_parse():
         ).model_dump()
     )
     assert isinstance(value, HelloMessage)
+
+
+def test_phase4_package_manifest_is_bounded_and_hash_bound():
+    package = {
+        "package_id": "autocad.lisp.drawing_info",
+        "version": "3.3-c1",
+        "sha256": "a" * 64,
+    }
+    manifest_hash = canonical_package_manifest_hash([package])
+    hello = HelloMessage(
+        device_id="device-a",
+        fixture_proof="fixture",
+        capability_hash=canonical_capability_hash(["observe"]),
+        capabilities=["observe"],
+        packages=[package],
+        package_manifest_hash=manifest_hash,
+    )
+    assert hello.packages[0].version == "3.3-c1"
+    with pytest.raises(ValidationError, match="package manifest hash"):
+        HelloMessage(
+            device_id="device-a",
+            fixture_proof="fixture",
+            capability_hash=canonical_capability_hash(["observe"]),
+            capabilities=["observe"],
+            packages=[package],
+            package_manifest_hash="b" * 64,
+        )

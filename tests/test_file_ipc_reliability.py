@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -16,6 +18,7 @@ from autocad_mcp.backends.file_ipc import (
     encode_attributes,
 )
 from autocad_mcp.backends.base import CommandResult
+import autocad_mcp.backends.file_ipc as file_ipc
 
 
 class FakeDocument:
@@ -145,6 +148,26 @@ async def test_timeout_after_active_document_change(backend, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_completed_result_is_rejected_after_active_document_change(backend, monkeypatch):
+    doc_a = FakeDocument(name="a.dwg", full_name="C:/a.dwg", hwnd=22)
+    doc_b = FakeDocument(name="b.dwg", full_name="C:/b.dwg", hwnd=23)
+    install_result_callback(backend, doc_a, {"document_name": "a.dwg"})
+    states = iter(
+        [
+            runtime(doc_a),
+            failing_state("no_active_document", "document switch in progress"),
+            runtime(doc_b, snapshot("b.dwg", "C:/b.dwg", 23)),
+        ]
+    )
+    monkeypatch.setattr(backend, "_inspect_runtime", lambda: next(states))
+
+    result = await backend.drawing_info()
+
+    assert result.error_code == "active_document_changed"
+    assert result.details == {"previous_document": "a.dwg", "active_document": "b.dwg"}
+
+
+@pytest.mark.asyncio
 async def test_active_document_changes_between_commands(backend, monkeypatch):
     doc_a = FakeDocument(name="a.dwg", full_name="C:/a.dwg", hwnd=22)
     doc_b = FakeDocument(name="b.dwg", full_name="C:/b.dwg", hwnd=23)
@@ -170,6 +193,31 @@ async def test_health_calls_real_ping(backend, monkeypatch):
     assert result.ok is True
     assert result.payload["dispatcher_reachable"] is True
     dispatch.assert_awaited_once_with("ping", {}, retry_ping=True)
+
+
+@pytest.mark.asyncio
+async def test_health_detects_owned_modal_when_cmdactive_is_unavailable(backend, monkeypatch):
+    class ModalDocument(FakeDocument):
+        def GetVariable(self, name: str):
+            raise AttributeError("GetVariable unavailable while dialog is open")
+
+    class BusyState:
+        IsQuiescent = False
+
+    document = ModalDocument()
+    app = FakeApp(document)
+    app.GetAcadState = lambda: BusyState()
+    monkeypatch.setattr(backend, "_connect_com", lambda: (app, None))
+    monkeypatch.setattr("autocad_mcp.backends.file_ipc.find_autocad_window", lambda: 11)
+    monkeypatch.setattr("autocad_mcp.backends.file_ipc.has_owned_modal_dialog", lambda hwnd: hwnd == 11)
+    dispatch = AsyncMock()
+    monkeypatch.setattr(backend, "_dispatch", dispatch)
+
+    result = await backend.health()
+
+    assert result.error_code == "modal_dialog_active"
+    assert result.details["modal_dialog_active"] is True
+    dispatch.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -221,6 +269,27 @@ def test_com_unavailable_is_explicit(monkeypatch):
     state = backend._inspect_runtime()
     assert state.error_code == "command_routing_failed"
     assert "COM unavailable" in state.error
+
+
+def test_find_autocad_window_ignores_unrelated_title_match(monkeypatch):
+    fake_gui = SimpleNamespace(
+        IsWindowVisible=lambda hwnd: True,
+        GetWindowText=lambda hwnd: (
+            "KythuatvangAutoCADAgent.dist - File Explorer"
+            if hwnd == 1
+            else "AutoCAD Mechanical 2025 - [drawing.dwg]"
+        ),
+        EnumWindows=lambda callback, result: (callback(1, result), callback(2, result)),
+    )
+    monkeypatch.setattr(file_ipc.sys, "platform", "win32")
+    monkeypatch.setitem(sys.modules, "win32gui", fake_gui)
+    monkeypatch.setattr(
+        file_ipc,
+        "_window_process_name",
+        lambda hwnd: "explorer.exe" if hwnd == 1 else "acad.exe",
+    )
+
+    assert file_ipc.find_autocad_window() == 2
 
 
 def test_missing_dispatcher_probe_uses_defined_symbol_check(backend):
@@ -314,3 +383,21 @@ async def test_drawing_open_uses_activex_and_tracks_new_document(backend, monkey
     assert result.payload["active_document"] == "b.dwg"
     assert backend._last_document.name == "b.dwg"
     assert old_doc.commands == []
+
+@pytest.mark.asyncio
+async def test_completed_result_waits_for_dispatcher_to_settle(backend, monkeypatch):
+    doc = FakeDocument()
+    install_result_callback(backend, doc, {"document_name": "a.dwg"})
+    states = iter(
+        [
+            runtime(doc),
+            runtime(doc, idle=False, cmdactive=1),
+            runtime(doc),
+        ]
+    )
+    monkeypatch.setattr(backend, "_inspect_runtime", lambda: next(states))
+
+    result = await backend.drawing_info()
+
+    assert result.ok is True
+    assert result.payload == {"document_name": "a.dwg"}

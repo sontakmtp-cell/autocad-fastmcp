@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import datetime, timezone
+from pathlib import PureWindowsPath
 from typing import Any
 
 from autocad_contracts import (
@@ -48,6 +50,7 @@ class DurableJobService:
         *,
         request_wait_timeout_seconds: float = 30,
         command_timeout_seconds: float | None = None,
+        required_package: dict[str, str] | None = None,
     ) -> None:
         self.repository = repository
         self.registry = registry
@@ -58,6 +61,7 @@ class DurableJobService:
         )
         self._waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._dispatch_lock = asyncio.Lock()
+        self.required_package = dict(required_package or {})
 
     async def create_and_observe(
         self,
@@ -531,11 +535,14 @@ class DurableJobService:
                 )
                 return
             try:
+                rejection_code, rejection_summary = self._safe_agent_error(
+                    message.reason or "agent_rejected"
+                )
                 updated = await self.repository.transition_job(
                     job["job_id"],
                     "failed",
-                    error_code="agent_rejected",
-                    error_summary="Agent rejected the command",
+                    error_code=rejection_code,
+                    error_summary=rejection_summary,
                     evidence=job["state"] == "outcome_unknown",
                 )
             except (InvalidJobTransition, RepositoryConflict) as error:
@@ -627,7 +634,14 @@ class DurableJobService:
                 error_code = "backend_error"
                 error_summary = "Agent returned an invalid observation result"
             else:
-                snapshot = candidate
+                validation_error = self._validate_c1_observation(result, candidate)
+                if validation_error is not None:
+                    target = "failed"
+                    result = None
+                    error_code = validation_error
+                    error_summary = "Agent returned invalid C1 observation evidence"
+                else:
+                    snapshot = candidate
         elif target == "failed":
             result = None
             error_code, error_summary = self._safe_agent_error(message.error_code)
@@ -666,6 +680,89 @@ class DurableJobService:
             ) from error
         if updated:
             self._resolve(updated)
+
+    def _validate_c1_observation(
+        self, result: dict[str, Any], snapshot: dict[str, Any]
+    ) -> str | None:
+        if not self.required_package:
+            return None
+        evidence = result.get("execution_evidence")
+        revision = snapshot.get("revision_evidence")
+        drawing = snapshot.get("drawing")
+        summary = snapshot.get("entity_summary")
+        if not all(isinstance(value, dict) for value in (evidence, revision, drawing, summary)):
+            return "backend_error"
+        if set(result) != {"snapshot", "execution_evidence"}:
+            return "backend_error"
+        if set(snapshot) != {
+            "snapshot_id",
+            "document_revision",
+            "observation_level",
+            "drawing",
+            "entity_summary",
+            "entities",
+            "revision_evidence",
+        }:
+            return "backend_error"
+        if evidence.get("package") != self.required_package:
+            return "package_mismatch"
+        if set(evidence) != {"agent_version", "runtime_state", "package"}:
+            return "backend_error"
+        agent_version = evidence.get("agent_version")
+        if not isinstance(agent_version, str) or not 1 <= len(agent_version) <= 64:
+            return "backend_error"
+        if set(revision) != {"revision_schema", "revision_strength", "commit_safe"} or revision != {
+            "revision_schema": "cad.revision/1",
+            "revision_strength": "summary_only",
+            "commit_safe": False,
+        }:
+            return "backend_error"
+        if snapshot.get("observation_level") != "summary" or snapshot.get("entities") != []:
+            return "backend_error"
+        document_revision = snapshot.get("document_revision")
+        if not isinstance(document_revision, str) or re.fullmatch(r"[0-9a-f]{64}", document_revision) is None:
+            return "backend_error"
+        document_name = drawing.get("document_name")
+        if set(drawing) != {
+            "document_name",
+            "entity_count",
+            "layers",
+            "layer_count",
+            "truncated",
+            "dispatcher_version",
+            "package_id",
+            "package_version",
+        }:
+            return "backend_error"
+        if (
+            not isinstance(document_name, str)
+            or not document_name
+            or len(document_name) > 255
+            or PureWindowsPath(document_name).name != document_name
+            or "/" in document_name
+        ):
+            return "backend_error"
+        layers = drawing.get("layers")
+        entity_count = drawing.get("entity_count")
+        layer_count = drawing.get("layer_count")
+        if (
+            not isinstance(layers, list)
+            or len(layers) > 256
+            or any(not isinstance(item, str) or len(item) > 255 for item in layers)
+            or isinstance(entity_count, bool)
+            or not isinstance(entity_count, int)
+            or entity_count < 0
+            or isinstance(layer_count, bool)
+            or not isinstance(layer_count, int)
+            or layer_count < len(layers)
+            or not isinstance(drawing.get("truncated"), bool)
+            or drawing.get("dispatcher_version") != self.required_package["version"]
+            or drawing.get("package_id") != self.required_package["package_id"]
+            or drawing.get("package_version") != self.required_package["version"]
+            or summary != {"entity_count": entity_count, "detail_available": False}
+        ):
+            return "backend_error"
+        return None
 
     async def _fail_payload(self, job: dict[str, Any]) -> None:
         target = "needs_attention" if job["state"] == "outcome_unknown" else "failed"
@@ -714,24 +811,40 @@ class DurableJobService:
                 job["owner_subject"], job["device_id"]
             )
             capabilities = set(device["capabilities"]) if device else set()
-        if required in capabilities:
+        failure_code: str | None = None
+        failure_summary = "Agent does not advertise the required capability"
+        if required not in capabilities:
+            failure_code = "capability_missing"
+        elif connection is not None and connection.paused:
+            failure_code = "paused_by_user"
+            failure_summary = "Agent is paused by the local user"
+        elif self.required_package:
+            packages = (
+                list(connection.packages)
+                if connection is not None
+                else list((device or {}).get("packages", []))
+            )
+            if self.required_package not in packages:
+                failure_code = "package_mismatch"
+                failure_summary = "Agent package does not match the required manifest"
+        if failure_code is None:
             return
         try:
             updated = await self.repository.transition_job(
                 job["job_id"],
                 "failed",
-                error_code="capability_missing",
-                error_summary="Agent does not advertise the required capability",
+                error_code=failure_code,
+                error_summary=failure_summary,
             )
         except (InvalidJobTransition, RepositoryConflict) as error:
             raise DurableJobError(
-                "capability_missing",
+                failure_code,
                 job_id=job["job_id"],
                 job_state=job["state"],
             ) from error
         self._resolve(updated)
         raise DurableJobError(
-            "capability_missing",
+            failure_code,
             job_id=job["job_id"],
             job_state=updated["state"] if updated else job["state"],
         )
@@ -763,9 +876,20 @@ class DurableJobService:
     @staticmethod
     def _safe_agent_error(error_code: str | None) -> tuple[str, str]:
         messages = {
+            "active_document_changed": "The active AutoCAD document changed during the read",
+            "autocad_busy": "AutoCAD is running another command",
+            "autocad_not_running": "AutoCAD is not running",
+            "command_routing_failed": "Agent could not route the read command to AutoCAD",
             "deadline_expired": "Agent reported that the job deadline expired",
             "capability_missing": "Agent does not support the requested capability",
+            "dispatcher_not_loaded": "The required AutoLISP dispatcher is not loaded",
+            "dispatcher_timeout": "The AutoLISP dispatcher did not respond in time",
+            "ipc_result_invalid": "AutoCAD returned invalid bounded read evidence",
+            "modal_dialog_active": "AutoCAD has a modal dialog open",
+            "no_active_document": "AutoCAD has no active document",
             "payload_mismatch": "Agent rejected a mismatched command payload",
+            "package_mismatch": "Agent package does not match Gateway policy",
+            "paused_by_user": "The local user paused remote tasks",
             "agent_rejected": "Agent rejected the command",
         }
         if error_code in messages:

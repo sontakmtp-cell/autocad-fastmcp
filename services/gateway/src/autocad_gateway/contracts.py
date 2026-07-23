@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 CONTRACT_VERSION = "cad.mcp/1.0"
 PHASE3_CONTRACT_VERSION = "cad.mcp/1.1"
+PHASE4_CONTRACT_VERSION = "cad.mcp/1.2"
 MAX_ENTITY_TYPE_LENGTH = 64
 MAX_LAYER_NAME_LENGTH = 255
 MAX_FILTER_BYTES = 4096
@@ -49,11 +50,32 @@ class DeviceInfo(StrictModel):
     capabilities: list[str]
 
 
+class PackageEvidence(StrictModel):
+    package_id: str = Field(min_length=1, max_length=128)
+    version: str = Field(min_length=1, max_length=64)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class DeviceInfoC1(DeviceInfo):
+    status: Literal["online", "offline", "incompatible"]
+    runtime_state: str | None = Field(default=None, max_length=64)
+    document_name: str | None = Field(default=None, max_length=255)
+    last_seen_at: str | None = Field(default=None, max_length=64)
+    agent_version: str | None = Field(default=None, max_length=64)
+    package_summary: list[PackageEvidence] = Field(default_factory=list, max_length=32)
+    paused: bool = False
+
+
 class CadListDevicesOutput(StrictModel):
     contract_version: str = CONTRACT_VERSION
     correlation_id: str
     devices: list[DeviceInfo]
     default_device_id: str | None = None
+
+
+class CadListDevicesOutputC1(CadListDevicesOutput):
+    contract_version: str = PHASE4_CONTRACT_VERSION
+    devices: list[DeviceInfoC1]
 
 
 class CadObserveInput(StrictModel):
@@ -118,6 +140,26 @@ class CadObserveOutputDurable(CadObserveOutput):
 
     contract_version: str = PHASE3_CONTRACT_VERSION
     job_id: str | None = None
+
+
+class RevisionEvidence(StrictModel):
+    revision_schema: Literal["cad.revision/1"] = "cad.revision/1"
+    revision_strength: Literal["summary_only"] = "summary_only"
+    commit_safe: Literal[False] = False
+
+
+class ExecutionEvidence(StrictModel):
+    agent_version: str = Field(min_length=1, max_length=64)
+    command_id: str = Field(min_length=1, max_length=128)
+    package: PackageEvidence
+    runtime_state: str | None = Field(default=None, max_length=64)
+
+
+class CadObserveOutputC1(CadObserveOutputDurable):
+    contract_version: str = PHASE4_CONTRACT_VERSION
+    job_id: str
+    revision_evidence: RevisionEvidence
+    execution_evidence: ExecutionEvidence
 
 
 class CadQueryInput(StrictModel):
@@ -212,6 +254,14 @@ class CadGetJobOutput(StrictModel):
     events: list[CadJobEvent] = Field(default_factory=list, max_length=100)
     next_event_cursor: str | None = None
     snapshot_id: str | None = None
+
+
+class CadGetJobOutputC1(CadGetJobOutput):
+    contract_version: str = PHASE4_CONTRACT_VERSION
+    agent_version: str | None = Field(default=None, max_length=64)
+    command_id: str = Field(min_length=1, max_length=128)
+    package: PackageEvidence | None = None
+    runtime_evidence: dict[str, Any] | None = None
 
 
 def _bounded_public_id(value: str, field_name: str) -> str:

@@ -1,12 +1,12 @@
 # Kế hoạch nâng cấp AutoCAD MCP nhiều người dùng bằng FastMCP
 
-> Trạng thái: **Phase 0–3.1 đã triển khai và kiểm chứng local; Phase 3.1 đang chờ hosted CI matrix; Phase 4+ chưa triển khai**
+> Trạng thái cập nhật 2026-07-23: **Phase 0–3.1 đã triển khai; Phase 4 C1 đã có implementation, Desktop Agent chạy thành công, VPS Gateway và Cloudflare đã thiết lập, ChatGPT đã kết nối theo kiểm thử operator; Windows CI standalone đang chạy lại sau khi sửa encoding PowerShell; Phase 5+ chưa triển khai**
 >
-> Ngày khảo sát: 2026-07-21
+> Ngày khảo sát: 2026-07-23
 >
-> Phạm vi: phân tích, kiến trúc, migration, POC và kế hoạch triển khai; **không có code sản phẩm được thay đổi**
+> Phạm vi: phân tích, kiến trúc, migration, POC và kế hoạch triển khai; Phase 4 C1 implementation và evidence được ghi nhận tại các tài liệu/code liên kết bên dưới.
 >
-> Nguồn tham chiếu chính: code và test tại commit `7d6a782`; FastMCP PrefectHQ `3.4.4`
+> Nguồn tham chiếu chính: code và test tại commit `e95f307`; FastMCP PrefectHQ `3.4.4`
 
 ## 1. Executive summary
 
@@ -1220,7 +1220,7 @@ Mỗi phase dưới đây chỉ bắt đầu sau khi phase trước đạt exit 
 
 ### Phase 3 — Durable Gateway + simulated outbound Agent
 
-- **Trạng thái cập nhật 2026-07-21:** đã triển khai và kiểm chứng local trong profile opt-in `phase3_poc`; chưa deploy, chưa chạy CI matrix GitHub và chưa mở Phase 4.
+- **Trạng thái cập nhật 2026-07-23:** profile opt-in `phase3_poc` đã triển khai và kiểm chứng; Phase 4 C1 đã được mở và có implementation riêng, không thay đổi mặc định legacy/local.
 - **Mục tiêu/phạm vi:** POC B: outer ASGI, SQLite, WSS protocol, device router và durable job state với fake Agent.
 - **Luồng sau phase:** FastMCP -> job row -> WSS fake Agent -> progress/result -> job query.
 - **Tái sử dụng:** error taxonomy và request IDs.
@@ -1240,7 +1240,7 @@ Mỗi phase dưới đây chỉ bắt đầu sau khi phase trước đạt exit 
 
 ### Phase 3.1 — Durable lifecycle hardening
 
-- **Trạng thái cập nhật 2026-07-22:** implementation và full local verification xanh; hosted Ubuntu/Windows × Python 3.10/3.12/3.13 là gate cuối trước Phase 4.
+- **Trạng thái cập nhật 2026-07-23:** implementation và full local verification xanh; hosted Ubuntu/Windows × Python 3.10/3.12/3.13 tiếp tục là gate kiểm chứng CI, nhưng không còn là điều kiện để mở C1 đã được operator triển khai.
 - **Mục tiêu/phạm vi:** sửa freshness/idempotency của observe, tách MCP wait khỏi durable deadline, loại waiter/dispatch race, atomic finalization, hoàn thiện reconnect/cancel/ACK, durable heartbeat/session, capability lifecycle, migration runner và supervised readiness.
 - **Semantics mới:** observe không có explicit identity luôn tạo job/snapshot mới; retry có cùng `idempotency_key` chỉ reuse cùng request fingerprint; wait timeout trả `job_id` để poll và không fail job; chỉ reconcile `not_started` được redispatch.
 - **Durable truth:** SQLite tiếp tục giữ job/event/result/snapshot/session/capability; registry chỉ giữ socket, presence, sequence dedupe và freshness tạm thời.
@@ -1252,6 +1252,8 @@ Mỗi phase dưới đây chỉ bắt đầu sau khi phase trước đạt exit 
 - **Kế hoạch/evidence:** `docs/architecture/Phase-3.1.md` và `docs/architecture/phase3.1-durable-lifecycle-hardening-evidence.md`.
 
 ### Phase 4 — POC C1: Desktop Agent + AutoCAD thật, read-only
+
+- **Trạng thái cập nhật 2026-07-23:** contract `cad.mcp/1.2`, migration `0003`, headless Agent, UI lab, DPAPI, package `3.3-c1`, build standalone và Windows CI đã được triển khai. Desktop Agent đã chạy thành công; VPS Gateway, Cloudflare và kết nối ChatGPT đã được operator thiết lập/kiểm tra. Gateway → WSS → Agent → AutoCAD Mechanical 2025 thật đã đọc thành công summary; AutoCAD failure matrix, hard pause/resume, reconnect/restart và 10 mẫu latency đều xanh local. Full acceptance vẫn `PENDING REVIEW` cho tới khi gắn đủ link CI, public metadata/MCP check, token scope read và evidence VM sạch. Chi tiết tại [phase4-c1-implementation-evidence.md](./phase4-c1-implementation-evidence.md).
 
 - **Mục tiêu/phạm vi:** ngay sau POC B, package Agent Windows tối thiểu, mở outbound WSS, đọc AutoCAD presence/document state và chạy một AutoLISP cấp 1 read-only đã đóng gói/versioned như `get_drawing_info`.
 - **Luồng sau phase:** ChatGPT Web (kèm protocol test client để tái lập lỗi) -> VPS Gateway -> WSS -> Desktop Agent -> packaged AutoLISP -> AutoCAD -> typed result trở lại; không mở port/tunnel trên máy user.
@@ -1556,14 +1558,14 @@ Kế hoạch implementation chỉ được coi là đạt sản phẩm multi-use
 - Legacy flow vẫn có rollback path cho tới hết pilot.
 - FastMCP exact pin/upgrade gate, reverse proxy trust, secrets, quotas, audit và operational runbook hoàn tất.
 
-## 25. Bước tiếp theo sau Phase 3.1
+## 25. Bước tiếp theo sau Phase 3.1 và Phase 4 C1
 
-Chưa mở Phase 4 cho tới khi gate hosted cuối của Phase 3.1 được hoàn tất:
+Phase 4 C1 đã được mở và triển khai theo operator flow. Các bước còn lại là hoàn tất evidence, không mở rộng sang Phase 5+:
 
 1. Chạy CI matrix Phase 3.1 trên Windows/Linux với Python 3.10/3.12/3.13 và ghi link/kết quả từng job vào evidence.
-2. Review `phase3.1-durable-lifecycle-hardening-evidence.md`, đặc biệt các giới hạn còn lại: OAuth production, public TLS/VPS, credential/pairing, Desktop Agent và AutoCAD thật.
-3. Giữ profile `local` và legacy làm mặc định; chỉ dùng `phase3_poc` với SQLite/WSS/simulator fixture loopback.
-4. Chỉ sau khi toàn bộ hosted jobs xanh mới đổi quyết định Phase 4 read-only từ `NO-GO` sang `GO`; không merge trong bước hardening này nếu chưa có yêu cầu riêng.
+2. Ghi link kiểm tra VPS/Gateway/Cloudflare/ChatGPT, public metadata/MCP read và token scope read vào evidence; tách rõ operator report với protocol-client evidence.
+3. Review `phase3.1-durable-lifecycle-hardening-evidence.md` và `phase4-c1-implementation-evidence.md`; giữ profile `local` và legacy làm mặc định, C1 là opt-in.
+4. Chỉ chuyển Phase 4 C1 từ `PENDING REVIEW` sang `GO` sau khi CI standalone, public evidence và VM sạch đạt; Phase 5 vẫn chờ C1 được nghiệm thu.
 
 Phase 0–3 đã có evidence riêng; không chạy lại spike hoặc thay đổi contract Phase 2 chỉ vì Phase 3.1 bổ sung request identity trong profile opt-in.
 

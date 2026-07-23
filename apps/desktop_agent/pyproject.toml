@@ -1,0 +1,46 @@
+[project]
+name = "autocad-desktop-agent"
+version = "0.1.0"
+description = "Phase 4 C1 read-only Windows Desktop Agent for AutoCAD"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "autocad-contracts==0.1.1",
+    "autocad-mcp==3.0.0",
+    "pydantic>=2.10,<3.0",
+    "websockets>=12,<17",
+]
+
+[project.optional-dependencies]
+ui = ["PySide6==6.11.1"]
+
+[dependency-groups]
+build = [
+    "nuitka==2.8.9",
+    "pip>=25.2,<26.0",
+]
+test = [
+    "pytest>=8.0,<9.0",
+    "pytest-asyncio>=0.23,<2.0",
+]
+ui-test = [
+    "PySide6==6.11.1",
+    "pytest-qt>=4.4,<5.0",
+]
+
+[project.scripts]
+autocad-desktop-agent = "autocad_desktop_agent.__main__:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autocad_desktop_agent"]
+
+[tool.uv.sources]
+autocad-contracts = { path = "../../packages/contracts", editable = false }
+autocad-mcp = { path = "../..", editable = false }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

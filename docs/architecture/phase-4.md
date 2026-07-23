@@ -1,6 +1,6 @@
 # Kế hoạch triển khai Phase 4 — Real Windows Agent C1, UI Lab và public E2E
 
-> Trạng thái: kế hoạch triển khai đã cập nhật theo `main` sau Phase 3.1; chưa triển khai code Phase 4.
+> Trạng thái cập nhật 2026-07-22: gate 4.0 và phần code/local verification của 4.1–4.2 đã triển khai trong profile opt-in `phase4_c1`; happy path, AutoCAD failure matrix, protocol reconnect/restart và 10 mẫu latency đã chạy qua Gateway/WSS/Agent/AutoCAD Mechanical 2025 thật. Standalone trên VM sạch, VPS/Auth0, MCP client và ChatGPT Web của 4.1/4.3 vẫn `NO-GO`. Xem [Phase 4 C1 implementation evidence](./phase4-c1-implementation-evidence.md).
 >
 > Baseline branch: `main`
 >

@@ -7,6 +7,9 @@ __pycache__/
 build/
 develop-eggs/
 dist/
+*.dist/
+nuitka-crash-report.xml
+.pysidedeploy.build.spec
 downloads/
 eggs/
 .eggs/

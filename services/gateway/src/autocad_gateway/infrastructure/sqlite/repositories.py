@@ -8,6 +8,8 @@ from hashlib import sha256
 from typing import Any
 
 from autocad_contracts import (
+    canonical_package_manifest_hash,
+    canonical_packages,
     canonical_capabilities as protocol_canonical_capabilities,
     canonical_capability_hash as protocol_capability_hash,
     canonical_payload_hash,
@@ -137,6 +139,12 @@ class SqliteRepository:
         capabilities: list[str],
         capability_hash: str,
         last_sequence: int = 0,
+        agent_version: str | None = None,
+        packages: list[dict[str, Any]] | None = None,
+        package_manifest_hash: str | None = None,
+        runtime_state: str | None = None,
+        document_name: str | None = None,
+        paused: bool | None = None,
     ) -> dict[str, Any]:
         normalized_capabilities = canonical_capabilities(capabilities)
         computed_hash = capability_manifest_hash(normalized_capabilities)
@@ -144,6 +152,12 @@ class SqliteRepository:
             raise RepositoryConflict("capability_hash_mismatch")
         if last_sequence < 0:
             raise RepositoryConflict("sequence_rejected")
+        normalized_packages = [
+            item.model_dump(mode="json") for item in canonical_packages(packages or [])
+        ]
+        computed_package_hash = canonical_package_manifest_hash(normalized_packages)
+        if package_manifest_hash is not None and package_manifest_hash != computed_package_hash:
+            raise RepositoryConflict("package_hash_mismatch")
         now = utc_now()
         with self.database.transaction() as conn:
             device = conn.execute(
@@ -178,8 +192,9 @@ class SqliteRepository:
                 conn.execute(
                     """
                     INSERT INTO agent_sessions(session_id, device_id, protocol_version, connected_at,
-                        last_heartbeat_at, last_sequence, capabilities_json, capability_hash)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        last_heartbeat_at, last_sequence, capabilities_json, capability_hash,
+                        agent_version, package_manifest_json, package_manifest_hash)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         session_id,
@@ -190,6 +205,9 @@ class SqliteRepository:
                         last_sequence,
                         encoded_capabilities,
                         computed_hash,
+                        agent_version,
+                        _json(normalized_packages, limit=65_536),
+                        computed_package_hash,
                     ),
                 )
             else:
@@ -198,10 +216,20 @@ class SqliteRepository:
                     UPDATE agent_sessions
                     SET disconnected_at = NULL, last_heartbeat_at = ?,
                         last_sequence = MAX(last_sequence, ?), capabilities_json = ?,
-                        capability_hash = ?
+                        capability_hash = ?, agent_version = ?, package_manifest_json = ?,
+                        package_manifest_hash = ?
                     WHERE session_id = ?
                     """,
-                    (now, last_sequence, encoded_capabilities, computed_hash, session_id),
+                    (
+                        now,
+                        last_sequence,
+                        encoded_capabilities,
+                        computed_hash,
+                        agent_version,
+                        _json(normalized_packages, limit=65_536),
+                        computed_package_hash,
+                        session_id,
+                    ),
                 )
             capability_changed = (
                 str(device["capabilities_json"]) != encoded_capabilities
@@ -209,8 +237,22 @@ class SqliteRepository:
             )
             conn.execute(
                 "UPDATE devices SET status = 'online', capabilities_json = ?, capability_hash = ?, "
+                "agent_version = ?, runtime_state = ?, document_name = ?, paused = ?, "
+                "package_manifest_json = ?, package_manifest_hash = ?, runtime_updated_at = ?, "
                 "updated_at = ? WHERE device_id = ?",
-                (encoded_capabilities, computed_hash, now, device_id),
+                (
+                    encoded_capabilities,
+                    computed_hash,
+                    agent_version,
+                    runtime_state,
+                    document_name,
+                    int(bool(paused)),
+                    _json(normalized_packages, limit=65_536),
+                    computed_package_hash,
+                    now,
+                    now,
+                    device_id,
+                ),
             )
             active_sequence = int(
                 conn.execute(
@@ -226,6 +268,8 @@ class SqliteRepository:
             "capability_changed": capability_changed,
             "replaced_session_ids": replaced_session_ids,
             "last_sequence": active_sequence,
+            "packages": normalized_packages,
+            "package_manifest_hash": computed_package_hash,
         }
 
     async def create_session(
@@ -249,7 +293,14 @@ class SqliteRepository:
         )
 
     async def heartbeat_session(
-        self, session_id: str, *, device_id: str, sequence: int = 0
+        self,
+        session_id: str,
+        *,
+        device_id: str,
+        sequence: int = 0,
+        runtime_state: str | None = None,
+        document_name: str | None = None,
+        paused: bool | None = None,
     ) -> bool:
         if sequence < 0:
             raise RepositoryConflict("sequence_rejected")
@@ -264,8 +315,17 @@ class SqliteRepository:
             if updated.rowcount != 1:
                 return False
             conn.execute(
-                "UPDATE devices SET status = 'online', updated_at = ? WHERE device_id = ?",
-                (now, device_id),
+                "UPDATE devices SET status = 'online', runtime_state = ?, document_name = ?, "
+                "paused = COALESCE(?, paused), runtime_updated_at = ?, updated_at = ? "
+                "WHERE device_id = ?",
+                (
+                    runtime_state,
+                    document_name,
+                    int(paused) if paused is not None else None,
+                    now,
+                    now,
+                    device_id,
+                ),
             )
         return True
 
@@ -302,6 +362,9 @@ class SqliteRepository:
             "last_sequence": int(row["last_sequence"]),
             "capabilities": json.loads(row["capabilities_json"]),
             "capability_hash": row["capability_hash"],
+            "agent_version": row["agent_version"],
+            "packages": json.loads(row["package_manifest_json"]),
+            "package_manifest_hash": row["package_manifest_hash"],
         }
 
     async def close_session(self, session_id: str, *, device_id: str | None = None) -> bool:
@@ -772,6 +835,7 @@ class SqliteRepository:
         drawing = snapshot.get("drawing", {})
         entities = snapshot.get("entities", [])
         entity_summary = snapshot.get("entity_summary", {})
+        revision_evidence = snapshot.get("revision_evidence") or {}
         expected_observation_level = json.loads(job["payload_json"]).get(
             "observation_level", "summary"
         )
@@ -788,6 +852,7 @@ class SqliteRepository:
             or not isinstance(drawing, dict)
             or not isinstance(entity_summary, dict)
             or not isinstance(entities, list)
+            or not isinstance(revision_evidence, dict)
         ):
             raise RepositoryConflict("snapshot_invalid")
         existing_for_job = conn.execute(
@@ -805,8 +870,8 @@ class SqliteRepository:
             """
             INSERT INTO snapshots(snapshot_id, owner_subject, device_id, job_id, revision,
                 document_revision, observation_level, drawing_json, entity_summary_json,
-                entities_json, created_at)
-            VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+                entities_json, created_at, revision_strength, commit_safe)
+            VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 snapshot_id,
@@ -819,6 +884,8 @@ class SqliteRepository:
                 _json(entity_summary),
                 _json(entities),
                 utc_now(),
+                revision_evidence.get("revision_strength"),
+                int(bool(revision_evidence.get("commit_safe", False))),
             ),
         )
 
@@ -841,6 +908,15 @@ class SqliteRepository:
             "drawing": json.loads(row["drawing_json"]),
             "entity_summary": json.loads(row["entity_summary_json"]),
             "entities": json.loads(row["entities_json"]),
+            "revision_evidence": (
+                {
+                    "revision_schema": "cad.revision/1",
+                    "revision_strength": str(row["revision_strength"]),
+                    "commit_safe": bool(row["commit_safe"]),
+                }
+                if row["revision_strength"]
+                else None
+            ),
         }
 
     async def jobs_for_device(self, device_id: str) -> list[dict[str, Any]]:
@@ -869,6 +945,13 @@ class SqliteRepository:
             "capability_hash": row["capability_hash"],
             "fixture_auth_ref": str(row["fixture_auth_ref"]),
             "updated_at": str(row["updated_at"]),
+            "agent_version": row["agent_version"],
+            "runtime_state": row["runtime_state"],
+            "document_name": row["document_name"],
+            "paused": bool(row["paused"]),
+            "packages": json.loads(row["package_manifest_json"]),
+            "package_manifest_hash": row["package_manifest_hash"],
+            "runtime_updated_at": row["runtime_updated_at"],
         }
 
     @staticmethod
