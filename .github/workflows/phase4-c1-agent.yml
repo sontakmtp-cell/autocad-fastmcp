@@ -63,14 +63,12 @@ jobs:
         timeout-minutes: 35
         run: |
           $log = "$env:RUNNER_TEMP\phase4-build.log"
+          Start-Transcript -Path $log -Force
           try {
-            & .\scripts\build-phase4-agent.ps1 -OutputRoot "$env:RUNNER_TEMP\phase4-agent" -SkipSync *>&1 |
-              Tee-Object -FilePath $log
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & .\scripts\build-phase4-agent.ps1 -OutputRoot "$env:RUNNER_TEMP\phase4-agent" -SkipSync
           }
-          catch {
-            $_ | Out-String | Tee-Object -FilePath $log -Append
-            throw
+          finally {
+            Stop-Transcript
           }
       - name: Upload standalone build log
         if: always()
