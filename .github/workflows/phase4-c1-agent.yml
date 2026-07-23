@@ -67,7 +67,7 @@ jobs:
           uv run --no-sync python -c "import PySide6; from autocad_desktop_agent.__main__ import main; print('standalone imports ok')"
 
   standalone-release:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    if: github.event_name == 'workflow_dispatch'
     needs: windows-agent-tests
     runs-on: windows-2022
     timeout-minutes: 40
