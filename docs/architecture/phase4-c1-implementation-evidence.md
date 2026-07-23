@@ -1,8 +1,8 @@
 # Phase 4 C1 implementation evidence
 
 > Cập nhật: 2026-07-23
-> Quyết định hiện tại: **PENDING REVIEW / NO-GO cho nghiệm thu Phase 4 đầy đủ**
-> Lý do: implementation, standalone thật, public ChatGPT E2E và MCP protocol-client E2E đã đạt. Gate còn lại là Windows 11 VM sạch và rollback/revoke public có kiểm soát.
+> Quyết định hiện tại: **GO — Phase 4 C1 đã hoàn tất và được nghiệm thu**
+> Lý do: implementation, standalone thật, public ChatGPT/protocol-client E2E, Windows 11 VM sạch, operator SmartScreen observation và public rollback/revoke có kiểm soát đều đã đạt. Production đã được phục hồi và Phase 5 chưa được triển khai.
 
 ## 1. Phạm vi đã triển khai
 
@@ -29,7 +29,7 @@ Human OAuth metadata/challenge được cấu hình theo yêu cầu MCP authoriz
 | UI render | PASS local | Windows platform render đúng tiếng Việt và bố cục C1; offscreen backend không có font tiếng Việt nhưng pytest-qt vẫn kiểm state/intent/tray |
 | Standalone build | PASS local | `cad.agent.release/1`; 309 app files; 255.78 MiB; executable 136,027,648 byte; Agent SHA-256 `6bf5147acf523a0170512318b1280e9e2d4a7dfa76f2081842fea7ab7960e782`; package SHA-256 khớp manifest; `--package-self-test` exit 0 trong 207.77 ms |
 | Standalone runtime | PASS local + public | Executable standalone mở outbound WSS IPv6:443, UI `Sẵn sàng`, AutoCAD/document/package đúng; ChatGPT Web và protocol client đều đọc AutoCAD thật qua chính executable này |
-| Windows package metrics | PASS trên máy lab | Working set 136.82 MiB, private memory 62.48 MiB; Microsoft Defender exact-file scan không phát hiện threat; Authenticode `NotSigned`; SmartScreen/VM sạch chưa kiểm |
+| Windows package metrics | PASS local + VM sạch + SmartScreen | Máy lab: working set 136.82 MiB, private 62.48 MiB. VM sạch: cold/warm self-test 23,673.05/340.99 ms, peak warm working set/private 61.62/28.79 MiB; Defender exact-file scan 0 threat; Authenticode `NotSigned`; SmartScreen chặn bản có Mark-of-the-Web đúng thiết kế |
 | Static/package checks | PASS | Python compile, PowerShell parse, wheel builds, `git diff --check` |
 | AutoCAD thật happy path | PASS local | AutoCAD Mechanical 2025, `drawing33.dwg`, 30 entity, layers `0`, `DIM`, `CENTER`; Gateway → WSS → Agent → File IPC → AutoLISP `3.3-c1` |
 | Hard pause/resume | PASS local | Lệnh mới bị chặn bằng `paused_by_user`; resume rồi đọc lại thành công |
@@ -77,15 +77,34 @@ Human OAuth metadata/challenge được cấu hình theo yêu cầu MCP authoriz
 - Failure trace AutoCAD đã tắt sau sửa lỗi: correlation `corr-real-autocad-not-running-fixed`, job `job-a20a5dfa-67ef-4207-bfd9-94c1293a18b8`, lỗi `autocad_not_running`, state `failed`; AutoCAD không bị tự khởi động.
 - Reconnect AutoCAD: giữ session `session-fe415bcc-1399-4449-8710-bb4f999abf96`; correlation `corr-reconnect-autocad-reopened`, job `job-67d930c4-1aa9-4aff-9cca-30040333d874`, command `command-58372204-7f37-470d-9c3d-ba315f44dd49`; 30 entity, `summary_only`.
 
-## 3. Gate chưa có evidence
+### 2.4. Windows 11 VM sạch
 
-- AutoCAD failure matrix thật và protocol reconnect/restart matrix local đã hoàn tất; chưa có bằng chứng mất mạng Internet/VPS thật.
-- Credential lab thật đã provision bằng DPAPI và reconnect public nhiều lần; chưa thử revoke credential/session trên Gateway public.
+- VM `Phase4-Win11-Clean` được tạo mới trên Hyper-V Generation 2: Secure Boot `MicrosoftWindows`, TPM ảo bật, 4 vCPU, RAM động 4-12 GiB và VHDX động 80 GiB.
+- Hệ điều hành là Microsoft Windows 11 Enterprise Evaluation 25H2 x64 EN-US, build `26200`, cài mới ngày 2026-07-23. ISO chính thức 7,092,807,680 byte có SHA-256 `a61adeab895ef5a4db436e0a7011c92a2ff17bb0357f58b13bbc4062e535e7b9`, khớp tài liệu hash Microsoft.
+- Trước khi chuyển artifact vào VM: `AgentRootExists=false`, `ConfigExists=false`, `CredentialExists=false`, `ArtifactExists=false`. Không dùng lại config hoặc DPAPI blob từ máy lab.
+- Artifact được chuyển sau phép đo sạch. Executable trong VM có 136,027,648 byte và SHA-256 `6bf5147acf523a0170512318b1280e9e2d4a7dfa76f2081842fea7ab7960e782`, khớp `manifest.json`.
+- Cold `--package-self-test` lần đầu exit 0 trong 23,673.05 ms; lần warm exit 0 trong 340.99 ms. Peak warm working set 61.62 MiB, peak private memory 28.79 MiB.
+- Microsoft Defender trong VM bật antivirus và real-time protection. Exact-file custom scan exit 0, báo `found no threats`, không có threat detection mới.
+- Authenticode là `NotSigned`. Operator đăng nhập VM và mở shortcut trỏ tới đúng executable có SHA-256 trên, kèm Mark-of-the-Web `ZoneId=3`. Microsoft Defender SmartScreen hiển thị `Windows protected your PC` và chặn `unrecognized app from starting`; operator xác nhận nội dung, sau đó chọn `Don't run`. Không bấm `More info`, không `Run anyway` và không bypass bảo mật.
+
+### 2.5. Cửa sổ bảo trì public rollback/revoke
+
+- Trước thay đổi: `/healthz` 200, `/readyz` 200, POST `/mcp` không token 401 đúng challenge. Backup nhất quán của environment, systemd units và SQLite được tạo tại `/var/backups/autocad-mcp/phase4-maintenance-20260723T194528`; file secret không được in ra log.
+- Public cutover rollback: dừng đúng `autocad-mcp-cloudflared.service` làm public trả Cloudflare 530 sau 2.8 giây và giữ 530 trong toàn bộ 6 mẫu. Bật lại service làm `/healthz` trở về 200 sau 2.6 giây; cả Gateway và tunnel đều `active`.
+- Revoke lab credential: Agent production C1 tạo session `session-b77a357b-ef63-4373-88ff-16b293cdcdbb`; thay credential allowlist phía Gateway bằng giá trị vô hiệu và restart Gateway làm session này đóng lúc `2026-07-23T12:56:15.531898+00:00`. Agent không có TLS connection tới Gateway khi credential không khớp.
+- Restore dùng chính file environment đã backup và restart Gateway/tunnel. `cmp` xác nhận environment khớp byte-for-byte; public đi qua 530/502 rồi `/healthz` trở về 200 sau 4.6 giây. Agent tự kết nối lại sau 8.6 giây thành session `session-5c7ef652-4bcf-4564-8cd7-ad04a9316742`.
+- Một lệnh đo phía máy operator bị timeout trước khi khối `finally` hoàn tất. Audit ngay sau timeout phát hiện environment chưa restore và tunnel đang `deactivating`; recovery command riêng đã restore file, start cả hai service và xác minh `active`. Đây là bằng chứng recovery thực tế, đồng thời runbook không được dựa vào client-side `finally` khi tool có thể bị hard-timeout.
+- Sau phục hồi: `/healthz` 200, `/readyz` 200, protected-resource metadata 200, POST `/mcp` không token 401; Agent session mới tiếp tục heartbeat. Test chạy lại trong cùng cửa sổ: Gateway `176 passed`, Desktop Agent `32 passed`.
+
+## 3. Giới hạn evidence còn lại — không chặn Phase 4
+
+- AutoCAD failure matrix thật và protocol reconnect/restart matrix local đã hoàn tất. Public tunnel outage, Gateway restart và recovery đã có bằng chứng; chưa làm bài mất toàn bộ VPS host vì cutover rollback đã chứng minh cùng public failure/recovery boundary cần cho C1.
+- Credential lab thật đã provision bằng DPAPI; revoke allowlist đã đóng session hiện tại, reject reconnect và restore tạo session mới.
 - Public metadata, 401 challenge, Auth0 discovery, token scope read, ChatGPT Web và protocol-client đã có evidence; invalid issuer/audience/sub vẫn dựa trên automated test matrix, chưa phát hành nhiều token thật sai claim.
-- Đã có 10 mẫu latency local, số liệu RAM/startup/package và Defender trên máy Windows 11 lab; chưa có Windows 11 VM sạch và SmartScreen.
-- Chưa thực hiện public cutover rollback/revoke thật vì thao tác này làm gián đoạn endpoint đang dùng và cần quyền vận hành VPS/Cloudflare/Auth0.
+- Windows 11 VM sạch, startup/RAM/hash, Defender exact-file scan và operator SmartScreen observation đã có evidence. Bản có Mark-of-the-Web bị chặn và được đóng bằng `Don't run`; không bypass UI bảo mật.
+- Public cutover rollback/revoke đã thực hiện trong cửa sổ bảo trì và production đã được phục hồi.
 
-Không được đổi Phase 4 sang `GO` cho tới khi toàn bộ mục trên có artifact/timestamp/correlation IDs và không rò token, full path hoặc drawing content ngoài summary.
+Review cuối xác nhận không in token/device credential, không đưa drawing content ngoài summary vào evidence, production trở lại 200/401 với Agent session mới và GitHub không build/upload `.exe`. Các giới hạn nêu trên được chấp nhận cho C1 read-only; Phase 4 là `GO`.
 
 ## 4. Lệnh tái lập
 

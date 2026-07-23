@@ -1,6 +1,6 @@
 # Kế hoạch nâng cấp AutoCAD MCP nhiều người dùng bằng FastMCP
 
-> Trạng thái cập nhật 2026-07-23: **Phase 0–3.1 đã triển khai; Phase 4 C1 đã hoàn tất implementation và public E2E bằng cả ChatGPT Web lẫn MCP protocol client trên standalone Agent/AutoCAD thật; GitHub chỉ chạy test, không build EXE; nghiệm thu còn chờ Windows 11 VM sạch và public rollback/revoke; Phase 5+ chưa triển khai**
+> Trạng thái cập nhật 2026-07-23: **Phase 0–3.1 đã triển khai; Phase 4 C1 là GO sau public E2E, Windows 11 VM sạch, operator SmartScreen observation và public rollback/revoke; GitHub chỉ chạy test, không build EXE; Phase 5+ chưa triển khai**
 >
 > Ngày khảo sát: 2026-07-23
 >
@@ -1253,7 +1253,7 @@ Mỗi phase dưới đây chỉ bắt đầu sau khi phase trước đạt exit 
 
 ### Phase 4 — POC C1: Desktop Agent + AutoCAD thật, read-only
 
-- **Trạng thái cập nhật 2026-07-23:** contract `cad.mcp/1.2`, migration `0003`, headless Agent, UI lab, DPAPI, package `3.3-c1` và standalone Agent đã triển khai. Bản standalone đã sửa packaging WebSocket, có package self-test, diagnostics stage/type và chạy outbound WSS public thành công. Gateway → WSS → Agent → AutoCAD Mechanical 2025 thật đã đọc summary bằng cả ChatGPT Web và MCP protocol client DCR + PKCE; failure matrix, hard pause/resume, reconnect/restart và 10 mẫu latency đều xanh. Public health/readiness, protected-resource metadata, Auth0 discovery và 401 challenge đều đạt. GitHub Actions chỉ chạy test/validate input, không build `.exe`. Full acceptance vẫn `PENDING REVIEW` cho tới khi Windows 11 VM sạch và public rollback/revoke được thử có kiểm soát. Chi tiết tại [phase4-c1-implementation-evidence.md](./phase4-c1-implementation-evidence.md).
+- **Trạng thái cập nhật 2026-07-23 — GO:** contract `cad.mcp/1.2`, migration `0003`, headless Agent, UI lab, DPAPI, package `3.3-c1` và standalone Agent đã triển khai. Bản standalone đã sửa packaging WebSocket, có package self-test, diagnostics stage/type và chạy outbound WSS public thành công. Gateway → WSS → Agent → AutoCAD Mechanical 2025 thật đã đọc summary bằng cả ChatGPT Web và MCP protocol client DCR + PKCE; failure matrix, hard pause/resume, reconnect/restart và 10 mẫu latency đều xanh. Public health/readiness, protected-resource metadata, Auth0 discovery và 401 challenge đều đạt. GitHub Actions chỉ chạy test/validate input, không build `.exe`. Windows 11 Enterprise Evaluation VM sạch đã xác minh không có config/credential sẵn, artifact hash đúng, self-test/Defender đạt và SmartScreen chặn bản unsigned có Mark-of-the-Web đúng thiết kế; public tunnel rollback và lab credential revoke/restore cũng đã đạt. Chi tiết tại [phase4-c1-implementation-evidence.md](./phase4-c1-implementation-evidence.md).
 
 - **Mục tiêu/phạm vi:** ngay sau POC B, package Agent Windows tối thiểu, mở outbound WSS, đọc AutoCAD presence/document state và chạy một AutoLISP cấp 1 read-only đã đóng gói/versioned như `get_drawing_info`.
 - **Luồng sau phase:** ChatGPT Web (kèm protocol test client để tái lập lỗi) -> VPS Gateway -> WSS -> Desktop Agent -> packaged AutoLISP -> AutoCAD -> typed result trở lại; không mở port/tunnel trên máy user.
@@ -1560,13 +1560,13 @@ Kế hoạch implementation chỉ được coi là đạt sản phẩm multi-use
 
 ## 25. Bước tiếp theo sau Phase 3.1 và Phase 4 C1
 
-Phase 4 C1 đã hoàn tất implementation và public read E2E. Các bước còn lại chỉ là gate nghiệm thu/vận hành, không mở rộng sang Phase 5+:
+Phase 4 C1 đã hoàn tất implementation, public read E2E và các gate nghiệm thu/vận hành. Các ràng buộc sau tiếp tục được giữ, không tự mở rộng sang Phase 5+:
 
 1. Giữ GitHub Actions ở phạm vi test/validate input; không khôi phục `standalone-release`, không build hoặc upload `.exe` trên GitHub hosted runner.
-2. Build bằng `scripts/build-phase4-agent.ps1` trên máy Windows phù hợp rồi chạy artifact đó trên một Windows 11 VM sạch; ghi startup/RAM/Defender/SmartScreen và xác nhận không có credential/config sẵn.
-3. Lập cửa sổ bảo trì rồi thử mất mạng Internet/VPS, revoke lab credential/session và rollback public cutover; ghi thời gian khôi phục, không làm gián đoạn endpoint ngoài kế hoạch.
+2. **Đã đạt:** build bằng `scripts/build-phase4-agent.ps1` trên máy Windows phù hợp và chạy chính artifact đó trên Windows 11 Enterprise Evaluation VM sạch; đã ghi startup/RAM/hash/Defender, xác nhận không có credential/config sẵn và operator đã quan sát SmartScreen chặn bản có Mark-of-the-Web rồi chọn `Don't run`.
+3. **Đã đạt:** trong cửa sổ bảo trì đã thử public tunnel outage/rollback, Gateway restart, revoke lab credential/session và restore từ backup; đã ghi thời gian public/Agent phục hồi và xác minh production trở lại 200/401 với session mới.
 4. Review `phase3.1-durable-lifecycle-hardening-evidence.md` và `phase4-c1-implementation-evidence.md`; giữ profile `local` và legacy làm mặc định, C1 là opt-in.
-5. Chỉ chuyển Phase 4 C1 từ `PENDING REVIEW` sang `GO` sau ba gate trên; Phase 5 vẫn chờ C1 được nghiệm thu.
+5. **Đã đạt:** Phase 4 C1 chuyển sang `GO` sau SmartScreen observation và review bằng chứng cuối. Phase 5 chưa được triển khai; chỉ bắt đầu theo kế hoạch/yêu cầu riêng.
 
 Phase 0–3 đã có evidence riêng; không chạy lại spike hoặc thay đổi contract Phase 2 chỉ vì Phase 3.1 bổ sung request identity trong profile opt-in.
 
