@@ -2,7 +2,9 @@
 param(
     [string]$OutputRoot = (Join-Path $PSScriptRoot '..\dist\phase4-agent'),
     [string]$PythonVersion = '3.12',
-    [switch]$SkipSync
+    [switch]$SkipSync,
+    [ValidateSet('auto', 'msvc', 'mingw64')]
+    [string]$Compiler = 'auto'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,6 +17,48 @@ $output = [IO.Path]::GetFullPath($OutputRoot)
 $volumeRoot = [IO.Path]::GetPathRoot($output)
 if ($output.TrimEnd('\') -eq $volumeRoot.TrimEnd('\')) {
     throw 'OutputRoot khong duoc la thu muc goc cua o dia.'
+}
+
+function Test-MsvcToolchain {
+    if (Get-Command cl.exe -ErrorAction SilentlyContinue) {
+        return $true
+    }
+
+    $programFilesX86 = [Environment]::GetFolderPath('ProgramFilesX86')
+    if (-not $programFilesX86) {
+        return $false
+    }
+    $vswhere = Join-Path $programFilesX86 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (-not (Test-Path -LiteralPath $vswhere)) {
+        return $false
+    }
+
+    $installation = & $vswhere `
+        -latest `
+        -products '*' `
+        -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+        -property installationPath `
+        2>$null |
+        Select-Object -First 1
+    return [bool]$installation
+}
+
+function Get-Sha256 {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $stream = [IO.File]::OpenRead($Path)
+    try {
+        $sha256 = [Security.Cryptography.SHA256]::Create()
+        try {
+            return ([BitConverter]::ToString($sha256.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+        }
+        finally {
+            $sha256.Dispose()
+        }
+    }
+    finally {
+        $stream.Dispose()
+    }
 }
 
 New-Item -ItemType Directory -Force -Path $output | Out-Null
@@ -42,6 +86,14 @@ try {
     $stdoutPath = Join-Path $buildRoot 'nuitka.stdout.log'
     $stderrPath = Join-Path $buildRoot 'nuitka.stderr.log'
     $uvCommand = (Get-Command uv -ErrorAction Stop).Source
+    $compilerArgument = switch ($Compiler) {
+        'msvc' { '--msvc=latest' }
+        'mingw64' { '--mingw64' }
+        default {
+            if (Test-MsvcToolchain) { '--msvc=latest' } else { '--mingw64' }
+        }
+    }
+    Write-Host "[$(Get-Date -Format o)] Compiler selection: $compilerArgument"
     $nuitkaArgs = @(
         'run',
         '--no-sync',
@@ -50,9 +102,10 @@ try {
         'nuitka',
         '--mode=standalone',
         '--enable-plugin=pyside6',
-        '--msvc=latest',
+        $compilerArgument,
         '--assume-yes-for-downloads',
         '--windows-console-mode=disable',
+        '--include-package=websockets',
         '--show-progress',
         "--output-dir=$buildRoot",
         '--output-filename=KythuatvangAutoCADAgent.exe',
@@ -87,7 +140,7 @@ finally {
 $packageDir = Join-Path $output 'packages\autocad.lisp.drawing_info\3.3-c1'
 New-Item -ItemType Directory -Force -Path $packageDir | Out-Null
 Copy-Item -LiteralPath $package -Destination (Join-Path $packageDir 'mcp_dispatch.lsp') -Force
-$packageHash = (Get-FileHash -LiteralPath (Join-Path $packageDir 'mcp_dispatch.lsp') -Algorithm SHA256).Hash.ToLowerInvariant()
+$packageHash = Get-Sha256 -Path (Join-Path $packageDir 'mcp_dispatch.lsp')
 
 $built = Get-ChildItem -LiteralPath $buildRoot -Recurse -File |
     Where-Object { $_.Name -in @('KythuatvangAutoCADAgent.exe', 'launcher.exe') } |
@@ -108,7 +161,7 @@ $artifactTarget = Join-Path $appOutput 'KythuatvangAutoCADAgent.exe'
 if ($built.Name -ne 'KythuatvangAutoCADAgent.exe') {
     Move-Item -LiteralPath (Join-Path $appOutput $built.Name) -Destination $artifactTarget -Force
 }
-$artifactHash = (Get-FileHash -LiteralPath $artifactTarget -Algorithm SHA256).Hash.ToLowerInvariant()
+$artifactHash = Get-Sha256 -Path $artifactTarget
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'provision-phase4-agent.ps1') -Destination $output -Force
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'run-phase4-agent.ps1') -Destination $output -Force
 
