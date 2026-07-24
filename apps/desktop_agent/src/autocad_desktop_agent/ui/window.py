@@ -1,4 +1,4 @@
-"""Vietnamese Phase 4 C1 lab window and system tray with modern Dark Slate design."""
+"""Vietnamese Phase 4 C1 lab window and system tray with a Dark Slate design."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from PySide6.QtCore import QObject, Qt, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QFont, QIcon, QPixmap
+from PySide6.QtGui import QAction, QCloseEvent, QFont
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -38,7 +38,6 @@ QWidget {
     color: #F1F5F9;
 }
 
-/* Card Containers */
 QFrame#headerCard, QFrame#statusCard, QFrame#controlCard, QFrame#footerCard {
     background-color: #151D2A;
     border: 1px solid #232F42;
@@ -52,7 +51,6 @@ QFrame#statusBanner {
     padding: 12px;
 }
 
-/* Typography */
 QLabel#appTitle {
     font-size: 17px;
     font-weight: 700;
@@ -101,7 +99,6 @@ QLabel#fieldValue {
     font-weight: 600;
 }
 
-/* Buttons */
 QPushButton {
     background-color: #1E293B;
     color: #F1F5F9;
@@ -147,7 +144,6 @@ QPushButton#pauseButton[paused="true"] {
     border: 1px solid #F59E0B;
 }
 
-/* Menu */
 QMenu {
     background-color: #151D2A;
     border: 1px solid #232F42;
@@ -178,8 +174,15 @@ QMenu::separator {
 class CoreFacade(Protocol):
     @property
     def view_state(self) -> AgentViewState: ...
+
     def subscribe(self, callback: Any) -> None: ...
-    def handle_intent(self, intent: AgentIntent, diagnostics_target: Path | None = None) -> None: ...
+
+    def handle_intent(
+        self,
+        intent: AgentIntent,
+        diagnostics_target: Path | None = None,
+    ) -> None: ...
+
     async def run_forever(self) -> None: ...
 
 
@@ -215,7 +218,25 @@ class AgentWindow(QMainWindow):
         main_layout.setContentsMargins(16, 16, 16, 16)
         main_layout.setSpacing(12)
 
-        # Header Card
+        main_layout.addWidget(self._build_header_card())
+        main_layout.addWidget(self._build_status_banner())
+        main_layout.addWidget(self._build_status_card())
+        main_layout.addWidget(self._build_safety_card())
+        main_layout.addLayout(self._build_action_buttons())
+        self.setCentralWidget(root)
+
+        self.retry_button.clicked.connect(
+            lambda: core.handle_intent(AgentIntent.RETRY)
+        )
+        self.pause_button.clicked.connect(self._toggle_pause)
+        self.diagnostics_button.clicked.connect(self._diagnostics)
+        self.help_button.clicked.connect(self._help)
+
+        self._setup_system_tray()
+        self.core.subscribe(self.bridge.changed.emit)
+        self.render(core.view_state)
+
+    def _build_header_card(self) -> QFrame:
         header_card = QFrame()
         header_card.setObjectName("headerCard")
         header_layout = QHBoxLayout(header_card)
@@ -235,9 +256,9 @@ class AgentWindow(QMainWindow):
         header_layout.addLayout(header_title_box)
         header_layout.addStretch()
         header_layout.addWidget(self.device_badge)
-        main_layout.addWidget(header_card)
+        return header_card
 
-        # Status Banner
+    def _build_status_banner(self) -> QFrame:
         self.status_banner = QFrame()
         self.status_banner.setObjectName("statusBanner")
         banner_layout = QVBoxLayout(self.status_banner)
@@ -251,9 +272,9 @@ class AgentWindow(QMainWindow):
         self.detail.setWordWrap(True)
         banner_layout.addWidget(self.primary)
         banner_layout.addWidget(self.detail)
-        main_layout.addWidget(self.status_banner)
+        return self.status_banner
 
-        # Status Grid Card
+    def _build_status_card(self) -> QFrame:
         status_card = QFrame()
         status_card.setObjectName("statusCard")
         status_layout = QVBoxLayout(status_card)
@@ -268,7 +289,6 @@ class AgentWindow(QMainWindow):
         grid.setHorizontalSpacing(16)
         grid.setVerticalSpacing(8)
         self.values: dict[str, QLabel] = {}
-
         items = [
             ("device", "Thiết bị local"),
             ("server", "Máy chủ Gateway"),
@@ -278,21 +298,20 @@ class AgentWindow(QMainWindow):
             ("version", "Phiên bản Agent"),
             ("support", "Mã hỗ trợ"),
         ]
-
         for row, (key, label_text) in enumerate(items):
-            lbl = QLabel(label_text)
-            lbl.setObjectName("fieldLabel")
-            val = QLabel("—")
-            val.setObjectName("fieldValue")
-            val.setTextInteractionFlags(Qt.TextSelectableByMouse)
-            grid.addWidget(lbl, row, 0)
-            grid.addWidget(val, row, 1)
-            self.values[key] = val
+            label = QLabel(label_text)
+            label.setObjectName("fieldLabel")
+            value = QLabel("—")
+            value.setObjectName("fieldValue")
+            value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            grid.addWidget(label, row, 0)
+            grid.addWidget(value, row, 1)
+            self.values[key] = value
 
         status_layout.addLayout(grid)
-        main_layout.addWidget(status_card)
+        return status_card
 
-        # Safety & Controls Card
+    def _build_safety_card(self) -> QFrame:
         control_card = QFrame()
         control_card.setObjectName("controlCard")
         control_layout = QVBoxLayout(control_card)
@@ -303,28 +322,26 @@ class AgentWindow(QMainWindow):
         control_header.setObjectName("sectionTitle")
         control_layout.addWidget(control_header)
 
-        ctrl_grid = QGridLayout()
-        ctrl_grid.setHorizontalSpacing(16)
-        ctrl_grid.setVerticalSpacing(6)
+        control_grid = QGridLayout()
+        control_grid.setHorizontalSpacing(16)
+        control_grid.setVerticalSpacing(6)
 
-        wlock_lbl = QLabel("Cho phép ChatGPT chỉnh sửa")
-        wlock_lbl.setObjectName("fieldLabel")
-        self.wlock_val = QLabel("BẬT (Ghi được phép)")
-        self.wlock_val.setStyleSheet("color: #10B981; font-weight: 600; font-size: 12px;")
+        write_label = QLabel("Quyền chỉnh sửa từ xa")
+        write_label.setObjectName("fieldLabel")
+        self.wlock_val = QLabel("TẮT (Agent C1 chỉ đọc)")
 
-        rmode_lbl = QLabel("Chế độ rủi ro")
-        rmode_lbl.setObjectName("fieldLabel")
-        self.rmode_val = QLabel("Cân bằng (Preview + Confirm)")
-        self.rmode_val.setStyleSheet("color: #38BDF8; font-weight: 600; font-size: 12px;")
+        risk_label = QLabel("Chế độ thực thi")
+        risk_label.setObjectName("fieldLabel")
+        self.rmode_val = QLabel("Chỉ đọc (không Preview/Commit)")
 
-        ctrl_grid.addWidget(wlock_lbl, 0, 0)
-        ctrl_grid.addWidget(self.wlock_val, 0, 1)
-        ctrl_grid.addWidget(rmode_lbl, 1, 0)
-        ctrl_grid.addWidget(self.rmode_val, 1, 1)
-        control_layout.addLayout(ctrl_grid)
-        main_layout.addWidget(control_card)
+        control_grid.addWidget(write_label, 0, 0)
+        control_grid.addWidget(self.wlock_val, 0, 1)
+        control_grid.addWidget(risk_label, 1, 0)
+        control_grid.addWidget(self.rmode_val, 1, 1)
+        control_layout.addLayout(control_grid)
+        return control_card
 
-        # Action Buttons Layout
+    def _build_action_buttons(self) -> QHBoxLayout:
         actions = QHBoxLayout()
         actions.setSpacing(8)
         self.retry_button = QPushButton("Thử lại")
@@ -333,7 +350,6 @@ class AgentWindow(QMainWindow):
         self.pause_button.setObjectName("pauseButton")
         self.diagnostics_button = QPushButton("Chẩn đoán")
         self.help_button = QPushButton("Trợ giúp")
-
         for button in (
             self.retry_button,
             self.pause_button,
@@ -341,17 +357,9 @@ class AgentWindow(QMainWindow):
             self.help_button,
         ):
             actions.addWidget(button)
-        main_layout.addLayout(actions)
+        return actions
 
-        self.setCentralWidget(root)
-
-        # Event connections
-        self.retry_button.clicked.connect(lambda: core.handle_intent(AgentIntent.RETRY))
-        self.pause_button.clicked.connect(self._toggle_pause)
-        self.diagnostics_button.clicked.connect(self._diagnostics)
-        self.help_button.clicked.connect(self._help)
-
-        # System tray setup
+    def _setup_system_tray(self) -> None:
         agent_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         self.setWindowIcon(agent_icon)
         self.tray = QSystemTrayIcon(agent_icon, self)
@@ -372,39 +380,30 @@ class AgentWindow(QMainWindow):
         self.tray.activated.connect(lambda *_: self._show_from_tray())
         self.tray.show()
 
-        self.core.subscribe(self.bridge.changed.emit)
-        self.render(core.view_state)
-
     def render(self, state: AgentViewState) -> None:
         self._last_state = state
         title, detail = STATE_COPY[state.runtime_state]
         self.primary.setText(title)
         self.detail.setText(detail)
-
-        # Dynamic Status Banner styling based on state
-        if state.runtime_state == RuntimeState.READY:
-            banner_style = "background-color: #064E3B; border: 1px solid #059669; border-radius: 8px; padding: 12px;"
-            self.primary.setStyleSheet("color: #A7F3D0; font-size: 16px; font-weight: 700;")
-        elif state.runtime_state in {RuntimeState.CONNECTING, RuntimeState.BUSY_REMOTE, RuntimeState.BUSY_USER}:
-            banner_style = "background-color: #78350F; border: 1px solid #D97706; border-radius: 8px; padding: 12px;"
-            self.primary.setStyleSheet("color: #FDE68A; font-size: 16px; font-weight: 700;")
-        elif state.runtime_state == RuntimeState.PAUSED:
-            banner_style = "background-color: #581C87; border: 1px solid #9333EA; border-radius: 8px; padding: 12px;"
-            self.primary.setStyleSheet("color: #E9D5FF; font-size: 16px; font-weight: 700;")
-        else:
-            banner_style = "background-color: #7F1D1D; border: 1px solid #DC2626; border-radius: 8px; padding: 12px;"
-            self.primary.setStyleSheet("color: #FCA5A5; font-size: 16px; font-weight: 700;")
-        self.status_banner.setStyleSheet(banner_style)
+        self._render_status_banner(state.runtime_state)
 
         self.device_badge.setText(f"Thiết bị: {state.device_name}")
         self.values["device"].setText(state.device_name)
-        self.values["server"].setText("● Đã kết nối" if state.server_connected else "○ Mất kết nối")
-        self.values["server"].setStyleSheet("color: #10B981;" if state.server_connected else "color: #EF4444;")
+        self.values["server"].setText(
+            "● Đã kết nối" if state.server_connected else "○ Mất kết nối"
+        )
+        self.values["server"].setStyleSheet(
+            "color: #10B981;" if state.server_connected else "color: #EF4444;"
+        )
         self.values["autocad"].setText(state.autocad_state)
         self.values["document"].setText(state.document_name or "Chưa có")
         self.values["task"].setText(state.current_task or "Không có")
-        self.values["version"].setText(f"Agent {state.agent_version} · Package {state.package_version}")
+        self.values["version"].setText(
+            f"Agent {state.agent_version} · Package {state.package_version}"
+        )
         self.values["support"].setText(state.support_code or "—")
+
+        self._render_safety_state(state)
 
         label = "Tiếp tục" if state.paused else "Tạm dừng"
         self.pause_button.setText(label)
@@ -412,8 +411,65 @@ class AgentWindow(QMainWindow):
         self.pause_button.style().unpolish(self.pause_button)
         self.pause_button.style().polish(self.pause_button)
 
-        self.tray_pause.setText("Tiếp tục mọi tác vụ" if state.paused else "Tạm dừng mọi tác vụ")
-        self.tray_status.setText(f"Máy chủ: {'Đã kết nối' if state.server_connected else 'Mất kết nối'}")
+        self.tray_pause.setText(
+            "Tiếp tục mọi tác vụ" if state.paused else "Tạm dừng mọi tác vụ"
+        )
+        self.tray_status.setText(
+            f"Máy chủ: {'Đã kết nối' if state.server_connected else 'Mất kết nối'}"
+        )
+
+    def _render_status_banner(self, runtime_state: RuntimeState) -> None:
+        if runtime_state == RuntimeState.READY:
+            banner_style = (
+                "background-color: #064E3B; border: 1px solid #059669; "
+                "border-radius: 8px; padding: 12px;"
+            )
+            primary_style = "color: #A7F3D0; font-size: 16px; font-weight: 700;"
+        elif runtime_state in {
+            RuntimeState.CONNECTING,
+            RuntimeState.BUSY_REMOTE,
+            RuntimeState.BUSY_USER,
+        }:
+            banner_style = (
+                "background-color: #78350F; border: 1px solid #D97706; "
+                "border-radius: 8px; padding: 12px;"
+            )
+            primary_style = "color: #FDE68A; font-size: 16px; font-weight: 700;"
+        elif runtime_state == RuntimeState.PAUSED:
+            banner_style = (
+                "background-color: #581C87; border: 1px solid #9333EA; "
+                "border-radius: 8px; padding: 12px;"
+            )
+            primary_style = "color: #E9D5FF; font-size: 16px; font-weight: 700;"
+        else:
+            banner_style = (
+                "background-color: #7F1D1D; border: 1px solid #DC2626; "
+                "border-radius: 8px; padding: 12px;"
+            )
+            primary_style = "color: #FCA5A5; font-size: 16px; font-weight: 700;"
+        self.status_banner.setStyleSheet(banner_style)
+        self.primary.setStyleSheet(primary_style)
+
+    def _render_safety_state(self, state: AgentViewState) -> None:
+        if state.paused:
+            self.wlock_val.setText("TẮT (Đã tạm dừng)")
+            self.wlock_val.setStyleSheet(
+                "color: #F59E0B; font-weight: 600; font-size: 12px;"
+            )
+            self.rmode_val.setText("Tạm dừng (chặn tác vụ mới)")
+            self.rmode_val.setStyleSheet(
+                "color: #E9D5FF; font-weight: 600; font-size: 12px;"
+            )
+            return
+
+        self.wlock_val.setText("TẮT (Agent C1 chỉ đọc)")
+        self.wlock_val.setStyleSheet(
+            "color: #F87171; font-weight: 600; font-size: 12px;"
+        )
+        self.rmode_val.setText("Chỉ đọc (không Preview/Commit)")
+        self.rmode_val.setStyleSheet(
+            "color: #38BDF8; font-weight: 600; font-size: 12px;"
+        )
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt API
         event.ignore()
@@ -430,7 +486,11 @@ class AgentWindow(QMainWindow):
     def _diagnostics(self) -> None:
         target = self.diagnostics_dir / "autocad-agent-diagnostics.json"
         self.core.handle_intent(AgentIntent.EXPORT_DIAGNOSTICS, target)
-        QMessageBox.information(self, "Chẩn đoán", f"Đã tạo tệp chẩn đoán:\n{target}")
+        QMessageBox.information(
+            self,
+            "Chẩn đoán",
+            f"Đã tạo tệp chẩn đoán:\n{target}",
+        )
 
     def _help(self) -> None:
         QMessageBox.information(
