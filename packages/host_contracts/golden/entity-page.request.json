@@ -1,0 +1,23 @@
+{
+  "protocol_version": "cad.host/1",
+  "message_type": "command",
+  "session_id": "session-lab-001",
+  "command_id": "entity-page-001",
+  "sequence": 2,
+  "deadline_at": "2026-07-24T05:01:00+00:00",
+  "payload_hash": "787ace93a8f15b494d05deb6b8addfeff733e3ae89604e894eff40b5c29042fa",
+  "payload": {
+    "operation_id": "entity.snapshot.page",
+    "operation_version": 1,
+    "document_id": "doc-lab-001",
+    "arguments": {
+      "cursor": 0,
+      "limit": 100,
+      "max_scan": 5000,
+      "expected_revision": 7,
+      "types": ["LINE", "CIRCLE"],
+      "layers": ["0", "DIM"],
+      "space": "all"
+    }
+  }
+}

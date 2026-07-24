@@ -9,7 +9,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from hashlib import sha256
-from typing import Any, Literal, TypeAlias, Union
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, Union
 
 from pydantic import (
     BaseModel,
@@ -39,6 +39,9 @@ MAX_PACKAGES = 32
 
 _CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
+
+if TYPE_CHECKING:
+    from .runtime import CapabilityManifest
 
 
 def _message_id() -> str:
@@ -258,6 +261,8 @@ class HelloMessage(AgentEnvelope):
     current_command_id: str | None = Field(default=None, max_length=128)
     packages: list[PackageManifestEntry] = Field(default_factory=list, max_length=MAX_PACKAGES)
     package_manifest_hash: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    capability_manifest: "CapabilityManifest | None" = None
+    capability_manifest_hash: str | None = Field(default=None, pattern=_SHA256_PATTERN)
 
     @field_validator("capabilities", mode="before")
     @classmethod
@@ -279,6 +284,21 @@ class HelloMessage(AgentEnvelope):
             expected = canonical_package_manifest_hash(self.packages)
             if self.package_manifest_hash != expected:
                 raise ValueError("package manifest hash does not match its canonical content")
+        return self
+
+    @model_validator(mode="after")
+    def _capability_manifest_hash_matches(self) -> "HelloMessage":
+        if self.capability_manifest is None:
+            if self.capability_manifest_hash is not None:
+                raise ValueError("capability manifest hash requires a manifest")
+            return self
+        if self.capability_manifest_hash is None:
+            raise ValueError("capability manifest requires its canonical hash")
+        from .runtime import canonical_capability_manifest_hash
+
+        expected = canonical_capability_manifest_hash(self.capability_manifest)
+        if self.capability_manifest_hash != expected:
+            raise ValueError("capability manifest hash does not match its canonical content")
         return self
 
 
@@ -505,3 +525,8 @@ def message_dict(message: AgentMessage) -> dict[str, Any]:
     if len(canonical_json(value).encode("utf-8")) > MAX_WEBSOCKET_MESSAGE_BYTES:
         raise ValueError("Agent message exceeds the protocol byte limit")
     return value
+
+
+from .runtime import CapabilityManifest
+
+HelloMessage.model_rebuild()

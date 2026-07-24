@@ -7,9 +7,9 @@
 >
 > Nguồn thảo luận UI ban đầu: [context.md](./context.md)
 >
-> Ngày rà soát: 2026-07-24
+> Ngày rà soát: 2026-07-25
 >
-> Trạng thái: **Phase 4 C1 đã GO trên AutoCAD Mechanical 2025 qua AutoLISP/File IPC compatibility path. Phase 5 đang ở trạng thái kế hoạch, chuyển AutoCAD Full sang Managed .NET primary nhưng vẫn bảo toàn AutoCAD LT 2024+ compatibility.**
+> Trạng thái: **Phase 4 C1 đã GO qua AutoLISP/File IPC compatibility path. Phase 5 Agent/runtime UI và Managed .NET R25 lab POC đã triển khai; production pairing, signed installer, LT real smoke và multi-user pilot vẫn thuộc các exit gate chưa có external evidence.**
 >
 > Phạm vi: ChatGPT Web, Desktop Agent UI, Web Portal, trang quản trị, onboarding, runtime status, pairing, confirmation/approval, diagnostics, packaging và update UX. Đây là tài liệu kiến trúc; **không triển khai code hoặc thêm dependency trong phụ lục này**.
 

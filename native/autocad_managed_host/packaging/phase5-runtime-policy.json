@@ -1,0 +1,38 @@
+{
+  "schema": "autocad-mcp.runtime-policy/1",
+  "policy_version": "0.1.0-lab",
+  "cohort": "phase5-lab",
+  "switches": {
+    "managed_read": true,
+    "lt_read": true,
+    "managed_write": false,
+    "lt_write": false,
+    "high_risk": false,
+    "advanced_lisp": false,
+    "arbitrary_code": false,
+    "runtime_fallback": false
+  },
+  "telemetry": {
+    "dimensions": [
+      "runtime_id",
+      "runtime_role",
+      "release_family",
+      "release_year",
+      "operation_id",
+      "outcome",
+      "safe_error_code"
+    ],
+    "measures": ["count", "latency_ms"],
+    "prohibited": [
+      "owner_subject",
+      "access_token",
+      "device_token",
+      "pipe_secret",
+      "document_path",
+      "drawing_content",
+      "raw_lisp",
+      "cad_program",
+      "stack_trace"
+    ]
+  }
+}

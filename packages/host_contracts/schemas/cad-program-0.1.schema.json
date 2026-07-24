@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kythuatvang.local/cad.program/0.1/schema.json",
+  "title": "CAD Program 0.1 create-only contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "program_id",
+    "idempotency_key",
+    "document_id",
+    "expected_revision",
+    "registry_version",
+    "runtime_binding",
+    "operations"
+  ],
+  "properties": {
+    "program_id": { "$ref": "#/$defs/identifier" },
+    "idempotency_key": { "$ref": "#/$defs/identifier" },
+    "document_id": { "$ref": "#/$defs/identifier" },
+    "expected_revision": { "type": "integer", "minimum": 1 },
+    "registry_version": { "const": "cad.program/0.1" },
+    "runtime_binding": { "$ref": "#/$defs/runtime_binding" },
+    "operations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "oneOf": [
+          { "$ref": "#/$defs/ensure_layer" },
+          { "$ref": "#/$defs/create_line" },
+          { "$ref": "#/$defs/create_circle" },
+          { "$ref": "#/$defs/create_polyline" },
+          { "$ref": "#/$defs/create_text" }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "layer_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[^<>/\\\\\\\":;?*|=`]+$"
+    },
+    "coordinate": {
+      "type": "number",
+      "minimum": -1000000000,
+      "maximum": 1000000000
+    },
+    "positive_measure": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1000000000
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": {
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "z": { "$ref": "#/$defs/coordinate" }
+      }
+    },
+    "runtime_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime_id", "host_family", "host_version", "package_hash"],
+      "properties": {
+        "runtime_id": { "const": "managed_dotnet" },
+        "host_family": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "host_version": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "package_hash": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "operation_base": {
+      "type": "object",
+      "required": ["kind", "operation_id"],
+      "properties": {
+        "operation_id": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "ensure_layer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "operation_id", "name", "color_index"],
+      "properties": {
+        "kind": { "const": "ensure_layer" },
+        "operation_id": { "$ref": "#/$defs/identifier" },
+        "name": { "$ref": "#/$defs/layer_name" },
+        "color_index": {
+          "oneOf": [
+            { "type": "null" },
+            { "type": "integer", "minimum": 1, "maximum": 255 }
+          ]
+        }
+      }
+    },
+    "create_line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "operation_id", "layer", "start", "end"],
+      "properties": {
+        "kind": { "const": "create_line" },
+        "operation_id": { "$ref": "#/$defs/identifier" },
+        "layer": { "$ref": "#/$defs/layer_name" },
+        "start": { "$ref": "#/$defs/point" },
+        "end": { "$ref": "#/$defs/point" }
+      }
+    },
+    "create_circle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "operation_id", "layer", "center", "radius"],
+      "properties": {
+        "kind": { "const": "create_circle" },
+        "operation_id": { "$ref": "#/$defs/identifier" },
+        "layer": { "$ref": "#/$defs/layer_name" },
+        "center": { "$ref": "#/$defs/point" },
+        "radius": { "$ref": "#/$defs/positive_measure" }
+      }
+    },
+    "create_polyline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "operation_id", "layer", "vertices", "closed"],
+      "properties": {
+        "kind": { "const": "create_polyline" },
+        "operation_id": { "$ref": "#/$defs/identifier" },
+        "layer": { "$ref": "#/$defs/layer_name" },
+        "vertices": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 4096,
+          "items": { "$ref": "#/$defs/point" }
+        },
+        "closed": { "type": "boolean" }
+      }
+    },
+    "create_text": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "operation_id",
+        "layer",
+        "position",
+        "text",
+        "height",
+        "rotation_radians"
+      ],
+      "properties": {
+        "kind": { "const": "create_text" },
+        "operation_id": { "$ref": "#/$defs/identifier" },
+        "layer": { "$ref": "#/$defs/layer_name" },
+        "position": { "$ref": "#/$defs/point" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "height": { "$ref": "#/$defs/positive_measure" },
+        "rotation_radians": {
+          "type": "number",
+          "minimum": -6.283185307179586,
+          "maximum": 6.283185307179586
+        }
+      }
+    }
+  }
+}

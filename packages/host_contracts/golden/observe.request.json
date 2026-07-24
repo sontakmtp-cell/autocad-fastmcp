@@ -1,0 +1,18 @@
+{
+  "protocol_version": "cad.host/1",
+  "message_type": "command",
+  "session_id": "session-lab-001",
+  "command_id": "observe-001",
+  "sequence": 1,
+  "deadline_at": "2026-07-24T05:01:00+00:00",
+  "payload_hash": "6021966ae9928009a0e32b748c2e4157072704c80e805965030717b00318cd39",
+  "payload": {
+    "operation_id": "drawing.observe.summary",
+    "operation_version": 1,
+    "document_id": "doc-lab-001",
+    "arguments": {
+      "include_layers": true,
+      "max_layers": 256
+    }
+  }
+}

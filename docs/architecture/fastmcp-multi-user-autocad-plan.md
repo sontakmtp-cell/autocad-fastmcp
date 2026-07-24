@@ -1,6 +1,6 @@
 # Kế hoạch kiến trúc AutoCAD MCP nhiều người dùng — Managed .NET primary, AutoCAD LT compatibility
 
-> Trạng thái cập nhật 2026-07-24: **Phase 0–3.1 đã triển khai; Phase 4 C1 đã GO trên AutoCAD Mechanical 2025 thật; Phase 5 chưa triển khai. Tài liệu này thay thế giả định kiến trúc LT-first bằng kiến trúc đa runtime, trong đó Managed .NET là runtime chính cho AutoCAD Full.**
+> Trạng thái cập nhật 2026-07-25: **Phase 0–3.1 đã triển khai; Phase 4 C1 đã GO; Phase 5 runtime foundation và R25 POC đã triển khai trên AutoCAD Mechanical 2025 thật. Family cũ và LT real certification được operator tạm defer. R25 signing/rollback engineering đã có lab evidence; production vẫn cần CA timestamp, authorized clean-VM run, two-user/two-device và pilot telemetry.** Evidence: [phase5-runtime-foundation-evidence.md](./phase5-runtime-foundation-evidence.md).
 >
 > Baseline: nhánh `main`, commit Phase 4 completion `85776db5d6b2f538f39c1410626eb133cf94d75b` hoặc mới hơn.
 >

@@ -5,8 +5,27 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from urllib.parse import urlsplit
+
+
+class RuntimeMode(str, Enum):
+    AUTO = "auto"
+    MANAGED_DOTNET = "managed_dotnet"
+    AUTOLISP_COMPAT = "autolisp_compat"
+    EZDXF = "ezdxf"
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    if raw == "1":
+        return True
+    if raw == "0":
+        return False
+    raise ValueError(f"{name} must be 0 or 1")
 
 
 @dataclass(frozen=True)
@@ -22,6 +41,10 @@ class AgentConfig:
     heartbeat_seconds: int = 10
     reconnect_max_seconds: int = 30
     queue_size: int = 8
+    runtime_mode: RuntimeMode = RuntimeMode.AUTOLISP_COMPAT
+    managed_host_enabled: bool = False
+    allow_full_compat_fallback: bool = False
+    lt_runtime_enabled: bool = True
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -39,6 +62,15 @@ class AgentConfig:
             ),
             package_sha256=os.environ.get("AUTOCAD_AGENT_PACKAGE_SHA256", "").strip(),
             heartbeat_seconds=int(os.environ.get("AUTOCAD_AGENT_HEARTBEAT_SECONDS", "10")),
+            runtime_mode=RuntimeMode(
+                os.environ.get("AUTOCAD_MCP_RUNTIME_MODE", "autolisp_compat").strip()
+            ),
+            managed_host_enabled=_env_flag("AUTOCAD_MCP_MANAGED_HOST_ENABLED", False),
+            allow_full_compat_fallback=_env_flag(
+                "AUTOCAD_MCP_ALLOW_FULL_COMPAT_FALLBACK",
+                False,
+            ),
+            lt_runtime_enabled=_env_flag("AUTOCAD_MCP_LT_RUNTIME_ENABLED", True),
         )
         return config.validate()
 
@@ -60,6 +92,12 @@ class AgentConfig:
             raise ValueError("heartbeat_seconds must be between 1 and 300")
         if not 1 <= self.queue_size <= 64:
             raise ValueError("queue_size must be between 1 and 64")
+        if not isinstance(self.runtime_mode, RuntimeMode):
+            raise ValueError("runtime_mode is invalid")
+        if self.runtime_mode == RuntimeMode.MANAGED_DOTNET and not self.managed_host_enabled:
+            raise ValueError("managed_dotnet runtime requires AUTOCAD_MCP_MANAGED_HOST_ENABLED=1")
+        if self.runtime_mode == RuntimeMode.AUTOLISP_COMPAT and not self.lt_runtime_enabled:
+            raise ValueError("autolisp_compat runtime requires AUTOCAD_MCP_LT_RUNTIME_ENABLED=1")
         return self
 
     @property

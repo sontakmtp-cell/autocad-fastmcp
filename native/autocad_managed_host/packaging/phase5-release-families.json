@@ -1,0 +1,63 @@
+{
+  "schema": "autocad-mcp.release-families/1",
+  "bundle": {
+    "package_id": "autocad.managed_host",
+    "package_version": "0.1.0-lab",
+    "lab_only": true,
+    "signed": false,
+    "production_publish_allowed": false
+  },
+  "families": [
+    {
+      "id": "R22",
+      "release_years": [2018],
+      "series_min": "R22.0",
+      "series_max": "R22.0",
+      "target_framework": "net46",
+      "module": "./Contents/R22/AutocadMcp.Host.R22.dll",
+      "certification": "not_built",
+      "certified_capabilities": [],
+      "write_enabled": false
+    },
+    {
+      "id": "R23",
+      "release_years": [2019, 2020],
+      "series_min": "R23.0",
+      "series_max": "R23.1",
+      "target_framework": "net47",
+      "module": "./Contents/R23/AutocadMcp.Host.R23.dll",
+      "certification": "not_built",
+      "certified_capabilities": [],
+      "write_enabled": false
+    },
+    {
+      "id": "R24",
+      "release_years": [2021, 2022, 2023, 2024],
+      "series_min": "R24.0",
+      "series_max": "R24.3",
+      "target_framework": "net48",
+      "module": "./Contents/R24/AutocadMcp.Host.R24.dll",
+      "certification": "not_built",
+      "certified_capabilities": [],
+      "write_enabled": false
+    },
+    {
+      "id": "R25",
+      "release_years": [2025, 2026],
+      "series_min": "R25.0",
+      "series_max": "R25.1",
+      "target_framework": "net8.0-windows",
+      "module": "./Contents/R25/AutocadMcp.Host.R25.dll",
+      "certification": "lab_read_only_2025",
+      "certified_capabilities": ["drawing.observe.summary"],
+      "write_enabled": false
+    }
+  ],
+  "lt_compatibility": {
+    "minimum_release_year": 2024,
+    "runtime_id": "autolisp_file_ipc",
+    "managed_host_loaded": false,
+    "certification": "automated_regression_only",
+    "real_lab_required": true
+  }
+}

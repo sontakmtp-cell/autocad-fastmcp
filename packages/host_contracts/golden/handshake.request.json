@@ -1,0 +1,15 @@
+{
+  "protocol_version": "cad.host/1",
+  "message_type": "handshake",
+  "session_id": "session-lab-001",
+  "command_id": "handshake-001",
+  "sequence": 0,
+  "deadline_at": "2026-07-24T05:00:30+00:00",
+  "payload_hash": "7fd8d53e8b2105e21c368f95382d7f252eee2dc3b4d8b8f445866a6b565c1289",
+  "payload": {
+    "session_nonce": "0123456789abcdef0123456789abcdef",
+    "agent_version": "0.1.0",
+    "protocol_min": "cad.host/1",
+    "protocol_max": "cad.host/1"
+  }
+}

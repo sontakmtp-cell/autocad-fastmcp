@@ -31,6 +31,15 @@ from .agent_protocol import (
     revision_payload,
     validate_bounded_json,
 )
+from .runtime import (
+    CAPABILITY_MANIFEST_SCHEMA,
+    CadProductManifest,
+    CapabilityManifest,
+    FallbackRuntimeManifest,
+    RuntimeEvidence,
+    canonical_capability_manifest,
+    canonical_capability_manifest_hash,
+)
 
 __all__ = [
     "AgentMessage",
@@ -62,4 +71,11 @@ __all__ = [
     "PackageManifestEntry",
     "revision_payload",
     "validate_bounded_json",
+    "CAPABILITY_MANIFEST_SCHEMA",
+    "CadProductManifest",
+    "CapabilityManifest",
+    "FallbackRuntimeManifest",
+    "RuntimeEvidence",
+    "canonical_capability_manifest",
+    "canonical_capability_manifest_hash",
 ]

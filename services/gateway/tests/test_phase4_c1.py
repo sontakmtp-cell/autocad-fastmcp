@@ -248,6 +248,38 @@ async def test_phase4_summary_evidence_and_query_fail_closed(tmp_path):
         }},
         leaked,
     ) == "backend_error"
+    managed_snapshot = copy.deepcopy(snapshot)
+    managed_snapshot["drawing"] = {
+        key: value
+        for key, value in managed_snapshot["drawing"].items()
+        if key not in {"dispatcher_version", "package_id", "package_version"}
+    }
+    managed_result = {
+        "snapshot": managed_snapshot,
+        "execution_evidence": {
+            "agent_version": "0.1.0",
+            "runtime_state": "online_idle",
+            "package": PACKAGE,
+            "runtime": {
+                "id": "managed_dotnet",
+                "role": "primary",
+                "host_family": "R25",
+                "host_version": "0.1.0",
+                "framework": ".NET 8",
+                "package_id": "autocad.mcp.managed_host",
+                "package_version": "0.1.0",
+                "package_hash": "a" * 64,
+            },
+            "degraded": False,
+            "degradation_reason": None,
+        },
+    }
+    assert (
+        service.job_service._validate_c1_observation(
+            managed_result, managed_snapshot
+        )
+        is None
+    )
     with pytest.raises(GatewayError) as captured:
         await service.query(CadQueryInput(snapshot_id="snapshot-c1"), principal, "corr-query")
     assert captured.value.code == "capability_missing"
