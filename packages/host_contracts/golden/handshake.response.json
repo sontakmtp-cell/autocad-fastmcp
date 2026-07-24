@@ -1,0 +1,24 @@
+{
+  "protocol_version": "cad.host/1",
+  "message_type": "handshake_result",
+  "session_id": "session-lab-001",
+  "command_id": "handshake-001",
+  "sequence": 0,
+  "deadline_at": "2026-07-24T05:00:30+00:00",
+  "payload_hash": "626d6f47f71e8c0be310d9ea44e59bfb36d39dc0df33215bca11bdb71e1e40c1",
+  "payload": {
+    "selected_protocol": "cad.host/1",
+    "host_family": "R25",
+    "host_version": "0.1.0",
+    "package_id": "autocad.managed_host.r25",
+    "package_version": "0.1.0",
+    "package_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "session_proof": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "product": "AutoCAD Mechanical",
+    "edition": "full",
+    "release_year": 2025,
+    "series": "R25.0",
+    "active_document_id": "doc-lab-001",
+    "capabilities": ["host.health", "observe.summary"]
+  }
+}

@@ -38,7 +38,7 @@ from .diagnostics import export_diagnostics
 from .executor import AgentExecutionError, DrawingInfoExecutor
 from .ledger import CommandLedger, LedgerConflict, TERMINAL
 from .manifest import PackageMismatch, verify_package
-from .state import AgentIntent, AgentViewState, RuntimeState
+from .state import AgentIntent, AgentViewState, RuntimeState, runtime_user_label
 
 
 class AgentCore:
@@ -48,11 +48,14 @@ class AgentCore:
         credentials: CredentialProvider,
         ledger: CommandLedger,
         executor: DrawingInfoExecutor,
+        runtime_broker: Any | None = None,
     ) -> None:
         self.config = config.validate()
         self.credentials = credentials
         self.ledger = ledger
         self.executor = executor
+        if runtime_broker is not None:
+            self.executor.set_runtime_broker(runtime_broker)
         self.package = config.package
         self._package_valid = self._refresh_package()
         self.paused = ledger.is_paused()
@@ -73,6 +76,8 @@ class AgentCore:
             paused=self.paused,
             agent_version=__version__,
             package_version=config.package_version,
+            managed_host_enabled=config.managed_host_enabled,
+            full_compat_fallback_enabled=config.allow_full_compat_fallback,
         )
 
     @property
@@ -84,7 +89,7 @@ class AgentCore:
         callback(self._state)
 
     def handle_intent(self, intent: AgentIntent, diagnostics_target: Path | None = None) -> None:
-        if intent == AgentIntent.RETRY:
+        if intent in {AgentIntent.RETRY, AgentIntent.RETRY_RUNTIME_PROBE}:
             self._set_event(self._retry)
         elif intent in {AgentIntent.PAUSE, AgentIntent.RESUME}:
             self.set_paused(intent == AgentIntent.PAUSE)
@@ -97,6 +102,21 @@ class AgentCore:
                 values={
                     "agent_version": __version__,
                     "package_manifest_hash": canonical_package_manifest_hash([self.package]),
+                    "product": self._state.product,
+                    "edition": self._state.edition,
+                    "release_year": self._state.release_year,
+                    "series": self._state.series,
+                    "vertical": self._state.vertical,
+                    "runtime_id": self._state.runtime_id,
+                    "runtime_role": self._state.runtime_role,
+                    "degradation_reason": self._state.degradation_reason,
+                    "host_family": self._state.host_family,
+                    "host_version": self._state.host_version,
+                    "host_package_version": self._state.host_package_version,
+                    "host_package_hash": self._state.host_package_hash,
+                    "host_handshake_state": self._state.host_handshake_state,
+                    "capability_manifest_hash": self._state.capability_manifest_hash,
+                    "registry_version": self._state.registry_version,
                     **self._last_ids,
                 },
             )
@@ -463,8 +483,30 @@ class AgentCore:
             autocad_state=presence.autocad_state,
             document_name=presence.document_name,
             support_code=(
-                "C1-PKG-002" if presence.runtime_state == "incompatible" else None
+                {
+                    "incompatible": "C1-PKG-002",
+                    "plugin_required": "P5-HOST-001",
+                    "host_not_loaded": "P5-HOST-002",
+                    "runtime_version_mismatch": "P5-HOST-003",
+                    "degraded_compatibility": "P5-RUNTIME-001",
+                }.get(presence.runtime_state)
             ),
+            product=getattr(presence, "product", None),
+            edition=getattr(presence, "edition", None),
+            release_year=getattr(presence, "release_year", None),
+            series=getattr(presence, "series", None),
+            runtime_id=getattr(presence, "runtime_id", None),
+            runtime_role=getattr(presence, "runtime_role", None),
+            host_family=getattr(presence, "host_family", None),
+            host_version=getattr(presence, "host_version", None),
+            host_package_version=getattr(presence, "host_package_version", None),
+            host_package_hash=getattr(presence, "host_package_hash", None),
+            host_handshake_state=getattr(presence, "host_handshake_state", None),
+            degradation_reason=getattr(presence, "degradation_reason", None),
+            capability_manifest_hash=getattr(
+                presence, "capability_manifest_hash", None
+            ),
+            registry_version=getattr(presence, "registry_version", None),
         )
 
     async def _ack(self, websocket: Any, command: CommandMessage, status: str, reason: str | None = None) -> None:
@@ -530,6 +572,8 @@ class AgentCore:
     def _publish(self, **changes: Any) -> None:
         values = dict(self._state.__dict__)
         values.update(changes)
+        candidate = AgentViewState(**values)
+        values["runtime_label"] = runtime_user_label(candidate)
         self._state = AgentViewState(**values)
         for callback in tuple(self._observers):
             with suppress(Exception):

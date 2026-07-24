@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kythuatvang.local/cad.host/1/message.schema.json",
+  "title": "cad.host/1 message union",
+  "oneOf": [
+    {
+      "allOf": [
+        { "$ref": "cad-host-envelope.schema.json" },
+        {
+          "properties": {
+            "message_type": { "const": "handshake" },
+            "payload": { "$ref": "cad-host-payloads.schema.json#/$defs/handshake" }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        { "$ref": "cad-host-envelope.schema.json" },
+        {
+          "properties": {
+            "message_type": { "const": "handshake_result" },
+            "payload": { "$ref": "cad-host-payloads.schema.json#/$defs/handshake_result" }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        { "$ref": "cad-host-envelope.schema.json" },
+        {
+          "properties": {
+            "message_type": { "const": "command" },
+            "payload": { "$ref": "cad-host-payloads.schema.json#/$defs/command" }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        { "$ref": "cad-host-envelope.schema.json" },
+        {
+          "properties": {
+            "message_type": { "const": "result" },
+            "payload": { "$ref": "cad-host-payloads.schema.json#/$defs/result" }
+          }
+        }
+      ]
+    },
+    {
+      "allOf": [
+        { "$ref": "cad-host-envelope.schema.json" },
+        {
+          "properties": {
+            "message_type": { "const": "error" },
+            "payload": { "$ref": "cad-host-payloads.schema.json#/$defs/error" }
+          }
+        }
+      ]
+    }
+  ]
+}

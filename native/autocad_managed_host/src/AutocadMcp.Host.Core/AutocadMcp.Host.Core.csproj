@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>AutocadMcp.Host.Core</AssemblyName>
+    <RootNamespace>AutocadMcp.Host.Core</RootNamespace>
+  </PropertyGroup>
+</Project>

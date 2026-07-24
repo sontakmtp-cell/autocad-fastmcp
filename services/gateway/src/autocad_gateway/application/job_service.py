@@ -18,6 +18,7 @@ from autocad_contracts import (
     ReconcileMessage,
     ReconcileResultMessage,
     ResultMessage,
+    RuntimeEvidence,
 )
 
 from ..domain.jobs import InvalidJobTransition, is_terminal
@@ -706,7 +707,28 @@ class DurableJobService:
             return "backend_error"
         if evidence.get("package") != self.required_package:
             return "package_mismatch"
-        if set(evidence) != {"agent_version", "runtime_state", "package"}:
+        base_evidence_keys = {"agent_version", "runtime_state", "package"}
+        runtime_evidence_keys = {"runtime", "degraded", "degradation_reason"}
+        evidence_keys = set(evidence)
+        if evidence_keys == base_evidence_keys:
+            runtime = None
+        elif evidence_keys == base_evidence_keys | runtime_evidence_keys:
+            try:
+                runtime = RuntimeEvidence.model_validate(evidence.get("runtime"))
+            except (TypeError, ValueError):
+                return "backend_error"
+            if not isinstance(evidence.get("degraded"), bool):
+                return "backend_error"
+            degradation_reason = evidence.get("degradation_reason")
+            if (
+                degradation_reason is not None
+                and (
+                    not isinstance(degradation_reason, str)
+                    or not 1 <= len(degradation_reason) <= 128
+                )
+            ):
+                return "backend_error"
+        else:
             return "backend_error"
         agent_version = evidence.get("agent_version")
         if not isinstance(agent_version, str) or not 1 <= len(agent_version) <= 64:
@@ -723,7 +745,7 @@ class DurableJobService:
         if not isinstance(document_revision, str) or re.fullmatch(r"[0-9a-f]{64}", document_revision) is None:
             return "backend_error"
         document_name = drawing.get("document_name")
-        if set(drawing) != {
+        compatibility_drawing_keys = {
             "document_name",
             "entity_count",
             "layers",
@@ -732,7 +754,18 @@ class DurableJobService:
             "dispatcher_version",
             "package_id",
             "package_version",
-        }:
+        }
+        managed_drawing_keys = {
+            "document_name",
+            "entity_count",
+            "layers",
+            "layer_count",
+            "truncated",
+        }
+        managed_dotnet = runtime is not None and runtime.id == "managed_dotnet"
+        if set(drawing) != (
+            managed_drawing_keys if managed_dotnet else compatibility_drawing_keys
+        ):
             return "backend_error"
         if (
             not isinstance(document_name, str)
@@ -756,10 +789,13 @@ class DurableJobService:
             or not isinstance(layer_count, int)
             or layer_count < len(layers)
             or not isinstance(drawing.get("truncated"), bool)
-            or drawing.get("dispatcher_version") != self.required_package["version"]
+            or summary != {"entity_count": entity_count, "detail_available": False}
+        ):
+            return "backend_error"
+        if not managed_dotnet and (
+            drawing.get("dispatcher_version") != self.required_package["version"]
             or drawing.get("package_id") != self.required_package["package_id"]
             or drawing.get("package_version") != self.required_package["version"]
-            or summary != {"entity_count": entity_count, "detail_available": False}
         ):
             return "backend_error"
         return None

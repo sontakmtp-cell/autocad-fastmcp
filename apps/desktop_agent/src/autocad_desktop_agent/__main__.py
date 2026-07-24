@@ -11,8 +11,11 @@ from . import __version__
 from .config import AgentConfig
 from .core import AgentCore
 from .credentials import DpapiCredentialProvider, EnvironmentCredentialProvider
-from .executor import DrawingInfoExecutor, SafeFileIPCCadReadPort
+from .executor import DrawingInfoExecutor
 from .ledger import CommandLedger
+from .runtime.autolisp_file_ipc import AutoLispFileIPCCadReadPort
+from .runtime.broker import RuntimeBroker
+from .runtime.managed_dotnet import ManagedDotNetCadReadPort
 
 
 def build_core(config: AgentConfig, *, headless: bool) -> AgentCore:
@@ -22,7 +25,30 @@ def build_core(config: AgentConfig, *, headless: bool) -> AgentCore:
         if headless
         else DpapiCredentialProvider(config.ledger_path.with_name("device.credential"))
     )
-    executor = DrawingInfoExecutor(SafeFileIPCCadReadPort(), config.package, __version__)
+    legacy_port = AutoLispFileIPCCadReadPort(
+        package_version=config.package_version
+    )
+    adapters = [legacy_port]
+    if config.managed_host_enabled:
+        try:
+            adapters.insert(
+                0,
+                ManagedDotNetCadReadPort.from_default_bootstrap(
+                    agent_version=__version__,
+                    expected_host_family="R25",
+                ),
+            )
+        except (OSError, ValueError):
+            # The broker reports plugin_required/degraded state without making
+            # the Agent process fail when the lab Host is absent or not loaded.
+            pass
+    runtime_broker = RuntimeBroker(config, adapters)
+    executor = DrawingInfoExecutor(
+        legacy_port,
+        config.package,
+        __version__,
+        runtime_broker=runtime_broker,
+    )
     return AgentCore(config, credentials, ledger, executor)
 
 

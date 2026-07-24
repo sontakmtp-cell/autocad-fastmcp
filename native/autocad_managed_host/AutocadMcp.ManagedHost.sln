@@ -1,0 +1,30 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutocadMcp.Host.Core", "src\AutocadMcp.Host.Core\AutocadMcp.Host.Core.csproj", "{4F9757C1-B5E8-471C-99F2-6589800820C3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutocadMcp.Host.R25", "src\AutocadMcp.Host.R25\AutocadMcp.Host.R25.csproj", "{2A2B8E22-1DC6-40D3-8D73-8A4A3573CB9A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AutocadMcp.Host.Core.Tests", "tests\AutocadMcp.Host.Core.Tests\AutocadMcp.Host.Core.Tests.csproj", "{E9B47BE4-7094-40C2-9AF3-DB227625BD08}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4F9757C1-B5E8-471C-99F2-6589800820C3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4F9757C1-B5E8-471C-99F2-6589800820C3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4F9757C1-B5E8-471C-99F2-6589800820C3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4F9757C1-B5E8-471C-99F2-6589800820C3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2A2B8E22-1DC6-40D3-8D73-8A4A3573CB9A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2A2B8E22-1DC6-40D3-8D73-8A4A3573CB9A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2A2B8E22-1DC6-40D3-8D73-8A4A3573CB9A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2A2B8E22-1DC6-40D3-8D73-8A4A3573CB9A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E9B47BE4-7094-40C2-9AF3-DB227625BD08}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E9B47BE4-7094-40C2-9AF3-DB227625BD08}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E9B47BE4-7094-40C2-9AF3-DB227625BD08}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E9B47BE4-7094-40C2-9AF3-DB227625BD08}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
