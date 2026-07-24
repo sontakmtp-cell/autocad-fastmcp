@@ -28,6 +28,10 @@ def test_window_maps_state_and_sends_typed_intents(qtbot, tmp_path):
     window = AgentWindow(core, tmp_path)
     qtbot.addWidget(window)
     window.show()
+
+    assert window.wlock_val.text() == "TẮT (Agent C1 chỉ đọc)"
+    assert window.rmode_val.text() == "Chỉ đọc (không Preview/Commit)"
+
     core.callback(
         AgentViewState(
             device_name="PC Văn phòng",
@@ -41,9 +45,30 @@ def test_window_maps_state_and_sends_typed_intents(qtbot, tmp_path):
     assert window.primary.text() == "Đã tạm dừng"
     assert window.values["document"].text() == "mat-bich.dwg"
     assert window.pause_button.text() == "Tiếp tục"
+    assert window.wlock_val.text() == "TẮT (Đã tạm dừng)"
+    assert window.rmode_val.text() == "Tạm dừng (chặn tác vụ mới)"
+
     window.retry_button.click()
     window.pause_button.click()
     assert [item[0] for item in core.intents] == [AgentIntent.RETRY, AgentIntent.RESUME]
+
+
+def test_help_message_preserves_readable_line_breaks(qtbot, tmp_path, monkeypatch):
+    window = AgentWindow(FakeCore(), tmp_path)
+    qtbot.addWidget(window)
+    captured = {}
+
+    def capture_message(_parent, title, message):
+        captured["title"] = title
+        captured["message"] = message
+        return QMessageBox.Ok
+
+    monkeypatch.setattr(QMessageBox, "information", capture_message)
+    window._help()
+
+    assert captured["title"] == "Trợ giúp Kỹ Thuật Vàng Agent"
+    assert "DWG.\n\n• Nếu trạng thái" in captured["message"]
+    assert "'Thử lại'.\n• Nếu cần kiểm tra" in captured["message"]
 
 
 def test_close_hides_to_tray(qtbot, tmp_path):
