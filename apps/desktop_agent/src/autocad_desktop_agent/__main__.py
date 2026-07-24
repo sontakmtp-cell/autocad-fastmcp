@@ -42,6 +42,14 @@ def main() -> None:
         return
     from .ui.window import run_ui
 
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
+    if hasattr(Qt, "HighDpiScaleFactorRoundingPolicy"):
+        QApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+        )
+
     diagnostics_dir = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Kythuatvang" / "AutoCADAgent" / "diagnostics"
     raise SystemExit(run_ui(core, diagnostics_dir))
 
