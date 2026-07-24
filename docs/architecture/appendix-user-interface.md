@@ -1,242 +1,340 @@
-# Phụ lục kiến trúc giao diện người dùng
+# Phụ lục kiến trúc giao diện người dùng — Runtime-aware Managed .NET primary
 
-> Tài liệu phụ cho [Kế hoạch nâng cấp AutoCAD MCP nhiều người dùng](./fastmcp-multi-user-autocad-plan.md)
+> Tài liệu phụ cho:
 >
-> Nguồn thảo luận UI: [context.md](./context.md)
+> - [Kế hoạch kiến trúc AutoCAD MCP nhiều người dùng](./fastmcp-multi-user-autocad-plan.md)
+> - [Roadmap Phase 6–13](./Phase-6-plus.md)
 >
-> Ngày rà soát: 2026-07-21
+> Nguồn thảo luận UI ban đầu: [context.md](./context.md)
 >
-> Trạng thái: **phần Desktop Agent Lab read-only của Phase 4 C1 đã được triển khai ngày 2026-07-22; Portal, write lock, risk mode, pairing production và các UI Phase 5+ vẫn là đề xuất, chưa phê duyệt để triển khai**
+> Ngày rà soát: 2026-07-24
 >
-> Phạm vi: Desktop Agent, Web Portal, trang quản trị, onboarding, confirmation/approval và trạng thái người dùng; **không thay đổi code hay dependency**
+> Trạng thái: **Phase 4 C1 đã GO trên AutoCAD Mechanical 2025 qua AutoLISP/File IPC compatibility path. Phase 5 đang ở trạng thái kế hoạch, chuyển AutoCAD Full sang Managed .NET primary nhưng vẫn bảo toàn AutoCAD LT 2024+ compatibility.**
+>
+> Phạm vi: ChatGPT Web, Desktop Agent UI, Web Portal, trang quản trị, onboarding, runtime status, pairing, confirmation/approval, diagnostics, packaging và update UX. Đây là tài liệu kiến trúc; **không triển khai code hoặc thêm dependency trong phụ lục này**.
 
-## 1. Kết luận tương thích
+## 1. Kết luận cập nhật
 
-Định hướng trong `context.md` **tương thích phần lớn** với kiến trúc ứng dụng:
+Định hướng UI cũ vẫn đúng ở cấp sản phẩm:
 
 - Người dùng làm việc chính trong ChatGPT Web.
-- Desktop Agent là cầu nối có trạng thái, chạy trên Windows và giữ toàn bộ COM/File IPC/AutoLISP ở máy người dùng.
-- Web Portal quản tài khoản, thiết bị, cài đặt an toàn, lịch sử và tải Agent.
-- Không xây thêm trình chat, trình vẽ CAD hoặc DWG viewer trong Portal ở MVP.
-- Desktop Agent chạy trong phiên Windows tương tác của user, có system tray và tự phát hiện AutoCAD.
-- Portal không chứa logic CAD và không gọi AutoCAD trực tiếp.
+- Desktop Agent là ứng dụng Windows có trạng thái, system tray, hard pause, pairing, diagnostics và update shell.
+- Web Portal quản tài khoản, thiết bị, policy, lịch sử, approval và tải bộ cài.
+- Không xây chat riêng, CAD editor hoặc DWG viewer trong Portal ở MVP/pilot.
+- Portal không gọi AutoCAD trực tiếp.
+- Managed Host chạy trong AutoCAD nhưng **không trở thành một sản phẩm UI thứ tư**.
 
-Tuy nhiên, phải chỉnh bốn điểm trước khi coi thảo luận UI là một phần của kiến trúc:
+Phần phải thay đổi sau quyết định Managed .NET primary:
 
-1. **“Đăng nhập Agent” phải là pairing thiết bị**, không biến access token của user thành device credential lâu dài.
-2. **Ba quyền trong ChatGPT, ba risk mode của sản phẩm và công tắc write trên Agent là ba lớp khác nhau**, không được gộp thành một dropdown.
-3. **Portal không sở hữu trạng thái app/plugin bên trong ChatGPT.** Nó chỉ được hiển thị dữ kiện Gateway biết, như lần MCP call thành công gần nhất.
-4. **Auto-update chưa thuộc Agent MVP.** MVP chỉ hiển thị phiên bản và hướng dẫn cập nhật có chữ ký; tự động cập nhật thuộc phase hardening sau pilot.
+1. Desktop Agent không còn được mô tả là nơi “giữ toàn bộ COM/File IPC/AutoLISP”. Agent sở hữu `RuntimeBroker` và chọn adapter phù hợp:
+   - `managed_dotnet` cho AutoCAD Full 2018+ khi Host hợp lệ;
+   - `autolisp_file_ipc` cho AutoCAD LT 2024+ hoặc fallback được policy cho phép;
+   - `ezdxf_headless` cho offline/test, không đại diện live DWG.
+2. UI phải hiển thị **AutoCAD product, runtime role, capability và degradation** ở mức người dùng hiểu được.
+3. AutoCAD Full thiếu hoặc lỗi Managed Host không được hiển thị như “sẵn sàng đầy đủ”. UI phải báo `Cần thành phần AutoCAD`, `Chế độ tương thích` hoặc `Khả năng bị giới hạn`.
+4. Preview/commit không được đổi runtime âm thầm. Runtime hoặc package thay đổi phải làm preview/approval cũ mất hiệu lực.
+5. Bỏ hoàn toàn công tắc “AutoLISP cấp 3”. Public contract cấm arbitrary C#, DLL, AutoLISP, Python, shell và file/network access tùy ý.
+6. Roadmap UI phải theo Phase 5–13 mới:
+   - Phase 5: runtime foundation;
+   - Phase 6: identity/pairing;
+   - Phase 7: CAD Program v0;
+   - Phase 8: recovery/approval/C2;
+   - Phase 12: installer và customer pilot;
+   - Phase 13: production operations/ecosystem.
 
-### 1.1. Ma trận đối chiếu
+### 1.1. Ma trận thay đổi so với phụ lục cũ
 
-| Đề xuất trong `context.md` | Mức tương thích | Quyết định trong phụ lục |
-| --- | --- | --- |
-| ChatGPT Web là nơi làm việc chính | Tương thích | Giữ nguyên. Không xây chat riêng trong Portal. |
-| Desktop Agent dùng Python + PySide6 | Tương thích có điều kiện | Chọn cho POC/MVP UI; pin version, kiểm packaging, DPI, antivirus và license trước pilot. Repo hiện chưa có dependency PySide6. |
-| Portal dùng Next.js + TypeScript + Tailwind + shadcn/ui | Tương thích có điều kiện | Dùng như app frontend riêng; không được truy cập SQLite trực tiếp hoặc chứa domain policy. Repo hiện chưa có frontend/package Node. |
-| Agent tự phát hiện và reconnect AutoCAD | Tương thích | Agent Core sở hữu state machine; UI chỉ render state và cho retry thủ công khi cần. |
-| System tray và tự khởi động khi user đăng nhập | Tương thích | Giữ; không chạy phần AutoCAD integration dưới `LocalSystem`. |
-| Nút bật/tắt điều khiển từ ChatGPT | Tương thích một phần | Đổi nhãn chính thành “Cho phép ChatGPT chỉnh sửa”; OFF chặn write. Thêm “Tạm dừng mọi tác vụ” cho emergency/hard pause. |
-| `Chỉ xem / Hỏi trước khi sửa / Cho phép sửa` | Chưa tương thích với domain model | Tách thành write lock và risk mode `An toàn / Cân bằng / Tự động`; không tạo bộ mode thứ hai. |
-| Agent login bằng browser Auth0 và lưu token | Tương thích một phần | Browser dùng để xác nhận pairing; Agent lưu device private key/credential, không dùng user token làm danh tính WSS lâu dài. |
-| Portal có trạng thái “ChatGPT đã kết nối” | Chưa đủ dữ liệu | Hiển thị `Chưa ghi nhận / Đã xác thực gần đây / Lỗi xác thực gần đây`, dựa trên audit thật; không tuyên bố biết app có đang được chọn trong chat. |
-| Portal có nút “Ngắt kết nối ChatGPT” | Tương thích một phần | Đổi thành “Thu hồi quyền truy cập”; giải thích user có thể còn phải gỡ app trong ChatGPT. |
-| Portal yêu cầu Agent cập nhật | Tương thích một phần | Chỉ gửi notification/policy `recommended` hoặc `required`; không gửi lệnh chạy installer tùy ý. |
-| Agent tự động cập nhật trong MVP | Không khớp roadmap | MVP chỉ thông báo + installer có chữ ký; auto-update sau pilot. |
-| `agent.cad...` và `api.cad...` riêng | Có thể dùng, chưa cần | MVP ưu tiên một origin và route tách; chỉ tách subdomain khi vận hành cần. |
-| Admin tách khỏi Portal user | Tương thích | Tách route, role và API; có thể vẫn chung codebase/deployment ban đầu. |
-| Billing để chỗ sẵn | Chưa cần | Chỉ giữ navigation/feature placeholder nếu có kế hoạch thật; không thiết kế schema billing trong MVP. |
+| Nội dung cũ | Quyết định mới |
+|---|---|
+| Agent giữ COM/File IPC/AutoLISP | Agent giữ network/device/UI/ledger và `RuntimeBroker`; Managed Host giữ AutoCAD Managed .NET API; LT adapter giữ COM/File IPC/AutoLISP. |
+| Một trạng thái “AutoCAD đã kết nối” | Tách product, document, runtime và host/package health. |
+| PySide6 Agent phải chuyển sang .NET | Không. Managed .NET là CAD runtime in-process, không bắt buộc thay UI Agent. |
+| AutoLISP cấp 3 có thể opt-in | Loại bỏ. Chỉ packaged operation/allowlisted compiler target được chạy. |
+| Fallback để tăng availability | Read-only chỉ fallback khi policy cho phép và phải hiện degraded; write/preview/rollback không silent fallback. |
+| Phase 5 là pairing/Portal | Phase 5 là Runtime Foundation; pairing production chuyển sang Phase 6. |
+| Installer chỉ có Agent | Bộ phát hành có Agent, Managed Host bundle theo release family và AutoLISP package cho LT, với version/signature riêng. |
+| Một version ứng dụng duy nhất | Gateway, Agent, Managed Host, AutoLISP package, operation registry và hai protocol có version độc lập. |
 
 ## 2. Thứ tự ưu tiên tài liệu
 
 Khi có mâu thuẫn:
 
-1. Kế hoạch kiến trúc chính quyết định security boundary, ownership, risk, job state, AutoLISP và protocol.
-2. Phụ lục này quyết định cách biểu diễn các khái niệm đó cho người dùng.
-3. `context.md` là nguồn ý tưởng và wireframe, không phải contract triển khai.
+1. `fastmcp-multi-user-autocad-plan.md` quyết định runtime boundary, capability, security, job semantics và Phase 5.
+2. `Phase-6-plus.md` quyết định thứ tự Phase 6–13 và production gates.
+3. Phụ lục này quyết định cách biểu diễn các khái niệm đó cho người dùng.
+4. `context.md` là nguồn ý tưởng/wireframe, không phải contract triển khai.
 
-UI không được tự tạo thêm quyền hoặc state chỉ vì cách diễn đạt thuận tiện. Ví dụ, một nút có chữ “Đã kết nối ChatGPT” không thể biến thành nguồn sự thật nếu Gateway không nhận được bằng chứng tương ứng.
+UI không được tạo thêm capability, quyền, runtime hoặc job state chỉ vì cách diễn đạt thuận tiện.
 
 ## 3. Nguyên tắc sản phẩm
 
-1. **ChatGPT là giao diện làm việc chính.** Người dùng mô tả việc CAD, xem kết quả và tiếp tục hội thoại tại đây.
-2. **Agent chỉ hiển thị trạng thái và điểm kiểm soát local.** Nó không phải CAD editor hoặc chat client.
-3. **Portal quản lý, không điều khiển CAD trực tiếp.** Portal tạo policy/consent/job-management request qua Gateway application services.
-4. **Một state chỉ có một nguồn sự thật.** UI khác nhau đọc cùng state, không tự suy đoán và ghi đè lẫn nhau.
-5. **Nói ngôn ngữ người dùng.** Màn hình chính không hiển thị COM, IPC, WSS, JWT, scope, payload hash hoặc stack trace.
-6. **Thông tin kỹ thuật nằm trong diagnostics có kiểm soát.** Dữ liệu copy ra phải loại token, full path nhạy cảm, full CAD Program và LISP cấp 3.
-7. **Risk floor không thể bị UI hạ thấp.** Mode Tự động vẫn không bỏ approval high-risk hoặc mở very-high operation.
-8. **Mọi destructive action trong Portal phải mô tả hậu quả.** `Revoke`, `remove`, `unpair`, `delete account` là các hành động khác nhau.
+1. **ChatGPT là giao diện làm việc chính.** User mô tả tác vụ, xem preview/result và tiếp tục hội thoại tại đây.
+2. **Agent là control plane local.** Nó hiển thị trạng thái máy, AutoCAD, runtime, package, job, write lock, hard pause, consent và diagnostics.
+3. **Managed Host là execution component, không phải account app.** Host không đăng nhập Auth0, không giữ ChatGPT token, không mở public port và không quản tenant.
+4. **Portal quản lý, không thi công CAD.** Portal gọi Gateway application services, không gọi Named Pipe, COM, LISP hoặc AutoCAD API.
+5. **Một state có một nguồn sự thật.** UI chỉ render và gửi typed intent, không tự suy đoán.
+6. **Runtime là bằng chứng, không phải tùy chọn trang trí.** UI phải phân biệt primary, compatibility, fallback, degraded, unsupported và headless.
+7. **Không hạ AutoCAD Full xuống giới hạn LT.** UI chỉ ẩn/vô hiệu capability không được manifest công bố cho device hiện tại.
+8. **Không silent fallback cho write.** Runtime đổi làm program/preview/approval cũ vô hiệu.
+9. **Không arbitrary code.** Không có UI cho upload C#/DLL/LISP, nhập command tùy ý hoặc chọn executable/path từ payload remote.
+10. **Risk floor không thể bị UI hạ thấp.** Mode tự động vẫn không bỏ approval bắt buộc.
+11. **Màn hình chính dùng ngôn ngữ người dùng.** `runtime_id`, manifest hash, pipe session và stack trace chỉ nằm trong chi tiết hỗ trợ.
+12. **Mọi destructive action nói rõ hậu quả.** Revoke device, unpair local, rollback, remove record và delete account là các hành động khác nhau.
 
-## 4. Ba bề mặt và ranh giới trách nhiệm
+## 4. Ba bề mặt sản phẩm và một execution component
 
 ```mermaid
 flowchart LR
-    U["Người dùng"] --> CHAT["ChatGPT Web<br/>yêu cầu CAD và xem kết quả"]
-    U --> PORTAL["Web Portal<br/>tài khoản, thiết bị, policy, lịch sử"]
-    U --> UI["Desktop Agent UI<br/>trạng thái local, kill switch, consent"]
+    U["Người dùng"] --> CHAT["ChatGPT Web<br/>yêu cầu CAD, preview, kết quả"]
+    U --> PORTAL["Web Portal<br/>account, device, policy, history"]
+    U --> UI["Desktop Agent UI<br/>local status, pause, approval"]
 
-    CHAT -->|"OAuth + MCP /mcp"| GW["Gateway application services"]
+    CHAT -->|"OAuth + MCP"| GW["FastMCP Gateway + domain services"]
     PORTAL -->|"Browser session + Portal API"| GW
     UI --> CORE["Desktop Agent Core"]
-    GW <-->|"Device-authenticated WSS"| CORE
-    CORE --> CAD["AutoCAD + AutoLISP tại máy user"]
+    GW <-->|"device-authenticated WSS cad.agent/1"| CORE
 
-    CHAT -.->|"không sở hữu"| UI
-    PORTAL -.->|"không gọi COM/LISP"| CAD
+    CORE --> BROKER["Runtime Broker"]
+    BROKER -->|"local authenticated IPC cad.host/1"| HOST["Managed .NET Host<br/>AutoCAD Full"]
+    BROKER --> LT["AutoLISP/File IPC Adapter<br/>AutoCAD LT"]
+    BROKER --> EZ["ezdxf<br/>offline/test"]
+
+    HOST --> CADF["AutoCAD Full DWG"]
+    LT --> CADLT["AutoCAD LT DWG"]
+
+    PORTAL -.->|"không gọi CAD runtime"| HOST
+    CHAT -.->|"không approve thay user"| UI
 ```
 
-| Bề mặt | Việc nên làm | Việc không nên làm |
-| --- | --- | --- |
-| ChatGPT Web | Nhận ý định, chọn device, gọi tool cấp cao, trình bày preview/result, tiếp tục self-correct | Quản device key, tự bật LISP cấp 3, tự tạo high-risk approval. |
-| Desktop Agent UI | Pair/unpair, trạng thái Gateway/AutoCAD/document, write lock, hard pause, local consent, diagnostics, update notice | Host MCP public, quản tenant, hiển thị toàn bộ audit của user, cho sửa CAD bằng UI riêng. |
-| Web Portal | Account, devices, default device, risk policy, LISP cấp 3 opt-in, activity, downloads, admin | Gửi COM/LISP trực tiếp, truy cập DB không qua application service, thay ChatGPT bằng chat riêng. |
+| Thành phần | Nên làm | Không nên làm |
+|---|---|---|
+| ChatGPT Web | Nhận ý định, chọn device, gọi tool cấp cao, trình bày runtime/capability warning, preview và result | Quản device key, chọn backend thủ công để vượt policy, tự approve high-risk |
+| Desktop Agent UI | Pair/unpair, hiển thị Gateway/AutoCAD/runtime/host/document, write lock, hard pause, local approval, diagnostics, update | Host public MCP, gọi Autodesk API từ widget, quản tenant, cho nhập raw C#/LISP/command |
+| Web Portal | Account, devices, default device, runtime/package health, policy, activity, approval, download, admin | Gọi Named Pipe/COM/LISP, đọc DB trực tiếp, thay ChatGPT bằng chat riêng |
+| Managed .NET Host | Packaged command bootstrap, host health/evidence và AutoCAD execution | OAuth, Portal, tenant policy, updater UI, Internet/public listener, arbitrary plugin execution |
 
-## 5. Nguồn sự thật của từng trạng thái
+### 4.1. Có cần UI bên trong AutoCAD không?
 
-| Dữ liệu hiển thị | Nguồn sự thật | UI được phép làm gì |
-| --- | --- | --- |
-| User identity/profile | Auth0 + `users` mapping ở Gateway | Portal hiển thị; Agent chỉ hiển thị account đã pair ở mức tối thiểu. |
-| Device ownership/revoke | Gateway SQLite `devices` | Portal rename/default/revoke; Agent không tự đổi owner. |
-| Gateway online | WSS session + heartbeat | Agent hiển thị realtime; Portal dùng last heartbeat. |
-| AutoCAD/document/busy/modal | Agent runtime + heartbeat | Agent hiển thị realtime; Portal/ChatGPT đọc snapshot/presence có timestamp. |
-| Write lock/hard pause | Agent local state, đồng bộ lên Gateway | Agent thay đổi ngay local; Portal có thể yêu cầu nhưng Agent là enforcement cuối. |
-| Risk mode | Gateway `execution_policies`, Agent giữ signed/versioned cache | Portal/Agent Settings chỉnh qua authenticated policy API; model không chỉnh. |
-| LISP cấp 3 opt-in | Gateway policy + Agent local enforcement | Chỉ trusted Portal/Agent UI của user/admin được bật; tool payload không được bật. |
-| Job/progress/result | Gateway durable job + Agent ledger/reconcile | Các UI chỉ đọc và gửi cancel/rollback request có điều kiện. |
-| Confirmation/approval | Gateway consent record, được tạo từ trusted UI | Agent/Portal tạo record đúng digest; ChatGPT tool không tự approve. |
-| ChatGPT app đang được chọn trong conversation | ChatGPT client | Portal không được khẳng định trạng thái này. |
-| Lần MCP call/OAuth thành công gần nhất | Gateway audit | Portal được hiển thị timestamp và actor/client evidence. |
-| Agent release/update policy | Signed release manifest + Gateway policy | Agent xác minh chữ ký/hash; admin chỉ chọn recommended/required version. |
+Không tạo một UI đầy đủ trong AutoCAD ở Phase 5.
 
-## 6. Desktop Agent
+Có thể có các command/palette tối thiểu, ví dụ:
 
-### 6.1. Lựa chọn công nghệ
+- `AUTOCADMCPSTATUS`: xem Host version, Agent handshake và document state;
+- `AUTOCADMCPCONNECT`: yêu cầu Agent thử lại local handshake;
+- `AUTOCADMCPDIAGNOSTICS`: tạo mã hỗ trợ đã redaction;
+- `AUTOCADMCPUNLOAD` chỉ khi unload an toàn và không có job.
 
-**Đề xuất POC/MVP: Python + PySide6 Widgets.**
+Các command này là bootstrap/support surface. Pairing, policy, approval, account và update vẫn thuộc Agent/Portal.
 
-Lý do phù hợp kiến trúc:
+## 5. Nguồn sự thật của trạng thái UI
 
-- Agent Core và AutoCAD adapters đều là Python/pywin32.
-- UI có thể gọi application-facing interface trong cùng package mà không cần Rust/JavaScript sidecar.
-- Qt for Python có `QSystemTrayIcon` cho tray/menu/notification và có `pyside6-deploy` để tạo bản phân phối Windows.
-- UI nhỏ, chủ yếu là trạng thái, button, dialog và settings; không cần web runtime riêng.
+| Dữ liệu hiển thị | Nguồn sự thật | UI được phép làm |
+|---|---|---|
+| User identity/profile | Auth0 + internal user mapping | Portal hiển thị; Agent chỉ hiện account đã pair ở mức tối thiểu |
+| Device ownership/revoke | Gateway durable device records | Portal rename/default/revoke; Agent không tự đổi owner |
+| Gateway online | WSS session + heartbeat | Agent realtime; Portal dùng timestamp/TTL |
+| AutoCAD product/release/vertical | Runtime probe + Host/adapter evidence | UI hiển thị product đã chứng minh, không đoán theo process name |
+| Runtime đang chọn | `RuntimeBroker` + capability manifest | Agent/Portal/ChatGPT hiển thị role và degradation; user không ép runtime trái policy |
+| Managed Host health | `cad.host/1` handshake, package/version/schema evidence | Agent retry/bootstrap; Portal chỉ đọc trạng thái đã đồng bộ |
+| LT adapter health | COM/File IPC/dispatcher probe | Agent hướng dẫn trusted path/dispatcher; không gọi raw LISP |
+| Active document/busy/modal | Host hoặc compatibility adapter heartbeat/events | UI hiển thị timestamp và action phù hợp |
+| Capability tiers | Canonical capability manifest + hash | UI group theo `portable_core`, `managed_standard`, `managed_advanced`, `lt_compat` |
+| Write lock/hard pause | Agent local enforcement, đồng bộ Gateway | Agent đổi ngay local; Portal có thể gửi policy request nhưng Agent là chốt cuối |
+| Risk mode | Gateway execution policy + signed/versioned Agent cache | Portal/Agent Settings chỉnh; model không chỉnh |
+| Program/preview/runtime binding | Gateway job/program records + Agent/Host evidence | UI chỉ approve exact digest/revision/runtime/package |
+| Job/progress/result | Gateway durable truth + Agent/Host ledger/reconcile | UI đọc, cancel/rollback khi state cho phép |
+| Approval | Gateway consent record tạo qua trusted human channel | Agent/Portal confirm/deny exact preview; ChatGPT không tự approve |
+| Release/update policy | Signed manifests + Gateway cohort policy | Agent verify signature/hash; admin chọn min/recommended cohort |
+| ChatGPT app đang được chọn | ChatGPT client | Portal không khẳng định |
+| Lần OAuth/MCP call thành công | Gateway audit | Portal hiển thị timestamp/evidence |
 
-Đây chưa phải dependency được duyệt. Trước pilot cần POC:
+## 6. Mô hình hiển thị runtime
 
-- đóng gói `onefile` và `standalone`, đo startup/RAM/dung lượng;
-- thử Windows 10/11, DPI 100–200%, multi-monitor và dark/light theme;
-- kiểm antivirus/SmartScreen và code-signing;
-- kiểm event-loop với asyncio/WSS/COM;
-- rà nghĩa vụ license Qt/PySide6 cho cách phân phối thực tế.
+### 6.1. Nhãn người dùng
 
-Tài liệu Qt xác nhận `QSystemTrayIcon` hỗ trợ icon, context menu và trạng thái visible; `pyside6-deploy` có cấu hình deployment reproducible và hỗ trợ `onefile`/`standalone`:
+| Runtime/domain state | Nhãn chính | Mô tả ngắn |
+|---|---|---|
+| `managed_dotnet`, primary | **Hiệu năng đầy đủ (.NET)** | AutoCAD Full đang dùng thành phần Managed .NET chính |
+| `autolisp_file_ipc`, LT primary | **Tương thích AutoCAD LT** | Runtime chuẩn dành cho AutoCAD LT 2024+ |
+| `autolisp_file_ipc`, Full fallback | **Chế độ tương thích giới hạn** | AutoCAD Full chưa dùng được Managed Host; capability giảm |
+| `plugin_required` | **Cần cài thành phần AutoCAD** | Managed Host chưa được cài/load đúng |
+| `degraded_compatibility` | **Đang chạy với khả năng giới hạn** | Chỉ tác vụ được policy/capability cho phép mới chạy |
+| `runtime_version_mismatch` | **Thành phần AutoCAD không tương thích** | Agent và Host/package cần cập nhật đúng cặp |
+| `incompatible` | **Phiên bản AutoCAD chưa được hỗ trợ** | Không nhận job cho runtime này |
+| `ezdxf_headless` | **Xử lý DXF ngoại tuyến** | Không phải phiên AutoCAD live và không authorize DWG commit |
 
-- [QSystemTrayIcon](https://doc.qt.io/qtforpython-6/PySide6/QtWidgets/QSystemTrayIcon.html)
-- [pyside6-deploy](https://doc.qt.io/qtforpython-6/deployment/deployment-pyside6-deploy.html)
+Màn hình chính ưu tiên nhãn dễ hiểu. Diagnostics mới hiển thị:
 
-### 6.2. Ranh giới code
+```text
+runtime_id=managed_dotnet
+runtime_role=primary
+host_family=R25
+host_version=0.5.0
+manifest_hash=...
+registry_version=cad.program/0
+```
+
+### 6.2. Fallback policy
+
+- Read-only `observe/query` có thể fallback nếu policy cho phép.
+- UI phải gắn badge `Khả năng giới hạn` và chỉ ra runtime thực tế.
+- Preview/commit/rollback không tự fallback.
+- Khi runtime thay đổi sau preview:
+  - nút Approve/Commit bị vô hiệu;
+  - UI hiển thị `Môi trường thực thi đã thay đổi`;
+  - user phải tạo preview mới.
+- User không được dùng dropdown runtime để vượt capability/risk policy.
+- Diagnostics có thể cho operator chọn feature flag/fallback policy, nhưng không phải setting phổ thông.
+
+## 7. Desktop Agent UI
+
+### 7.1. Lựa chọn công nghệ
+
+**Đề xuất POC/MVP vẫn là Python + PySide6 Widgets**, với điều kiện POC packaging/event-loop/license đạt.
+
+Managed .NET primary không đồng nghĩa Desktop Agent phải viết lại bằng C#:
+
+- Agent hiện sở hữu WSS, pairing, durable ledger, policy, UI, update shell và process supervision.
+- Managed Host là plug-in in-process riêng, build theo AutoCAD release family.
+- Hai process giao tiếp qua Named Pipe `cad.host/1`.
+- Tách UI Agent khỏi Autodesk assemblies giúp Agent chạy khi AutoCAD đóng và giữ LT compatibility.
+
+Trước pilot cần POC:
+
+- `onefile` và `standalone`, startup/RAM/dung lượng;
+- Windows 10/11, DPI 100–200%, multi-monitor, dark/light;
+- asyncio/WSS cùng UI event loop;
+- Named Pipe reconnect và Host unload/reload;
+- antivirus/SmartScreen/code signing;
+- Qt/PySide6 license;
+- crash isolation giữa UI, Agent Core và AutoCAD Host.
+
+### 7.2. Ranh giới code
 
 ```text
 Desktop Agent UI (PySide6)
-  -> Agent application facade / observable state
-  -> Agent Core: connection, pairing, policy, ledger, executor
-  -> AutoCAD runtime adapter: COM, File IPC, AutoLISP
+  -> Agent application facade / immutable AgentViewState
+  -> Agent Core
+       - pairing / device session / WSS
+       - policy / write lock / hard pause
+       - job ledger / reconcile
+       - process and package supervision
+       - RuntimeBroker
+            -> ManagedDotNetAdapter -> cad.host/1 -> AutoCAD Managed Host
+            -> AutoLispFileIpcAdapter -> COM/File IPC/dispatcher
+            -> EzdxfAdapter -> offline/test
 ```
 
 Quy tắc:
 
-- Widget không gọi trực tiếp `FileIPCBackend` hoặc COM.
-- UI subscribe một immutable `AgentViewState` và gửi typed intent như `retry_autocad`, `set_write_lock`, `approve_preview`.
-- Agent Core không import widget cụ thể; có thể chạy headless trong test.
-- UI thread không chạy WSS/COM blocking operation.
-- Đóng cửa sổ chỉ hide xuống tray; menu `Thoát Agent` mới dừng process sau khi kiểm job đang chạy.
+- Widget không gọi COM, File IPC, Named Pipe hoặc Autodesk API trực tiếp.
+- UI gửi typed intent như `retry_gateway`, `retry_runtime_probe`, `install_host`, `set_write_lock`, `approve_preview`.
+- Agent Core không import widget cụ thể và phải chạy headless trong test.
+- UI thread không chạy WSS, COM, pipe hoặc file wait blocking.
+- Host crash/reload không được làm UI process crash.
+- Đóng cửa sổ chỉ hide xuống tray; `Thoát Agent` kiểm job và Host state trước khi dừng.
 
-### 6.3. Cửa sổ chính
+### 7.3. Cửa sổ chính — AutoCAD Full/.NET primary
 
 ```text
-┌──────────────────────────────────────────────┐
-│  Kỹ Thuật Vàng AutoCAD Agent                 │
-├──────────────────────────────────────────────┤
-│  Thiết bị: PC Văn phòng              ● Sẵn sàng│
-│                                              │
-│  Máy chủ                         ● Đã kết nối │
-│  AutoCAD                         ● Đã kết nối │
-│  Bản vẽ                          mat-bich.dwg  │
-│  Tác vụ                          Không có      │
-│                                              │
-│  Cho phép ChatGPT chỉnh sửa          [ BẬT ]  │
-│  Chế độ an toàn                     Cân bằng  │
-│                                              │
-│  [ Kết nối lại ]       [ Mở trang quản lý ]  │
-│                                              │
-│  Cài đặt nâng cao · Hỗ trợ · Phiên bản 1.2.0 │
-└──────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────┐
+│  Kỹ Thuật Vàng AutoCAD Agent                       │
+├────────────────────────────────────────────────────┤
+│  Thiết bị: PC Văn phòng                  ● Sẵn sàng │
+│                                                    │
+│  Máy chủ                               ● Đã kết nối │
+│  AutoCAD                  Mechanical 2025 · Đang mở │
+│  Runtime                    Hiệu năng đầy đủ (.NET) │
+│  Thành phần AutoCAD                     ● Hoạt động │
+│  Bản vẽ                               mat-bich.dwg  │
+│  Tác vụ                                Không có     │
+│                                                    │
+│  Cho phép ChatGPT chỉnh sửa                [ BẬT ]  │
+│  Chế độ an toàn                           Cân bằng  │
+│                                                    │
+│  [ Kết nối lại ]      [ Mở trang quản lý ]         │
+│                                                    │
+│  Chi tiết kỹ thuật · Hỗ trợ · Phiên bản            │
+└────────────────────────────────────────────────────┘
 ```
 
-Điều chỉnh so với wireframe nguồn:
+### 7.4. Cửa sổ chính — AutoCAD LT
 
-- Không dùng một công tắc mơ hồ “Điều khiển từ ChatGPT”. Công tắc chính chỉ rõ nó kiểm soát **write**.
-- Hiển thị `Tác vụ` để user biết Agent đang chạy job từ xa hay AutoCAD đang bận do user.
-- `Đăng xuất` được thay bằng `Gỡ liên kết thiết bị` trong Settings; đây là destructive action cần confirm.
-- `Kết nối lại` retry cả Gateway/AutoCAD theo phần đang lỗi; bình thường Agent tự reconnect.
-- `Mở AutoCAD` chỉ thêm sau POC chứng minh cách chọn đúng installation/profile. Gateway không được gửi raw executable path.
+```text
+AutoCAD                 AutoCAD LT 2024 · Đang mở
+Runtime                 Tương thích AutoCAD LT
+Thành phần AutoCAD      AutoLISP package · Hoạt động
+Khả năng                Portable core
+```
 
-### 6.4. State nội bộ và câu chữ người dùng
+Không hiển thị “thiếu .NET” như lỗi trên LT. LT không được yêu cầu cài Managed Host.
 
-Màn hình chính vẫn chỉ có vài dòng, nhưng không được làm mất các state quan trọng của kiến trúc:
+### 7.5. AutoCAD Full thiếu Managed Host
 
-| Agent state | Nhãn chính | Mô tả/hành động |
-| --- | --- | --- |
-| `offline` | Mất kết nối máy chủ | “Đang thử kết nối lại…”; cho retry và diagnostics. |
-| `connecting` | Đang kết nối | Không hiện lỗi đỏ khi vẫn trong retry window. |
-| `online_idle` | Sẵn sàng | Gateway và AutoCAD/document đều hợp lệ. |
-| `online_busy_user` | AutoCAD đang được sử dụng | Không đổ lỗi; remote job chờ hoặc từ chối theo deadline. |
-| `online_busy_remote` | ChatGPT đang thực hiện tác vụ | Hiển thị tên tác vụ dễ hiểu và nút xem chi tiết/cancel nếu còn an toàn. |
-| `modal_dialog` | AutoCAD đang chờ hộp thoại | “Hãy xử lý hộp thoại trong AutoCAD rồi thử lại.” |
-| `autocad_closed` | AutoCAD chưa mở | Cho `Thử lại`; `Mở AutoCAD` chỉ khi capability đã được chứng minh. |
-| `no_document` | Chưa mở bản vẽ | “Hãy mở một bản vẽ trong AutoCAD.” |
-| `paused_by_user` | Đã tạm dừng | Nói rõ read/write nào đang bị chặn. |
-| `update_required` | Cần cập nhật Agent | Không nhận job không tương thích; dẫn tới signed installer. |
-| `incompatible` | Phiên bản không tương thích | Hiển thị mã hỗ trợ, không show protocol internals trên màn hình chính. |
+```text
+AutoCAD                 AutoCAD 2025 · Đang mở
+Runtime                 Chưa sẵn sàng đầy đủ
+Thành phần AutoCAD      Cần cài hoặc tải lại
+Khả năng                Chỉ đọc giới hạn (nếu policy cho phép)
 
-Error kỹ thuật vẫn giữ trong diagnostic bundle dưới `cause_code`, nhưng user copy phải ngắn và có bước tiếp theo.
+[ Cài thành phần AutoCAD ] [ Xem hướng dẫn ]
+```
 
-### 6.5. Hai công tắc local khác nhau
+Nếu fallback compatibility được bật:
 
-Để giải quyết mâu thuẫn giữa `context.md` và `paused_by_user`, Agent có hai hành động:
+```text
+Runtime                 Chế độ tương thích giới hạn
+Cảnh báo                Preview/write cũ không còn hiệu lực
+```
 
-| Điều khiển | Tác dụng | Presence/read | Write |
-| --- | --- | --- | --- |
-| **Cho phép ChatGPT chỉnh sửa** | Write lock thường ngày | Gateway vẫn thấy máy; ChatGPT có thể đọc trạng thái/snapshot theo policy | OFF thì từ chối mọi write trước dispatch/execution. |
-| **Tạm dừng mọi tác vụ từ xa** | Emergency/hard pause | Chỉ heartbeat/presence và local diagnostics tiếp tục; command đọc mới cũng có thể bị từ chối | Từ chối job mới; job đang chạy cancel ở safe boundary, không gửi ESC mù. |
+### 7.6. State nội bộ và câu chữ
 
-Tray phải có hard pause vì đây là điểm xử lý nhanh nhất. Cửa sổ chính ưu tiên write lock vì dễ hiểu hơn cho dùng hằng ngày.
+| Agent/runtime state | Nhãn chính | Hành động |
+|---|---|---|
+| `offline` | Mất kết nối máy chủ | Auto reconnect, retry, diagnostics |
+| `connecting` | Đang kết nối | Không báo lỗi đỏ trong retry window |
+| `online_idle` | Sẵn sàng | Product/runtime/document hợp lệ |
+| `online_busy_user` | AutoCAD đang được sử dụng | Chờ/từ chối theo deadline |
+| `online_busy_remote` | ChatGPT đang thực hiện tác vụ | Xem chi tiết/cancel nếu safe |
+| `modal_dialog` | AutoCAD đang chờ hộp thoại | User xử lý hộp thoại |
+| `autocad_closed` | AutoCAD chưa mở | Thử lại; mở AutoCAD chỉ khi đã chứng minh |
+| `no_document` | Chưa mở bản vẽ | Mở DWG phù hợp |
+| `host_connecting` | Đang kết nối thành phần AutoCAD | Retry bounded |
+| `plugin_required` | Cần cài thành phần AutoCAD | Signed installer/bootstrap |
+| `host_not_loaded` | Thành phần AutoCAD chưa được tải | Hướng dẫn `SECURELOAD`/trusted path |
+| `runtime_version_mismatch` | Thành phần không tương thích | Cập nhật đúng package |
+| `degraded_compatibility` | Khả năng đang bị giới hạn | Xem capability và lý do |
+| `capability_missing` | Tác vụ không được hỗ trợ trên máy này | Không thay operation gần giống |
+| `runtime_changed` | Môi trường thực thi đã thay đổi | Tạo preview mới |
+| `paused_by_user` | Đã tạm dừng | Nói rõ read/write bị chặn |
+| `update_required` | Cần cập nhật trước khi chạy tác vụ mới | Signed installer, không force giữa job |
+| `outcome_unknown` | Cần kiểm tra bản vẽ | Không retry write mù |
+| `incompatible` | Phiên bản chưa được hỗ trợ | Support matrix + mã hỗ trợ |
 
-### 6.6. Ba lớp quyền không được gộp
+### 7.7. Hai công tắc local
 
-| Lớp | Nơi cấu hình | Giá trị | Mục đích |
-| --- | --- | --- | --- |
-| Device write lock | Agent và device detail trong Portal | Chỉ đọc / Cho phép chỉnh sửa | Kill switch local per device. |
-| Product risk mode | Portal/Agent Settings | An toàn / Cân bằng / Tự động | Quyết định direct, preview, confirmation, approval theo risk matrix. |
-| ChatGPT app permission | Cài đặt Apps/Plugins trong ChatGPT | Do ChatGPT cung cấp | Quyết định ChatGPT có hỏi thêm trước tool call hay không. |
+| Điều khiển | Tác dụng | Read/presence | Write |
+|---|---|---|---|
+| **Cho phép ChatGPT chỉnh sửa** | Write lock per device | Presence và read theo policy vẫn chạy | OFF từ chối write trước execution |
+| **Tạm dừng mọi tác vụ từ xa** | Emergency/hard pause | Chỉ heartbeat/local diagnostics cần thiết | Từ chối job mới; cancel ở safe boundary |
 
-Ba lựa chọn trong `context.md` được chuyển như sau:
+Hard pause phải có trong tray. Không gửi `ESC`, kill AutoCAD hoặc abort transaction mù.
 
-| Câu chữ cũ | Mapping đúng |
-| --- | --- |
-| `Chỉ xem` | Device write lock OFF. |
-| `Hỏi trước khi sửa` | Không tạo mode mới; gần nhất là product mode `An toàn`. |
-| `Cho phép sửa` | Device write lock ON, sau đó vẫn phải chọn `An toàn`, `Cân bằng` hoặc `Tự động`. |
+### 7.8. Ba lớp quyền không được gộp
 
-Đề xuất cho pilot: account mới dùng mode **An toàn**, LISP cấp 3 OFF. Đây là đề xuất UI cần được phê duyệt để đóng open question trong kế hoạch chính.
+| Lớp | Nơi cấu hình | Mục đích |
+|---|---|---|
+| Device write lock | Agent/Portal device detail | Kill switch local per device |
+| Product risk mode | Portal/Agent Settings | Direct/preview/confirmation/approval theo risk matrix |
+| ChatGPT app permission | ChatGPT | Permission phía client trước tool call |
 
-ChatGPT hiện có permission settings riêng và dùng tool annotations cùng permission đó để quyết định confirmation. Các cài đặt này không thay domain enforcement của Gateway/Agent; high-risk approval vẫn phải có trusted record đúng digest. [OpenAI – Connect from ChatGPT](https://developers.openai.com/apps-sdk/deploy/connect-chatgpt)
+`An toàn / Cân bằng / Tự động` là policy UX, **không phải runtime selector** và không mở arbitrary code.
 
-### 6.7. Confirmation và approval dialog
+Đề xuất pilot: account mới dùng `An toàn`; write lock OFF cho tới khi user chủ động bật.
 
-Agent UI là trusted channel đầu tiên ở POC C2.
+### 7.9. Confirmation và approval
+
+Approval trusted bắt đầu ở Phase 8, qua Agent tray hoặc companion web đã login.
 
 **Medium-risk confirmation:**
 
@@ -244,10 +342,12 @@ Agent UI là trusted channel đầu tiên ở POC C2.
 ChatGPT muốn thêm 18 kích thước vào mat-bich.dwg
 
 Thiết bị: PC Văn phòng
-Ảnh hưởng: 18 đối tượng mới
+AutoCAD: Mechanical 2025
+Runtime: Hiệu năng đầy đủ (.NET)
+Ảnh hưởng dự kiến: 18 đối tượng mới
 Preview: [Xem hình] [Xem tóm tắt]
 
-[Từ chối]                         [Xác nhận]
+[Từ chối]                              [Xác nhận]
 ```
 
 **High-risk approval:**
@@ -256,563 +356,578 @@ Preview: [Xem hình] [Xem tóm tắt]
 Thao tác rủi ro cao
 
 Xóa 42 đối tượng khỏi mat-bich.dwg
+Runtime: Managed .NET · Host R25 0.8.1
 Preview revision: 17
 Approval hết hạn sau: 4:32
 
-Thao tác chỉ áp dụng cho đúng preview này.
+Chỉ áp dụng cho đúng preview và runtime này.
 
-[Từ chối]                    [Phê duyệt một lần]
+[Từ chối]                     [Phê duyệt một lần]
 ```
 
-**AutoLISP cấp 3:** bổ sung intent, code size, estimated entity count, code hash rút gọn và nút xem code trong panel riêng. Sửa code, đổi document hoặc hết TTL làm dialog cũ vô hiệu. Không có nút “Luôn cho phép LISP cấp 3”.
+Approval bind tối thiểu:
+
+- user/device/document;
+- program revision/digest;
+- preview/execution digest;
+- document revision;
+- runtime ID/role/version;
+- Host/compiler/package version;
+- operation registry hash;
+- risk policy version;
+- TTL.
+
+Thay đổi bất kỳ mục nào làm consent cũ vô hiệu.
 
 Dialog không được:
 
-- chỉ hỏi `Bạn có chắc không?` mà thiếu device/document/diff;
-- nhận một boolean `confirm=true` từ tool call;
-- cho approve khi preview không rollback sạch;
-- che trạng thái `outcome_unknown` bằng thông báo “thất bại” đơn giản.
+- nhận `confirm=true` từ model;
+- chỉ hỏi “Bạn có chắc không?”;
+- approve khi preview không gắn runtime/evidence;
+- giữ nút Commit sau runtime/package change;
+- che `outcome_unknown` thành failed;
+- có nút “Luôn cho phép arbitrary LISP/C#/DLL”.
 
-Nếu outcome không xác định:
-
-```text
-Không thể xác định thao tác đã hoàn tất hay chưa.
-
-Không chạy lại lệnh. Hãy mở bản vẽ và kiểm tra thay đổi.
-[Xem chi tiết] [Mở hướng dẫn khôi phục]
-```
-
-### 6.8. System tray
+### 7.10. System tray
 
 ```text
 ● Máy chủ: Đã kết nối
-● AutoCAD: Sẵn sàng
+● AutoCAD: Mechanical 2025
+● Runtime: Hiệu năng đầy đủ (.NET)
 
 Mở Agent
-Cho phép chỉnh sửa       ✓
+Cho phép chỉnh sửa           ✓
 Tạm dừng mọi tác vụ
+Xem tác vụ hiện tại
 Mở Web Portal
 Hỗ trợ kỹ thuật
 Thoát Agent
 ```
 
-Nếu có job đang chạy, `Thoát Agent` mở confirm giải thích hậu quả; không kill process ngay. Nếu một AutoLISP command không thể cancel an toàn, UI nói rõ Agent sẽ thoát sau safe boundary hoặc chuyển outcome sang cần kiểm tra.
+Nếu Host/plugin lỗi, tray badge đổi vàng và menu có `Kiểm tra thành phần AutoCAD`.
 
-### 6.9. Pairing thay cho login truyền thống
+### 7.11. Pairing thay cho login Agent
 
-Màn hình đầu tiên có nút:
+Pairing production thuộc Phase 6.
+
+- Không có form email/password trong Agent.
+- Browser/Auth0 chỉ xác nhận owner của device key.
+- Agent lưu device credential trong DPAPI/Credential Manager.
+- Managed Host không nhận browser token, user access token hoặc device private key.
+- Host chỉ tin local Agent session đã authenticated qua pipe ACL + ephemeral handshake.
+- Revoke device đóng WSS và Agent phải invalid local Host session/command admission.
+
+`Gỡ liên kết thiết bị` không xóa account, drawing hoặc AutoCAD plug-in.
+
+### 7.12. Diagnostics và privacy
+
+Diagnostic bundle allowlist:
+
+- Agent/Windows/AutoCAD product/release/vertical;
+- runtime ID/role và degradation reason;
+- Host family/version/package hash/handshake state;
+- LT package/dispatcher version khi dùng;
+- capability manifest hash và registry version;
+- device/session/job/correlation IDs rút gọn;
+- last heartbeat, Host event và cause codes;
+- timestamp, redaction report.
+
+Không gồm:
+
+- OAuth token, device private key, pipe secret;
+- full path nhạy cảm;
+- drawing content/screenshot nếu user chưa chọn;
+- full CAD Program;
+- raw/generated AutoLISP;
+- arbitrary assembly content;
+- memory dump mặc định.
+
+Support UI nên giúp phân loại lỗi theo lớp:
 
 ```text
-Liên kết thiết bị với tài khoản
+Gateway
+Desktop Agent
+Runtime Broker
+Managed .NET Host
+AutoLISP/File IPC compatibility
+AutoCAD/document
 ```
 
-Không dùng form email/password trong Agent. Browser login chỉ xác nhận user nào sở hữu device key vừa tạo. Sau khi pair:
+### 7.13. Update UX nhiều thành phần
 
-- Agent giữ Ed25519 private key trong DPAPI/Credential Manager hoặc secret storage tương đương;
-- Gateway giữ public key, owner và trạng thái revoke;
-- WSS dùng device challenge/session token ngắn hạn;
-- Agent không cần giữ refresh token của user như danh tính thiết bị lâu dài.
+| Giai đoạn | UX |
+|---|---|
+| Phase 5 lab | Hiển thị Agent/Host/package version; cài thủ công trên máy lab; feature flag rollback |
+| Phase 6–8 | Recommended/minimum version policy; không update giữa job; consent invalid khi semantic package đổi |
+| Phase 12 pilot | Signed combined installer, staged rollout, previous known-good rollback |
+| Phase 13 production | Cohort rollout, compatibility manifest, telemetry và incident rollback |
 
-`Gỡ liên kết thiết bị` phải:
+UI chi tiết phiên bản:
 
-1. cảnh báo job đang chạy;
-2. revoke device ở Gateway khi online;
-3. xóa local device credential sau khi có bằng chứng revoke hoặc theo recovery procedure;
-4. không xóa tài khoản user hoặc drawing.
+```text
+Desktop Agent             1.4.0
+Managed Host              R25 0.6.2
+AutoLISP package          Không áp dụng
+Operation registry        cad.program/0.4
+Agent–Gateway protocol    cad.agent/1
+Agent–Host protocol       cad.host/1
+```
 
-### 6.10. Diagnostics và privacy
+LT tương ứng hiển thị `Managed Host: Không áp dụng`.
 
-Mục `Hỗ trợ kỹ thuật`:
+Gateway không gửi executable path hoặc arbitrary installer command. Agent chỉ xử lý signed manifest/package đã verify.
 
-- Kiểm tra kết nối.
-- Sao chép mã hỗ trợ.
-- Tạo diagnostic bundle.
-- Mở thư mục log.
-- Mở trang hỗ trợ.
+## 8. Web Portal
 
-Diagnostic bundle được allowlist field, không copy nguyên log folder. Tối thiểu gồm:
+### 8.1. Công nghệ và ranh giới
 
-- Agent/Windows/AutoCAD version;
-- device ID rút gọn và session state;
-- package/compiler manifest hashes;
-- last heartbeat/job/correlation IDs;
-- error/cause codes;
-- timestamp và redaction report.
+Đề xuất vẫn là Next.js App Router + TypeScript + Tailwind CSS + shadcn/ui, với Auth0 browser login, nếu POC/dependency review đạt.
 
-Không gồm token, private key, full path, drawing content, screenshot, full CAD Program hoặc full LISP cấp 3 nếu user chưa chủ động chọn đính kèm.
-
-### 6.11. Update UX
-
-| Giai đoạn | UI | Hành vi |
-| --- | --- | --- |
-| C1–C2 | `Phiên bản`, `Đã mới nhất`, `Có bản mới` | User mở/download signed installer thủ công; Agent xác minh manifest/hash/signature. |
-| Pilot hardening | `Khuyến nghị cập nhật` / `Bắt buộc cập nhật trước khi chạy job mới` | Gateway policy chọn min/recommended version; không force giữa job. |
-| Sau pilot | `Cập nhật và khởi động lại` | Chỉ sau khi signed updater, staged rollout và rollback installer được kiểm thử. |
-
-Admin action “Yêu cầu cập nhật” chỉ thay policy/notification. Nó không gửi executable path hay command tùy ý cho Agent.
-
-## 7. Web Portal
-
-### 7.1. Lựa chọn công nghệ và ranh giới
-
-**Đề xuất:** Next.js App Router + TypeScript + Tailwind CSS + shadcn/ui, dùng Auth0 cho browser login.
-
-Stack này tương thích nếu Portal là một frontend/BFF mỏng:
+Portal là frontend/BFF mỏng:
 
 ```text
 apps/web_portal/
   -> authenticated Portal API
   -> Gateway application services
-  -> repositories/domain
+  -> owner-scoped repositories/domain
 ```
 
 Không được:
 
-- import Python domain bằng workaround;
-- đọc/ghi file SQLite trực tiếp;
+- đọc/ghi SQLite trực tiếp;
 - gọi `/agent/ws` như device;
-- gọi public MCP tools để quản lý user/device;
-- chứa một bản risk engine khác với Gateway.
+- gọi `cad.host/1`;
+- gọi COM/File IPC/AutoLISP;
+- dùng public MCP tool để quản user/device;
+- chứa risk engine hoặc runtime selection engine riêng.
 
-Next.js có hướng dẫn tách authentication, session management và authorization; Portal vẫn phải kiểm authorization ở Gateway cho mọi resource, không tin route guard phía trình duyệt. [Next.js authentication guide](https://nextjs.org/docs/app/guides/authentication)
+### 8.2. Information architecture
 
-### 7.2. Information architecture MVP
+User Portal:
 
-Portal user có sáu khu vực, nhưng phần device detail chứa đầy đủ policy:
+1. Tổng quan
+2. Thiết bị
+3. Kết nối ChatGPT
+4. Hoạt động và phê duyệt
+5. Tải và cập nhật
+6. Tài khoản
 
-1. **Tổng quan**
-2. **Thiết bị**
-3. **Kết nối ChatGPT**
-4. **Hoạt động**
-5. **Tải Desktop Agent**
-6. **Tài khoản**
+Admin có route/role/API riêng.
 
-Admin dùng route/navigation riêng và role riêng.
-
-### 7.3. Tổng quan
-
-Hiển thị dữ kiện có timestamp:
+### 8.3. Tổng quan
 
 ```text
-Thiết bị online             2
-AutoCAD sẵn sàng            1
-Tác vụ đang chạy            0
-Cần bạn xác nhận            1
+Thiết bị online                 2
+AutoCAD sẵn sàng                1
+Đang dùng .NET primary          1
+Đang dùng LT compatibility      1
+Khả năng bị giới hạn            0
+Tác vụ đang chạy                0
+Cần bạn xác nhận                1
 ```
 
-Không cộng `online` từ record device chưa bị revoke. Online phải dựa trên heartbeat TTL. `AutoCAD sẵn sàng` phải loại busy/modal/no-document.
+Mọi số liệu có timestamp và dựa trên heartbeat/manifest thật.
 
-### 7.4. Thiết bị
-
-Card/list tối thiểu:
+### 8.4. Thiết bị
 
 ```text
 PC Văn phòng                                      ● Online
 
 AutoCAD Mechanical 2025
+Runtime: Hiệu năng đầy đủ (.NET)
+Host: R25 0.6.2 · Capability: managed_standard
 Bản vẽ: mat-bich.dwg
 Quyền chỉnh sửa: Bật · Chế độ: Cân bằng
-Agent 1.2.0 · Hoạt động: Vừa xong
+Agent 1.4.0 · Hoạt động: Vừa xong
 
 [Đặt mặc định] [Đổi tên] [Mở chi tiết]
 ```
 
 Device detail:
 
-- Rename.
-- Set/unset default.
-- Write lock.
-- Risk mode: An toàn/Cân bằng/Tự động.
-- Capability summary và AutoCAD/Agent version.
-- AutoLISP cấp 3 danger zone, OFF mặc định.
-- Last activity/jobs.
-- Revoke access.
-- Remove record sau revoke theo retention policy.
+- AutoCAD product/release/vertical đã chứng minh;
+- runtime role và degradation reason;
+- Host/LT package version;
+- capability tiers và unsupported summary;
+- document/revision strength;
+- write lock/risk mode;
+- runtime fallback policy ở khu vực nâng cao, không mặc định mở cho user phổ thông;
+- last jobs/activity;
+- revoke/credential rotation;
+- signed update status.
 
-`Thu hồi quyền` và `Xóa thiết bị` không đặt cạnh nhau với cùng màu/ý nghĩa:
+Không có toggle arbitrary LISP/C#/DLL.
 
-- **Revoke:** đóng session, chặn reconnect, giữ audit/job history.
-- **Remove khỏi danh sách:** chỉ được thực hiện sau revoke và theo retention; không xóa audit bắt buộc.
+### 8.5. Kết nối ChatGPT
 
-Nếu user có một device online/ready, ChatGPT/Gateway có thể chọn theo policy. Nếu có nhiều device và chưa có default phù hợp, ChatGPT phải hỏi hoặc trả danh sách; Portal không tự chuyển default theo trạng thái online.
-
-### 7.5. Kết nối ChatGPT
-
-Trang này hữu ích cho onboarding, nhưng phải dùng các nhãn có thể chứng minh:
+Giữ nguyên nguyên tắc: Portal chỉ hiển thị bằng chứng Gateway biết.
 
 ```text
-Kết nối ChatGPT với AutoCAD
-
 Máy chủ MCP: Sẵn sàng
-Lần xác thực thành công gần nhất: 10:42, 21/07/2026
-Lần dùng AutoCAD MCP gần nhất: 10:45, 21/07/2026
-
-MCP URL
-https://cad.kythuatvang.com/mcp        [Sao chép]
+Lần xác thực thành công gần nhất: ...
+Lần dùng AutoCAD MCP gần nhất: ...
 
 [Mở hướng dẫn kết nối] [Mở cài đặt ChatGPT]
 [Thu hồi quyền truy cập]
 ```
 
-Không hiển thị một boolean “Đã kết nối” nếu chỉ có health check. Gateway không biết chắc:
+Không khẳng định app đang được chọn trong conversation hiện tại.
 
-- app có còn nằm trong danh sách ChatGPT hay không;
-- app có đang được chọn trong conversation hiện tại hay không;
-- user đã đổi permission level bên trong ChatGPT hay chưa.
+### 8.6. Hoạt động và phê duyệt
 
-Đây là suy luận kiến trúc từ việc luồng cài app, chọn app trong conversation và permission settings đều nằm trong ChatGPT. Tài liệu OpenAI hiện hướng dẫn user tạo/quản lý app trong ChatGPT, nhập public `/mcp` URL, rồi chọn app trong một chat mới. [OpenAI – Connect from ChatGPT](https://developers.openai.com/apps-sdk/deploy/connect-chatgpt)
-
-`Kiểm tra kết nối` được tách thành:
-
-- `Kiểm tra máy chủ`: Portal gọi health/readiness phù hợp, không chứng minh OAuth của ChatGPT.
-- `Kiểm tra tài khoản`: xác minh Portal session/user mapping.
-- `Dùng thử trong ChatGPT`: mở hướng dẫn và yêu cầu user gọi một read-only tool; Gateway ghi nhận audit thành công.
-
-`Thu hồi quyền truy cập` phải giải thích:
-
-- Gateway/Auth0 revoke grant/session/token theo khả năng provider;
-- access token đã phát có thể còn hiệu lực tới khi hết hạn nếu không có immediate revocation/introspection;
-- user có thể cần remove/disable app trong ChatGPT để hoàn tất phía client.
-
-POC dùng developer mode. Khi phát hành rộng, copy/hướng dẫn phải chuyển sang luồng app/plugin đã publish; không bắt end user cấu hình developer mode nếu distribution model không yêu cầu.
-
-### 7.6. Hoạt động
-
-Hiển thị event summary do Gateway dựng, không render raw logs:
+Event summary thêm runtime/evidence khi có ý nghĩa:
 
 ```text
-10:42 — ChatGPT đọc trạng thái mat-bich.dwg
-10:45 — Đã tạo preview cho 18 kích thước
-10:47 — Bạn xác nhận thay đổi
+10:42 — Đọc trạng thái mat-bich.dwg · Managed .NET
+10:45 — Tạo preview 18 kích thước · Host R25
+10:47 — Bạn xác nhận preview
 10:47 — Đã thêm 18 kích thước
 ```
 
 Filter:
 
-- Device.
-- Document display name/fingerprint an toàn.
-- Thời gian.
-- Read/preview/write/rollback.
-- Thành công/thất bại/cần kiểm tra.
+- device;
+- document;
+- time;
+- read/preview/write/rollback;
+- runtime role/family;
+- success/failed/cancelled/needs attention;
+- skill/workflow khi Phase 10 mở.
 
-Event high-risk/LISP cấp 3 hiển thị code hash và link artifact theo quyền, không show full code trong table. `outcome_unknown` phải nổi bật và không được gộp vào `failed`.
+`outcome_unknown` không gộp với failed. Runtime fallback/degradation phải audit rõ.
 
-### 7.7. Tải Desktop Agent
+### 8.7. Tải và cập nhật
 
-Hiển thị:
+Portal không bắt user tự chọn `.NET Framework 4.6`, `4.8` hay `.NET 8`.
 
-- latest stable version;
-- Windows/AutoCAD versions đã được xác nhận, không viết “mọi phiên bản”;
-- release date, file size, SHA-256/signature status;
-- ba bước cài đặt;
-- link release notes và known issues.
+Download page hiển thị:
 
-OS detection chỉ là gợi ý. Server không thay đổi download tự động dựa trên User-Agent nếu có nguy cơ trả nhầm architecture/channel.
+- support matrix AutoCAD Full 2018+ theo release family đã chứng minh;
+- AutoCAD LT 2024+ compatibility;
+- Windows x64 requirement;
+- signed Desktop Agent installer;
+- Managed Host bundle components;
+- AutoLISP package cho LT;
+- release date, size, SHA-256/signature, release notes, known issues;
+- clean install/upgrade/rollback guide.
 
-### 7.8. Tài khoản
+Installer/probe chọn đúng component. LT không load Managed .NET component.
 
-MVP:
+### 8.8. Tài khoản
 
-- Display name/email từ identity provider.
-- Default risk mode.
-- Sessions/paired devices link.
-- Sign out Portal.
-- Sign out/revoke all devices với confirmation riêng.
-- Account deletion request và tác động/retention rõ ràng.
+MVP/pilot:
 
-Đổi password thực hiện qua Auth0/account provider, không tạo password form riêng trong Portal.
+- profile từ IdP;
+- default risk mode;
+- paired devices;
+- revoke all devices;
+- Portal sessions;
+- account deletion/retention rõ ràng.
 
-Billing/package chỉ thêm khi domain/subscription đã được duyệt. Không để một menu trống hoặc giá giả trong MVP.
+Billing chỉ thêm khi domain/subscription được phê duyệt.
 
-### 7.9. Admin
+### 8.9. Admin
 
-Admin có thể chung Next.js app ban đầu nhưng phải tách:
+Admin cần xem theo layer/runtime để support:
 
-- route `/admin`;
-- server-side role check;
-- API namespace;
-- audit actor/reason;
-- navigation và error boundary.
-
-MVP admin:
-
-- users/devices online và version distribution;
-- failed/unknown jobs;
+- users/devices online;
+- AutoCAD edition/release/vertical distribution;
+- runtime primary/compatibility/degraded distribution;
+- Agent/Host/LT package version distribution;
+- failed/unknown jobs theo runtime;
+- Host handshake/load/SECURELOAD errors;
 - revoke user/device;
-- cohort/feature kill switches;
-- min/recommended Agent version;
-- audit search theo ID/timestamp, không secret dump;
-- plan/quota view nếu domain đã có.
+- kill switch riêng `managed_write`, `lt_write`, high-risk và operation pack;
+- min/recommended version theo cohort;
+- audit search theo ID/time;
+- support matrix và feature rollout.
 
-Không cần chart phức tạp. Table/filter/export bounded hữu ích hơn.
+Admin không được gửi raw command, DLL path, LISP text hoặc installer command tới Agent/Host.
 
-## 8. Ba luồng danh tính độc lập
+## 9. Bốn luồng danh tính và trust độc lập
 
 ```mermaid
 sequenceDiagram
     participant U as User
-    participant P as Web Portal
+    participant P as Portal
     participant IDP as Auth0
     participant G as Gateway
     participant A as Desktop Agent
+    participant H as Managed Host
     participant C as ChatGPT
 
-    rect rgb(240, 248, 255)
-        Note over U,G: Portal session
-        U->>P: Đăng nhập
-        P->>IDP: Browser auth
-        IDP-->>P: User session
-        P->>G: Portal API as user
-    end
+    U->>P: Browser login
+    P->>IDP: Auth
+    IDP-->>P: Portal session
+    P->>G: Portal API as user
 
-    rect rgb(245, 255, 245)
-        Note over U,A: Device pairing
-        A->>A: Tạo device key
-        A->>G: Xin one-time pairing code
-        A-->>U: Mở browser xác nhận
-        U->>IDP: Đăng nhập
-        IDP-->>G: Authenticated user
-        G-->>A: Bind public key + short-lived device session
-    end
+    A->>A: Create device key
+    A->>G: Request pairing
+    U->>IDP: Confirm owner in browser
+    G-->>A: Device binding/session
 
-    rect rgb(255, 248, 240)
-        Note over U,C: ChatGPT MCP OAuth
-        U->>C: Thêm/chọn AutoCAD app
-        C->>G: MCP request / discovery
-        G-->>C: OAuth challenge + metadata
-        C->>IDP: Authorization Code + PKCE
-        IDP-->>C: Access token
-        C->>G: MCP call with bearer token
-    end
+    C->>G: MCP request
+    G-->>C: OAuth challenge
+    C->>IDP: Authorization Code + PKCE
+    IDP-->>C: User access token
+    C->>G: MCP call with bearer token
+
+    A->>H: Local pipe handshake
+    H-->>A: Host/package/runtime evidence
+    Note over A,H: No Auth0 or ChatGPT token crosses this boundary
 ```
 
-Không dùng lẫn credential:
-
 | Credential | Holder | Dùng cho | Không dùng cho |
-| --- | --- | --- | --- |
-| Portal browser session | Browser/Portal BFF | Portal API | Agent WSS hoặc MCP call thay ChatGPT. |
-| Device private key/session token | Desktop Agent | `/agent/ws` | Đăng nhập Portal hoặc đại diện user gọi MCP. |
-| ChatGPT OAuth access token | ChatGPT | `/mcp` | Lưu trong Agent hoặc truyền qua Portal UI. |
+|---|---|---|---|
+| Portal browser session | Browser/BFF | Portal API | Agent WSS hoặc Host pipe |
+| Device private key/session | Agent | Gateway WSS | Portal login/MCP/Host user identity |
+| ChatGPT OAuth token | ChatGPT | `/mcp` | Agent/Portal/Host storage |
+| Local Host session nonce/secret | Agent + Host | `cad.host/1` | Gateway/Auth0/tenant ownership |
 
-OpenAI mô tả ChatGPT là OAuth client, Auth0/IdP là authorization server và MCP Gateway là resource server; Gateway phải tự verify issuer, audience, expiry và scopes trên từng request. [OpenAI – Apps SDK authentication](https://developers.openai.com/apps-sdk/build/auth)
+Managed Host nhận command đã được Agent admission, nhưng vẫn phải validate schema, deadline, document, capability, command ID và payload hash.
 
-Việc Desktop Agent dùng Authorization Code + PKCE hay một pairing browser flow/Device Authorization Grant riêng vẫn là quyết định POC. Dù chọn cách nào, kết quả lâu dài phải là **device identity**, không phải user bearer token được giữ vô hạn trong Agent.
-
-## 9. URL và API boundary
-
-MVP ưu tiên một public origin để giảm cookie/CORS/proxy complexity:
+## 10. URL và API boundary
 
 ```text
 https://cad.kythuatvang.com/                  Web Portal
 https://cad.kythuatvang.com/mcp               FastMCP endpoint
 https://cad.kythuatvang.com/api/portal/v1/*   Portal API
 https://cad.kythuatvang.com/agent/ws          Agent WSS
-https://cad.kythuatvang.com/downloads/*       Signed installer/manifest
+https://cad.kythuatvang.com/downloads/*       Signed artifacts/manifests
 https://cad.kythuatvang.com/admin              Admin UI
 ```
 
-Route có auth riêng:
+`cad.host/1` là local Named Pipe, không có public URL và không đi qua reverse proxy.
 
-| Route | Principal | Auth |
-| --- | --- | --- |
-| `/mcp` | ChatGPT acting for user | OAuth bearer + FastMCP/domain authorization. |
-| `/api/portal/v1/*` | Browser user | Auth0-backed browser session/BFF; CSRF cho mutation. |
-| `/agent/ws` | Device | Device key challenge + short-lived session token. |
-| `/admin`, `/api/admin/v1/*` | Admin human | Browser session + server-side admin role + audit reason. |
-| `/downloads/*` | Public hoặc authenticated theo release | Signed metadata; không cho path tùy ý. |
-
-Conceptual Portal API, không phải contract implementation cuối:
+Portal API khái niệm có thể bổ sung:
 
 ```text
-GET    /api/portal/v1/me
-GET    /api/portal/v1/overview
-GET    /api/portal/v1/devices
-PATCH  /api/portal/v1/devices/{id}
-POST   /api/portal/v1/devices/{id}/revoke
-PUT    /api/portal/v1/devices/{id}/execution-policy
-GET    /api/portal/v1/activity
-GET    /api/portal/v1/chatgpt-evidence
-GET    /api/portal/v1/agent-releases/latest
-POST   /api/portal/v1/consents/{id}/confirm
-POST   /api/portal/v1/consents/{id}/deny
+GET  /api/portal/v1/devices/{id}/runtime
+GET  /api/portal/v1/devices/{id}/capabilities
+GET  /api/portal/v1/devices/{id}/packages
+POST /api/portal/v1/devices/{id}/revoke
+PUT  /api/portal/v1/devices/{id}/execution-policy
+GET  /api/portal/v1/activity
+POST /api/portal/v1/consents/{id}/confirm
+POST /api/portal/v1/consents/{id}/deny
+GET  /api/portal/v1/releases/latest
 ```
 
-Mọi endpoint nhận principal từ session, không nhận `user_id` tin cậy từ browser payload. Repository query vẫn owner-scoped như kiến trúc chính.
+Mọi principal lấy từ authenticated session, không tin `user_id` trong browser payload.
 
-Chỉ tách `agent.cad...` hoặc `api.cad...` khi có lý do vận hành rõ: independent deployment, mTLS policy, CDN/cache boundary hoặc team ownership. User-facing UI vẫn chỉ quảng bá Portal URL và MCP URL cần thiết.
-
-## 10. Onboarding chuẩn
+## 11. Onboarding chuẩn theo runtime-aware architecture
 
 ```text
-1. User vào cad.kythuatvang.com và đăng nhập.
-2. Portal cho tải signed Desktop Agent.
-3. User cài và chạy Agent trong phiên Windows của mình.
-4. Agent tạo device key và user bấm “Liên kết thiết bị”.
-5. Browser/Auth0 xác nhận account và Gateway bind public key.
-6. Agent tự kết nối Gateway, phát hiện AutoCAD và active document.
-7. Portal hiển thị “Thiết bị sẵn sàng” dựa trên heartbeat thật.
-8. User làm theo hướng dẫn thêm AutoCAD app/MCP trong ChatGPT.
-9. ChatGPT OAuth với Auth0; Gateway nhận first authenticated MCP call.
-10. Portal hiển thị “Đã ghi nhận kết nối gần đây” kèm timestamp.
-11. Từ đây user làm việc chính trong ChatGPT.
+1. User vào Portal và đăng nhập.
+2. Portal xác định Windows/AutoCAD support matrix và cho tải signed installer.
+3. Installer cài Desktop Agent.
+4. Với AutoCAD Full, installer cài đúng Managed Host bundle family.
+5. Với AutoCAD LT, installer cài compatibility package và không load Managed Host.
+6. User chạy Agent trong Windows interactive session.
+7. Agent tạo device key; user bấm Liên kết thiết bị.
+8. Browser/Auth0 xác nhận owner; Gateway bind device.
+9. Agent kết nối Gateway và probe AutoCAD product/release.
+10. RuntimeBroker handshake với Managed Host hoặc LT adapter.
+11. Agent publish owner-scoped capability manifest.
+12. Portal hiển thị runtime/package/capability readiness.
+13. User kết nối AutoCAD app với ChatGPT.
+14. Gateway ghi nhận first authenticated MCP call.
+15. User làm việc chính trong ChatGPT.
 ```
 
 Không yêu cầu end user:
 
-- tạo tunnel/subdomain riêng;
-- copy token;
 - sửa `.env`;
-- mở terminal;
-- chọn port;
-- cấu hình từng device thành một MCP server riêng.
+- copy token/device credential;
+- mở terminal/port/tunnel;
+- chọn SDK/.NET family;
+- chạy `NETLOAD` từ path do ChatGPT gửi;
+- cài Managed Host trên AutoCAD LT;
+- chọn từng primitive/tool.
 
-POC/developer mode có thể cần copy MCP URL. Luồng production published app/plugin có thể loại bỏ bước này; onboarding copy phải version theo distribution stage và tài liệu OpenAI hiện hành.
+## 12. Phân bổ UI theo Phase 5–13
 
-## 11. Phân bổ theo roadmap kiến trúc
+| Phase | UI tối thiểu | Chưa làm |
+|---:|---|---|
+| 5 — Runtime Foundation | Agent lab hiển thị product, runtime, Host handshake, document, degradation, feature flag; diagnostics .NET/LT; transaction POC chỉ lab | Production pairing, broad write, customer installer |
+| 6 — Identity/Pairing | Portal login tối thiểu, browser pairing, device list/default/revoke, two-user/two-runtime isolation | Broad customer write |
+| 7 — CAD Program v0 | Program/preview/result summary, capability missing, runtime pinning, low-risk write controls | Full disconnect recovery/approval polish |
+| 8 — Recovery/Approval/C2 | Trusted Agent/Portal approval, write lock, hard pause, rollback, outcome unknown/manual recovery | Broad operation set |
+| 9 — CAD Program v1 | Capability-aware modify/delete/pattern UI, high-risk approval, operation pack status | Skill marketplace |
+| 10 — Skill/Workflow | Skill/workflow progress, waiting for user/approval, version/support range | Scene Graph viewer lớn |
+| 11 — Scene Intelligence | Bounded entity/relation/feature summaries, confidence/evidence, artifact pagination | CAD editor/DWG viewer |
+| 12 — Packaging/Pilot | Signed installer, runtime-aware onboarding, update/rollback, companion web, support diagnostics | Broad production scale |
+| 13 — Production/Ecosystem | Quota/SLO/admin/incident UI, staged skill/capability rollout, tenant-aware support | Arbitrary third-party code |
 
-| Phase/POC | UI tối thiểu phải có | Chưa làm trong phase |
-| --- | --- | --- |
-| Phase 0–3 / A–B | Không cần UI sản phẩm; fake status/contract test | PySide6, Portal production. |
-| Phase 4 / C1 | Agent lab window: Gateway, AutoCAD, document, retry, diagnostics, hard pause; ChatGPT Web E2E | Write mode, approval, full Portal. |
-| Phase 5 / E | Pairing browser page, device list, revoke, two-user isolation, minimal Portal login | CAD Program/write. |
-| Phase 6 / D | Simulator UI/Portal representation cho risk report, preview và ba mode | Real AutoCAD commit UI. |
-| Phase 7 / F | Job status cho reconnect/outcome unknown và recovery instruction | Broad end-user polish. |
-| Phase 8 / C2 | Trusted local confirmation/approval, write lock, risk settings, rollback, LISP cấp 3 danger zone | Auto-update rộng, billing. |
-| Phase 9–10 | Skill/activity/scene summaries có bounded refs | Web CAD editor/3D viewer. |
-| Phase 11 | Full Portal/admin MVP, signed installer/update UX, retention/support/runbook | HA/mobile/team nếu chưa có nhu cầu. |
+Portal không phải big bang ở Phase 12: pairing/device pages bắt đầu Phase 6; Phase 12 hoàn thiện packaging và pilot UX.
 
-Portal không phải một “big bang” ở Phase 11: pairing page/device list tối thiểu xuất hiện từ Phase 5. Phase 11 mới hoàn tất product polish, admin và operations.
+## 13. Trạng thái tải và lỗi
 
-## 12. Trạng thái tải và lỗi trên UI
+Mọi action bất đồng bộ có ba tầng:
 
-Mọi action bất đồng bộ cần ba tầng feedback:
+1. Admission.
+2. Execution.
+3. Outcome.
 
-1. **Admission:** request đã được Gateway chấp nhận hay từ chối ngay.
-2. **Execution:** queued/waiting/running/progress hoặc waiting for user.
-3. **Outcome:** succeeded/failed/cancelled/rolled back/needs attention.
+Không dùng spinner vô hạn. UI luôn có:
 
-Không dùng spinner vô hạn. UI phải luôn có:
-
-- job/correlation support ID;
+- support/job/correlation ID;
 - timestamp cuối;
-- lý do đang chờ dễ hiểu;
-- retry chỉ khi operation/policy cho phép;
-- không hiện nút retry cho `outcome_unknown` write.
-
-Các copy mẫu:
+- runtime thực tế;
+- lý do đang chờ;
+- retry chỉ khi semantics cho phép;
+- không có retry cho `outcome_unknown` write.
 
 | Domain state/error | Copy người dùng |
-| --- | --- |
+|---|---|
+| `managed_plugin_not_loaded` | “Thành phần AutoCAD chưa được tải. Hãy kiểm tra cài đặt hoặc trusted location.” |
+| `host_version_mismatch` | “Desktop Agent và thành phần AutoCAD không tương thích. Hãy cập nhật đúng bộ.” |
+| `secureload_blocked` | “AutoCAD đã chặn thành phần vì cài đặt bảo mật. Mở hướng dẫn khắc phục.” |
+| `degraded_compatibility` | “Máy đang chạy ở chế độ tương thích với khả năng giới hạn.” |
+| `runtime_changed` | “Môi trường thực thi đã thay đổi sau khi tạo preview. Hãy tạo preview mới.” |
+| `capability_missing` | “Tác vụ này không được hỗ trợ trên phiên bản/runtime hiện tại.” |
 | `autocad_busy` | “AutoCAD đang được sử dụng. Tác vụ chưa chạy.” |
-| `modal_dialog_active` | “AutoCAD đang chờ một hộp thoại. Hãy xử lý hộp thoại rồi thử lại.” |
+| `modal_dialog_active` | “AutoCAD đang chờ một hộp thoại. Hãy xử lý rồi thử lại.” |
 | `document_changed` | “Bản vẽ đã thay đổi sau khi tạo preview. Hãy tạo preview mới.” |
-| `risk_confirmation_required` | “Cần bạn xác nhận preview trước khi tiếp tục.” |
-| `lisp_level3_disabled` | “AutoLISP nâng cao chưa được bật cho thiết bị này.” |
-| `approval_expired` | “Phê duyệt đã hết hạn vì lý do an toàn. Hãy xem preview mới.” |
-| `outcome_unknown` | “Không thể xác định thao tác đã chạy xong hay chưa. Hệ thống sẽ không tự chạy lại.” |
-| `incompatible` | “Phiên bản Agent chưa tương thích. Hãy cập nhật trước khi tiếp tục.” |
+| `risk_confirmation_required` | “Cần bạn xác nhận đúng preview trước khi tiếp tục.” |
+| `approval_expired` | “Phê duyệt đã hết hạn. Hãy xem preview mới.” |
+| `outcome_unknown` | “Không thể xác định thao tác đã hoàn tất hay chưa. Hệ thống sẽ không tự chạy lại.” |
+| `lt_version_unsupported` | “AutoCAD LT này chưa hỗ trợ runtime cần thiết. Yêu cầu LT 2024 trở lên.” |
+| `incompatible` | “Phiên bản ứng dụng chưa tương thích. Hãy cập nhật trước khi tiếp tục.” |
 
-## 13. Security và accessibility requirements
+## 14. Security, privacy và accessibility
 
-### 13.1. Security UI
+### 14.1. Security UI
 
-- Không render access token/device secret/private key.
-- Không để browser gửi owner `user_id` và tin vào nó.
-- CSRF protection cho Portal cookie mutations.
-- Re-auth hoặc recent-auth cho account deletion, revoke all, LISP cấp 3 opt-in và admin action quan trọng.
-- Approval bind digest/revision/TTL; UI hiển thị dữ liệu server ký/xác nhận, không dữ liệu model tự ghi nhãn.
-- External link/installer phải HTTPS và release signature/hash được Agent kiểm.
-- Admin impersonation nếu có phải hiện banner và audit; MVP tốt nhất chưa có impersonation.
+- Không render token, private key, pipe secret hoặc raw credential.
+- Không cho browser gửi owner `user_id` rồi tin nó.
+- CSRF cho Portal mutation.
+- Recent-auth cho revoke all, account deletion, high-risk approval và admin action.
+- Approval hiển thị dữ liệu Gateway/Agent/Host evidence, không tin label do model tự khai.
+- Không có file picker để model chọn DLL/LISP/executable.
+- Installer/link phải HTTPS, signed, hash-verified.
+- Runtime fallback/high-risk/operation pack kill switch có audit.
+- Admin impersonation nếu có phải hiện banner/audit; MVP chưa cần.
+- Managed Host không có public listener hoặc browser callback.
 
-### 13.2. Accessibility và Windows UX
+### 14.2. Accessibility và Windows UX
 
 - Keyboard navigation và visible focus.
-- Không chỉ dùng màu đỏ/xanh để biểu diễn state; có text/icon.
-- Contrast đạt WCAG AA cho Portal; dialog Agent phải đọc được ở DPI cao.
-- Vietnamese copy là mặc định; technical identifiers giữ nguyên khi cần support.
-- Button destructive có label cụ thể, không chỉ “OK”.
-- Dialog không bị ẩn sau AutoCAD; đồng thời không luôn-on-top làm gián đoạn CAD khi không cần.
-- Notification tray không chứa drawing path hoặc nội dung nhạy cảm.
+- Không chỉ dùng màu để biểu diễn runtime/state.
+- Portal đạt WCAG AA; Agent dialog hoạt động ở DPI cao.
+- Vietnamese copy mặc định; identifiers kỹ thuật chỉ ở support details.
+- Dialog approval không bị ẩn sau AutoCAD, nhưng không always-on-top vô điều kiện.
+- Tray notification không chứa full drawing path/content.
+- Badge `Compatibility` không dùng câu chữ làm user LT cảm thấy là lỗi; đây là runtime hợp lệ của LT.
+- Badge `Fallback/Degraded` phải rõ ràng vì đây là trạng thái khác với LT primary.
 
-## 14. Verification plan khi triển khai
+## 15. Verification plan
 
-### 14.1. Desktop Agent UI
+### 15.1. Desktop Agent UI
 
-- Unit test mapping mọi Agent state/error sang copy/action.
-- Test UI không gọi COM/backend trực tiếp.
+- Unit test mapping mọi Agent/runtime/Host state sang copy/action.
+- Test UI không gọi COM/File IPC/Named Pipe/backend trực tiếp.
+- Test Host unload/reload/crash không làm Agent UI crash.
+- Test Full/.NET, Full fallback, LT compatibility và no-AutoCAD.
+- Test runtime change invalid preview/approval.
+- Test write lock/hard pause enforcement khi UI restart/crash.
 - Test close-to-tray, exit during job và startup-with-Windows.
-- Test write lock/hard pause được Agent Core enforce dù UI crash/restart.
-- Test consent digest/TTL/document revision mismatch.
-- Test DPI, keyboard, multi-monitor, AutoCAD modal/busy.
-- Test installer/signature/upgrade/rollback trên clean Windows VM.
+- Test DPI, keyboard, multi-monitor, modal/busy.
+- Test diagnostics redaction theo runtime.
+- Test installer upgrade/rollback trên clean Windows VM.
 
-### 14.2. Portal
+### 15.2. Managed Host support surface
 
-- Component tests cho device/risk/activity states.
-- API tests cho owner isolation, CSRF, admin role và stale policy version.
-- Playwright E2E: login, pair device, rename/default, revoke, risk mode, consent, activity filter, download.
-- Negative E2E: user A đoán ID device/job/artifact của user B.
-- Test ChatGPT page không hiển thị “đã kết nối” chỉ vì `/healthz` trả 200.
-- Accessibility audit và responsive layout; mobile chỉ cần quản trị cơ bản, không chạy CAD.
+- Status command không lộ secret/token.
+- Host command không quản user/tenant.
+- Pipe disconnect không tự retry command.
+- Version/package mismatch hiển thị đúng ở Agent.
+- SECURELOAD/trusted-path failure có hướng dẫn cụ thể.
+- AutoCAD LT không load/register Managed Host.
 
-### 14.3. E2E ba bề mặt
+### 15.3. Portal
 
-1. Pair Agent qua Portal.
-2. ChatGPT `cad_observe` đúng device.
-3. Low-risk write theo mode.
-4. Medium-risk preview -> local confirm -> commit.
-5. High-risk preview -> approval đúng digest -> commit.
-6. Revoke device trong Portal -> socket đóng -> Agent UI đổi state -> ChatGPT call bị từ chối.
-7. Network drop -> Portal/Agent/ChatGPT cùng phản ánh `outcome_unknown`, không surface nào cho retry mù.
+- Component tests cho runtime/package/capability states.
+- API tests owner isolation, CSRF, admin role, stale policy/manifest.
+- Playwright: login, pair, rename/default, revoke, runtime health, risk mode, approval, activity, download.
+- Negative E2E: user A đoán device/job/artifact/manifest của user B.
+- Portal không hiển thị `ChatGPT đã kết nối` chỉ vì health 200.
+- Portal không cho approve sau runtime/package/document change.
 
-## 15. Definition of Done cho UI appendix
+### 15.4. E2E đa runtime
 
-- Ba surface có trách nhiệm và auth principal tách rõ.
-- Agent main screen không có thuật ngữ kỹ thuật, nhưng state mapping không làm mất busy/modal/reconnect/unknown.
-- User có write lock và hard pause rõ nghĩa.
-- Risk mode chỉ là `An toàn / Cân bằng / Tự động`; LISP cấp 3 là opt-in riêng.
-- Medium/high consent dialog hiển thị device, document, preview/diff, risk và expiry.
-- Portal không đọc DB trực tiếp hoặc gọi AutoCAD/MCP như user.
-- Trang ChatGPT chỉ hiển thị server evidence, không giả vờ sở hữu client state.
-- Pairing lưu device identity, không dùng user token làm device identity.
-- Update UX khớp phase và không cho Gateway remote-execute installer.
-- Two-user/two-device UI/API tests không rò dữ liệu chéo.
-- UI E2E đi qua C1 và C2 thật, không chỉ mock/HTTP 200.
+1. Pair một Full/.NET device và một LT device.
+2. `cad_observe` route đúng runtime và trả evidence đúng.
+3. Managed Host unload làm Full device degraded/plugin-required, không giả ready.
+4. LT vẫn observe qua compatibility path và không yêu cầu .NET.
+5. CAD Program v0 preview/commit trên Full/.NET.
+6. Portable operation trên LT chỉ chạy khi manifest hỗ trợ.
+7. Runtime đổi sau preview làm commit bị từ chối.
+8. Medium/high approval bind đúng digest/runtime/package.
+9. Network/Host drop tạo reconcile/needs attention đúng, không duplicate.
+10. Revoke đóng WSS và invalid local Host admission.
+11. Update/rollback Agent và Host theo compatibility manifest.
+12. Diagnostic bundle phân loại đúng Gateway/Agent/Host/LT/drawing.
 
-## 16. Quyết định đã chốt và còn mở
+## 16. Definition of Done
 
-### 16.1. Chốt trong phụ lục
+- ChatGPT, Agent và Portal có trách nhiệm/auth principal tách rõ.
+- Managed Host không trở thành account/network/business UI.
+- Agent UI hiển thị product, runtime role, package health, document và degradation.
+- AutoCAD Full dùng nhãn `.NET primary`; LT dùng nhãn compatibility hợp lệ.
+- Full fallback không bị nhầm với LT primary.
+- Không silent fallback cho preview/commit/rollback.
+- Runtime/package change invalid preview và approval.
+- Không còn bất kỳ UI nào bật arbitrary LISP/C#/DLL/shell.
+- PySide6 Agent có ranh giới rõ với Managed Host C#.
+- Write lock, hard pause và risk mode không bị gộp.
+- Approval bind user/device/document/runtime/package/registry/digest/TTL.
+- Portal không đọc DB hoặc gọi CAD runtime trực tiếp.
+- Pairing lưu device identity; Host không nhận Auth0/ChatGPT token.
+- Installer/update UX hỗ trợ Agent + Host + LT package có version/signature riêng.
+- LT không bị ép cài/load Managed Host.
+- Roadmap UI khớp Phase 5–13.
+- Two-user/two-device/two-runtime tests không rò dữ liệu.
+- E2E chạy trên AutoCAD thật cho Full/.NET và LT compatibility trước pilot.
+
+## 17. Quyết định đã chốt và còn mở
+
+### 17.1. Chốt trong phụ lục
 
 1. ChatGPT Web là nơi làm việc chính.
-2. Agent MVP dùng PySide6 nếu POC packaging/event-loop/license đạt.
-3. Portal có thể dùng Next.js stack nhưng chỉ là frontend/BFF của Gateway services.
-4. Agent pairing và ChatGPT OAuth là hai flow độc lập.
-5. Write lock, risk mode và ChatGPT permission là ba lớp độc lập.
-6. Portal không tuyên bố biết app đang được chọn trong ChatGPT.
-7. Auto-update không thuộc MVP C1/C2.
-8. Không xây chat/CAD editor/DWG viewer/mobile app/billing trong MVP.
+2. Desktop Agent vẫn là ứng dụng ngoài AutoCAD; Managed Host là plug-in in-process riêng.
+3. Agent MVP có thể tiếp tục dùng PySide6 nếu POC đạt; không rewrite UI sang C# chỉ vì runtime chuyển .NET.
+4. Managed Host không có login, Portal, public port hoặc arbitrary update.
+5. UI runtime-aware với primary/compatibility/fallback/degraded/unsupported.
+6. AutoCAD LT compatibility được bảo toàn và không bị coi là lỗi.
+7. Không có arbitrary AutoLISP/C#/DLL opt-in.
+8. Runtime/package change làm preview/approval cũ vô hiệu.
+9. Pairing production thuộc Phase 6; approval/recovery hoàn chỉnh thuộc Phase 8; customer installer/pilot thuộc Phase 12.
+10. Không xây chat/CAD editor/DWG viewer/mobile app/billing trong runtime foundation.
 
-### 16.2. Còn mở, cần POC/ADR
+### 17.2. Còn mở, cần POC/ADR
 
-1. PySide6 exact version, Widgets hay QML, packaging mode và Qt license path.
-2. Agent pairing dùng browser callback + one-time code, native PKCE hay Auth0 Device Authorization Grant.
-3. Trusted consent channel lâu dài ưu tiên Agent tray hay Portal; POC C2 dùng Agent trước.
-4. Default account mới có chính thức là An toàn hay Cân bằng; phụ lục đề xuất An toàn cho pilot.
-5. `Mở AutoCAD` có được hỗ trợ và chọn đúng installation/profile bằng cách nào.
-6. Portal/Next.js deploy chung host qua reverse proxy hay tách service/subdomain.
-7. Cơ chế revoke Auth0 nào tạo được trạng thái gần-real-time và UI copy tương ứng.
-8. Installer/updater, signing certificate, staged rollout và rollback technology.
-9. Published app/plugin distribution thay developer-mode onboarding vào thời điểm nào.
+1. PySide6 exact version, Widgets hay QML, packaging mode và license path.
+2. Named Pipe client library/framing và cách surface Host status an toàn.
+3. Có cần AutoCAD palette tối thiểu hay chỉ packaged commands.
+4. Managed Host auto-load/bootstrap strategy theo release family và `SECURELOAD`.
+5. Combined installer hay bootstrapper tải component theo detected AutoCAD family.
+6. Exact policy cho read-only fallback trên AutoCAD Full khi Host lỗi.
+7. Default risk mode pilot là An toàn hay Cân bằng; phụ lục đề xuất An toàn.
+8. Trusted approval lâu dài ưu tiên Agent tray hay Portal; Phase 8 phải kiểm cả hai.
+9. Published ChatGPT app distribution thay developer-mode onboarding khi nào.
+10. Signed updater, staged rollout, rollback technology và certificate lifecycle.
+11. Mức capability chi tiết nào hiển thị cho user phổ thông, user nâng cao và support.
+12. Support floor AutoCAD 2018 theo từng vertical chỉ được chốt sau real load/smoke.
 
-## 17. Nguồn tham chiếu
+## 18. Nguồn tham chiếu
 
-- [Kiến trúc FastMCP multi-user của repo](./fastmcp-multi-user-autocad-plan.md)
+- [Kiến trúc Managed .NET primary và LT compatibility](./fastmcp-multi-user-autocad-plan.md)
+- [Roadmap Phase 6–13](./Phase-6-plus.md)
 - [Nội dung thảo luận UI ban đầu](./context.md)
 - [OpenAI: Connect from ChatGPT](https://developers.openai.com/apps-sdk/deploy/connect-chatgpt)
 - [OpenAI: Apps SDK authentication](https://developers.openai.com/apps-sdk/build/auth)
 - [Qt for Python: QSystemTrayIcon](https://doc.qt.io/qtforpython-6/PySide6/QtWidgets/QSystemTrayIcon.html)
 - [Qt for Python: pyside6-deploy](https://doc.qt.io/qtforpython-6/deployment/deployment-pyside6-deploy.html)
 - [Next.js: Authentication guide](https://nextjs.org/docs/app/guides/authentication)
-- [Microsoft: Interactive Services](https://learn.microsoft.com/en-us/windows/win32/services/interactive-services)
 - [Microsoft: Credentials Management](https://learn.microsoft.com/en-us/windows/win32/secauthn/credentials-management)
-
