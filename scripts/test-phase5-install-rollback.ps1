@@ -20,18 +20,41 @@ $pluginsRoot = Join-Path $workRootPath "ApplicationPlugins"
 $receiptRoot = Join-Path $workRootPath "Receipts"
 New-Item -ItemType Directory -Path $workRootPath -Force | Out-Null
 
+function Get-Phase5FileHash([string]$Path) {
+    $stream = [System.IO.File]::OpenRead($Path)
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        -join ($hasher.ComputeHash($stream) | ForEach-Object { $_.ToString("x2") })
+    }
+    finally {
+        $hasher.Dispose()
+        $stream.Dispose()
+    }
+}
+
 function Get-BundleHash([string]$Path) {
+    $root = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $rootPrefix = $root + [System.IO.Path]::DirectorySeparatorChar
     if (-not (Test-Path -LiteralPath $Path -PathType Container)) {
         return $null
     }
     $items = foreach ($file in Get-ChildItem -LiteralPath $Path -Recurse -File |
         Sort-Object FullName) {
-        $relative = [System.IO.Path]::GetRelativePath($Path, $file.FullName).Replace("\", "/")
-        "${relative}:$((Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant())"
+        $fullPath = [System.IO.Path]::GetFullPath($file.FullName)
+        if (-not $fullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Bundle hash path escaped the package root."
+        }
+        $relative = $fullPath.Substring($rootPrefix.Length).Replace("\", "/")
+        "${relative}:$(Get-Phase5FileHash $file.FullName)"
     }
     $bytes = [System.Text.Encoding]::UTF8.GetBytes(($items -join "`n"))
-    [System.Convert]::ToHexString(
-        [System.Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        -join ($hasher.ComputeHash($bytes) | ForEach-Object { $_.ToString("x2") })
+    }
+    finally {
+        $hasher.Dispose()
+    }
 }
 
 $installV1 = Join-Path $ReleaseV1Root "Install-Phase5R25.ps1"
@@ -91,5 +114,5 @@ $evidence = [ordered]@{
 New-Item -ItemType Directory -Path ([System.IO.Path]::GetDirectoryName($evidenceFile)) -Force |
     Out-Null
 $evidence | ConvertTo-Json -Depth 5 |
-    Set-Content -LiteralPath $evidenceFile -Encoding utf8NoBOM
+    Set-Content -LiteralPath $evidenceFile -Encoding UTF8
 [pscustomobject]$evidence

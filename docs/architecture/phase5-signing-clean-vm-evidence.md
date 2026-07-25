@@ -16,7 +16,7 @@ install/upgrade/rollback and the clean-VM execution boundary.
 A 30-day, non-exportable, current-user test certificate was created:
 
 - subject: `CN=KythuatVang AutoCAD MCP Phase5 Lab`
-- thumbprint: `1383538E693BFC0D915872EFEB51735DBD8FBD8A`
+- thumbprint: `E51CAEC7891B60F18822E8E2985C10A7DAE58152`
 - EKU: Code Signing `1.3.6.1.5.5.7.3.3`
 - purpose: test only
 
@@ -24,8 +24,8 @@ Two R25 releases were produced:
 
 | Release | Release-manifest SHA-256 |
 |---|---|
-| `0.1.0-lab1` | `0d3e157f485d39590d3d5ed27abc707eee6d7078ebfcf6b716fd4d44edeabe01` |
-| `0.1.1-lab2` | `95694ace5f2c92c3426dc09576a3cc219a66d0a643220ce77919a67fe145b2eb` |
+| `0.1.0-lab1` | `f21e675b934acc54c1dbaaee8e440257e35bf86df89599df4b82cdbc0fd78df7` |
+| `0.1.1-lab2` | `3d6e2c10ee5505ad94d2fa6541fea85699fc8db5389dd0bed5a2da074a6c3cb6` |
 
 Both Managed Host DLLs and the install/rollback scripts contain Authenticode
 signatures from that exact thumbprint. Signature status is `UnknownError`
@@ -62,11 +62,11 @@ directory. Results:
 Exact aggregate hashes:
 
 - v1 installed bundle:
-  `7513400f11d09d4ffb0917296ea3f20a3aebe14593f41bea219ec0719531ef22`
+  `0f7cb7c747acb172e5d91b0f16c979846685b6f172a1c474635134b19d4f456f`
 - v2 installed bundle:
-  `f63221d1041b1d25fbec105ec4c892353000635b47f25ff48a278eb7ed37687e`
+  `f25defdde71888832be12c71351cbf734a9d78412342aae99541535dcd74ce3b`
 - restored v1:
-  `7513400f11d09d4ffb0917296ea3f20a3aebe14593f41bea219ec0719531ef22`
+  `0f7cb7c747acb172e5d91b0f16c979846685b6f172a1c474635134b19d4f456f`
 
 Machine evidence:
 

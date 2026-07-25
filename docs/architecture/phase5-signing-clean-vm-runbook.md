@@ -126,6 +126,10 @@ For a simple Vietnamese operator walkthrough, use:
 The VM must already be a clean, running, disposable Windows guest. The harness
 does not start, stop, checkpoint or restore it silently:
 
+The guest must have PowerShell 7 (`pwsh.exe`) installed. The rehearsal invokes
+that executable with a process-only execution-policy bypass; it does not change
+the guest's persistent policy.
+
 ```powershell
 $credential = Get-Credential
 .\scripts\test-phase5-clean-vm-rollback.ps1 `

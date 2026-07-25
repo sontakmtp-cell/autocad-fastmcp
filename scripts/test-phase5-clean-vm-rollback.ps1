@@ -22,6 +22,13 @@ if ($vm.State -ne "Running") {
 }
 
 $session = New-PSSession -VMName $VMName -Credential $Credential
+$guestPowerShell = Invoke-Command -Session $session -ScriptBlock {
+    $command = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+    if (-not $command) {
+        throw "PowerShell 7 (pwsh.exe) is required in the clean VM."
+    }
+    $command.Source
+}
 $guestRoot = "C:\Phase5CleanVm\$([Guid]::NewGuid().ToString('N'))"
 try {
     Invoke-Command -Session $session -ScriptBlock {
@@ -40,11 +47,11 @@ try {
 
     $guestEvidence = "$guestRoot\evidence.json"
     $result = Invoke-Command -Session $session -ScriptBlock {
-        param($Root, $Evidence)
+        param($Root, $Evidence, $PowerShellPath)
         # The disposable guest may have a restrictive machine execution policy.
         # Bypass it only for this bounded, copied rehearsal script; do not change
         # the guest's persistent policy.
-        & powershell.exe -NoLogo -NoProfile -NonInteractive `
+        & $PowerShellPath -NoLogo -NoProfile -NonInteractive `
             -ExecutionPolicy Bypass `
             -File "$Root\test-phase5-install-rollback.ps1" `
             -ReleaseV1Root "$Root\release-v1" `
@@ -54,7 +61,7 @@ try {
         if ($LASTEXITCODE -ne 0) {
             throw "Guest install/rollback rehearsal failed with exit code $LASTEXITCODE."
         }
-    } -ArgumentList $guestRoot, $guestEvidence
+    } -ArgumentList $guestRoot, $guestEvidence, $guestPowerShell
     Copy-Item -FromSession $session -LiteralPath $guestEvidence -Destination $evidenceFile
     $result
 }

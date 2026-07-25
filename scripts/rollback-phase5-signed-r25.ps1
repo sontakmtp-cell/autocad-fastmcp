@@ -11,7 +11,7 @@ $receiptFile = [System.IO.Path]::GetFullPath($ReceiptPath)
 if (-not (Test-Path -LiteralPath $receiptFile -PathType Leaf)) {
     throw "Install receipt was not found."
 }
-$receipt = Get-Content -LiteralPath $receiptFile -Raw | ConvertFrom-Json -AsHashtable
+$receipt = Get-Content -LiteralPath $receiptFile -Raw | ConvertFrom-Json
 if ($receipt.schema -ne "autocad-mcp.install-receipt/2" -or
     $receipt.status -ne "installed") {
     throw "Receipt is not an active Phase 5 installation."
@@ -30,15 +30,38 @@ if (-not $receipt.lab_only -and
     throw "Production rollback signature or timestamp is invalid."
 }
 
+function Get-Phase5FileHash([string]$Path) {
+    $stream = [System.IO.File]::OpenRead($Path)
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        -join ($hasher.ComputeHash($stream) | ForEach-Object { $_.ToString("x2") })
+    }
+    finally {
+        $hasher.Dispose()
+        $stream.Dispose()
+    }
+}
+
 function Get-Phase5BundleHash([string]$Path) {
+    $root = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $rootPrefix = $root + [System.IO.Path]::DirectorySeparatorChar
     $items = foreach ($file in Get-ChildItem -LiteralPath $Path -Recurse -File |
         Sort-Object FullName) {
-        $relative = [System.IO.Path]::GetRelativePath($Path, $file.FullName).Replace("\", "/")
-        "${relative}:$((Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant())"
+        $fullPath = [System.IO.Path]::GetFullPath($file.FullName)
+        if (-not $fullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Bundle hash path escaped the package root."
+        }
+        $relative = $fullPath.Substring($rootPrefix.Length).Replace("\", "/")
+        "${relative}:$(Get-Phase5FileHash $file.FullName)"
     }
     $bytes = [System.Text.Encoding]::UTF8.GetBytes(($items -join "`n"))
-    [System.Convert]::ToHexString(
-        [System.Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        -join ($hasher.ComputeHash($bytes) | ForEach-Object { $_.ToString("x2") })
+    }
+    finally {
+        $hasher.Dispose()
+    }
 }
 $pluginsRoot = [System.IO.Path]::GetFullPath([string]$receipt.plugins_root)
 $destination = [System.IO.Path]::GetFullPath([string]$receipt.destination)
@@ -101,10 +124,23 @@ if ($PSCmdlet.ShouldProcess($destination, "Rollback Phase 5 R25 release")) {
     }
 
     $receipt.status = "rolled_back"
-    $receipt.rolled_back_at = [DateTimeOffset]::UtcNow.ToString("O")
-    $receipt.displaced_install = $displaced
+    $rolledBackAt = [DateTimeOffset]::UtcNow.ToString("O")
+    if ($receipt.PSObject.Properties['rolled_back_at']) {
+        $receipt.rolled_back_at = $rolledBackAt
+    }
+    else {
+        Add-Member -InputObject $receipt -MemberType NoteProperty `
+            -Name rolled_back_at -Value $rolledBackAt
+    }
+    if ($receipt.PSObject.Properties['displaced_install']) {
+        $receipt.displaced_install = $displaced
+    }
+    else {
+        Add-Member -InputObject $receipt -MemberType NoteProperty `
+            -Name displaced_install -Value $displaced
+    }
     $receipt | ConvertTo-Json -Depth 5 |
-        Set-Content -LiteralPath $receiptFile -Encoding utf8NoBOM
+        Set-Content -LiteralPath $receiptFile -Encoding UTF8
     Write-Host "Rollback completed for: $destination"
     [pscustomobject]@{
         receipt_path = $receiptFile

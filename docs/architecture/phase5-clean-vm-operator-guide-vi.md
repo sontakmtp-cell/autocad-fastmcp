@@ -27,6 +27,7 @@ Khầy cần có:
 - máy ảo Hyper-V sạch tên `Phase4-Win11-Clean`;
 - tài khoản và mật khẩu đăng nhập Windows bên trong máy ảo;
 - quyền quản trị Hyper-V trên máy thật;
+- PowerShell 7 (`pwsh.exe`) bên trong máy ảo;
 - hai thư mục sau vẫn còn:
   - `D:\AI\autocad-mcp\dist\phase5-signed-r25-v1`
   - `D:\AI\autocad-mcp\dist\phase5-signed-r25-v2`
@@ -34,6 +35,21 @@ Khầy cần có:
 Nếu tên máy ảo khác, thay `Phase4-Win11-Clean` trong các lệnh bên dưới bằng tên
 thật. Nếu một trong hai thư mục release bị thiếu, dừng lại và báo tao; không tự
 tạo lại certificate hoặc release.
+
+Kiểm tra PowerShell 7 bên trong máy ảo:
+
+```powershell
+Get-Command pwsh.exe
+```
+
+Nếu chưa có, mở PowerShell trong VM bằng quyền Administrator và chạy:
+
+```powershell
+winget install --id Microsoft.PowerShell --source winget `
+  --accept-source-agreements --accept-package-agreements
+```
+
+Đóng rồi mở lại PowerShell trong VM, sau đó kiểm tra lại `Get-Command pwsh.exe`.
 
 ## Bước 1 — Mở PowerShell bằng quyền quản trị
 
@@ -159,9 +175,8 @@ Sao chép nguyên khối lệnh này:
 
 Chờ PowerShell chạy xong và hiện lại dấu nhắc lệnh. Thường chỉ mất vài phút.
 
-Harness đã tự dùng `ExecutionPolicy Bypass` chỉ cho tiến trình kiểm thử bên
-trong VM. Nó không thay đổi chính sách lâu dài của máy ảo. Vì vậy nếu thấy lỗi
-execution policy từ bản script cũ, hãy cập nhật workspace rồi chạy lại Bước 5.
+Harness tự dùng `ExecutionPolicy Bypass` chỉ cho tiến trình `pwsh.exe` kiểm thử
+bên trong VM. Nó không thay đổi chính sách lâu dài của máy ảo.
 
 ## Bước 6 — Kiểm tra kết quả
 

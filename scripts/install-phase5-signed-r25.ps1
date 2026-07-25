@@ -25,12 +25,11 @@ $manifestPath = Join-Path $releaseRootPath "release-manifest.json"
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
     throw "Signed release manifest is missing."
 }
-$actualManifestHash =
-    (Get-FileHash -LiteralPath $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
+$actualManifestHash = Get-Phase5FileHash $manifestPath
 if ($actualManifestHash -ne $expectedManifestHash) {
     throw "Signed installer release-manifest hash mismatch."
 }
-$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -AsHashtable
+$manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
 if ($manifest.schema -ne "autocad-mcp.signed-release/1" -or
     $manifest.host_family -ne "R25" -or
     $manifest.bundle_name -ne "AutocadMcp.ManagedHost.R25.bundle") {
@@ -51,15 +50,38 @@ if (-not $manifest.lab_only -and
     throw "Production installer signature or timestamp is invalid."
 }
 
+function Get-Phase5FileHash([string]$Path) {
+    $stream = [System.IO.File]::OpenRead($Path)
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        -join ($hasher.ComputeHash($stream) | ForEach-Object { $_.ToString("x2") })
+    }
+    finally {
+        $hasher.Dispose()
+        $stream.Dispose()
+    }
+}
+
 function Get-Phase5BundleHash([string]$Path) {
+    $root = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $rootPrefix = $root + [System.IO.Path]::DirectorySeparatorChar
     $items = foreach ($file in Get-ChildItem -LiteralPath $Path -Recurse -File |
         Sort-Object FullName) {
-        $relative = [System.IO.Path]::GetRelativePath($Path, $file.FullName).Replace("\", "/")
-        "${relative}:$((Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant())"
+        $fullPath = [System.IO.Path]::GetFullPath($file.FullName)
+        if (-not $fullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Bundle hash path escaped the package root."
+        }
+        $relative = $fullPath.Substring($rootPrefix.Length).Replace("\", "/")
+        "${relative}:$(Get-Phase5FileHash $file.FullName)"
     }
     $bytes = [System.Text.Encoding]::UTF8.GetBytes(($items -join "`n"))
-    [System.Convert]::ToHexString(
-        [System.Security.Cryptography.SHA256]::HashData($bytes)).ToLowerInvariant()
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        -join ($hasher.ComputeHash($bytes) | ForEach-Object { $_.ToString("x2") })
+    }
+    finally {
+        $hasher.Dispose()
+    }
 }
 
 foreach ($artifact in $manifest.artifacts) {
@@ -77,7 +99,7 @@ foreach ($artifact in $manifest.artifacts) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Release artifact is missing: $relative"
     }
-    $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+    $hash = Get-Phase5FileHash $path
     if ($hash -ne $artifact.sha256) {
         throw "Release artifact hash mismatch: $relative"
     }
@@ -145,7 +167,7 @@ if ($PSCmdlet.ShouldProcess($destination, "Install signed Phase 5 R25 release"))
     $receiptPath = Join-Path $receiptRootPath (
         "phase5-r25-{0}-{1}.json" -f (Get-Date -Format "yyyyMMdd-HHmmss"), $nonce)
     $receipt | ConvertTo-Json -Depth 5 |
-        Set-Content -LiteralPath $receiptPath -Encoding utf8NoBOM
+        Set-Content -LiteralPath $receiptPath -Encoding UTF8
     Write-Host "Installed signed R25 release at: $destination"
     [pscustomobject]@{
         receipt_path = $receiptPath
