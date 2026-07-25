@@ -15,7 +15,7 @@ from .executor import DrawingInfoExecutor
 from .ledger import CommandLedger
 from .runtime.autolisp_file_ipc import AutoLispFileIPCCadReadPort
 from .runtime.broker import RuntimeBroker
-from .runtime.managed_dotnet import ManagedDotNetCadReadPort
+from .runtime.managed_dotnet import ReloadingManagedDotNetCadReadPort
 
 
 def build_core(config: AgentConfig, *, headless: bool) -> AgentCore:
@@ -33,14 +33,13 @@ def build_core(config: AgentConfig, *, headless: bool) -> AgentCore:
         try:
             adapters.insert(
                 0,
-                ManagedDotNetCadReadPort.from_default_bootstrap(
+                ReloadingManagedDotNetCadReadPort.from_default_bootstrap(
                     agent_version=__version__,
                     expected_host_family="R25",
                 ),
             )
-        except (OSError, ValueError):
-            # The broker reports plugin_required/degraded state without making
-            # the Agent process fail when the lab Host is absent or not loaded.
+        except OSError:
+            # A missing per-user data directory must not stop the Agent.
             pass
     runtime_broker = RuntimeBroker(config, adapters)
     executor = DrawingInfoExecutor(

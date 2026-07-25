@@ -11,6 +11,7 @@ import os
 import secrets
 import struct
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -177,6 +178,14 @@ class ManagedDotNetCadReadPort:
         try:
             handshake = await self._ensure_handshake()
             result = await self._command("host.health", arguments={})
+            status = result.get("status")
+            status_errors = {
+                "no_document": "no_active_document",
+                "busy": "autocad_busy",
+                "modal_dialog": "modal_dialog_active",
+            }
+            if status != "ready" and status not in status_errors:
+                raise RuntimeError("protocol_mismatch")
         except Exception as error:
             code = self._safe_error(error)
             self._handshake = None
@@ -191,6 +200,12 @@ class ManagedDotNetCadReadPort:
             result.get("active_document_name") or result.get("document_name"),
         )
         details["handshake_state"] = "connected"
+        if status != "ready":
+            return CadPortResult(
+                False,
+                error_code=status_errors[status],
+                details=details,
+            )
         return CadPortResult(True, payload=details)
 
     async def drawing_info(self) -> CadPortResult:
@@ -201,15 +216,21 @@ class ManagedDotNetCadReadPort:
                 document_id=handshake.get("active_document_id"),
                 arguments={"include_layers": True, "max_layers": 256},
             )
+            value = dict(result)
+            layers_truncated = value.get("layers_truncated")
+            if not isinstance(layers_truncated, bool):
+                raise RuntimeError("protocol_mismatch")
+            if "truncated" in value and value["truncated"] != layers_truncated:
+                raise RuntimeError("protocol_mismatch")
+            value["truncated"] = layers_truncated
+            value.pop("layers_truncated")
+            value.setdefault("layers", [])
+            value.setdefault("layer_count", len(value["layers"]))
         except Exception as error:
             code = self._safe_error(error)
             if code in {"managed_host_unavailable", "session_rejected"}:
                 self._handshake = None
             return CadPortResult(False, error_code=code)
-        value = dict(result)
-        value.setdefault("layers", [])
-        value.setdefault("layer_count", len(value["layers"]))
-        value.setdefault("truncated", False)
         return CadPortResult(True, payload=value)
 
     def manifest(self, probe: RuntimeProbe) -> CapabilityManifest:
@@ -380,3 +401,115 @@ class ManagedDotNetCadReadPort:
             "active_document_changed",
         }
         return code if code in allowed else "managed_host_unavailable"
+
+
+class ReloadingManagedDotNetCadReadPort:
+    """Discover and reload the current Managed Host bootstrap on demand."""
+
+    runtime_id = "managed_dotnet"
+
+    def __init__(
+        self,
+        bootstrap_path: str | Path,
+        *,
+        agent_version: str,
+        expected_host_family: str | None = None,
+        adapter_factory: Callable[[Path], ManagedDotNetCadReadPort] | None = None,
+    ) -> None:
+        self._bootstrap_path = Path(bootstrap_path)
+        self._agent_version = agent_version
+        self._expected_host_family = expected_host_family
+        self._adapter_factory = adapter_factory or self._load_adapter
+        self._adapter: ManagedDotNetCadReadPort | None = None
+        self._bootstrap_hash: str | None = None
+
+    @classmethod
+    def from_default_bootstrap(
+        cls,
+        *,
+        agent_version: str,
+        expected_host_family: str | None = None,
+    ) -> "ReloadingManagedDotNetCadReadPort":
+        local = os.environ.get("LOCALAPPDATA")
+        if not local:
+            raise OSError("LOCALAPPDATA is unavailable")
+        return cls(
+            Path(local)
+            / "KythuatVang"
+            / "AutoCADMcp"
+            / "managed-host-r25.json",
+            agent_version=agent_version,
+            expected_host_family=expected_host_family,
+        )
+
+    async def probe(self) -> RuntimeProbe:
+        try:
+            adapter = self._current_adapter()
+        except (OSError, ValueError):
+            self._clear_adapter()
+            return RuntimeProbe(
+                runtime_id=self.runtime_id,
+                available=False,
+                reason="managed_host_unavailable",
+            )
+        probe = await adapter.probe()
+        if not probe.available and probe.reason in {
+            "managed_host_unavailable",
+            "session_rejected",
+        }:
+            self._clear_adapter()
+        return probe
+
+    async def health(self) -> CadPortResult:
+        return await self._call_with_reload("health")
+
+    async def drawing_info(self) -> CadPortResult:
+        return await self._call_with_reload("drawing_info")
+
+    def manifest(self, probe: RuntimeProbe) -> CapabilityManifest:
+        if self._adapter is None:
+            raise RuntimeError("managed_host_unavailable")
+        return self._adapter.manifest(probe)
+
+    async def _call_with_reload(self, operation: str) -> CadPortResult:
+        for attempt in range(2):
+            try:
+                adapter = self._current_adapter(force=attempt > 0)
+            except (OSError, ValueError):
+                self._clear_adapter()
+                return CadPortResult(False, error_code="managed_host_unavailable")
+            result = await getattr(adapter, operation)()
+            if result.error_code not in {
+                "managed_host_unavailable",
+                "session_rejected",
+            }:
+                return result
+            self._clear_adapter()
+        return result
+
+    def _current_adapter(
+        self,
+        *,
+        force: bool = False,
+    ) -> ManagedDotNetCadReadPort:
+        bootstrap = self._bootstrap_path.read_bytes()
+        bootstrap_hash = hashlib.sha256(bootstrap).hexdigest()
+        if (
+            force
+            or self._adapter is None
+            or bootstrap_hash != self._bootstrap_hash
+        ):
+            self._adapter = self._adapter_factory(self._bootstrap_path)
+            self._bootstrap_hash = bootstrap_hash
+        return self._adapter
+
+    def _load_adapter(self, path: Path) -> ManagedDotNetCadReadPort:
+        return ManagedDotNetCadReadPort.from_bootstrap(
+            path,
+            agent_version=self._agent_version,
+            expected_host_family=self._expected_host_family,
+        )
+
+    def _clear_adapter(self) -> None:
+        self._adapter = None
+        self._bootstrap_hash = None

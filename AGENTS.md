@@ -61,6 +61,9 @@ For multi-step tasks, state a brief plan:
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
 ## 5. Always use the OpenAI developer documentation MCP server if you need to work with the OpenAI API, ChatGPT Apps SDK, Codex,… without me having to explicitly ask.
+
+## 6. Bản vẽ AutoCAD tên drawing33.dwg là bản vẽ nháp chuyên dùng cho mục đích kiểm thử, Agent có toàn quyền sử dụng bản vẽ này.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

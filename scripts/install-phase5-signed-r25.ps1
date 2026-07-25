@@ -9,6 +9,92 @@ param(
 
 $ErrorActionPreference = "Stop"
 $expectedManifestHash = "__PHASE5_RELEASE_MANIFEST_SHA256__"
+
+function Assert-Phase5AuthenticodeSignature {
+    param(
+        [Parameter(Mandatory)]
+        $Signature,
+        [Parameter(Mandatory)]
+        [string]$ExpectedThumbprint,
+        [Parameter(Mandatory)]
+        [string]$Context,
+        [switch]$LabSignature
+    )
+
+    if (-not $Signature.SignerCertificate -or
+        [string]::IsNullOrWhiteSpace(
+            [string]$Signature.SignerCertificate.Thumbprint)) {
+        throw "$Context has no Authenticode signer."
+    }
+    if ($Signature.SignerCertificate.Thumbprint -ne $ExpectedThumbprint) {
+        throw "$Context signer does not match the release manifest."
+    }
+
+    $status = [string]$Signature.Status
+    $alwaysRejected = @(
+        "HashMismatch",
+        "NotSigned",
+        "NotSupported",
+        "Incompatible"
+    )
+    if ($status -in $alwaysRejected) {
+        throw "$Context Authenticode status is unsafe: $status"
+    }
+    if ($LabSignature) {
+        if ($status -in @("Valid", "NotTrusted")) {
+            return
+        }
+        $untrustedRootMessage =
+            "certificate chain processed.*terminated.*root certificate.*not trusted"
+        if ($status -eq "UnknownError" -and
+            [string]$Signature.StatusMessage -match $untrustedRootMessage) {
+            return
+        }
+        throw "$Context lab Authenticode status is invalid: $status"
+    }
+    if ($status -ne "Valid" -or -not $Signature.TimeStamperCertificate) {
+        throw "$Context production signature or timestamp is invalid."
+    }
+}
+
+function Get-Phase5FileHash([string]$Path) {
+    $stream = [System.IO.File]::OpenRead($Path)
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        -join ($hasher.ComputeHash($stream) |
+            ForEach-Object { $_.ToString("x2") })
+    }
+    finally {
+        $hasher.Dispose()
+        $stream.Dispose()
+    }
+}
+
+function Get-Phase5BundleHash([string]$Path) {
+    $root = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
+    $rootPrefix = $root + [System.IO.Path]::DirectorySeparatorChar
+    $items = foreach ($file in Get-ChildItem -LiteralPath $Path -Recurse -File |
+        Sort-Object FullName) {
+        $fullPath = [System.IO.Path]::GetFullPath($file.FullName)
+        if (-not $fullPath.StartsWith(
+                $rootPrefix,
+                [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "Bundle hash path escaped the package root."
+        }
+        $relative = $fullPath.Substring($rootPrefix.Length).Replace("\", "/")
+        "${relative}:$(Get-Phase5FileHash $file.FullName)"
+    }
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes(($items -join "`n"))
+    $hasher = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        -join ($hasher.ComputeHash($bytes) |
+            ForEach-Object { $_.ToString("x2") })
+    }
+    finally {
+        $hasher.Dispose()
+    }
+}
+
 $releaseRootPath = [System.IO.Path]::GetFullPath($ReleaseRoot)
 $pluginsRootPath = [System.IO.Path]::GetFullPath($PluginsRoot)
 $receiptRootPath = [System.IO.Path]::GetFullPath($ReceiptRoot)
@@ -40,49 +126,11 @@ if ($manifest.lab_only -and -not $LabOnly) {
 }
 
 $installerSignature = Get-AuthenticodeSignature -LiteralPath $PSCommandPath
-if ($installerSignature.SignerCertificate.Thumbprint -ne
-    $manifest.signing.certificate_thumbprint) {
-    throw "Installer signer does not match the release manifest."
-}
-if (-not $manifest.lab_only -and
-    ($installerSignature.Status -ne "Valid" -or
-     -not $installerSignature.TimeStamperCertificate)) {
-    throw "Production installer signature or timestamp is invalid."
-}
-
-function Get-Phase5FileHash([string]$Path) {
-    $stream = [System.IO.File]::OpenRead($Path)
-    $hasher = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        -join ($hasher.ComputeHash($stream) | ForEach-Object { $_.ToString("x2") })
-    }
-    finally {
-        $hasher.Dispose()
-        $stream.Dispose()
-    }
-}
-
-function Get-Phase5BundleHash([string]$Path) {
-    $root = [System.IO.Path]::GetFullPath($Path).TrimEnd('\')
-    $rootPrefix = $root + [System.IO.Path]::DirectorySeparatorChar
-    $items = foreach ($file in Get-ChildItem -LiteralPath $Path -Recurse -File |
-        Sort-Object FullName) {
-        $fullPath = [System.IO.Path]::GetFullPath($file.FullName)
-        if (-not $fullPath.StartsWith($rootPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw "Bundle hash path escaped the package root."
-        }
-        $relative = $fullPath.Substring($rootPrefix.Length).Replace("\", "/")
-        "${relative}:$(Get-Phase5FileHash $file.FullName)"
-    }
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes(($items -join "`n"))
-    $hasher = [System.Security.Cryptography.SHA256]::Create()
-    try {
-        -join ($hasher.ComputeHash($bytes) | ForEach-Object { $_.ToString("x2") })
-    }
-    finally {
-        $hasher.Dispose()
-    }
-}
+Assert-Phase5AuthenticodeSignature `
+    -Signature $installerSignature `
+    -ExpectedThumbprint $manifest.signing.certificate_thumbprint `
+    -Context "Installer" `
+    -LabSignature:$manifest.lab_only
 
 foreach ($artifact in $manifest.artifacts) {
     $relative = [string]$artifact.path
@@ -105,13 +153,11 @@ foreach ($artifact in $manifest.artifacts) {
     }
     if ($artifact.authenticode_required) {
         $signature = Get-AuthenticodeSignature -LiteralPath $path
-        if ($signature.SignerCertificate.Thumbprint -ne $artifact.signer_thumbprint) {
-            throw "Release artifact signer mismatch: $relative"
-        }
-        if (-not $manifest.lab_only -and
-            ($signature.Status -ne "Valid" -or -not $signature.TimeStamperCertificate)) {
-            throw "Production artifact signature or timestamp is invalid: $relative"
-        }
+        Assert-Phase5AuthenticodeSignature `
+            -Signature $signature `
+            -ExpectedThumbprint $artifact.signer_thumbprint `
+            -Context "Release artifact ${relative}" `
+            -LabSignature:$manifest.lab_only
     }
 }
 

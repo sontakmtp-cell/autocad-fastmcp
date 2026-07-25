@@ -13,6 +13,7 @@ from autocad_desktop_agent.executor import DrawingInfoExecutor
 from autocad_desktop_agent.runtime.broker import RuntimeBroker
 from autocad_desktop_agent.runtime.managed_dotnet import (
     ManagedDotNetCadReadPort,
+    ReloadingManagedDotNetCadReadPort,
 )
 from autocad_desktop_agent.state import (
     AgentViewState,
@@ -30,9 +31,20 @@ PACKAGE = {
 
 
 class HostTransport:
-    def __init__(self, *, family: str = "R25", crash: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        family: str = "R25",
+        crash: bool = False,
+        health_status: str = "ready",
+        layers_truncated: bool = False,
+        public_truncated: bool | None = None,
+    ) -> None:
         self.family = family
         self.crash = crash
+        self.health_status = health_status
+        self.layers_truncated = layers_truncated
+        self.public_truncated = public_truncated
         self.calls: list[str] = []
 
     async def request(self, request):
@@ -67,6 +79,7 @@ class HostTransport:
         operation = payload["operation_id"]
         result = (
             {
+                "status": self.health_status,
                 "document_name": "mat-bich.dwg",
                 "active_document": "mat-bich.dwg",
             }
@@ -77,8 +90,11 @@ class HostTransport:
                 "entity_count": 12,
                 "layer_count": 2,
                 "layers": ["0", "DIM"],
+                "layers_truncated": self.layers_truncated,
             }
         )
+        if operation != "host.health" and self.public_truncated is not None:
+            result["truncated"] = self.public_truncated
         response_payload = {
             "status": "succeeded",
             "operation_id": operation,
@@ -189,6 +205,8 @@ async def test_managed_adapter_handshake_health_and_summary_are_bounded():
     assert probe.product == "AutoCAD Mechanical"
     assert health.ok is True
     assert drawing.payload["document_name"].endswith("mat-bich.dwg")
+    assert drawing.payload["truncated"] is False
+    assert "layers_truncated" not in drawing.payload
     assert transport.calls == [
         "handshake",
         "host.health",
@@ -312,3 +330,152 @@ async def test_host_family_mismatch_and_crash_fail_closed():
 
     assert (await mismatch.probe()).reason == "runtime_version_mismatch"
     assert (await crashed.probe()).reason == "managed_host_unavailable"
+
+
+@pytest.mark.parametrize(
+    ("host_status", "expected_error"),
+    [
+        ("no_document", "no_active_document"),
+        ("busy", "autocad_busy"),
+        ("modal_dialog", "modal_dialog_active"),
+    ],
+)
+async def test_managed_health_maps_host_state(host_status, expected_error):
+    adapter = ManagedDotNetCadReadPort(
+        HostTransport(health_status=host_status),
+        session_secret=SECRET,
+        agent_version="0.1.0",
+    )
+
+    result = await adapter.health()
+
+    assert result.ok is False
+    assert result.error_code == expected_error
+    assert result.details["status"] == host_status
+    assert result.details["handshake_state"] == "connected"
+
+
+@pytest.mark.parametrize(
+    ("host_status", "expected_runtime_state"),
+    [
+        ("no_document", "no_document"),
+        ("busy", "online_busy_user"),
+        ("modal_dialog", "modal_dialog"),
+    ],
+)
+async def test_executor_reports_managed_host_state(
+    host_status,
+    expected_runtime_state,
+):
+    adapter = ManagedDotNetCadReadPort(
+        HostTransport(health_status=host_status),
+        session_secret=SECRET,
+        agent_version="0.1.0",
+    )
+    executor = DrawingInfoExecutor(
+        SimpleNamespace(),
+        PACKAGE,
+        "0.1.0",
+        runtime_broker=RuntimeBroker(config(), [adapter]),
+    )
+
+    presence = await executor.probe()
+
+    assert presence.runtime_state == expected_runtime_state
+
+
+async def test_managed_health_rejects_unknown_host_state():
+    adapter = ManagedDotNetCadReadPort(
+        HostTransport(health_status="unexpected"),
+        session_secret=SECRET,
+        agent_version="0.1.0",
+    )
+
+    result = await adapter.health()
+
+    assert result.ok is False
+    assert result.error_code == "protocol_mismatch"
+
+
+@pytest.mark.parametrize("layers_truncated", [False, True])
+async def test_managed_summary_maps_layers_truncated(layers_truncated):
+    adapter = ManagedDotNetCadReadPort(
+        HostTransport(layers_truncated=layers_truncated),
+        session_secret=SECRET,
+        agent_version="0.1.0",
+    )
+
+    result = await adapter.drawing_info()
+
+    assert result.ok is True
+    assert result.payload["truncated"] is layers_truncated
+    assert "layers_truncated" not in result.payload
+
+
+async def test_managed_summary_rejects_contradictory_truncation_fields():
+    adapter = ManagedDotNetCadReadPort(
+        HostTransport(layers_truncated=True, public_truncated=False),
+        session_secret=SECRET,
+        agent_version="0.1.0",
+    )
+
+    result = await adapter.drawing_info()
+
+    assert result.ok is False
+    assert result.error_code == "protocol_mismatch"
+
+
+async def test_reloading_adapter_discovers_host_started_after_agent(tmp_path):
+    bootstrap = tmp_path / "managed-host-r25.json"
+    transports = [HostTransport()]
+
+    def factory(_path):
+        return ManagedDotNetCadReadPort(
+            transports[-1],
+            session_secret=SECRET,
+            agent_version="0.1.0",
+        )
+
+    adapter = ReloadingManagedDotNetCadReadPort(
+        bootstrap,
+        agent_version="0.1.0",
+        adapter_factory=factory,
+    )
+
+    assert (await adapter.probe()).available is False
+
+    bootstrap.write_text('{"generation": 1}', encoding="utf-8")
+
+    assert (await adapter.probe()).available is True
+    assert (await adapter.health()).ok is True
+
+
+async def test_reloading_adapter_uses_rotated_bootstrap_after_host_restart(tmp_path):
+    bootstrap = tmp_path / "managed-host-r25.json"
+    bootstrap.write_text('{"generation": 1}', encoding="utf-8")
+    transports = [HostTransport()]
+    loaded: list[HostTransport] = []
+
+    def factory(_path):
+        transport = transports[-1]
+        loaded.append(transport)
+        return ManagedDotNetCadReadPort(
+            transport,
+            session_secret=SECRET,
+            agent_version="0.1.0",
+        )
+
+    adapter = ReloadingManagedDotNetCadReadPort(
+        bootstrap,
+        agent_version="0.1.0",
+        adapter_factory=factory,
+    )
+
+    assert (await adapter.probe()).available is True
+    first = transports[-1]
+    first.crash = True
+    transports.append(HostTransport())
+    bootstrap.write_text('{"generation": 2}', encoding="utf-8")
+
+    assert (await adapter.probe()).available is True
+    assert loaded == [first, transports[-1]]

@@ -7,6 +7,54 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+function Assert-Phase5AuthenticodeSignature {
+    param(
+        [Parameter(Mandatory)]
+        $Signature,
+        [Parameter(Mandatory)]
+        [string]$ExpectedThumbprint,
+        [Parameter(Mandatory)]
+        [string]$Context,
+        [switch]$LabSignature
+    )
+
+    if (-not $Signature.SignerCertificate -or
+        [string]::IsNullOrWhiteSpace(
+            [string]$Signature.SignerCertificate.Thumbprint)) {
+        throw "$Context has no Authenticode signer."
+    }
+    if ($Signature.SignerCertificate.Thumbprint -ne $ExpectedThumbprint) {
+        throw "$Context signer does not match the install receipt."
+    }
+
+    $status = [string]$Signature.Status
+    $alwaysRejected = @(
+        "HashMismatch",
+        "NotSigned",
+        "NotSupported",
+        "Incompatible"
+    )
+    if ($status -in $alwaysRejected) {
+        throw "$Context Authenticode status is unsafe: $status"
+    }
+    if ($LabSignature) {
+        if ($status -in @("Valid", "NotTrusted")) {
+            return
+        }
+        $untrustedRootMessage =
+            "certificate chain processed.*terminated.*root certificate.*not trusted"
+        if ($status -eq "UnknownError" -and
+            [string]$Signature.StatusMessage -match $untrustedRootMessage) {
+            return
+        }
+        throw "$Context lab Authenticode status is invalid: $status"
+    }
+    if ($status -ne "Valid" -or -not $Signature.TimeStamperCertificate) {
+        throw "$Context production signature or timestamp is invalid."
+    }
+}
+
 $receiptFile = [System.IO.Path]::GetFullPath($ReceiptPath)
 if (-not (Test-Path -LiteralPath $receiptFile -PathType Leaf)) {
     throw "Install receipt was not found."
@@ -20,15 +68,11 @@ if ($receipt.lab_only -and -not $LabOnly) {
     throw "A lab installation requires explicit -LabOnly rollback."
 }
 $rollbackSignature = Get-AuthenticodeSignature -LiteralPath $PSCommandPath
-if ($rollbackSignature.SignerCertificate.Thumbprint -ne
-    $receipt.certificate_thumbprint) {
-    throw "Rollback signer does not match the install receipt."
-}
-if (-not $receipt.lab_only -and
-    ($rollbackSignature.Status -ne "Valid" -or
-     -not $rollbackSignature.TimeStamperCertificate)) {
-    throw "Production rollback signature or timestamp is invalid."
-}
+Assert-Phase5AuthenticodeSignature `
+    -Signature $rollbackSignature `
+    -ExpectedThumbprint $receipt.certificate_thumbprint `
+    -Context "Rollback" `
+    -LabSignature:$receipt.lab_only
 
 function Get-Phase5FileHash([string]$Path) {
     $stream = [System.IO.File]::OpenRead($Path)
