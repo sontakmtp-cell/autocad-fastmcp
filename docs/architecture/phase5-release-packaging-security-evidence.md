@@ -126,7 +126,7 @@ The validator checks:
 
 | Plan gate | Current result | Missing evidence |
 |---|---|---|
-| 5.4 release-family packaging | R25 engineering pass; family matrix deferred | CA certificate/timestamp and authorized clean-VM run; older families deferred by operator |
+| 5.4 release-family packaging | R25 engineering and clean-VM rollback pass; family matrix deferred | CA certificate/timestamp; older families deferred by operator |
 | 5.5 LT certification | Deferred by operator; automated regression retained | Real LT certification is not claimed |
 | 5.6 two-user/two-device isolation | Partial, repository evidence | Two authenticated users, two real devices/runtimes, revoke closes WSS and invalidates local Host session |
 | 5.7 pilot policy/telemetry | Scaffold only | Signed policy delivery/audit, telemetry ingestion and dashboards, cohort pilot, incident rollback exercise |
@@ -135,7 +135,6 @@ Exact lab gaps for the architecture Definition of Done are therefore:
 
 - production certificate/key custody and trusted timestamp evidence;
 - malware scan, SBOM, controlled builder provenance and operator approval;
-- authorized clean Windows VM install/upgrade/rollback evidence;
 - live two-user/two-device/revoke isolation;
 - production telemetry and support incident exercise.
 
@@ -163,9 +162,9 @@ same four entities. Full evidence is recorded in
 
 This closes the R25 POC restart-reconcile finding. Release policy still keeps
 `managed_write=false` because a publicly trusted CA signature/timestamp,
-authorized clean-VM evidence, two-user/two-device and pilot evidence remain
-external blockers. Older-family and LT certification are deferred by operator
-direction rather than reported as passed.
+two-user/two-device and pilot evidence remain external blockers. Older-family
+and LT certification are deferred by operator direction rather than reported as
+passed.
 
 The overall architecture DoD status from this review is:
 
@@ -173,7 +172,7 @@ The overall architecture DoD status from this review is:
 |---|---|
 | No arbitrary code/path/assembly/public listener | Pass by bounded registries, local current-user pipe and packaging validation |
 | Release family scaffold does not overclaim support | Pass |
-| Signed/versioned installer with clean rollback | Partial: R25 Authenticode lab release and exact-hash local rehearsal pass; CA timestamp and clean-VM run pending |
+| Signed/versioned installer with clean rollback | Partial: R25 Authenticode lab release and exact-hash local/clean-VM rehearsal pass; CA timestamp pending |
 | Older-than-2025 family proven | Deferred by operator; not certified |
 | LT 2024+ real smoke | Deferred by operator; not certified |
 | Two-user/two-device runtime isolation | Partial: repository evidence only |

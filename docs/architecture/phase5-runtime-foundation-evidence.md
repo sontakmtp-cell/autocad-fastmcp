@@ -118,7 +118,7 @@ to Phase 5 behavior.
 | No arbitrary code/path/assembly/public Host listener | Pass by registry/protocol/package review |
 | At least one pre-2025 build family tested | Deferred by operator; not certified |
 | Real AutoCAD LT 2024+ regression | Deferred by operator; not certified |
-| Signed installer and clean-VM rollback | Partial: self-signed Authenticode R25 and isolated exact-hash rollback pass; CA certificate/timestamp and authorized VM execution pending |
+| Signed installer and clean-VM rollback | Partial: self-signed Authenticode R25 and exact-hash local/clean-VM rollback pass; CA certificate/timestamp pending |
 | Live two-user/two-device/revoke isolation | Blocked: second identity/device lab unavailable |
 | Runtime telemetry pilot and support exercise | Blocked: production pilot unavailable |
 
@@ -126,6 +126,5 @@ Phase 5 implementation and the R25 runtime POC are complete in this branch, but
 the architecture-wide production DoD remains **partial**. Release policy
 therefore keeps `managed_write=false`, `lt_write=false`, `high_risk=false`,
 `advanced_lisp=false`, and `arbitrary_code=false`. The branch must not be
-labelled production-certified until the remaining CA/timestamp, authorized
-clean-VM, multi-user and pilot evidence exists. Deferred family/LT items remain
-explicitly uncertified.
+labelled production-certified until the remaining CA/timestamp, multi-user and
+pilot evidence exists. Deferred family/LT items remain explicitly uncertified.

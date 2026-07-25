@@ -92,16 +92,26 @@ unrelated to the signing and rollback changes.
 
 ## Clean-VM boundary
 
-The machine has Hyper-V and prior project evidence identifies
-`Phase4-Win11-Clean`, but the current non-elevated session receives:
-
-`You do not have the required permission to complete this task.`
-
-Therefore a fresh Hyper-V result is not claimed. The repository now includes
-`scripts/test-phase5-clean-vm-rollback.ps1`, which uses PowerShell Direct,
-copies both signed releases into a new guest root, runs the same exact-hash
-rehearsal and copies the evidence JSON back. It does not silently change VM
+An authorized operator ran `scripts/test-phase5-clean-vm-rollback.ps1` against
+the disposable Hyper-V guest `Phase4-Win11-Clean` using PowerShell Direct. The
+harness copied both signed releases into a new guest root and did not change VM
 power or checkpoint state.
+
+Guest evidence:
+
+- OS: `Microsoft Windows NT 10.0.26200.0`
+- PowerShell: `7.6.4`
+- clean install: `passed`
+- upgrade: `passed`
+- upgrade rollback: `passed`
+- clean-install rollback: `passed`
+- `work_root_was_absent`: `true`
+- v1 hash: `0f7cb7c747acb172e5d91b0f16c979846685b6f172a1c474635134b19d4f456f`
+- v2 hash: `f25defdde71888832be12c71351cbf734a9d78412342aae99541535dcd74ce3b`
+- restored v1 hash: `0f7cb7c747acb172e5d91b0f16c979846685b6f172a1c474635134b19d4f456f`
+
+The evidence file was copied to `dist/phase5-clean-vm-evidence.json` and
+validated locally after the run.
 
 ## Remaining production inputs
 
@@ -110,8 +120,7 @@ certification still needs:
 
 1. a CA-issued code-signing certificate and approved private-key custody;
 2. a trusted Authenticode timestamp endpoint;
-3. an authorized run against a fresh/disposable clean Windows VM;
-4. malware/SBOM/build-provenance approval.
+3. malware/SBOM/build-provenance approval.
 
 Until these external inputs exist, `managed_write` remains off and the
 self-signed artifacts must stay lab-only.

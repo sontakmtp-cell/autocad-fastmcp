@@ -140,7 +140,7 @@ $credential = Get-Credential
   -EvidencePath .\dist\phase5-clean-vm-evidence.json
 ```
 
-The current non-elevated Codex session cannot run `Get-VM` on this machine:
-Hyper-V reports insufficient authorization. A fresh clean-VM evidence file must
-therefore be produced from an authorized operator session before production
-certification.
+An authorized operator has now completed the clean-VM rehearsal for
+`Phase4-Win11-Clean`. The resulting evidence is recorded in
+`dist/phase5-clean-vm-evidence.json`; production certification still requires
+the CA certificate/timestamp and the other release gates below.
