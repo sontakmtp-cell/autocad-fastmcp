@@ -41,11 +41,19 @@ try {
     $guestEvidence = "$guestRoot\evidence.json"
     $result = Invoke-Command -Session $session -ScriptBlock {
         param($Root, $Evidence)
-        & "$Root\test-phase5-install-rollback.ps1" `
+        # The disposable guest may have a restrictive machine execution policy.
+        # Bypass it only for this bounded, copied rehearsal script; do not change
+        # the guest's persistent policy.
+        & powershell.exe -NoLogo -NoProfile -NonInteractive `
+            -ExecutionPolicy Bypass `
+            -File "$Root\test-phase5-install-rollback.ps1" `
             -ReleaseV1Root "$Root\release-v1" `
             -ReleaseV2Root "$Root\release-v2" `
             -WorkRoot "$Root\work" `
             -EvidencePath $Evidence
+        if ($LASTEXITCODE -ne 0) {
+            throw "Guest install/rollback rehearsal failed with exit code $LASTEXITCODE."
+        }
     } -ArgumentList $guestRoot, $guestEvidence
     Copy-Item -FromSession $session -LiteralPath $guestEvidence -Destination $evidenceFile
     $result

@@ -119,6 +119,10 @@ Microsoft for Windows Hyper-V guests:
 
 https://learn.microsoft.com/windows-server/virtualization/hyper-v/powershell-direct
 
+For a simple Vietnamese operator walkthrough, use:
+
+`phase5-clean-vm-operator-guide-vi.md`
+
 The VM must already be a clean, running, disposable Windows guest. The harness
 does not start, stop, checkpoint or restore it silently:
 
