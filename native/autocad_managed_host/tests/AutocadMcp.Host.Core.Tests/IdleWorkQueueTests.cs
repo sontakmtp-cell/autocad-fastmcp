@@ -67,8 +67,10 @@ public sealed class IdleWorkQueueTests
         queue.Dispose();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
-        Assert.Throws<ObjectDisposedException>(
-            () => queue.Enqueue(() => 2, CancellationToken.None));
+        Assert.Throws<ObjectDisposedException>(() =>
+        {
+            _ = queue.Enqueue(() => 2, CancellationToken.None);
+        });
     }
 
     [Fact]
