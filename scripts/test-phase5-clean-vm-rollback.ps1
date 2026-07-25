@@ -15,7 +15,14 @@ $ErrorActionPreference = "Stop"
 if ([string]::IsNullOrWhiteSpace($EvidencePath)) {
     $EvidencePath = Join-Path $PSScriptRoot "..\dist\phase5-clean-vm-evidence.json"
 }
-$evidenceFile = [System.IO.Path]::GetFullPath($EvidencePath)
+function Resolve-Phase5LocalPath([string]$Path) {
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+    return [System.IO.Path]::GetFullPath(
+        (Join-Path -Path (Get-Location).Path -ChildPath $Path))
+}
+$evidenceFile = Resolve-Phase5LocalPath $EvidencePath
 $vm = Get-VM -Name $VMName -ErrorAction Stop
 if ($vm.State -ne "Running") {
     throw "Clean VM must already be running; this harness does not change VM power state."
