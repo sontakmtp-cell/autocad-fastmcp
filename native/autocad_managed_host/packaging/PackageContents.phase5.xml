@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage
+  SchemaVersion="1.0"
+  AppVersion="0.1.0"
+  ProductCode="{C55DC577-B777-4C96-8A9B-1C958EADAE0C}"
+  UpgradeCode="{1B451DAC-0E9D-4092-8D55-6D29593FBD71}"
+  Name="AutoCAD MCP Managed Host Phase 5 Lab"
+  Description="Release-family scaffold for controlled Windows lab validation."
+  Author="Ky Thuat Vang">
+  <CompanyDetails Name="Ky Thuat Vang" />
+  <RuntimeRequirements OS="Win64" Platform="AutoCAD|ACADM" SeriesMin="R22.0" SeriesMax="R25.1" />
+  <Components>
+    <ComponentEntry AppName="AutoCAD MCP Host R22" AppType=".Net"
+      ModuleName="./Contents/R22/AutocadMcp.Host.R22.dll" PerDocument="False">
+      <RuntimeRequirements OS="Win64" Platform="AutoCAD|ACADM" SeriesMin="R22.0" SeriesMax="R22.0" />
+      <LoadReasons LoadOnAutoCADStartup="True" />
+    </ComponentEntry>
+    <ComponentEntry AppName="AutoCAD MCP Host R23" AppType=".Net"
+      ModuleName="./Contents/R23/AutocadMcp.Host.R23.dll" PerDocument="False">
+      <RuntimeRequirements OS="Win64" Platform="AutoCAD|ACADM" SeriesMin="R23.0" SeriesMax="R23.1" />
+      <LoadReasons LoadOnAutoCADStartup="True" />
+    </ComponentEntry>
+    <ComponentEntry AppName="AutoCAD MCP Host R24" AppType=".Net"
+      ModuleName="./Contents/R24/AutocadMcp.Host.R24.dll" PerDocument="False">
+      <RuntimeRequirements OS="Win64" Platform="AutoCAD|ACADM" SeriesMin="R24.0" SeriesMax="R24.3" />
+      <LoadReasons LoadOnAutoCADStartup="True" />
+    </ComponentEntry>
+    <ComponentEntry AppName="AutoCAD MCP Host R25" AppType=".Net"
+      ModuleName="./Contents/R25/AutocadMcp.Host.R25.dll" PerDocument="False">
+      <RuntimeRequirements OS="Win64" Platform="AutoCAD|ACADM" SeriesMin="R25.0" SeriesMax="R25.1" />
+      <LoadReasons LoadOnAutoCADStartup="True" />
+    </ComponentEntry>
+  </Components>
+</ApplicationPackage>

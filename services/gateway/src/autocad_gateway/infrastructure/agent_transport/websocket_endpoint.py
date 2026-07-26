@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import hmac
 import logging
+import inspect
 import uuid
 from typing import Any, Awaitable, Callable
 
@@ -117,6 +118,8 @@ async def serve_agent_websocket(
         return
     try:
         authenticated_device = authenticator.authenticate(token)
+        if inspect.isawaitable(authenticated_device):
+            authenticated_device = await authenticated_device
     except FixtureAuthError:
         await _safe_close(websocket, code=4401, reason="fixture authentication failed")
         return
@@ -130,7 +133,8 @@ async def serve_agent_websocket(
             await _send_error(websocket, "invalid_message", "hello is required first")
             await _safe_close(websocket, code=4400, reason="hello required")
             return
-        if hello.protocol_version != PROTOCOL_VERSION:
+        expected_protocol = getattr(authenticator, "protocol_version", PROTOCOL_VERSION)
+        if hello.protocol_version != expected_protocol:
             await _send_error(websocket, "incompatible", "Agent envelope version is unsupported")
             await _safe_close(websocket, code=4406, reason="incompatible protocol")
             return
@@ -138,11 +142,18 @@ async def serve_agent_websocket(
             await _send_error(websocket, "auth_failed", "device does not match fixture token")
             await _safe_close(websocket, code=4403, reason="device mismatch")
             return
-        if not authenticator.verify_hello(hello, token):
+        verified = authenticator.verify_hello(hello, token)
+        if inspect.isawaitable(verified):
+            verified = await verified
+        if not verified:
             await _send_error(websocket, "auth_failed", "fixture proof does not match token")
             await _safe_close(websocket, code=4403, reason="device proof mismatch")
             return
-        selected = negotiate_protocol(hello.protocol_min_version, hello.protocol_max_version)
+        selected = negotiate_protocol(
+            hello.protocol_min_version,
+            hello.protocol_max_version,
+            supported_versions=(expected_protocol,),
+        )
         if selected is None:
             await _send_error(websocket, "incompatible", "cad.agent/1 is not supported")
             await _safe_close(websocket, code=4406, reason="incompatible protocol")
@@ -176,9 +187,19 @@ async def serve_agent_websocket(
             package_manifest_hash=hello.package_manifest_hash,
         )
         await registry.add(connection)
+        active_check = getattr(authenticator, "is_active", None)
+        if active_check is not None:
+            active = active_check(authenticated_device)
+            if inspect.isawaitable(active):
+                active = await active
+            if not active:
+                await registry.remove(connection.device_id, connection.session_id)
+                await _safe_close(websocket, code=4403, reason="device revoked")
+                return
         await websocket.send_json(
             message_dict(
                 WelcomeMessage(
+                    protocol_version=selected,
                     session_id=session_id,
                     selected_version=selected,
                     heartbeat_interval_seconds=heartbeat_interval_seconds,
@@ -192,6 +213,14 @@ async def serve_agent_websocket(
                 code = getattr(error, "code", "incompatible")
                 if code not in {"package_mismatch", "capability_mismatch", "incompatible"}:
                     code = "incompatible"
+                logger.exception(
+                    "Agent rejected during session activation",
+                    extra={
+                        "device_id": connection.device_id,
+                        "rejection_code": code,
+                    },
+                )
+                await registry.remove(connection.device_id, connection.session_id)
                 await _send_error(websocket, code, "Agent is incompatible with Gateway policy")
                 await _safe_close(websocket, code=4406, reason=code)
                 return

@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from autocad_contracts import (
     CommandMessage,
     HelloMessage,
+    PHASE5_PROTOCOL_VERSION,
     canonical_capability_hash,
     canonical_package_manifest_hash,
     canonical_payload_hash,
@@ -42,6 +43,34 @@ def test_version_negotiation_and_discriminated_parse():
         ).model_dump()
     )
     assert isinstance(value, HelloMessage)
+
+
+def test_phase5_protocol_is_additive_and_has_no_fixture_proof():
+    hello = HelloMessage(
+        protocol_version=PHASE5_PROTOCOL_VERSION,
+        protocol_min_version=PHASE5_PROTOCOL_VERSION,
+        protocol_max_version=PHASE5_PROTOCOL_VERSION,
+        device_id="device-a",
+        device_proof="signed-proof",
+        capability_hash=canonical_capability_hash([]),
+    )
+    assert hello.fixture_proof is None
+    assert (
+        negotiate_protocol(
+            PHASE5_PROTOCOL_VERSION,
+            PHASE5_PROTOCOL_VERSION,
+            supported_versions=(PHASE5_PROTOCOL_VERSION,),
+        )
+        == PHASE5_PROTOCOL_VERSION
+    )
+    with pytest.raises(ValidationError, match="only device_proof"):
+        HelloMessage(
+            protocol_version=PHASE5_PROTOCOL_VERSION,
+            device_id="device-a",
+            fixture_proof="legacy-secret",
+            device_proof="signed-proof",
+            capability_hash=canonical_capability_hash([]),
+        )
 
 
 def test_phase4_package_manifest_is_bounded_and_hash_bound():

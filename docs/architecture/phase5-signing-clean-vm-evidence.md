@@ -1,0 +1,126 @@
+# Phase 5 R25 signing and rollback evidence
+
+Date: 2026-07-25
+
+## Scope decision
+
+The operator temporarily deferred older AutoCAD families and real LT 2024+
+certification. They are not treated as current blockers, but remain explicitly
+unsupported/uncertified.
+
+This evidence covers R25 certificate handling, Authenticode packaging,
+install/upgrade/rollback and the clean-VM execution boundary.
+
+## Authenticode lab run
+
+A 30-day, non-exportable, current-user test certificate was created:
+
+- subject: `CN=KythuatVang AutoCAD MCP Phase5 Lab`
+- thumbprint: `E51CAEC7891B60F18822E8E2985C10A7DAE58152`
+- EKU: Code Signing `1.3.6.1.5.5.7.3.3`
+- purpose: test only
+
+Two R25 releases were produced:
+
+| Release | Release-manifest SHA-256 |
+|---|---|
+| `0.1.0-lab1` | `f21e675b934acc54c1dbaaee8e440257e35bf86df89599df4b82cdbc0fd78df7` |
+| `0.1.1-lab2` | `3d6e2c10ee5505ad94d2fa6541fea85699fc8db5389dd0bed5a2da074a6c3cb6` |
+
+Both Managed Host DLLs and the install/rollback scripts contain Authenticode
+signatures from that exact thumbprint. Signature status is `UnknownError`
+because the test certificate is deliberately self-signed and was not added to
+a trusted root. No timestamp was requested in lab mode. This is expected lab
+evidence, not production trust.
+
+After the rehearsal, the exact lab certificate and its non-exportable private
+key were removed from `CurrentUser\My`. The signed lab artifacts retain the
+embedded public certificate for evidence; a future lab run must create a new
+short-lived test certificate.
+
+Production mode is fail-closed: it requires a CA-trusted certificate from the
+reviewed certificate store, a timestamp server, `Valid` Authenticode status and
+a timestamp on every DLL and installer/rollback script.
+
+## Install, upgrade and rollback rehearsal
+
+The rehearsal started with a new absent root outside the Autodesk plugins
+directory. Results:
+
+| Check | Result |
+|---|---|
+| Clean install v1 | Pass |
+| Upgrade v1 → v2 with previous-known-good backup | Pass |
+| Rollback v2 → exact v1 | Pass |
+| Rollback original clean install → destination absent | Pass |
+| Modified DLL byte rejected | Pass, `Release artifact hash mismatch` |
+| Modified release manifest rejected | Pass, installer-bound manifest hash mismatch |
+| Installed bundle changed before rollback | Pass, automatic rollback stopped |
+| Production signing without timestamp | Pass, signing stopped before release creation |
+| Lab release installed without `-LabOnly` | Pass, installer stopped before file changes |
+
+Exact aggregate hashes:
+
+- v1 installed bundle:
+  `0f7cb7c747acb172e5d91b0f16c979846685b6f172a1c474635134b19d4f456f`
+- v2 installed bundle:
+  `f25defdde71888832be12c71351cbf734a9d78412342aae99541535dcd74ce3b`
+- restored v1:
+  `0f7cb7c747acb172e5d91b0f16c979846685b6f172a1c474635134b19d4f456f`
+
+Machine evidence:
+
+- OS: `Microsoft Windows NT 10.0.26200.0`
+- PowerShell: `7.6.4`
+- evidence artifact:
+  `dist/phase5-clean-install-rollback-local.json`
+
+The rehearsal did not touch the real Autodesk `ApplicationPlugins` directory.
+
+## Automated regression
+
+- repository suite: `396 passed, 1 skipped`
+- Desktop Agent: `49 passed`
+- Managed Host Core: `24 passed`
+- packaging/signing safety: `12 passed`
+- six signing/install/rollback PowerShell scripts: parser pass
+- Phase 5 release validator: pass
+- `git diff --check`: pass
+
+The single skipped test and existing Python dependency deprecation warnings are
+unrelated to the signing and rollback changes.
+
+## Clean-VM boundary
+
+An authorized operator ran `scripts/test-phase5-clean-vm-rollback.ps1` against
+the disposable Hyper-V guest `Phase4-Win11-Clean` using PowerShell Direct. The
+harness copied both signed releases into a new guest root and did not change VM
+power or checkpoint state.
+
+Guest evidence:
+
+- OS: `Microsoft Windows NT 10.0.26200.0`
+- PowerShell: `7.6.4`
+- clean install: `passed`
+- upgrade: `passed`
+- upgrade rollback: `passed`
+- clean-install rollback: `passed`
+- `work_root_was_absent`: `true`
+- v1 hash: `0f7cb7c747acb172e5d91b0f16c979846685b6f172a1c474635134b19d4f456f`
+- v2 hash: `f25defdde71888832be12c71351cbf734a9d78412342aae99541535dcd74ce3b`
+- restored v1 hash: `0f7cb7c747acb172e5d91b0f16c979846685b6f172a1c474635134b19d4f456f`
+
+The evidence file was copied to `dist/phase5-clean-vm-evidence.json` and
+validated locally after the run.
+
+## Remaining production inputs
+
+Repository engineering for R25 signing and rollback is complete. Production
+certification still needs:
+
+1. a CA-issued code-signing certificate and approved private-key custody;
+2. a trusted Authenticode timestamp endpoint;
+3. malware/SBOM/build-provenance approval.
+
+Until these external inputs exist, `managed_write` remains off and the
+self-signed artifacts must stay lab-only.

@@ -226,3 +226,16 @@ class ConnectionRegistry:
                 )
 
         await asyncio.gather(*(close_one(connection) for connection in connections))
+
+    async def close_device(self, device_id: str, *, code: int, reason: str) -> bool:
+        connection = await self.get(device_id)
+        if connection is None:
+            return False
+        try:
+            await asyncio.wait_for(
+                connection.websocket.close(code=code, reason=reason),
+                timeout=self.close_timeout_seconds,
+            )
+        finally:
+            await self.remove(device_id, connection.session_id)
+        return True

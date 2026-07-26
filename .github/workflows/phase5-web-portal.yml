@@ -1,0 +1,60 @@
+name: Phase 5 web portal
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/web_portal/**"
+      - ".github/workflows/phase5-web-portal.yml"
+  pull_request:
+    paths:
+      - "apps/web_portal/**"
+      - ".github/workflows/phase5-web-portal.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  portal-tests:
+    name: Portal install, test, build, and Playwright
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web_portal
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: apps/web_portal/package-lock.json
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run unit and component tests
+        run: npm test
+
+      - name: Build production Portal
+        run: npm run build
+        env:
+          PORTAL_PUBLIC_ORIGIN: https://portal.example.test
+          PORTAL_GATEWAY_BASE_URL: https://gateway.example.test
+          PORTAL_SESSION_SECRET: ci-session-secret-at-least-thirty-two-characters
+          PORTAL_OIDC_ISSUER: https://issuer.example.test/
+          PORTAL_OIDC_CLIENT_ID: ci-client
+          PORTAL_OIDC_AUDIENCE: https://gateway.example.test/
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Portal owner-isolation smoke tests
+        run: npm run test:e2e

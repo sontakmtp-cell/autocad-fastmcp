@@ -13,7 +13,22 @@ ALLOWED_FIELDS = frozenset(
     {
         "agent_version",
         "autocad_version",
+        "product",
+        "edition",
+        "release_year",
+        "series",
+        "vertical",
+        "runtime_id",
+        "runtime_role",
+        "degradation_reason",
+        "host_family",
+        "host_version",
+        "host_package_version",
+        "host_package_hash",
+        "host_handshake_state",
         "capability_hash",
+        "capability_manifest_hash",
+        "registry_version",
         "package_manifest_hash",
         "heartbeat_id",
         "job_id",
@@ -25,11 +40,22 @@ ALLOWED_FIELDS = frozenset(
     }
 )
 
+SHORT_ID_FIELDS = frozenset(
+    {"heartbeat_id", "job_id", "command_id", "correlation_id"}
+)
+
 
 def export_diagnostics(
     target: str | Path, *, device_id: str, values: dict[str, Any]
 ) -> Path:
-    payload = {key: values[key] for key in sorted(ALLOWED_FIELDS) if key in values}
+    payload: dict[str, Any] = {}
+    for key in sorted(ALLOWED_FIELDS):
+        value = values.get(key)
+        if value is None or isinstance(value, (dict, list, tuple, set, bytes)):
+            continue
+        if isinstance(value, str):
+            value = value[:12] if key in SHORT_ID_FIELDS else value[:256]
+        payload[key] = value
     payload.update(
         {
             "schema": "cad.agent.diagnostics/1",
@@ -46,7 +72,11 @@ def export_diagnostics(
                     "drawing_content",
                     "screenshot",
                     "raw_lisp",
+                    "cad_program",
+                    "arbitrary_assembly",
+                    "pipe_secret",
                     "stack_trace",
+                    "memory_dump",
                 ],
             },
         }

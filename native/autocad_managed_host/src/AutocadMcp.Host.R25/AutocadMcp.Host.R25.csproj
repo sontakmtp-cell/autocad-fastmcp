@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>AutocadMcp.Host.R25</AssemblyName>
+    <RootNamespace>AutocadMcp.Host.R25</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+    <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
+    <AutoCADReferencePath Condition="'$(AutoCADReferencePath)' == ''">C:\Program Files\Autodesk\AutoCAD 2025</AutoCADReferencePath>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AutocadMcp.Host.Core\AutocadMcp.Host.Core.csproj" />
+    <Reference Include="acmgd">
+      <HintPath>$(AutoCADReferencePath)\acmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="acdbmgd">
+      <HintPath>$(AutoCADReferencePath)\acdbmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="accoremgd">
+      <HintPath>$(AutoCADReferencePath)\accoremgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

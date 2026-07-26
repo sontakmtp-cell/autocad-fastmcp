@@ -1,0 +1,27 @@
+{
+  "protocol_version": "cad.host/1",
+  "message_type": "result",
+  "session_id": "session-lab-001",
+  "command_id": "observe-001",
+  "sequence": 1,
+  "deadline_at": "2026-07-24T05:01:00+00:00",
+  "payload_hash": "59b956813263f714b8783332be01f2695dd6cb914b476d422da611546c9130ae",
+  "payload": {
+    "status": "succeeded",
+    "operation_id": "drawing.observe.summary",
+    "result": {
+      "document_id": "doc-lab-001",
+      "document_name": "sample.dwg",
+      "entity_count": 12,
+      "layer_count": 2,
+      "layers": ["0", "DIM"]
+    },
+    "runtime_evidence": {
+      "runtime_id": "managed_dotnet",
+      "runtime_role": "primary",
+      "host_family": "R25",
+      "host_version": "0.1.0",
+      "package_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  }
+}

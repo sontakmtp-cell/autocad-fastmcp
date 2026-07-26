@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import inspect
 import json
 import uuid
 from collections.abc import Callable
@@ -38,7 +39,7 @@ from .diagnostics import export_diagnostics
 from .executor import AgentExecutionError, DrawingInfoExecutor
 from .ledger import CommandLedger, LedgerConflict, TERMINAL
 from .manifest import PackageMismatch, verify_package
-from .state import AgentIntent, AgentViewState, RuntimeState
+from .state import AgentIntent, AgentViewState, RuntimeState, runtime_user_label
 
 
 class AgentCore:
@@ -48,11 +49,14 @@ class AgentCore:
         credentials: CredentialProvider,
         ledger: CommandLedger,
         executor: DrawingInfoExecutor,
+        runtime_broker: Any | None = None,
     ) -> None:
         self.config = config.validate()
         self.credentials = credentials
         self.ledger = ledger
         self.executor = executor
+        if runtime_broker is not None:
+            self.executor.set_runtime_broker(runtime_broker)
         self.package = config.package
         self._package_valid = self._refresh_package()
         self.paused = ledger.is_paused()
@@ -61,6 +65,9 @@ class AgentCore:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._observers: list[Callable[[AgentViewState], None]] = []
         self._session_id: str | None = None
+        self._protocol_version = str(
+            getattr(credentials, "protocol_version", "cad.agent/1")
+        )
         self._current_command_id: str | None = None
         self._last_ids: dict[str, Any] = {}
         self._state = AgentViewState(
@@ -73,6 +80,8 @@ class AgentCore:
             paused=self.paused,
             agent_version=__version__,
             package_version=config.package_version,
+            managed_host_enabled=config.managed_host_enabled,
+            full_compat_fallback_enabled=config.allow_full_compat_fallback,
         )
 
     @property
@@ -84,7 +93,7 @@ class AgentCore:
         callback(self._state)
 
     def handle_intent(self, intent: AgentIntent, diagnostics_target: Path | None = None) -> None:
-        if intent == AgentIntent.RETRY:
+        if intent in {AgentIntent.RETRY, AgentIntent.RETRY_RUNTIME_PROBE}:
             self._set_event(self._retry)
         elif intent in {AgentIntent.PAUSE, AgentIntent.RESUME}:
             self.set_paused(intent == AgentIntent.PAUSE)
@@ -97,6 +106,21 @@ class AgentCore:
                 values={
                     "agent_version": __version__,
                     "package_manifest_hash": canonical_package_manifest_hash([self.package]),
+                    "product": self._state.product,
+                    "edition": self._state.edition,
+                    "release_year": self._state.release_year,
+                    "series": self._state.series,
+                    "vertical": self._state.vertical,
+                    "runtime_id": self._state.runtime_id,
+                    "runtime_role": self._state.runtime_role,
+                    "degradation_reason": self._state.degradation_reason,
+                    "host_family": self._state.host_family,
+                    "host_version": self._state.host_version,
+                    "host_package_version": self._state.host_package_version,
+                    "host_package_hash": self._state.host_package_hash,
+                    "host_handshake_state": self._state.host_handshake_state,
+                    "capability_manifest_hash": self._state.capability_manifest_hash,
+                    "registry_version": self._state.registry_version,
                     **self._last_ids,
                 },
             )
@@ -149,6 +173,8 @@ class AgentCore:
             try:
                 connection_stage = "credential"
                 credential = self.credentials.load()
+                if inspect.isawaitable(credential):
+                    credential = await credential
                 connection_stage = "connect"
                 async with websockets.connect(
                     self.config.gateway_ws_url,
@@ -174,6 +200,12 @@ class AgentCore:
                         "safe_error_type": type(exc).__name__,
                     }
                 )
+                close_code = None
+                if isinstance(exc, websockets.exceptions.ConnectionClosed):
+                    frame = exc.rcvd or exc.sent
+                    close_code = frame.code if frame is not None else None
+                if close_code == 4403:
+                    self._last_ids["safe_error_code"] = "credential_revoked"
                 support_codes = {
                     "credential": "C1-AUTH-001",
                     "connect": "C1-NET-001",
@@ -213,17 +245,31 @@ class AgentCore:
     async def _run_session(self, websocket: Any, credential: str) -> None:
         self._last_ids["connection_stage"] = "hello"
         message_id = str(uuid.uuid4())
-        proof = hmac.new(
-            credential.encode("utf-8"),
-            f"{self.config.device_id}:{message_id}".encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
+        protocol_version = str(
+            getattr(self.credentials, "protocol_version", "cad.agent/1")
+        )
+        if protocol_version == "cad.agent/2":
+            proof = self.credentials.hello_proof(message_id, credential)
+            fixture_proof = None
+        else:
+            proof = hmac.new(
+                credential.encode("utf-8"),
+                f"{self.config.device_id}:{message_id}".encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            fixture_proof = "phase4-c1"
         capabilities = list(canonical_capabilities(["observe"]))
+        proof_fields = (
+            {"device_proof": proof}
+            if protocol_version == "cad.agent/2"
+            else {"fixture_proof": fixture_proof, "device_proof": proof}
+        )
         hello = HelloMessage(
+            protocol_version=protocol_version,
+            protocol_min_version=protocol_version,
+            protocol_max_version=protocol_version,
             message_id=message_id,
             device_id=self.config.device_id,
-            fixture_proof="phase4-c1",
-            device_proof=proof,
             capability_hash=canonical_capability_hash(capabilities),
             capabilities=capabilities,
             last_processed_sequence=self.ledger.last_sequence(),
@@ -234,6 +280,7 @@ class AgentCore:
             current_command_id=self._current_command_id,
             packages=[self.package],
             package_manifest_hash=canonical_package_manifest_hash([self.package]),
+            **proof_fields,
         )
         await self._send(websocket, hello)
         welcome = parse_agent_message(await websocket.recv())
@@ -395,6 +442,7 @@ class AgentCore:
             await self._send(
                 websocket,
                 ReconcileResultMessage(
+                    protocol_version=self._protocol_version,
                     session_id=self._session_id,
                     device_id=self.config.device_id,
                     job_id=descriptor.job_id,
@@ -438,6 +486,7 @@ class AgentCore:
             await self._send(
                 websocket,
                 HeartbeatMessage(
+                    protocol_version=self._protocol_version,
                     session_id=self._session_id,
                     device_id=self.config.device_id,
                     sequence=self.ledger.next_sequence(),
@@ -463,14 +512,37 @@ class AgentCore:
             autocad_state=presence.autocad_state,
             document_name=presence.document_name,
             support_code=(
-                "C1-PKG-002" if presence.runtime_state == "incompatible" else None
+                {
+                    "incompatible": "C1-PKG-002",
+                    "plugin_required": "P5-HOST-001",
+                    "host_not_loaded": "P5-HOST-002",
+                    "runtime_version_mismatch": "P5-HOST-003",
+                    "degraded_compatibility": "P5-RUNTIME-001",
+                }.get(presence.runtime_state)
             ),
+            product=getattr(presence, "product", None),
+            edition=getattr(presence, "edition", None),
+            release_year=getattr(presence, "release_year", None),
+            series=getattr(presence, "series", None),
+            runtime_id=getattr(presence, "runtime_id", None),
+            runtime_role=getattr(presence, "runtime_role", None),
+            host_family=getattr(presence, "host_family", None),
+            host_version=getattr(presence, "host_version", None),
+            host_package_version=getattr(presence, "host_package_version", None),
+            host_package_hash=getattr(presence, "host_package_hash", None),
+            host_handshake_state=getattr(presence, "host_handshake_state", None),
+            degradation_reason=getattr(presence, "degradation_reason", None),
+            capability_manifest_hash=getattr(
+                presence, "capability_manifest_hash", None
+            ),
+            registry_version=getattr(presence, "registry_version", None),
         )
 
     async def _ack(self, websocket: Any, command: CommandMessage, status: str, reason: str | None = None) -> None:
         await self._send(
             websocket,
             AckMessage(
+                protocol_version=self._protocol_version,
                 session_id=self._session_id,
                 device_id=self.config.device_id,
                 job_id=command.job_id,
@@ -490,6 +562,7 @@ class AgentCore:
         sequence = self.ledger.next_sequence()
         if entry.state == "succeeded":
             message = ResultMessage(
+                protocol_version=self._protocol_version,
                 session_id=self._session_id,
                 device_id=self.config.device_id,
                 job_id=command.job_id,
@@ -501,6 +574,7 @@ class AgentCore:
             )
         elif entry.state == "cancelled":
             message = ResultMessage(
+                protocol_version=self._protocol_version,
                 session_id=self._session_id,
                 device_id=self.config.device_id,
                 job_id=command.job_id,
@@ -511,6 +585,7 @@ class AgentCore:
             )
         else:
             message = ResultMessage(
+                protocol_version=self._protocol_version,
                 session_id=self._session_id,
                 device_id=self.config.device_id,
                 job_id=command.job_id,
@@ -530,6 +605,8 @@ class AgentCore:
     def _publish(self, **changes: Any) -> None:
         values = dict(self._state.__dict__)
         values.update(changes)
+        candidate = AgentViewState(**values)
+        values["runtime_label"] = runtime_user_label(candidate)
         self._state = AgentViewState(**values)
         for callback in tuple(self._observers):
             with suppress(Exception):

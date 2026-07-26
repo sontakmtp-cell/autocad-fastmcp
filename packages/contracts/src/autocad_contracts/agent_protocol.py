@@ -9,7 +9,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from hashlib import sha256
-from typing import Any, Literal, TypeAlias, Union
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias, Union
 
 from pydantic import (
     BaseModel,
@@ -22,6 +22,7 @@ from pydantic import (
 
 
 PROTOCOL_VERSION = "cad.agent/1"
+PHASE5_PROTOCOL_VERSION = "cad.agent/2"
 REVISION_SCHEMA = "cad.revision/1"
 MAX_MESSAGE_TEXT = 2048
 MAX_PAYLOAD_ITEMS = 64
@@ -39,6 +40,9 @@ MAX_PACKAGES = 32
 
 _CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
+
+if TYPE_CHECKING:
+    from .runtime import CapabilityManifest
 
 
 def _message_id() -> str:
@@ -246,7 +250,7 @@ class HelloMessage(AgentEnvelope):
     device_id: str = Field(min_length=1, max_length=128)
     protocol_min_version: str = Field(default=PROTOCOL_VERSION, min_length=1, max_length=32)
     protocol_max_version: str = Field(default=PROTOCOL_VERSION, min_length=1, max_length=32)
-    fixture_proof: str = Field(min_length=1, max_length=256)
+    fixture_proof: str | None = Field(default=None, min_length=1, max_length=256)
     capability_hash: str = Field(pattern=_SHA256_PATTERN)
     capabilities: list[str] = Field(default_factory=list, max_length=MAX_CAPABILITIES)
     last_processed_sequence: int = Field(default=0, ge=0, le=MAX_SEQUENCE)
@@ -258,6 +262,17 @@ class HelloMessage(AgentEnvelope):
     current_command_id: str | None = Field(default=None, max_length=128)
     packages: list[PackageManifestEntry] = Field(default_factory=list, max_length=MAX_PACKAGES)
     package_manifest_hash: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    capability_manifest: "CapabilityManifest | None" = None
+    capability_manifest_hash: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def _proof_matches_protocol(self) -> "HelloMessage":
+        if self.protocol_version == PROTOCOL_VERSION and self.fixture_proof is None:
+            raise ValueError("cad.agent/1 requires fixture_proof")
+        if self.protocol_version == PHASE5_PROTOCOL_VERSION:
+            if self.fixture_proof is not None or self.device_proof is None:
+                raise ValueError("cad.agent/2 requires only device_proof")
+        return self
 
     @field_validator("capabilities", mode="before")
     @classmethod
@@ -279,6 +294,21 @@ class HelloMessage(AgentEnvelope):
             expected = canonical_package_manifest_hash(self.packages)
             if self.package_manifest_hash != expected:
                 raise ValueError("package manifest hash does not match its canonical content")
+        return self
+
+    @model_validator(mode="after")
+    def _capability_manifest_hash_matches(self) -> "HelloMessage":
+        if self.capability_manifest is None:
+            if self.capability_manifest_hash is not None:
+                raise ValueError("capability manifest hash requires a manifest")
+            return self
+        if self.capability_manifest_hash is None:
+            raise ValueError("capability manifest requires its canonical hash")
+        from .runtime import canonical_capability_manifest_hash
+
+        expected = canonical_capability_manifest_hash(self.capability_manifest)
+        if self.capability_manifest_hash != expected:
+            raise ValueError("capability manifest hash does not match its canonical content")
         return self
 
 
@@ -494,9 +524,15 @@ def parse_agent_message(value: str | bytes | dict[str, Any]) -> AgentMessage:
     return _MESSAGE_ADAPTER.validate_python(value)
 
 
-def negotiate_protocol(protocol_min_version: str, protocol_max_version: str) -> str | None:
-    if protocol_min_version <= PROTOCOL_VERSION <= protocol_max_version:
-        return PROTOCOL_VERSION
+def negotiate_protocol(
+    protocol_min_version: str,
+    protocol_max_version: str,
+    *,
+    supported_versions: tuple[str, ...] = (PROTOCOL_VERSION,),
+) -> str | None:
+    for version in reversed(supported_versions):
+        if protocol_min_version <= version <= protocol_max_version:
+            return version
     return None
 
 
@@ -505,3 +541,8 @@ def message_dict(message: AgentMessage) -> dict[str, Any]:
     if len(canonical_json(value).encode("utf-8")) > MAX_WEBSOCKET_MESSAGE_BYTES:
         raise ValueError("Agent message exceeds the protocol byte limit")
     return value
+
+
+from .runtime import CapabilityManifest
+
+HelloMessage.model_rebuild()

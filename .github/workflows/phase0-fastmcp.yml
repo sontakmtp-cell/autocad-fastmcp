@@ -53,6 +53,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - uses: astral-sh/setup-uv@v5
+        with:
+          github-token: ${{ github.token }}
       - name: Sync isolated POC lockfile
         run: uv sync --locked --group test
       - name: Verify exact FastMCP version
@@ -81,6 +83,8 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v5
+        with:
+          github-token: ${{ github.token }}
       - name: Sync root lockfile
         run: uv sync --locked --all-groups
       - name: Run legacy and CAD Core tests
@@ -131,6 +135,8 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v5
+        with:
+          github-token: ${{ github.token }}
       - name: Check whitespace and Python syntax
         run: |
           git diff --check

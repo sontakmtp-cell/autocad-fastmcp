@@ -6,6 +6,10 @@ import hashlib
 import hmac
 from typing import Any
 
+from autocad_contracts import PHASE5_PROTOCOL_VERSION
+
+from ...identity import IdentityError, Phase5IdentityService
+
 
 class FixtureAuthError(ValueError):
     pass
@@ -50,3 +54,24 @@ class LabDeviceAuthenticator(FixtureDeviceAuthenticator):
             hashlib.sha256,
         ).hexdigest()
         return hmac.compare_digest(proof, expected)
+
+
+class PairedDeviceAuthenticator:
+    """Database-backed cad.agent/2 admission with one-time bearer tokens."""
+
+    protocol_version = PHASE5_PROTOCOL_VERSION
+
+    def __init__(self, identity: Phase5IdentityService) -> None:
+        self.identity = identity
+
+    async def authenticate(self, token: str) -> str:
+        try:
+            return await self.identity.consume_access_token(token)
+        except IdentityError as error:
+            raise FixtureAuthError("paired device authentication failed") from error
+
+    async def verify_hello(self, hello: Any, token: str) -> bool:
+        return await self.identity.verify_hello(hello.device_id, hello, token)
+
+    async def is_active(self, device_id: str) -> bool:
+        return await self.identity.is_active_device(device_id)

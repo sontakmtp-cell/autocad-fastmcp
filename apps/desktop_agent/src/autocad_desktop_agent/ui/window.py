@@ -79,6 +79,9 @@ class AgentWindow(QMainWindow):
                 ("device", "Thiết bị"),
                 ("server", "Máy chủ"),
                 ("autocad", "AutoCAD"),
+                ("runtime", "Runtime"),
+                ("component", "Thành phần AutoCAD"),
+                ("capability", "Khả năng"),
                 ("document", "Bản vẽ"),
                 ("task", "Tác vụ"),
                 ("version", "Phiên bản"),
@@ -141,17 +144,21 @@ class AgentWindow(QMainWindow):
         self.detail.setText(detail)
         self.values["device"].setText(state.device_name)
         self.values["server"].setText("Đã kết nối" if state.server_connected else "Chưa kết nối")
-        self.values["autocad"].setText(state.autocad_state)
+        self.values["autocad"].setText(self._product_text(state))
+        self.values["runtime"].setText(state.runtime_label)
+        self.values["component"].setText(self._component_text(state))
+        self.values["capability"].setText(self._capability_text(state))
         self.values["document"].setText(state.document_name or "Chưa có")
         self.values["task"].setText(state.current_task or "Không có")
-        self.values["version"].setText(
-            f"Agent {state.agent_version} · Package {state.package_version}"
-        )
+        self.values["version"].setText(self._version_text(state))
         self.values["support"].setText(state.support_code or "—")
         label = "Tiếp tục" if state.paused else "Tạm dừng"
         self.pause_button.setText(label)
         self.tray_pause.setText("Tiếp tục mọi tác vụ" if state.paused else "Tạm dừng mọi tác vụ")
         self.tray_status.setText(f"Máy chủ: {'Đã kết nối' if state.server_connected else 'Mất kết nối'}")
+        self.tray.setToolTip(
+            f"AutoCAD Agent · {state.runtime_label}"
+        )
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt API
         event.ignore()
@@ -168,7 +175,11 @@ class AgentWindow(QMainWindow):
     def _diagnostics(self) -> None:
         target = self.diagnostics_dir / "autocad-agent-diagnostics.json"
         self.core.handle_intent(AgentIntent.EXPORT_DIAGNOSTICS, target)
-        QMessageBox.information(self, "Chẩn đoán", f"Đã tạo tệp chẩn đoán:\n{target}")
+        QMessageBox.information(
+            self,
+            "Chẩn đoán",
+            "Đã tạo gói chẩn đoán đã loại thông tin nhạy cảm.",
+        )
 
     def _help(self) -> None:
         QMessageBox.information(
@@ -181,6 +192,53 @@ class AgentWindow(QMainWindow):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    @staticmethod
+    def _product_text(state: AgentViewState) -> str:
+        if not state.product:
+            return state.autocad_state
+        release = f" {state.release_year}" if state.release_year else ""
+        return f"{state.product}{release} · {state.autocad_state}"
+
+    @staticmethod
+    def _component_text(state: AgentViewState) -> str:
+        if state.edition == "lt":
+            return (
+                f"AutoLISP package {state.package_version} · Hoạt động"
+                if state.runtime_id == "autolisp_file_ipc"
+                else "AutoLISP package · Chưa sẵn sàng"
+            )
+        if state.runtime_id == "managed_dotnet":
+            if state.host_handshake_state == "connected":
+                suffix = (
+                    f" {state.host_family} {state.host_version}"
+                    if state.host_family and state.host_version
+                    else ""
+                )
+                return f"Managed Host{suffix} · Hoạt động"
+            return "Managed Host · Cần cài hoặc tải lại"
+        if state.runtime_role == "compatibility_fallback":
+            return f"AutoLISP package {state.package_version} · Hoạt động"
+        return "Chưa kiểm tra"
+
+    @staticmethod
+    def _capability_text(state: AgentViewState) -> str:
+        if state.edition == "lt":
+            return "Portable core"
+        if state.degradation_reason or state.runtime_role == "compatibility_fallback":
+            return "Chỉ đọc giới hạn"
+        if state.runtime_id == "managed_dotnet":
+            return "Đọc bản vẽ qua Managed .NET"
+        return "Chưa xác định"
+
+    @staticmethod
+    def _version_text(state: AgentViewState) -> str:
+        host = (
+            f" · Host {state.host_family} {state.host_version}"
+            if state.host_family and state.host_version
+            else ""
+        )
+        return f"Agent {state.agent_version} · AutoLISP {state.package_version}{host}"
 
     def _exit(self) -> None:
         if self.core.view_state.current_task:

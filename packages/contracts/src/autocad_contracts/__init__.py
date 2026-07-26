@@ -10,6 +10,7 @@ from .agent_protocol import (
     HelloMessage,
     ProgressMessage,
     PROTOCOL_VERSION,
+    PHASE5_PROTOCOL_VERSION,
     ReconcileCommandDescriptor,
     ReconcileMessage,
     ReconcileResultMessage,
@@ -31,6 +32,26 @@ from .agent_protocol import (
     revision_payload,
     validate_bounded_json,
 )
+from .runtime import (
+    CAPABILITY_MANIFEST_SCHEMA,
+    CadProductManifest,
+    CapabilityManifest,
+    FallbackRuntimeManifest,
+    RuntimeEvidence,
+    canonical_capability_manifest,
+    canonical_capability_manifest_hash,
+)
+from .identity import (
+    DeviceChallengeRequest,
+    DeviceChallengeResponse,
+    DeviceRevokeRequest,
+    DeviceTokenRequest,
+    DeviceTokenResponse,
+    PairingApproveRequest,
+    PairingCompleteRequest,
+    PairingStartRequest,
+    PairingStartResponse,
+)
 
 __all__ = [
     "AgentMessage",
@@ -42,6 +63,7 @@ __all__ = [
     "HelloMessage",
     "ProgressMessage",
     "PROTOCOL_VERSION",
+    "PHASE5_PROTOCOL_VERSION",
     "ReconcileCommandDescriptor",
     "ReconcileMessage",
     "ReconcileResultMessage",
@@ -62,4 +84,20 @@ __all__ = [
     "PackageManifestEntry",
     "revision_payload",
     "validate_bounded_json",
+    "CAPABILITY_MANIFEST_SCHEMA",
+    "CadProductManifest",
+    "CapabilityManifest",
+    "FallbackRuntimeManifest",
+    "RuntimeEvidence",
+    "canonical_capability_manifest",
+    "canonical_capability_manifest_hash",
+    "DeviceChallengeRequest",
+    "DeviceChallengeResponse",
+    "DeviceRevokeRequest",
+    "DeviceTokenRequest",
+    "DeviceTokenResponse",
+    "PairingApproveRequest",
+    "PairingCompleteRequest",
+    "PairingStartRequest",
+    "PairingStartResponse",
 ]

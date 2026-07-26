@@ -142,6 +142,25 @@ async def test_capability_hash_is_recomputed_and_mismatch_fails_closed():
 
 
 @pytest.mark.asyncio
+async def test_revoked_during_handshake_cannot_survive_registry_registration():
+    class RevokedAfterProofAuthenticator(FixtureDeviceAuthenticator):
+        async def is_active(self, device_id: str) -> bool:
+            assert device_id == "device-a"
+            return False
+
+    websocket = ScriptedWebSocket(token="token-a", hello=_hello())
+    registry = ConnectionRegistry()
+    await serve_agent_websocket(
+        websocket,
+        authenticator=RevokedAfterProofAuthenticator({"device-a": "token-a"}),
+        registry=registry,
+        on_message=lambda *_: None,
+    )
+    assert websocket.closed[-1] == (4403, "device revoked")
+    assert await registry.all() == []
+
+
+@pytest.mark.asyncio
 async def test_bound_runtime_message_duplicate_and_durable_heartbeat_callbacks():
     websocket = ScriptedWebSocket(token="token-a", hello=_hello())
     registry = ConnectionRegistry()

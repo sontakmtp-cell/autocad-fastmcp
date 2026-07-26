@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kythuatvang.local/cad.host/1/payloads.schema.json",
+  "title": "cad.host/1 allowlisted read-only payloads",
+  "$defs": {
+    "handshake": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["session_nonce", "agent_version", "protocol_min", "protocol_max"],
+      "properties": {
+        "session_nonce": { "type": "string", "minLength": 32, "maxLength": 256 },
+        "agent_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "protocol_min": { "const": "cad.host/1" },
+        "protocol_max": { "const": "cad.host/1" }
+      }
+    },
+    "handshake_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "selected_protocol",
+        "host_family",
+        "host_version",
+        "package_id",
+        "package_version",
+        "package_hash",
+        "session_proof",
+        "product",
+        "edition",
+        "release_year",
+        "capabilities"
+      ],
+      "properties": {
+        "selected_protocol": { "const": "cad.host/1" },
+        "host_family": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "host_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "package_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+          "maxLength": 128
+        },
+        "package_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "package_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "session_proof": {
+          "type": "string",
+          "description": "Lowercase HMAC-SHA256 proof over the negotiated handshake transcript.",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "product": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "edition": { "enum": ["full", "lt"] },
+        "release_year": { "type": "integer", "minimum": 2018, "maximum": 2200 },
+        "series": { "type": "string", "minLength": 1, "maxLength": 32 },
+        "active_document_id": { "type": ["string", "null"], "maxLength": 128 },
+        "capabilities": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$",
+            "maxLength": 64
+          }
+        }
+      }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation_id", "operation_version", "arguments"],
+      "properties": {
+        "operation_id": {
+          "enum": [
+            "host.health",
+            "drawing.observe.summary",
+            "entity.snapshot.page",
+            "document.events.summary",
+            "cad.program.preview",
+            "cad.program.commit",
+            "cad.program.validate"
+          ]
+        },
+        "operation_version": { "const": 1 },
+        "document_id": { "type": ["string", "null"], "maxLength": 128 },
+        "arguments": {
+          "type": "object",
+          "additionalProperties": false,
+          "maxProperties": 8,
+          "properties": {
+            "include_layers": { "type": "boolean" },
+            "max_layers": { "type": "integer", "minimum": 0, "maximum": 256 },
+            "cursor": { "type": "integer", "minimum": 0, "maximum": 10000000 },
+            "limit": { "type": "integer", "minimum": 1, "maximum": 200 },
+            "max_scan": { "type": "integer", "minimum": 1, "maximum": 20000 },
+            "expected_revision": { "type": "integer", "minimum": 1 },
+            "types": {
+              "type": "array",
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+            },
+            "layers": {
+              "type": "array",
+              "maxItems": 32,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1, "maxLength": 255 }
+            },
+            "space": { "enum": ["all", "model", "paper"] },
+            "after_sequence": { "type": "integer", "minimum": 0 },
+            "max_events": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "program": { "$ref": "cad-program-0.1.schema.json" },
+            "preview": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "program_digest",
+                "execution_digest",
+                "document_revision",
+                "runtime_binding"
+              ],
+              "properties": {
+                "program_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+                "execution_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+                "document_revision": { "type": "integer", "minimum": 1 },
+                "runtime_binding": {
+                  "$ref": "cad-program-0.1.schema.json#/$defs/runtime_binding"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "operation_id", "result", "runtime_evidence"],
+      "properties": {
+        "status": { "enum": ["succeeded", "duplicate"] },
+        "operation_id": {
+          "enum": [
+            "host.health",
+            "drawing.observe.summary",
+            "entity.snapshot.page",
+            "document.events.summary",
+            "cad.program.preview",
+            "cad.program.commit",
+            "cad.program.validate"
+          ]
+        },
+        "result": { "type": "object", "maxProperties": 64 },
+        "runtime_evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["runtime_id", "runtime_role", "host_family", "host_version"],
+          "properties": {
+            "runtime_id": { "const": "managed_dotnet" },
+            "runtime_role": { "const": "primary" },
+            "host_family": { "type": "string", "minLength": 1, "maxLength": 32 },
+            "host_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+            "package_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+          }
+        }
+      }
+    },
+    "error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "error_code"],
+      "properties": {
+        "status": { "const": "failed" },
+        "error_code": {
+          "enum": [
+            "invalid_envelope",
+            "protocol_mismatch",
+            "session_rejected",
+            "deadline_expired",
+            "payload_mismatch",
+            "duplicate_payload_mismatch",
+            "capability_missing",
+            "no_active_document",
+            "autocad_busy",
+            "modal_dialog_active",
+            "active_document_changed",
+            "stale_snapshot",
+            "stale_event_cursor",
+            "program_invalid",
+            "preview_required",
+            "runtime_changed",
+            "document_changed",
+            "preview_abort_failed",
+            "commit_validation_failed",
+            "outcome_unknown",
+            "ledger_corrupt",
+            "ledger_full",
+            "internal_error"
+          ]
+        },
+        "error_message": { "type": "string", "maxLength": 2048 }
+      }
+    }
+  }
+}

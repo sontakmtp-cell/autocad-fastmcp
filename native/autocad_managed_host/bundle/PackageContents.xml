@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage
+  SchemaVersion="1.0"
+  AppVersion="0.1.0"
+  ProductCode="{C55DC577-B777-4C96-8A9B-1C958EADAE0C}"
+  UpgradeCode="{1B451DAC-0E9D-4092-8D55-6D29593FBD71}"
+  Name="AutoCAD MCP Managed Host R25 Lab"
+  Description="Bounded local Managed .NET host for AutoCAD MCP Phase 5 lab."
+  Author="Ky Thuat Vang">
+  <CompanyDetails Name="Ky Thuat Vang" />
+  <RuntimeRequirements
+    OS="Win64"
+    Platform="AutoCAD|ACADM"
+    SeriesMin="R25.0"
+    SeriesMax="R25.0" />
+  <Components>
+    <RuntimeRequirements
+      OS="Win64"
+      Platform="AutoCAD|ACADM"
+      SeriesMin="R25.0"
+      SeriesMax="R25.0" />
+    <ComponentEntry
+      AppName="AutoCAD MCP Managed Host R25"
+      AppDescription="Allowlisted cad.host/1 local execution component."
+      AppType=".Net"
+      ModuleName="./Contents/R25/AutocadMcp.Host.R25.dll"
+      PerDocument="False">
+      <LoadReasons LoadOnAutoCADStartup="True" />
+      <Commands GroupName="AUTOCADMCP">
+        <Command Global="AUTOCADMCPSTATUS" Local="AUTOCADMCPSTATUS" />
+      </Commands>
+    </ComponentEntry>
+  </Components>
+</ApplicationPackage>

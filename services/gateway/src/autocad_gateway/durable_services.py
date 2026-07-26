@@ -103,10 +103,13 @@ class DurableGatewayServices:
             required_package=required_package,
         )
         self.device_tokens = dict(device_tokens)
-        self.agent_authenticator = agent_authenticator or FixtureDeviceAuthenticator(self.device_tokens)
+        self.agent_authenticator = agent_authenticator
+        if self.agent_authenticator is None and profile != "phase5_identity":
+            self.agent_authenticator = FixtureDeviceAuthenticator(self.device_tokens)
         self.owner_subject = owner_subject
         self.profile = profile
-        self.is_phase4 = profile == "phase4_c1"
+        self.is_phase4 = profile in {"phase4_c1", "phase5_identity"}
+        self.is_phase5_identity = profile == "phase5_identity"
         self.required_package = dict(required_package or {})
         self.display_name = display_name
         self.job_deadline_seconds = max(1.0, min(float(job_deadline_seconds), 86_400.0))
@@ -269,7 +272,7 @@ class DurableGatewayServices:
     async def list_devices(
         self, request: CadListDevicesInput, principal: Principal, correlation_id: str
     ) -> CadListDevicesOutput | CadListDevicesOutputC1:
-        if principal.subject != self.owner_subject:
+        if not self.is_phase5_identity and principal.subject != self.owner_subject:
             output_type = CadListDevicesOutputC1 if self.is_phase4 else CadListDevicesOutput
             return output_type(
                 contract_version=self.contract_version,
@@ -327,7 +330,16 @@ class DurableGatewayServices:
             "observation_level": request.observation_level,
             "include_preview_image": request.include_preview_image,
         }
-        if self.is_phase4:
+        if self.is_phase5_identity:
+            observation_packages = [
+                package
+                for package in device.get("packages", [])
+                if package.get("package_id") == "autocad.lisp.drawing_info"
+            ]
+            if len(observation_packages) != 1:
+                raise GatewayError("package_mismatch")
+            payload["package"] = observation_packages[0]
+        elif self.is_phase4:
             payload["package"] = self.required_package
         explicit_key = getattr(request, "idempotency_key", None)
         key = explicit_key or f"observe-{uuid.uuid4()}"
@@ -590,7 +602,7 @@ class DurableGatewayServices:
         raise GatewayError("not_found")
 
     async def _require_device(self, device_id: str, principal: Principal) -> dict[str, Any]:
-        if principal.subject != self.owner_subject:
+        if not self.is_phase5_identity and principal.subject != self.owner_subject:
             raise GatewayError("not_found")
         value = await self.repository.get_device(principal.subject, device_id)
         if value is None:

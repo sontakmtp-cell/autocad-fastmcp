@@ -1,0 +1,49 @@
+{
+  "protocol_version": "cad.host/1",
+  "message_type": "result",
+  "session_id": "session-lab-001",
+  "command_id": "entity-page-001",
+  "sequence": 2,
+  "deadline_at": "2026-07-24T05:01:00+00:00",
+  "payload_hash": "f56de06d189246f1ccc30406bc793804643edd6a8e6dfd447fba3ddd691489a3",
+  "payload": {
+    "status": "succeeded",
+    "operation_id": "entity.snapshot.page",
+    "result": {
+      "document_id": "doc-lab-001",
+      "document_name": "sample.dwg",
+      "database_fingerprint": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "revision": {
+        "revision": 7,
+        "event_sequence": 6,
+        "revision_strength": "event_and_database",
+        "observed_at": "2026-07-24T05:00:30+00:00"
+      },
+      "cursor": 0,
+      "next_cursor": null,
+      "limit": 100,
+      "scanned_count": 1,
+      "returned_count": 1,
+      "scan_truncated": false,
+      "entities": [
+        {
+          "handle": "1A",
+          "type": "LINE",
+          "layer": "0",
+          "space": "model",
+          "bounds": {
+            "min": [0.0, 0.0, 0.0],
+            "max": [10.0, 0.0, 0.0]
+          }
+        }
+      ]
+    },
+    "runtime_evidence": {
+      "runtime_id": "managed_dotnet",
+      "runtime_role": "primary",
+      "host_family": "R25",
+      "host_version": "0.1.0",
+      "package_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  }
+}

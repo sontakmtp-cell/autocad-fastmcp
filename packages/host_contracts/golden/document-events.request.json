@@ -1,0 +1,19 @@
+{
+  "protocol_version": "cad.host/1",
+  "message_type": "command",
+  "session_id": "session-lab-001",
+  "command_id": "document-events-001",
+  "sequence": 3,
+  "deadline_at": "2026-07-24T05:01:00+00:00",
+  "payload_hash": "b5f1acc6d13d5f8129223d8be2b984c37fcf540ea5edeb38e5ed8427c043f9a4",
+  "payload": {
+    "operation_id": "document.events.summary",
+    "operation_version": 1,
+    "document_id": "doc-lab-001",
+    "arguments": {
+      "after_sequence": 4,
+      "max_events": 50,
+      "expected_revision": 7
+    }
+  }
+}

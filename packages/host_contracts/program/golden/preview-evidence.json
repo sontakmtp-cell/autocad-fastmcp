@@ -1,0 +1,18 @@
+{
+  "status": "previewed",
+  "program_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "execution_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "document_before": 1,
+  "document_after": 1,
+  "preview_strategy": "database_transaction_abort",
+  "revision_strength": "database_object_fingerprint",
+  "planned_operation_count": 5,
+  "planned_entity_count": 4,
+  "planned_layer_count": 1,
+  "validation": {
+    "transaction_aborted": true,
+    "drawing_unchanged": true,
+    "bounds_valid": true,
+    "operation_allowlist_valid": true
+  }
+}

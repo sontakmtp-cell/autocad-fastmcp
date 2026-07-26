@@ -5,8 +5,32 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from urllib.parse import urlsplit
+
+
+class RuntimeMode(str, Enum):
+    AUTO = "auto"
+    MANAGED_DOTNET = "managed_dotnet"
+    AUTOLISP_COMPAT = "autolisp_compat"
+    EZDXF = "ezdxf"
+
+
+class IdentityMode(str, Enum):
+    LAB_CREDENTIAL = "lab_credential"
+    BROWSER_PAIRING = "browser_pairing"
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    if raw == "1":
+        return True
+    if raw == "0":
+        return False
+    raise ValueError(f"{name} must be 0 or 1")
 
 
 @dataclass(frozen=True)
@@ -22,6 +46,13 @@ class AgentConfig:
     heartbeat_seconds: int = 10
     reconnect_max_seconds: int = 30
     queue_size: int = 8
+    runtime_mode: RuntimeMode = RuntimeMode.AUTOLISP_COMPAT
+    managed_host_enabled: bool = False
+    allow_full_compat_fallback: bool = False
+    lt_runtime_enabled: bool = True
+    identity_mode: IdentityMode = IdentityMode.LAB_CREDENTIAL
+    gateway_http_url: str = ""
+    portal_url: str = ""
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -39,6 +70,29 @@ class AgentConfig:
             ),
             package_sha256=os.environ.get("AUTOCAD_AGENT_PACKAGE_SHA256", "").strip(),
             heartbeat_seconds=int(os.environ.get("AUTOCAD_AGENT_HEARTBEAT_SECONDS", "10")),
+            runtime_mode=RuntimeMode(
+                os.environ.get("AUTOCAD_MCP_RUNTIME_MODE", "autolisp_compat").strip()
+            ),
+            managed_host_enabled=_env_flag("AUTOCAD_MCP_MANAGED_HOST_ENABLED", False),
+            allow_full_compat_fallback=_env_flag(
+                "AUTOCAD_MCP_ALLOW_FULL_COMPAT_FALLBACK",
+                False,
+            ),
+            lt_runtime_enabled=_env_flag("AUTOCAD_MCP_LT_RUNTIME_ENABLED", True),
+            identity_mode=IdentityMode(
+                os.environ.get(
+                    "AUTOCAD_AGENT_IDENTITY_MODE",
+                    "lab_credential",
+                ).strip()
+            ),
+            gateway_http_url=os.environ.get(
+                "AUTOCAD_AGENT_GATEWAY_HTTP_URL",
+                "",
+            ).strip(),
+            portal_url=os.environ.get(
+                "AUTOCAD_AGENT_PORTAL_URL",
+                "",
+            ).strip(),
         )
         return config.validate()
 
@@ -50,8 +104,16 @@ class AgentConfig:
             raise ValueError("non-local Agent connections require wss")
         if parsed.path != "/agent/ws" or parsed.query or parsed.fragment:
             raise ValueError("gateway_ws_url must use the canonical /agent/ws path")
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", self.device_id):
+        if self.device_id and not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}",
+            self.device_id,
+        ):
             raise ValueError("device_id is malformed")
+        if (
+            self.identity_mode == IdentityMode.LAB_CREDENTIAL
+            and not self.device_id
+        ):
+            raise ValueError("device_id is required for lab credential mode")
         if not self.device_name or len(self.device_name) > 128:
             raise ValueError("device_name is required and bounded")
         if not re.fullmatch(r"[0-9a-f]{64}", self.package_sha256):
@@ -60,6 +122,37 @@ class AgentConfig:
             raise ValueError("heartbeat_seconds must be between 1 and 300")
         if not 1 <= self.queue_size <= 64:
             raise ValueError("queue_size must be between 1 and 64")
+        if not isinstance(self.runtime_mode, RuntimeMode):
+            raise ValueError("runtime_mode is invalid")
+        if not isinstance(self.identity_mode, IdentityMode):
+            raise ValueError("identity_mode is invalid")
+        if self.identity_mode == IdentityMode.BROWSER_PAIRING:
+            gateway = urlsplit(self.gateway_http_url)
+            if gateway.scheme not in {"https", "http"} or not gateway.netloc:
+                raise ValueError(
+                    "browser pairing requires an absolute gateway_http_url"
+                )
+            if (
+                gateway.scheme == "http"
+                and gateway.hostname not in {"127.0.0.1", "localhost", "::1"}
+            ):
+                raise ValueError("non-local browser pairing requires HTTPS")
+            if gateway.path not in {"", "/"} or gateway.query or gateway.fragment:
+                raise ValueError("gateway_http_url must not contain a path")
+            portal = urlsplit(self.portal_url or self.gateway_http_url)
+            if portal.scheme not in {"https", "http"} or not portal.netloc:
+                raise ValueError("browser pairing requires an absolute portal_url")
+            if (
+                portal.scheme == "http"
+                and portal.hostname not in {"127.0.0.1", "localhost", "::1"}
+            ):
+                raise ValueError("non-local browser pairing Portal requires HTTPS")
+            if portal.path not in {"", "/"} or portal.query or portal.fragment:
+                raise ValueError("portal_url must not contain a path")
+        if self.runtime_mode == RuntimeMode.MANAGED_DOTNET and not self.managed_host_enabled:
+            raise ValueError("managed_dotnet runtime requires AUTOCAD_MCP_MANAGED_HOST_ENABLED=1")
+        if self.runtime_mode == RuntimeMode.AUTOLISP_COMPAT and not self.lt_runtime_enabled:
+            raise ValueError("autolisp_compat runtime requires AUTOCAD_MCP_LT_RUNTIME_ENABLED=1")
         return self
 
     @property

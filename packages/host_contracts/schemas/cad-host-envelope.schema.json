@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kythuatvang.local/cad.host/1/envelope.schema.json",
+  "title": "cad.host/1 bounded local envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol_version",
+    "message_type",
+    "session_id",
+    "command_id",
+    "sequence",
+    "deadline_at",
+    "payload_hash",
+    "payload"
+  ],
+  "properties": {
+    "protocol_version": { "const": "cad.host/1" },
+    "message_type": {
+      "enum": ["handshake", "handshake_result", "command", "result", "error"]
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "command_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "sequence": { "type": "integer", "minimum": 0, "maximum": 1000000000 },
+    "deadline_at": {
+      "type": "string",
+      "minLength": 20,
+      "maxLength": 64,
+      "format": "date-time"
+    },
+    "payload_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "payload": { "type": "object", "maxProperties": 64 }
+  }
+}
