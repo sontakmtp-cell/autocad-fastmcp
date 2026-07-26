@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
+import json
+import struct
+import threading
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,6 +18,7 @@ from autocad_desktop_agent.executor import DrawingInfoExecutor
 from autocad_desktop_agent.runtime.broker import RuntimeBroker
 from autocad_desktop_agent.runtime.managed_dotnet import (
     ManagedDotNetCadReadPort,
+    NamedPipeJsonTransport,
     ReloadingManagedDotNetCadReadPort,
 )
 from autocad_desktop_agent.state import (
@@ -20,7 +26,6 @@ from autocad_desktop_agent.state import (
     RuntimeState,
     runtime_user_label,
 )
-
 
 SECRET = b"s" * 32
 PACKAGE = {
@@ -479,3 +484,55 @@ async def test_reloading_adapter_uses_rotated_bootstrap_after_host_restart(tmp_p
 
     assert (await adapter.probe()).available is True
     assert loaded == [first, transports[-1]]
+
+
+async def test_named_pipe_timeout_aborts_stall_and_reconnects():
+    class StalledStream:
+        def __init__(self):
+            self.closed = threading.Event()
+
+        def write(self, _value):
+            return None
+
+        def read(self, _size):
+            self.closed.wait()
+            return b""
+
+        def close(self):
+            self.closed.set()
+
+    class ResponseStream:
+        def __init__(self, response):
+            body = json.dumps(response).encode()
+            self.buffer = bytearray(struct.pack("<I", len(body)) + body)
+
+        def write(self, _value):
+            return None
+
+        def read(self, size):
+            value = bytes(self.buffer[:size])
+            del self.buffer[:size]
+            return value
+
+        def close(self):
+            return None
+
+    stalled = StalledStream()
+    response = {"status": "ready"}
+    streams = iter([stalled, ResponseStream(response)])
+    transport = NamedPipeJsonTransport(
+        "test-pipe",
+        timeout_seconds=0.05,
+        stream_factory=lambda: next(streams),
+    )
+    envelope = {
+        "deadline_at": (
+            datetime.now(timezone.utc) + timedelta(seconds=1)
+        ).isoformat(),
+        "payload": {},
+    }
+
+    with pytest.raises(TimeoutError):
+        await transport.request(envelope)
+    assert await asyncio.to_thread(stalled.closed.wait, 1)
+    assert await transport.request(envelope) == response

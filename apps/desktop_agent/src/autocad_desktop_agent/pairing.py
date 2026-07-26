@@ -160,6 +160,9 @@ class DeviceIdentityStore:
             return False
         return value == {"schema": "cad.device.pairing-state/1", "paired": True}
 
+    def has_identity(self) -> bool:
+        return self._metadata_path.is_file() or self._key_path.is_file()
+
     def remove_after_revoke(self) -> None:
         """Delete local identity only after the server confirmed revocation."""
 
@@ -299,6 +302,22 @@ class PairingApiClient:
         if token.get("token_type") != "Bearer" or not token.get("access_token"):
             raise RuntimeError("Gateway returned an invalid device session token")
         return str(token["access_token"])
+
+    async def recover_pairing(self) -> bool:
+        """Restore the local marker by proving the existing device key still works."""
+
+        if self.identity_store.is_paired():
+            return True
+        if not self.identity_store.has_identity():
+            return False
+        try:
+            await self.session_token()
+        except RuntimeError as error:
+            if str(error) == "credential_revoked":
+                raise
+            return False
+        self.identity_store.mark_paired()
+        return True
 
     async def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         return await self._request("POST", path, body=body)

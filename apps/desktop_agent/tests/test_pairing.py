@@ -149,6 +149,115 @@ async def test_pairing_and_session_exchange_sign_exact_challenges(tmp_path):
     )
 
 
+@pytest.mark.asyncio
+async def test_lost_completion_response_recovers_without_new_pairing(tmp_path):
+    store = DeviceIdentityStore(tmp_path, protector=TestProtector())
+    server_paired = False
+    paths: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal server_paired
+        paths.append(request.url.path)
+        if request.url.path.endswith("/enrollments"):
+            if server_paired:
+                return httpx.Response(409, json={"error": "device_already_paired"})
+            return httpx.Response(
+                200,
+                json={
+                    "pairing_id": "pair-1",
+                    "user_code": "ABCD2345",
+                    "challenge": "pair-challenge",
+                    "confirmation_url": "/pair?request=ABCD2345",
+                },
+            )
+        if request.url.path.endswith("/complete"):
+            server_paired = True
+            raise httpx.ReadError("response lost", request=request)
+        if request.url.path.endswith("/session-challenges"):
+            assert server_paired
+            return httpx.Response(
+                200,
+                json={
+                    "challenge_id": "challenge-1",
+                    "challenge": "session-challenge",
+                },
+            )
+        return httpx.Response(
+            200,
+            json={"access_token": "recovered", "token_type": "Bearer"},
+        )
+
+    transport = httpx.MockTransport(handler)
+    first = PairingApiClient(
+        "https://gateway.example",
+        store,
+        transport=transport,
+    )
+    started = await first.start("Lab")
+    with pytest.raises(httpx.ReadError, match="response lost"):
+        await first.complete(
+            pairing_id=started["pairing_id"],
+            challenge=started["challenge"],
+        )
+    assert store.is_paired() is False
+
+    restarted = PairingApiClient(
+        "https://gateway.example",
+        store,
+        transport=transport,
+    )
+    assert await restarted.recover_pairing() is True
+    assert store.is_paired() is True
+    assert paths.count("/api/agent/v1/enrollments") == 1
+
+
+@pytest.mark.asyncio
+async def test_revoked_identity_does_not_restore_paired_marker(tmp_path):
+    store = DeviceIdentityStore(tmp_path, protector=TestProtector())
+    store.ensure()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(410, json={"error": "credential_revoked"})
+
+    client = PairingApiClient(
+        "https://gateway.example",
+        store,
+        transport=httpx.MockTransport(handler),
+    )
+
+    with pytest.raises(RuntimeError, match="credential_revoked"):
+        await client.recover_pairing()
+    assert store.is_paired() is False
+    assert store.has_identity() is False
+
+
+@pytest.mark.asyncio
+async def test_invalid_existing_key_does_not_restore_paired_marker(tmp_path):
+    store = DeviceIdentityStore(tmp_path, protector=TestProtector())
+    store.ensure()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/session-challenges"):
+            return httpx.Response(
+                200,
+                json={
+                    "challenge_id": "challenge-1",
+                    "challenge": "session-challenge",
+                },
+            )
+        return httpx.Response(401, json={"error": "proof_invalid"})
+
+    client = PairingApiClient(
+        "https://gateway.example",
+        store,
+        transport=httpx.MockTransport(handler),
+    )
+
+    assert await client.recover_pairing() is False
+    assert store.is_paired() is False
+    assert store.has_identity() is True
+
+
 def test_pairing_client_rejects_public_plain_http(tmp_path):
     store = DeviceIdentityStore(tmp_path, protector=TestProtector())
     with pytest.raises(ValueError):

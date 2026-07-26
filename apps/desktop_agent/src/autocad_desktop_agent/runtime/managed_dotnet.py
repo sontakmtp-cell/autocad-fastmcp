@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import concurrent.futures
 import hashlib
 import hmac
 import json
 import os
 import secrets
 import struct
+import threading
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -20,7 +22,6 @@ from typing import Any, Protocol
 from autocad_contracts import CapabilityManifest, canonical_json
 
 from .contracts import RuntimeProbe
-
 
 PROTOCOL = "cad.host/1"
 MAX_FRAME_BYTES = 65_536
@@ -41,51 +42,148 @@ class HostTransport(Protocol):
 class NamedPipeJsonTransport:
     """One authenticated Host session over a current-user Named Pipe."""
 
-    def __init__(self, pipe_name: str) -> None:
-        if os.name != "nt":
+    def __init__(
+        self,
+        pipe_name: str,
+        *,
+        timeout_seconds: float = 10,
+        stream_factory: Callable[[], Any] | None = None,
+    ) -> None:
+        if stream_factory is None and os.name != "nt":
             raise OSError("Managed Host Named Pipe is only available on Windows")
         if not pipe_name or "\\" in pipe_name or "/" in pipe_name:
             raise ValueError("pipe_name must be a logical local name")
+        if timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be positive")
         self._path = rf"\\.\pipe\{pipe_name}"
+        self._timeout_seconds = timeout_seconds
+        self._stream_factory = stream_factory or (
+            lambda: open(self._path, "r+b", buffering=0)  # noqa: SIM115
+        )
         self._stream: Any | None = None
         self._lock = asyncio.Lock()
+        self._stream_lock = threading.Lock()
 
     async def request(self, envelope: dict[str, Any]) -> dict[str, Any]:
         body = canonical_json(envelope).encode("utf-8")
         if len(body) > MAX_FRAME_BYTES:
             raise ValueError("cad.host frame exceeds the bounded limit")
+        timeout = self._request_timeout(envelope)
+        if timeout <= 0:
+            raise TimeoutError("managed_host_unavailable")
         async with self._lock:
-            return await asyncio.to_thread(self._request_sync, body)
+            result: concurrent.futures.Future[dict[str, Any]] = (
+                concurrent.futures.Future()
+            )
+            cancelled = threading.Event()
+            worker = threading.Thread(
+                target=self._run_request,
+                args=(body, result, cancelled),
+                name="autocad-managed-host-io",
+                daemon=True,
+            )
+            worker.start()
+            try:
+                return await asyncio.wait_for(
+                    asyncio.wrap_future(result),
+                    timeout=timeout,
+                )
+            except (TimeoutError, asyncio.CancelledError):
+                cancelled.set()
+                self._abort_stream()
+                raise
 
-    def _request_sync(self, body: bytes) -> dict[str, Any]:
-        if self._stream is None:
-            self._stream = open(self._path, "r+b", buffering=0)  # noqa: SIM115
+    def _request_sync(
+        self,
+        body: bytes,
+        cancelled: threading.Event,
+    ) -> dict[str, Any]:
+        with self._stream_lock:
+            stream = self._stream
+        if stream is None:
+            stream = self._stream_factory()
+            with self._stream_lock:
+                if cancelled.is_set():
+                    stream.close()
+                    raise TimeoutError("managed_host_unavailable")
+                if self._stream is None:
+                    self._stream = stream
+                else:
+                    replacement, stream = stream, self._stream
+                    replacement.close()
         try:
-            self._stream.write(struct.pack("<I", len(body)) + body)
-            size = struct.unpack("<I", self._read_exact(4))[0]
+            stream.write(struct.pack("<I", len(body)) + body)
+            size = struct.unpack("<I", self._read_exact(stream, 4))[0]
             if size <= 0 or size > MAX_FRAME_BYTES:
                 raise ValueError("cad.host response frame is invalid")
-            value = json.loads(self._read_exact(size).decode("utf-8"))
+            value = json.loads(self._read_exact(stream, size).decode("utf-8"))
             if not isinstance(value, dict):
                 raise ValueError("cad.host response must be an object")
             return value
         except Exception:
-            self.close()
+            self._discard_stream(stream)
             raise
 
-    def _read_exact(self, size: int) -> bytes:
+    def _run_request(
+        self,
+        body: bytes,
+        result: concurrent.futures.Future[dict[str, Any]],
+        cancelled: threading.Event,
+    ) -> None:
+        try:
+            value = self._request_sync(body, cancelled)
+        except Exception as error:  # noqa: BLE001
+            if not result.done():
+                result.set_exception(error)
+        else:
+            if not result.done():
+                result.set_result(value)
+
+    @staticmethod
+    def _read_exact(stream: Any, size: int) -> bytes:
         chunks = bytearray()
         while len(chunks) < size:
-            chunk = self._stream.read(size - len(chunks))
+            chunk = stream.read(size - len(chunks))
             if not chunk:
                 raise EOFError("Managed Host disconnected")
             chunks.extend(chunk)
         return bytes(chunks)
 
+    def _request_timeout(self, envelope: dict[str, Any]) -> float:
+        deadline = envelope.get("deadline_at")
+        if not isinstance(deadline, str):
+            return self._timeout_seconds
+        try:
+            parsed = datetime.fromisoformat(deadline)
+        except ValueError:
+            return self._timeout_seconds
+        if parsed.tzinfo is None:
+            return self._timeout_seconds
+        remaining = parsed.astimezone(timezone.utc) - datetime.now(timezone.utc)
+        return min(self._timeout_seconds, remaining.total_seconds())
+
+    def _abort_stream(self) -> None:
+        with self._stream_lock:
+            stream, self._stream = self._stream, None
+        if stream is None:
+            return
+        threading.Thread(
+            target=stream.close,
+            name="autocad-managed-host-abort",
+            daemon=True,
+        ).start()
+
     def close(self) -> None:
-        stream, self._stream = self._stream, None
+        with self._stream_lock:
+            stream, self._stream = self._stream, None
         if stream is not None:
             stream.close()
+
+    def _discard_stream(self, stream: Any) -> None:
+        with self._stream_lock:
+            if self._stream is stream:
+                self._stream = None
+        stream.close()
 
 
 class ManagedDotNetCadReadPort:

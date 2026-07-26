@@ -89,6 +89,9 @@ async def pair_device(config: AgentConfig) -> None:
         store,
         portal_url=config.portal_url or config.gateway_http_url,
     )
+    if await api.recover_pairing():
+        print("Đã khôi phục liên kết thiết bị.")
+        return
     enrollment = await api.start(config.device_name)
     print(f"Mã liên kết: {enrollment['user_code']}")
     print(f"Mở trình duyệt: {enrollment['confirmation_url']}")
