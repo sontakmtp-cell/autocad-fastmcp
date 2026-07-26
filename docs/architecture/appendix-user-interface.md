@@ -9,7 +9,7 @@
 >
 > Ngày rà soát: 2026-07-25
 >
-> Trạng thái: **Phase 4 C1 đã GO qua AutoLISP/File IPC compatibility path. Phase 5 Agent/runtime UI và Managed .NET R25 lab POC đã triển khai; production pairing, signed installer, LT real smoke và multi-user pilot vẫn thuộc các exit gate chưa có external evidence.**
+> Trạng thái 2026-07-26: **Phase 4 C1 đã GO qua AutoLISP/File IPC compatibility path. Phase 5 Agent/runtime UI và Managed .NET R25 lab POC đã triển khai; production pairing và multi-user identity pilot đã có live evidence với một AutoCAD thật + một VM không AutoCAD. Signed R25 clean-VM rollback đã xanh. CA timestamp, live revoke/re-pair, LT real smoke và telemetry soak vẫn là exit gate chưa hoàn tất.**
 >
 > Phạm vi: ChatGPT Web, Desktop Agent UI, Web Portal, trang quản trị, onboarding, runtime status, pairing, confirmation/approval, diagnostics, packaging và update UX. Đây là tài liệu kiến trúc; **không triển khai code hoặc thêm dependency trong phụ lục này**.
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import logging
 import re
+import time
 import uuid
 from collections.abc import Callable
 from contextlib import asynccontextmanager
@@ -25,7 +26,7 @@ from mcp.types import PromptMessage, ResourceLink, TextContent
 from pydantic import Field, ValidationError
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import PlainTextResponse
+from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Mount, Route, WebSocketRoute
 
 from .contracts import (
@@ -103,7 +104,7 @@ class GatewayConfig:
     snapshot_ttl_seconds: float = SNAPSHOT_TTL_SECONDS_DEFAULT
     max_snapshot_count: int = MAX_SNAPSHOT_COUNT_DEFAULT
     max_snapshot_store_bytes: int = MAX_SNAPSHOT_STORE_BYTES_DEFAULT
-    profile: Literal["local", "phase3_poc", "phase4_c1"] = "local"
+    profile: Literal["local", "phase3_poc", "phase4_c1", "phase5_identity"] = "local"
     db_path: str | None = None
     fixture_tokens: tuple[tuple[str, str], ...] = ()
     fixture_owner_subject: str = "phase3-fixture-user"
@@ -199,9 +200,16 @@ class GatewayConfig:
             ),
             profile=profile,
             db_path=(
-                os.environ.get("AUTOCAD_MCP_PHASE4_DB_PATH", "").strip()
-                if profile == "phase4_c1"
-                else os.environ.get("AUTOCAD_MCP_PHASE3_DB_PATH", "").strip()
+                os.environ.get(
+                    "AUTOCAD_MCP_PHASE5_DB_PATH",
+                    os.environ.get("AUTOCAD_MCP_PHASE4_DB_PATH", ""),
+                ).strip()
+                if profile == "phase5_identity"
+                else (
+                    os.environ.get("AUTOCAD_MCP_PHASE4_DB_PATH", "").strip()
+                    if profile == "phase4_c1"
+                    else os.environ.get("AUTOCAD_MCP_PHASE3_DB_PATH", "").strip()
+                )
             ) or None,
             fixture_tokens=fixture_tokens,
             fixture_owner_subject=os.environ.get(
@@ -282,8 +290,10 @@ class GatewayConfig:
         )
         if self.max_snapshot_bytes > self.max_snapshot_store_bytes:
             raise ValueError("max_snapshot_bytes must not exceed max_snapshot_store_bytes")
-        if self.profile not in {"local", "phase3_poc", "phase4_c1"}:
-            raise ValueError("profile must be local, phase3_poc or phase4_c1")
+        if self.profile not in {"local", "phase3_poc", "phase4_c1", "phase5_identity"}:
+            raise ValueError(
+                "profile must be local, phase3_poc, phase4_c1 or phase5_identity"
+            )
         if not 1 <= self.stale_after_seconds <= 3600:
             raise ValueError("stale_after_seconds must be between 1 and 3600")
         if not 0 < self.effective_request_wait_timeout_seconds <= 600:
@@ -330,6 +340,40 @@ class GatewayConfig:
                     raise ValueError(f"phase4_c1 {name} must be a canonical HTTPS URL")
             if urlsplit(self.public_origin or "").path not in {"", "/"}:
                 raise ValueError("phase4_c1 public origin must not contain a path")
+        if self.profile == "phase5_identity":
+            required = {
+                "db_path": self.db_path,
+                "OAuth issuer": self.oauth_issuer,
+                "OAuth audience": self.oauth_audience,
+                "OAuth JWKS URI": self.oauth_jwks_uri,
+                "public origin": self.public_origin,
+            }
+            missing = [name for name, value in required.items() if not value]
+            if missing:
+                raise ValueError("phase5_identity requires " + ", ".join(missing))
+            if self.fixture_tokens:
+                raise ValueError("phase5_identity forbids fixture device tokens")
+            if not self.write_disabled:
+                raise ValueError("phase5_identity requires write_disabled=true")
+            for name, value in {
+                "OAuth issuer": self.oauth_issuer,
+                "OAuth JWKS URI": self.oauth_jwks_uri,
+                "public origin": self.public_origin,
+            }.items():
+                parsed = urlsplit(value or "")
+                if (
+                    parsed.scheme != "https"
+                    or not parsed.netloc
+                    or parsed.query
+                    or parsed.fragment
+                ):
+                    raise ValueError(
+                        f"phase5_identity {name} must be a canonical HTTPS URL"
+                    )
+            if urlsplit(self.public_origin or "").path not in {"", "/"}:
+                raise ValueError(
+                    "phase5_identity public origin must not contain a path"
+                )
         return self
 
     @property
@@ -587,6 +631,15 @@ def _principal(
     subject = token.claims.get("sub")
     if not isinstance(subject, str) or not subject:
         raise ToolError(f"invalid_token: subject claim required; correlation_id={correlation_id}")
+    if getattr(services, "profile", None) == "phase5_identity":
+        issuer = token.claims.get("iss")
+        if not isinstance(issuer, str) or not issuer:
+            raise ToolError(
+                f"invalid_token: issuer claim required; correlation_id={correlation_id}"
+            )
+        from .identity import owner_key
+
+        subject = owner_key(issuer, subject)
     return Principal(subject=subject, scopes=tuple(token.scopes))
 
 
@@ -1047,8 +1100,8 @@ def create_app(
     correlation_id_factory: CorrelationIdFactory | None = None,
 ) -> Starlette:
     config = (config or GatewayConfig.from_env()).validate()
-    if config.profile == "phase4_c1" and auth is None:
-        raise ValueError("phase4_c1 requires OAuth authentication")
+    if config.profile in {"phase4_c1", "phase5_identity"} and auth is None:
+        raise ValueError(f"{config.profile} requires OAuth authentication")
     if stateless_http is not None:
         config = replace(config, stateless_http=stateless_http)
     configured_hosts = allowed_hosts if allowed_hosts is not None else list(config.allowed_hosts)
@@ -1110,6 +1163,299 @@ def create_app(
             ),
         )
 
+    async def identity_payload(request: Request, model: Any) -> Any:
+        if int(request.headers.get("content-length", "0") or 0) > 16_384:
+            raise ValueError("request too large")
+        body = await request.body()
+        if len(body) > 16_384:
+            raise ValueError("request too large")
+        return model.model_validate_json(body)
+
+    class IdentityHttpAuthError(ValueError):
+        def __init__(self, code: str, status_code: int) -> None:
+            self.code = code
+            self.status_code = status_code
+            super().__init__(code)
+
+    async def identity_principal(
+        request: Request,
+        *,
+        required_scope: str = "autocad.device.manage",
+    ) -> tuple[str, str, str]:
+        authorization = request.headers.get("authorization", "")
+        if not authorization.lower().startswith("bearer ") or auth is None:
+            raise IdentityHttpAuthError("invalid_token", 401)
+        token = await auth.verify_token(authorization[7:].strip())
+        if token is None:
+            raise IdentityHttpAuthError("invalid_token", 401)
+        issuer = token.claims.get("iss")
+        subject = token.claims.get("sub")
+        if not isinstance(issuer, str) or not issuer or not isinstance(subject, str) or not subject:
+            raise IdentityHttpAuthError("invalid_token", 401)
+        if required_scope not in token.scopes:
+            raise IdentityHttpAuthError("insufficient_scope", 403)
+        from .identity import owner_key
+
+        return issuer, subject, owner_key(issuer, subject)
+
+    def identity_auth_error(error: IdentityHttpAuthError) -> JSONResponse:
+        return JSONResponse({"error": error.code}, status_code=error.status_code)
+
+    async def identity_response(operation: Any) -> JSONResponse:
+        try:
+            value = await operation
+        except (ValueError, ValidationError) as error:
+            code = getattr(error, "code", "invalid_request")
+            status = (
+                404
+                if code == "not_found"
+                else 401
+                if code == "invalid_token"
+                else 409
+                if code == "device_already_paired"
+                else 410
+                if code == "credential_revoked"
+                else 429
+                if code == "rate_limited"
+                else 400
+            )
+            return JSONResponse({"error": code}, status_code=status)
+        return JSONResponse(value)
+
+    anonymous_requests: dict[tuple[str, str], list[float]] = {}
+
+    def allow_anonymous(request: Request, operation: str, limit: int) -> bool:
+        now = time.monotonic()
+        peer = request.client.host if request.client is not None else "unknown"
+        client = peer
+        try:
+            peer_is_loopback = ip_address(peer).is_loopback
+        except ValueError:
+            peer_is_loopback = peer.lower() == "localhost"
+        if peer_is_loopback:
+            forwarded = request.headers.get("cf-connecting-ip", "").strip()
+            if forwarded:
+                try:
+                    client = str(ip_address(forwarded))
+                except ValueError:
+                    return False
+
+        def recent_for(key: tuple[str, str]) -> list[float]:
+            return [
+                recorded
+                for recorded in anonymous_requests.get(key, ())
+                if now - recorded < 60
+            ]
+
+        key = (operation, client)
+        global_key = (operation, "*")
+        recent = recent_for(key)
+        global_recent = recent_for(global_key)
+        global_limit = limit * 20
+        if len(recent) >= limit or len(global_recent) >= global_limit:
+            anonymous_requests[key] = recent
+            anonymous_requests[global_key] = global_recent
+            return False
+        recent.append(now)
+        global_recent.append(now)
+        anonymous_requests[key] = recent
+        anonymous_requests[global_key] = global_recent
+        if len(anonymous_requests) > 2048:
+            stale = [
+                item
+                for item, values in anonymous_requests.items()
+                if not values or now - values[-1] >= 60
+            ]
+            for item in stale:
+                anonymous_requests.pop(item, None)
+        return True
+
+    async def pairing_start(request: Request) -> JSONResponse:
+        from autocad_contracts import PairingStartRequest
+
+        if not allow_anonymous(request, "pairing_start", 10):
+            return JSONResponse(
+                {"error": "rate_limited"},
+                status_code=429,
+                headers={"Retry-After": "60"},
+            )
+        try:
+            value = await identity_payload(request, PairingStartRequest)
+        except (ValueError, ValidationError):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        return await identity_response(
+            services.identity.start_pairing(
+                device_id=value.device_id,
+                display_name=value.display_name,
+                public_key=value.public_key,
+            )
+        )
+
+    async def pairing_approve(request: Request) -> JSONResponse:
+        from autocad_contracts import PairingApproveRequest
+
+        try:
+            issuer, subject, _ = await identity_principal(request)
+        except IdentityHttpAuthError as error:
+            return identity_auth_error(error)
+        try:
+            value = await identity_payload(request, PairingApproveRequest)
+        except (ValueError, ValidationError):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        return await identity_response(
+            services.identity.approve_pairing(
+                issuer=issuer, subject=subject, user_code=value.user_code
+            )
+        )
+
+    async def pairing_complete(request: Request) -> JSONResponse:
+        from autocad_contracts import PairingCompleteRequest
+
+        try:
+            value = await identity_payload(request, PairingCompleteRequest)
+        except (ValueError, ValidationError):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        pairing_id = request.path_params.get("pairing_id") or value.pairing_id
+        if not pairing_id or (value.pairing_id is not None and value.pairing_id != pairing_id):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        return await identity_response(
+            services.identity.complete_pairing(
+                pairing_id=pairing_id,
+                challenge=value.challenge,
+                signature=value.signature,
+            )
+        )
+
+    async def pairing_status(request: Request) -> JSONResponse:
+        polling_secret = request.headers.get("x-polling-secret", "")
+        if not polling_secret:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        return await identity_response(
+            services.identity.pairing_status(
+                pairing_id=request.path_params["pairing_id"],
+                polling_secret=polling_secret,
+            )
+        )
+
+    async def device_challenge(request: Request) -> JSONResponse:
+        from autocad_contracts import DeviceChallengeRequest
+
+        if not allow_anonymous(request, "device_challenge", 30):
+            return JSONResponse(
+                {"error": "rate_limited"},
+                status_code=429,
+                headers={"Retry-After": "60"},
+            )
+        try:
+            value = await identity_payload(request, DeviceChallengeRequest)
+        except (ValueError, ValidationError):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        return await identity_response(services.identity.create_challenge(value.device_id))
+
+    async def device_token(request: Request) -> JSONResponse:
+        from autocad_contracts import DeviceTokenRequest
+
+        try:
+            value = await identity_payload(request, DeviceTokenRequest)
+        except (ValueError, ValidationError):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        return await identity_response(
+            services.identity.exchange_challenge(
+                device_id=value.device_id,
+                challenge_id=value.challenge_id,
+                challenge=value.challenge,
+                signature=value.signature,
+            )
+        )
+
+    async def device_revoke(request: Request) -> JSONResponse:
+        from autocad_contracts import DeviceRevokeRequest
+
+        try:
+            _, _, user_id = await identity_principal(request)
+        except IdentityHttpAuthError as error:
+            return identity_auth_error(error)
+        try:
+            value = await identity_payload(request, DeviceRevokeRequest)
+        except (ValueError, ValidationError):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        return await identity_response(
+            _revoke_response(services.identity, user_id, value.device_id)
+        )
+
+    async def portal_devices(request: Request) -> JSONResponse:
+        try:
+            _, _, user_id = await identity_principal(request)
+        except IdentityHttpAuthError as error:
+            return identity_auth_error(error)
+        return await identity_response(_portal_devices_response(services.identity, user_id))
+
+    async def _portal_devices_response(identity: Any, user_id: str) -> dict[str, Any]:
+        return {"devices": await identity.portal_devices(user_id)}
+
+    async def portal_device(request: Request) -> JSONResponse:
+        try:
+            _, _, user_id = await identity_principal(request)
+        except IdentityHttpAuthError as error:
+            return identity_auth_error(error)
+        return await identity_response(
+            services.identity.portal_device(
+                owner_user_id=user_id, device_id=request.path_params["device_id"]
+            )
+        )
+
+    async def portal_pairing(request: Request) -> JSONResponse:
+        try:
+            _, _, user_id = await identity_principal(request)
+        except IdentityHttpAuthError as error:
+            return identity_auth_error(error)
+        return await identity_response(
+            services.identity.portal_pairing(
+                owner_user_id=user_id, reference=request.path_params["reference"]
+            )
+        )
+
+    async def portal_pairing_confirm(request: Request) -> JSONResponse:
+        try:
+            issuer, subject, _ = await identity_principal(request)
+        except IdentityHttpAuthError as error:
+            return identity_auth_error(error)
+        return await identity_response(
+            services.identity.confirm_pairing(
+                issuer=issuer,
+                subject=subject,
+                reference=request.path_params["reference"],
+            )
+        )
+
+    async def portal_pairing_deny(request: Request) -> JSONResponse:
+        try:
+            issuer, subject, _ = await identity_principal(request)
+        except IdentityHttpAuthError as error:
+            return identity_auth_error(error)
+        return await identity_response(
+            services.identity.deny_pairing(
+                issuer=issuer,
+                subject=subject,
+                reference=request.path_params["reference"],
+            )
+        )
+
+    async def portal_device_revoke(request: Request) -> JSONResponse:
+        try:
+            _, _, user_id = await identity_principal(request)
+        except IdentityHttpAuthError as error:
+            return identity_auth_error(error)
+        return await identity_response(
+            _revoke_response(
+                services.identity, user_id, request.path_params["device_id"]
+            )
+        )
+
+    async def _revoke_response(identity: Any, user_id: str, device_id: str) -> dict[str, str]:
+        await identity.revoke(owner_user_id=user_id, device_id=device_id)
+        return {"status": "revoked"}
+
     @asynccontextmanager
     async def lifespan(app: Starlette):
         await services.initialize()
@@ -1121,13 +1467,78 @@ def create_app(
             if shutdown is not None:
                 await shutdown()
 
-    outer_app: Any = Starlette(
-        routes=[
+    routes: list[Any] = [
             Route("/healthz", healthz, methods=["GET"]),
             Route("/readyz", readyz, methods=["GET"]),
             WebSocketRoute("/agent/ws", agent_ws),
-            Mount("/", app=mcp_app),
-        ],
+    ]
+    if config.profile == "phase5_identity":
+        routes.extend(
+            [
+                Route("/api/agent/v1/enrollments", pairing_start, methods=["POST"]),
+                Route(
+                    "/api/agent/v1/enrollments/{pairing_id:str}",
+                    pairing_status,
+                    methods=["GET"],
+                ),
+                Route(
+                    "/api/agent/v1/enrollments/{pairing_id:str}/complete",
+                    pairing_complete,
+                    methods=["POST"],
+                ),
+                Route(
+                    "/api/agent/v1/session-challenges",
+                    device_challenge,
+                    methods=["POST"],
+                ),
+                Route("/api/agent/v1/session-tokens", device_token, methods=["POST"]),
+                Route(
+                    "/api/portal/v1/pairings/approve",
+                    pairing_approve,
+                    methods=["POST"],
+                ),
+                Route("/api/portal/v1/devices", portal_devices, methods=["GET"]),
+                Route(
+                    "/api/portal/v1/devices/{device_id:str}",
+                    portal_device,
+                    methods=["GET"],
+                ),
+                Route(
+                    "/api/portal/v1/devices/{device_id:str}/revoke",
+                    portal_device_revoke,
+                    methods=["POST"],
+                ),
+                Route(
+                    "/api/portal/v1/pairings/{reference:str}",
+                    portal_pairing,
+                    methods=["GET"],
+                ),
+                Route(
+                    "/api/portal/v1/pairings/{reference:str}/confirm",
+                    portal_pairing_confirm,
+                    methods=["POST"],
+                ),
+                Route(
+                    "/api/portal/v1/pairings/{reference:str}/deny",
+                    portal_pairing_deny,
+                    methods=["POST"],
+                ),
+                Route(
+                    "/api/portal/v1/devices/revoke",
+                    device_revoke,
+                    methods=["POST"],
+                ),
+                Route("/identity/pairing/start", pairing_start, methods=["POST"]),
+                Route("/identity/pairing/approve", pairing_approve, methods=["POST"]),
+                Route("/identity/pairing/complete", pairing_complete, methods=["POST"]),
+                Route("/identity/device/challenge", device_challenge, methods=["POST"]),
+                Route("/identity/device/token", device_token, methods=["POST"]),
+                Route("/identity/device/revoke", device_revoke, methods=["POST"]),
+            ]
+        )
+    routes.append(Mount("/", app=mcp_app))
+    outer_app: Any = Starlette(
+        routes=routes,
         lifespan=lifespan,
     )
     outer_app = OuterHostOriginGuard(

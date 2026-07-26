@@ -22,6 +22,7 @@ from pydantic import (
 
 
 PROTOCOL_VERSION = "cad.agent/1"
+PHASE5_PROTOCOL_VERSION = "cad.agent/2"
 REVISION_SCHEMA = "cad.revision/1"
 MAX_MESSAGE_TEXT = 2048
 MAX_PAYLOAD_ITEMS = 64
@@ -249,7 +250,7 @@ class HelloMessage(AgentEnvelope):
     device_id: str = Field(min_length=1, max_length=128)
     protocol_min_version: str = Field(default=PROTOCOL_VERSION, min_length=1, max_length=32)
     protocol_max_version: str = Field(default=PROTOCOL_VERSION, min_length=1, max_length=32)
-    fixture_proof: str = Field(min_length=1, max_length=256)
+    fixture_proof: str | None = Field(default=None, min_length=1, max_length=256)
     capability_hash: str = Field(pattern=_SHA256_PATTERN)
     capabilities: list[str] = Field(default_factory=list, max_length=MAX_CAPABILITIES)
     last_processed_sequence: int = Field(default=0, ge=0, le=MAX_SEQUENCE)
@@ -263,6 +264,15 @@ class HelloMessage(AgentEnvelope):
     package_manifest_hash: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     capability_manifest: "CapabilityManifest | None" = None
     capability_manifest_hash: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def _proof_matches_protocol(self) -> "HelloMessage":
+        if self.protocol_version == PROTOCOL_VERSION and self.fixture_proof is None:
+            raise ValueError("cad.agent/1 requires fixture_proof")
+        if self.protocol_version == PHASE5_PROTOCOL_VERSION:
+            if self.fixture_proof is not None or self.device_proof is None:
+                raise ValueError("cad.agent/2 requires only device_proof")
+        return self
 
     @field_validator("capabilities", mode="before")
     @classmethod
@@ -514,9 +524,15 @@ def parse_agent_message(value: str | bytes | dict[str, Any]) -> AgentMessage:
     return _MESSAGE_ADAPTER.validate_python(value)
 
 
-def negotiate_protocol(protocol_min_version: str, protocol_max_version: str) -> str | None:
-    if protocol_min_version <= PROTOCOL_VERSION <= protocol_max_version:
-        return PROTOCOL_VERSION
+def negotiate_protocol(
+    protocol_min_version: str,
+    protocol_max_version: str,
+    *,
+    supported_versions: tuple[str, ...] = (PROTOCOL_VERSION,),
+) -> str | None:
+    for version in reversed(supported_versions):
+        if protocol_min_version <= version <= protocol_max_version:
+            return version
     return None
 
 

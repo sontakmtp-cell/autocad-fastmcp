@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --ink: #172033;
+  --muted: #5d687d;
+  --line: #dce2ec;
+  --surface: #ffffff;
+  --accent: #165dff;
+  --danger: #b42318;
+}
+
+body {
+  background: #f4f6fa;
+  color: var(--ink);
+  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+button,
+.button {
+  border: 0;
+  border-radius: 0.55rem;
+  cursor: pointer;
+  display: inline-block;
+  font-weight: 700;
+  padding: 0.7rem 1rem;
+  text-decoration: none;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid #ffbf47;
+  outline-offset: 2px;
+}
+
+.primary {
+  background: var(--accent);
+  color: white;
+}
+
+.secondary {
+  background: #e8edf7;
+  color: var(--ink);
+}
+
+.danger {
+  background: var(--danger);
+  color: white;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  padding: 1.25rem;
+}

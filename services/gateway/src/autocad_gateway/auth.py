@@ -28,7 +28,12 @@ def build_fixture_auth(
 
 
 def build_phase4_auth(
-    *, issuer: str, audience: str, jwks_uri: str, public_origin: str
+    *,
+    issuer: str,
+    audience: str,
+    jwks_uri: str,
+    public_origin: str,
+    include_device_manage: bool = False,
 ) -> RemoteAuthProvider:
     """Build the fail-closed Auth0-compatible verifier for the C1 profile."""
 
@@ -47,6 +52,9 @@ def build_phase4_auth(
         authorization_servers=[issuer],
         base_url=origin,
         resource_base_url=origin,
-        scopes_supported=["autocad.read"],
+        scopes_supported=[
+            "autocad.read",
+            *(["autocad.device.manage"] if include_device_manage else []),
+        ],
         resource_name="Kỹ Thuật Vàng AutoCAD",
     )

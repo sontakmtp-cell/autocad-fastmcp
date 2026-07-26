@@ -141,6 +141,7 @@ class DurableJobService:
                 )
             await self._require_dispatch_capability(raw, connection=connection)
             command = CommandMessage(
+                protocol_version=connection.protocol_version,
                 correlation_id=correlation_id,
                 session_id=connection.session_id,
                 device_id=raw["device_id"],
@@ -635,7 +636,11 @@ class DurableJobService:
                 error_code = "backend_error"
                 error_summary = "Agent returned an invalid observation result"
             else:
-                validation_error = self._validate_c1_observation(result, candidate)
+                validation_error = self._validate_c1_observation(
+                    result,
+                    candidate,
+                    expected_package=job.get("payload", {}).get("package"),
+                )
                 if validation_error is not None:
                     target = "failed"
                     result = None
@@ -683,9 +688,14 @@ class DurableJobService:
             self._resolve(updated)
 
     def _validate_c1_observation(
-        self, result: dict[str, Any], snapshot: dict[str, Any]
+        self,
+        result: dict[str, Any],
+        snapshot: dict[str, Any],
+        *,
+        expected_package: dict[str, str] | None = None,
     ) -> str | None:
-        if not self.required_package:
+        package = dict(expected_package or self.required_package)
+        if not package:
             return None
         evidence = result.get("execution_evidence")
         revision = snapshot.get("revision_evidence")
@@ -705,7 +715,7 @@ class DurableJobService:
             "revision_evidence",
         }:
             return "backend_error"
-        if evidence.get("package") != self.required_package:
+        if evidence.get("package") != package:
             return "package_mismatch"
         base_evidence_keys = {"agent_version", "runtime_state", "package"}
         runtime_evidence_keys = {"runtime", "degraded", "degradation_reason"}
@@ -793,9 +803,9 @@ class DurableJobService:
         ):
             return "backend_error"
         if not managed_dotnet and (
-            drawing.get("dispatcher_version") != self.required_package["version"]
-            or drawing.get("package_id") != self.required_package["package_id"]
-            or drawing.get("package_version") != self.required_package["version"]
+            drawing.get("dispatcher_version") != package["version"]
+            or drawing.get("package_id") != package["package_id"]
+            or drawing.get("package_version") != package["version"]
         ):
             return "backend_error"
         return None
@@ -854,13 +864,18 @@ class DurableJobService:
         elif connection is not None and connection.paused:
             failure_code = "paused_by_user"
             failure_summary = "Agent is paused by the local user"
-        elif self.required_package:
+        else:
+            required_package = dict(
+                job.get("payload", {}).get("package") or self.required_package
+            )
+            if not required_package:
+                return
             packages = (
                 list(connection.packages)
                 if connection is not None
                 else list((device or {}).get("packages", []))
             )
-            if self.required_package not in packages:
+            if required_package not in packages:
                 failure_code = "package_mismatch"
                 failure_summary = "Agent package does not match the required manifest"
         if failure_code is None:
@@ -937,6 +952,7 @@ class DurableJobService:
     ) -> None:
         await connection.send(
             ReconcileMessage(
+                protocol_version=connection.protocol_version,
                 session_id=connection.session_id,
                 device_id=connection.device_id,
                 commands=[
@@ -959,6 +975,7 @@ class DurableJobService:
     ) -> None:
         await connection.send(
             CancelMessage(
+                protocol_version=connection.protocol_version,
                 session_id=connection.session_id,
                 device_id=job["device_id"],
                 job_id=job["job_id"],

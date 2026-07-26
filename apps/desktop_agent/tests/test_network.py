@@ -10,6 +10,7 @@ import websockets
 from autocad_contracts import (
     AckMessage,
     CommandMessage,
+    HeartbeatMessage,
     HelloMessage,
     ReconcileCommandDescriptor,
     ReconcileMessage,
@@ -30,6 +31,17 @@ from autocad_desktop_agent.state import AgentIntent
 class Credentials:
     def load(self):
         return "lab-secret"
+
+
+class Phase5Credentials:
+    protocol_version = "cad.agent/2"
+
+    def load(self):
+        return "one-time-session-token"
+
+    def hello_proof(self, message_id, token):
+        assert token == "one-time-session-token"
+        return f"proof-{message_id}"
 
 
 class Executor:
@@ -110,6 +122,59 @@ async def test_real_outbound_websocket_handshake_and_command(tmp_path):
                 assert message.result["snapshot"]["drawing"]["document_name"] == "e2e.dwg"
                 break
         assert [item.message_type for item in received] == ["ack", "result"]
+        core.handle_intent(AgentIntent.EXIT)
+        completed.set()
+
+    async with websockets.serve(gateway, "127.0.0.1", port):
+        runner = asyncio.create_task(core.run_forever())
+        await asyncio.wait_for(completed.wait(), timeout=5)
+        await asyncio.wait_for(runner, timeout=5)
+
+
+@pytest.mark.asyncio
+async def test_phase5_websocket_hello_omits_legacy_fixture_proof(tmp_path):
+    package_path = tmp_path / "mcp_dispatch.lsp"
+    package_path.write_text("phase5-e2e", encoding="utf-8")
+    digest = hashlib.sha256(package_path.read_bytes()).hexdigest()
+    port = free_port()
+    config = AgentConfig(
+        gateway_ws_url=f"ws://127.0.0.1:{port}/agent/ws",
+        device_id="device-phase5",
+        device_name="Máy Phase 5",
+        ledger_path=tmp_path / "agent.db",
+        package_path=package_path,
+        package_sha256=digest,
+        heartbeat_seconds=1,
+    )
+    core = AgentCore(
+        config,
+        Phase5Credentials(),
+        CommandLedger(config.ledger_path),
+        Executor(),
+    )
+    completed = asyncio.Event()
+
+    async def gateway(websocket):
+        hello = parse_agent_message(await websocket.recv())
+        assert isinstance(hello, HelloMessage)
+        assert hello.protocol_version == "cad.agent/2"
+        assert hello.fixture_proof is None
+        assert hello.device_proof == f"proof-{hello.message_id}"
+        await websocket.send(
+            json.dumps(
+                message_dict(
+                    WelcomeMessage(
+                        protocol_version="cad.agent/2",
+                        selected_version="cad.agent/2",
+                        session_id="session-phase5",
+                        heartbeat_interval_seconds=1,
+                    )
+                )
+            )
+        )
+        heartbeat = parse_agent_message(await websocket.recv())
+        assert isinstance(heartbeat, HeartbeatMessage)
+        assert heartbeat.protocol_version == "cad.agent/2"
         core.handle_intent(AgentIntent.EXIT)
         completed.set()
 

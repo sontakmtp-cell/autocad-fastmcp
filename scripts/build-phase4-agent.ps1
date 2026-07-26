@@ -3,6 +3,7 @@ param(
     [string]$OutputRoot = (Join-Path $PSScriptRoot '..\dist\phase4-agent'),
     [string]$PythonVersion = '3.12',
     [switch]$SkipSync,
+    [switch]$ReuseCompiledStandalone,
     [ValidateSet('auto', 'msvc', 'mingw64')]
     [string]$Compiler = 'auto'
 )
@@ -62,22 +63,23 @@ function Get-Sha256 {
 }
 
 New-Item -ItemType Directory -Force -Path $output | Out-Null
-if (Test-Path -LiteralPath $buildRoot) {
-    $resolvedBuildRoot = (Resolve-Path -LiteralPath $buildRoot).Path
-    if (-not $resolvedBuildRoot.StartsWith($agentRoot.TrimEnd('\') + '\')) {
-        throw "Tu choi don build folder ngoai AgentRoot: $resolvedBuildRoot"
+if (-not $ReuseCompiledStandalone) {
+    if (Test-Path -LiteralPath $buildRoot) {
+        $resolvedBuildRoot = (Resolve-Path -LiteralPath $buildRoot).Path
+        if (-not $resolvedBuildRoot.StartsWith($agentRoot.TrimEnd('\') + '\')) {
+            throw "Tu choi don build folder ngoai AgentRoot: $resolvedBuildRoot"
+        }
+        Remove-Item -LiteralPath $resolvedBuildRoot -Recurse -Force
     }
-    Remove-Item -LiteralPath $resolvedBuildRoot -Recurse -Force
-}
-New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
+    New-Item -ItemType Directory -Force -Path $buildRoot | Out-Null
 
-Push-Location $agentRoot
-try {
-    if (-not $SkipSync) {
-        Write-Host "[$(Get-Date -Format o)] Syncing standalone build dependencies"
-        uv sync --locked --python $PythonVersion --group build --group test --group ui-test
-        if ($LASTEXITCODE -ne 0) { throw "uv sync failed with exit code $LASTEXITCODE" }
-    }
+    Push-Location $agentRoot
+    try {
+        if (-not $SkipSync) {
+            Write-Host "[$(Get-Date -Format o)] Syncing standalone build dependencies"
+            uv sync --locked --python $PythonVersion --group build --group test --group ui-test
+            if ($LASTEXITCODE -ne 0) { throw "uv sync failed with exit code $LASTEXITCODE" }
+        }
 
     Write-Host "[$(Get-Date -Format o)] Nuitka environment"
     uv run --no-sync python -m nuitka --version
@@ -132,9 +134,13 @@ try {
         throw "Nuitka standalone build failed with exit code $($process.ExitCode)"
     }
     Write-Host "[$(Get-Date -Format o)] Standalone compilation completed"
+    }
+    finally {
+        Pop-Location
+    }
 }
-finally {
-    Pop-Location
+elseif (-not (Test-Path -LiteralPath $buildRoot -PathType Container)) {
+    throw "ReuseCompiledStandalone requires an existing build folder: $buildRoot"
 }
 
 $packageDir = Join-Path $output 'packages\autocad.lisp.drawing_info\3.3-c1'

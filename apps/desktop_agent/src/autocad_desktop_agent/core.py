@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import hmac
+import inspect
 import json
 import uuid
 from collections.abc import Callable
@@ -64,6 +65,9 @@ class AgentCore:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._observers: list[Callable[[AgentViewState], None]] = []
         self._session_id: str | None = None
+        self._protocol_version = str(
+            getattr(credentials, "protocol_version", "cad.agent/1")
+        )
         self._current_command_id: str | None = None
         self._last_ids: dict[str, Any] = {}
         self._state = AgentViewState(
@@ -169,6 +173,8 @@ class AgentCore:
             try:
                 connection_stage = "credential"
                 credential = self.credentials.load()
+                if inspect.isawaitable(credential):
+                    credential = await credential
                 connection_stage = "connect"
                 async with websockets.connect(
                     self.config.gateway_ws_url,
@@ -194,6 +200,12 @@ class AgentCore:
                         "safe_error_type": type(exc).__name__,
                     }
                 )
+                close_code = None
+                if isinstance(exc, websockets.exceptions.ConnectionClosed):
+                    frame = exc.rcvd or exc.sent
+                    close_code = frame.code if frame is not None else None
+                if close_code == 4403:
+                    self._last_ids["safe_error_code"] = "credential_revoked"
                 support_codes = {
                     "credential": "C1-AUTH-001",
                     "connect": "C1-NET-001",
@@ -233,17 +245,31 @@ class AgentCore:
     async def _run_session(self, websocket: Any, credential: str) -> None:
         self._last_ids["connection_stage"] = "hello"
         message_id = str(uuid.uuid4())
-        proof = hmac.new(
-            credential.encode("utf-8"),
-            f"{self.config.device_id}:{message_id}".encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
+        protocol_version = str(
+            getattr(self.credentials, "protocol_version", "cad.agent/1")
+        )
+        if protocol_version == "cad.agent/2":
+            proof = self.credentials.hello_proof(message_id, credential)
+            fixture_proof = None
+        else:
+            proof = hmac.new(
+                credential.encode("utf-8"),
+                f"{self.config.device_id}:{message_id}".encode("utf-8"),
+                hashlib.sha256,
+            ).hexdigest()
+            fixture_proof = "phase4-c1"
         capabilities = list(canonical_capabilities(["observe"]))
+        proof_fields = (
+            {"device_proof": proof}
+            if protocol_version == "cad.agent/2"
+            else {"fixture_proof": fixture_proof, "device_proof": proof}
+        )
         hello = HelloMessage(
+            protocol_version=protocol_version,
+            protocol_min_version=protocol_version,
+            protocol_max_version=protocol_version,
             message_id=message_id,
             device_id=self.config.device_id,
-            fixture_proof="phase4-c1",
-            device_proof=proof,
             capability_hash=canonical_capability_hash(capabilities),
             capabilities=capabilities,
             last_processed_sequence=self.ledger.last_sequence(),
@@ -254,6 +280,7 @@ class AgentCore:
             current_command_id=self._current_command_id,
             packages=[self.package],
             package_manifest_hash=canonical_package_manifest_hash([self.package]),
+            **proof_fields,
         )
         await self._send(websocket, hello)
         welcome = parse_agent_message(await websocket.recv())
@@ -415,6 +442,7 @@ class AgentCore:
             await self._send(
                 websocket,
                 ReconcileResultMessage(
+                    protocol_version=self._protocol_version,
                     session_id=self._session_id,
                     device_id=self.config.device_id,
                     job_id=descriptor.job_id,
@@ -458,6 +486,7 @@ class AgentCore:
             await self._send(
                 websocket,
                 HeartbeatMessage(
+                    protocol_version=self._protocol_version,
                     session_id=self._session_id,
                     device_id=self.config.device_id,
                     sequence=self.ledger.next_sequence(),
@@ -513,6 +542,7 @@ class AgentCore:
         await self._send(
             websocket,
             AckMessage(
+                protocol_version=self._protocol_version,
                 session_id=self._session_id,
                 device_id=self.config.device_id,
                 job_id=command.job_id,
@@ -532,6 +562,7 @@ class AgentCore:
         sequence = self.ledger.next_sequence()
         if entry.state == "succeeded":
             message = ResultMessage(
+                protocol_version=self._protocol_version,
                 session_id=self._session_id,
                 device_id=self.config.device_id,
                 job_id=command.job_id,
@@ -543,6 +574,7 @@ class AgentCore:
             )
         elif entry.state == "cancelled":
             message = ResultMessage(
+                protocol_version=self._protocol_version,
                 session_id=self._session_id,
                 device_id=self.config.device_id,
                 job_id=command.job_id,
@@ -553,6 +585,7 @@ class AgentCore:
             )
         else:
             message = ResultMessage(
+                protocol_version=self._protocol_version,
                 session_id=self._session_id,
                 device_id=self.config.device_id,
                 job_id=command.job_id,

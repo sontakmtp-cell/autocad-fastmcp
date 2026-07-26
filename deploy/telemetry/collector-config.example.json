@@ -1,0 +1,7 @@
+{
+  "bind_host": "127.0.0.1",
+  "port": 4319,
+  "data_path": "D:\\AutoCAD-MCP-Telemetry\\aggregate.json",
+  "max_series": 256,
+  "ingest_token_sha256": "fb468352a57213d25c160fbae6c45c4b42e5de90684af05bb6ffd88baa4bfd9f"
+}

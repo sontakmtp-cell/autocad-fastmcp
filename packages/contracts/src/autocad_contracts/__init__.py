@@ -10,6 +10,7 @@ from .agent_protocol import (
     HelloMessage,
     ProgressMessage,
     PROTOCOL_VERSION,
+    PHASE5_PROTOCOL_VERSION,
     ReconcileCommandDescriptor,
     ReconcileMessage,
     ReconcileResultMessage,
@@ -40,6 +41,17 @@ from .runtime import (
     canonical_capability_manifest,
     canonical_capability_manifest_hash,
 )
+from .identity import (
+    DeviceChallengeRequest,
+    DeviceChallengeResponse,
+    DeviceRevokeRequest,
+    DeviceTokenRequest,
+    DeviceTokenResponse,
+    PairingApproveRequest,
+    PairingCompleteRequest,
+    PairingStartRequest,
+    PairingStartResponse,
+)
 
 __all__ = [
     "AgentMessage",
@@ -51,6 +63,7 @@ __all__ = [
     "HelloMessage",
     "ProgressMessage",
     "PROTOCOL_VERSION",
+    "PHASE5_PROTOCOL_VERSION",
     "ReconcileCommandDescriptor",
     "ReconcileMessage",
     "ReconcileResultMessage",
@@ -78,4 +91,13 @@ __all__ = [
     "RuntimeEvidence",
     "canonical_capability_manifest",
     "canonical_capability_manifest_hash",
+    "DeviceChallengeRequest",
+    "DeviceChallengeResponse",
+    "DeviceRevokeRequest",
+    "DeviceTokenRequest",
+    "DeviceTokenResponse",
+    "PairingApproveRequest",
+    "PairingCompleteRequest",
+    "PairingStartRequest",
+    "PairingStartResponse",
 ]
