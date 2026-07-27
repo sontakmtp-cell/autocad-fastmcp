@@ -251,6 +251,15 @@ class DurableJobService:
             except ValueError:
                 expired = True
             if expired:
+                if (
+                    job["kind"] == "program_commit"
+                    and job["state"] == "outcome_unknown"
+                ):
+                    logger.warning(
+                        "Expired Program commit remains recoverable pending receipt reconciliation",
+                        extra={"job_id": job["job_id"], "state": job["state"]},
+                    )
+                    continue
                 target = "needs_attention" if job["state"] == "outcome_unknown" else "failed"
                 try:
                     updated = await self.repository.transition_job(
@@ -383,18 +392,59 @@ class DurableJobService:
             await self._fail_payload(job)
             return
         if message.status == "terminal" and message.result_status:
-            result = ResultMessage(
-                session_id=connection.session_id,
-                device_id=connection.device_id,
-                job_id=job["job_id"],
-                command_id=job["command_id"],
-                sequence=message.sequence,
-                payload_hash=message.payload_hash,
-                status=message.result_status,
-                result=message.result,
-                error_code=message.error_code,
-                error_message=message.error_message,
+            if (
+                job["kind"] == "program_commit"
+                and job["state"] == "outcome_unknown"
+                and message.result_status == "failed"
+                and message.error_code == "outcome_unknown"
+            ):
+                logger.warning(
+                    "Agent reconciliation still reports an unknown Program commit outcome",
+                    extra={"job_id": job["job_id"], "state": job["state"]},
+                )
+                return
+            if job["kind"] in {
+                "program_preview",
+                "program_commit",
+                "program_validate",
+            } and (
+                message.kind != job["kind"]
+                or message.binding is None
+                or message.binding.model_dump(mode="json")
+                != self._program_result_binding(job)
+            ):
+                logger.warning(
+                    "Program reconciliation did not prove its durable execution binding",
+                    extra={"job_id": job["job_id"], "state": job["state"]},
+                )
+                return
+            message_type = (
+                ProgramResultMessage
+                if job["kind"] in {
+                    "program_preview",
+                    "program_commit",
+                    "program_validate",
+                }
+                else ResultMessage
             )
+            result_values = {
+                "session_id": connection.session_id,
+                "device_id": connection.device_id,
+                "job_id": job["job_id"],
+                "command_id": job["command_id"],
+                "sequence": message.sequence,
+                "payload_hash": message.payload_hash,
+                "status": message.result_status,
+                "result": message.result,
+                "error_code": message.error_code,
+                "error_message": message.error_message,
+            }
+            if message_type is ProgramResultMessage:
+                result_values.update(
+                    kind=message.kind,
+                    binding=message.binding,
+                )
+            result = message_type(**result_values)
             await self._handle_result(job, result)
             return
         if message.status == "terminal":
@@ -788,22 +838,24 @@ class DurableJobService:
                         "acknowledged",
                         "running",
                         "cancel_requested",
+                        "outcome_unknown",
                     }
                 ):
-                    unknown = await self.repository.transition_job(
-                        job["job_id"],
-                        "outcome_unknown",
-                        error_code="binding_mismatch",
-                        error_summary="Commit result did not prove its exact execution binding",
-                    )
-                    updated = await self.repository.transition_job(
-                        job["job_id"],
-                        "needs_attention",
-                        expected_version=unknown["state_version"] if unknown else None,
-                        evidence=True,
-                        error_code="binding_mismatch",
-                        error_summary="Commit outcome requires receipt reconciliation",
-                    )
+                    updated = latest
+                    if latest["state"] != "outcome_unknown":
+                        updated = await self.repository.transition_job(
+                            job["job_id"],
+                            "outcome_unknown",
+                            error_code="binding_mismatch",
+                            error_summary=(
+                                "Commit result did not prove its exact execution binding"
+                            ),
+                        )
+                    else:
+                        logger.warning(
+                            "Reconciled commit evidence still did not prove its binding",
+                            extra={"job_id": job["job_id"]},
+                        )
                     release_write_lock = False
                 else:
                     updated = await self.repository.transition_job(
@@ -850,18 +902,10 @@ class DurableJobService:
             self._resolve(updated)
 
     @staticmethod
-    def _validate_program_result_binding(
-        job: dict[str, Any], message: ProgramResultMessage
-    ) -> None:
-        if message.kind != job["kind"]:
-            raise DurableJobError(
-                "binding_mismatch",
-                job_id=job["job_id"],
-                job_state=job["state"],
-            )
+    def _program_result_binding(job: dict[str, Any]) -> dict[str, Any]:
         execution = job["payload"]["execution"]
         pins = execution["pins"]
-        expected = {
+        return {
             "program_digest": execution["program_digest"],
             "execution_digest": execution["execution_digest"],
             "document_id": execution["document_id"],
@@ -878,6 +922,18 @@ class DurableJobService:
             "operation_registry_hash": pins["operation_registry_hash"],
             "policy_version": pins["policy_version"],
         }
+
+    @staticmethod
+    def _validate_program_result_binding(
+        job: dict[str, Any], message: ProgramResultMessage
+    ) -> None:
+        if message.kind != job["kind"]:
+            raise DurableJobError(
+                "binding_mismatch",
+                job_id=job["job_id"],
+                job_state=job["state"],
+            )
+        expected = DurableJobService._program_result_binding(job)
         if message.binding.model_dump(mode="json") != expected:
             raise DurableJobError(
                 "binding_mismatch",

@@ -256,6 +256,28 @@ async def test_started_commit_transport_loss_is_outcome_unknown_and_not_retried(
     assert core.view_state.outcome_unknown is True
     assert socket.messages[-1].status == "outcome_unknown"
 
+    reconcile_socket = Socket()
+    await core._handle_reconcile(
+        reconcile_socket,
+        ReconcileMessage(
+            session_id="session-1",
+            device_id="device-1",
+            commands=[
+                ReconcileCommandDescriptor(
+                    job_id=command.job_id,
+                    command_id=command.command_id,
+                    payload_hash=command.payload_hash,
+                )
+            ],
+        ),
+    )
+    reply = reconcile_socket.messages[0]
+    assert isinstance(reply, ReconcileResultMessage)
+    assert reply.result_status == "failed"
+    assert reply.error_code == "outcome_unknown"
+    assert reply.kind == "program_commit"
+    assert reply.binding == command.binding
+
 
 def test_diagnostics_is_allowlist_only(tmp_path):
     core, _ = make_core(tmp_path)

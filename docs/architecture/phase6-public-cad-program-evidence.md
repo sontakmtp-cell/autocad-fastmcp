@@ -28,7 +28,7 @@
 | Atomic create-only commit | Host transaction contains geometry and XRecord receipt; live commit and validation | Pass |
 | Exact retry has no second effect | durable receipt lookup and duplicate tests; live duplicate receipt run | Pass |
 | Exact binding and stale denial | document/runtime/package/capability/registry/policy checks and tests | Pass |
-| Unknown outcome safety | `needs_attention` retains the document write lock; later writes return `document_write_busy` | Pass |
+| Unknown outcome safety | `outcome_unknown` retains the document write lock and remains recoverable after deadline; an exact terminal reconciliation releases it | Pass |
 | Write default-off | Gateway/Agent config defaults and launcher regression test | Pass |
 | Managed R25 only | runtime broker has no write fallback; LT and high-risk flags are rejected | Pass |
 | Portal is observation-only | no approval/mutation controls; owner-safe resources and Gateway-backed release status | Pass |
@@ -58,6 +58,10 @@ Important regression coverage includes:
 - stale snapshot, package, capability, registry, and policy denial;
 - no LT or compatibility write fallback;
 - no blind retry after `outcome_unknown`;
+- expired unknown commits remaining nonterminal and reconciliation-eligible;
+- Agent ledger-persisted program kind and execution binding on reconciliation;
+- missing, mismatched, or still-unknown reconciliation retaining the write lock;
+- exact reconciled receipt evidence materializing success and releasing the lock;
 - launcher write gates remaining off unless `-EnableManagedWrite` is explicit;
 - Portal failing closed when Gateway release status is unavailable.
 
@@ -75,8 +79,9 @@ Important regression coverage includes:
 - Program, preview, job, receipt, and validation records are scoped by the
   authenticated owner key.
 - A commit whose result cannot prove its exact binding becomes
-  `outcome_unknown` then `needs_attention`; its document write lock remains
-  held until reconciliation.
+  `outcome_unknown`; its document write lock remains held across deadline
+  sweeps. A terminal reconciliation must prove the exact execution binding
+  before the receipt is materialized and the lock is released.
 
 ## 5. Desktop Agent and Managed Host evidence
 
@@ -150,7 +155,14 @@ The independent review initially found:
 4. Portal release state sourced only from local environment.
 
 All four were addressed with focused regression tests. The follow-up review
-result is recorded with the final handoff.
+then identified a reconciliation gap where a retained lock could become
+permanent. The Gateway now keeps unknown commits nonterminal across deadline
+sweeps. The Agent supplies the program kind and execution binding from its
+durable ledger; the Gateway rejects missing, mismatched, or still-unknown
+evidence and releases the lock only after exact terminal receipt
+reconciliation. The focused regressions cover retention, recovery discovery,
+evidence denial, reconciliation, and the next permitted write. The final
+focused review result is recorded with the handoff.
 
 No review evidence found LT write, COM write, raw command execution, high-risk
 operations, public trusted approval, or owner-boundary bypass.

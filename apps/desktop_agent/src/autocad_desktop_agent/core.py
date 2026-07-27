@@ -733,6 +733,13 @@ class AgentCore:
                     if entry.state == "outcome_unknown"
                     else entry.state
                 )
+                if entry.kind in {
+                    "program_preview",
+                    "program_commit",
+                    "program_validate",
+                }:
+                    kwargs["kind"] = entry.kind
+                    kwargs["binding"] = entry.binding
                 if entry.state == "succeeded":
                     kwargs["result"] = entry.result
                 elif entry.state in {"failed", "outcome_unknown"}:

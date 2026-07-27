@@ -785,6 +785,8 @@ class ReconcileResultMessage(AgentEnvelope):
     result: dict[str, Any] | None = Field(default=None, max_length=MAX_RESULT_ITEMS)
     error_code: str | None = Field(default=None, max_length=64)
     error_message: str | None = Field(default=None, max_length=MAX_MESSAGE_TEXT)
+    kind: Literal["program_preview", "program_commit", "program_validate"] | None = None
+    binding: ProgramExecutionBinding | None = None
 
     @model_validator(mode="after")
     def _reconcile_fields_match_status(self) -> "ReconcileResultMessage":
@@ -793,6 +795,8 @@ class ReconcileResultMessage(AgentEnvelope):
             self.result,
             self.error_code,
             self.error_message,
+            self.kind,
+            self.binding,
         )
         if self.status != "terminal":
             if any(value is not None for value in terminal_fields):
@@ -806,6 +810,8 @@ class ReconcileResultMessage(AgentEnvelope):
             self.error_code is not None or self.error_message is not None
         ):
             raise ValueError("only failed reconciliation may include error fields")
+        if (self.kind is None) != (self.binding is None):
+            raise ValueError("program reconciliation requires kind and binding together")
         return self
 
 

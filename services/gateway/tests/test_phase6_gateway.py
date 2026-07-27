@@ -14,6 +14,7 @@ from autocad_contracts import (
     HeartbeatMessage,
     ProgramCommandMessage,
     ProgramResultMessage,
+    ReconcileResultMessage,
     canonical_capability_hash,
     program_command_payload_hash,
 )
@@ -732,7 +733,7 @@ async def test_unknown_commit_keeps_document_locked_until_reconciliation(phase6)
 
     updated = await service.repository.get_job(OWNER, job["job_id"])
     assert updated is not None
-    assert updated["state"] == "needs_attention"
+    assert updated["state"] == "outcome_unknown"
     with service.database.read_connection() as conn:
         assert (
             conn.execute("SELECT COUNT(*) FROM cad_program_write_locks").fetchone()[0]
@@ -748,6 +749,139 @@ async def test_unknown_commit_keeps_document_locked_until_reconciliation(phase6)
             "blocked-after-unknown",
         )
     assert busy.value.code == "document_write_busy"
+
+    with service.database.transaction() as conn:
+        conn.execute(
+            "UPDATE jobs SET deadline_at = ? WHERE job_id = ?",
+            ("2000-01-01T00:00:00+00:00", job["job_id"]),
+        )
+    await service.job_service.sweep_deadlines()
+    expired = await service.repository.get_job(OWNER, job["job_id"])
+    assert expired is not None
+    assert expired["state"] == "outcome_unknown"
+    recoverable = await service.repository.all_nonterminal_jobs()
+    assert job["job_id"] in {item["job_id"] for item in recoverable}
+
+    await service.job_service.handle_reconcile_result(
+        connection,
+        ReconcileResultMessage(
+            session_id=connection.session_id,
+            device_id=DEVICE,
+            job_id=job["job_id"],
+            command_id=job["command_id"],
+            sequence=3,
+            status="terminal",
+            payload_hash=job["payload_hash"],
+            result_status="failed",
+            error_code="outcome_unknown",
+            error_message="Agent command outcome remains unknown",
+            kind="program_commit",
+            binding=command["binding"],
+        ),
+    )
+    still_unknown = await service.repository.get_job(OWNER, job["job_id"])
+    assert still_unknown is not None
+    assert still_unknown["state"] == "outcome_unknown"
+
+    await service.job_service.handle_reconcile_result(
+        connection,
+        ReconcileResultMessage(
+            session_id=connection.session_id,
+            device_id=DEVICE,
+            job_id=job["job_id"],
+            command_id=job["command_id"],
+            sequence=4,
+            status="terminal",
+            payload_hash=job["payload_hash"],
+            result_status="succeeded",
+            result={
+                "receipt_id": execution["receipt_id"],
+                "receipt_digest": "sha256:" + ("3" * 64),
+                "document_revision_before": REVISION,
+                "document_revision_after": "e" * 64,
+                "created_entity_count": 1,
+                "duplicate": False,
+            },
+        ),
+    )
+    missing_binding = await service.repository.get_job(OWNER, job["job_id"])
+    assert missing_binding is not None
+    assert missing_binding["state"] == "outcome_unknown"
+
+    mismatched_binding = dict(command["binding"])
+    mismatched_binding["document_revision"] = "f" * 64
+    await service.job_service.handle_reconcile_result(
+        connection,
+        ReconcileResultMessage(
+            session_id=connection.session_id,
+            device_id=DEVICE,
+            job_id=job["job_id"],
+            command_id=job["command_id"],
+            sequence=5,
+            status="terminal",
+            payload_hash=job["payload_hash"],
+            result_status="succeeded",
+            kind="program_commit",
+            binding=mismatched_binding,
+            result={
+                "receipt_id": execution["receipt_id"],
+                "receipt_digest": "sha256:" + ("3" * 64),
+                "document_revision_before": REVISION,
+                "document_revision_after": "e" * 64,
+                "created_entity_count": 1,
+                "duplicate": False,
+            },
+        ),
+    )
+    mismatch = await service.repository.get_job(OWNER, job["job_id"])
+    assert mismatch is not None
+    assert mismatch["state"] == "outcome_unknown"
+    with service.database.read_connection() as conn:
+        assert (
+            conn.execute("SELECT COUNT(*) FROM cad_program_write_locks").fetchone()[0]
+            == 1
+        )
+
+    await service.job_service.handle_reconcile_result(
+        connection,
+        ReconcileResultMessage(
+            session_id=connection.session_id,
+            device_id=DEVICE,
+            job_id=job["job_id"],
+            command_id=job["command_id"],
+            sequence=6,
+            status="terminal",
+            payload_hash=job["payload_hash"],
+            result_status="succeeded",
+            kind="program_commit",
+            binding=command["binding"],
+            result={
+                "receipt_id": execution["receipt_id"],
+                "receipt_digest": "sha256:" + ("3" * 64),
+                "document_revision_before": REVISION,
+                "document_revision_after": "e" * 64,
+                "created_entity_count": 1,
+                "duplicate": False,
+            },
+        ),
+    )
+    reconciled = await service.repository.get_job(OWNER, job["job_id"])
+    assert reconciled is not None
+    assert reconciled["state"] == "succeeded"
+    with service.database.read_connection() as conn:
+        assert (
+            conn.execute("SELECT COUNT(*) FROM cad_program_write_locks").fetchone()[0]
+            == 0
+        )
+    next_preview = await service.program_service.preview(
+        CadPreviewInput(
+            program_id=prepared.program_id,
+            idempotency_key="allowed-after-reconcile",
+        ),
+        WRITE_PRINCIPAL,
+        "allowed-after-reconcile",
+    )
+    assert next_preview.state == "dispatched"
 
 
 async def test_feature_flags_default_off_and_forbid_lt_or_high_risk(tmp_path):
