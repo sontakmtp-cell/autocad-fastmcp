@@ -108,6 +108,8 @@
             "after_sequence": { "type": "integer", "minimum": 0 },
             "max_events": { "type": "integer", "minimum": 1, "maximum": 100 },
             "program": { "$ref": "cad-program-0.2.schema.json" },
+            "preview_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "receipt_id": { "type": "string", "minLength": 1, "maxLength": 128 },
             "execution_binding": {
               "type": "object",
               "additionalProperties": false,
@@ -163,8 +165,9 @@
             "validation": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["receipt_id"],
+              "required": ["validation_id", "receipt_id"],
               "properties": {
+                "validation_id": { "type": "string", "minLength": 1, "maxLength": 128 },
                 "receipt_id": { "type": "string", "minLength": 1, "maxLength": 128 },
                 "expected_entity_count": { "type": "integer", "minimum": 0, "maximum": 256 },
                 "expected_entity_types": {

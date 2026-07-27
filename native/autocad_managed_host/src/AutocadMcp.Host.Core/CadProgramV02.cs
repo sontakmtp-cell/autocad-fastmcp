@@ -125,6 +125,7 @@ public sealed record CadHostBinding(
 public sealed record CadPreviewReference(string PreviewId, string PreviewDigest);
 
 public sealed record CadValidationRequest(
+    string ValidationId,
     string ReceiptId,
     int? ExpectedEntityCount,
     IReadOnlyList<string> ExpectedEntityTypes,
@@ -133,7 +134,9 @@ public sealed record CadValidationRequest(
 public sealed record CadProgramV02Request(
     CadProgramV02? Program,
     CadExecutionBinding ExecutionBinding,
+    string? PreviewId,
     CadPreviewReference? Preview,
+    string? ReceiptId,
     CadValidationRequest? Validation);
 
 public static class CadHostAdmission
@@ -314,10 +317,13 @@ public static class CadProgramV02Parser
 
         var required = operationId switch
         {
-            "cad.program.preview" => new HashSet<string> { "program", "execution_binding" },
+            "cad.program.preview" => new HashSet<string>
+            {
+                "program", "execution_binding", "preview_id"
+            },
             "cad.program.commit" => new HashSet<string>
             {
-                "program", "execution_binding", "preview_binding"
+                "program", "execution_binding", "preview_binding", "receipt_id"
             },
             "cad.program.validate" => new HashSet<string>
             {
@@ -329,7 +335,9 @@ public static class CadProgramV02Parser
 
         var binding = ParseExecutionBinding(arguments.GetProperty("execution_binding"));
         CadProgramV02? program = null;
+        string? previewId = null;
         CadPreviewReference? preview = null;
+        string? receiptId = null;
         CadValidationRequest? validation = null;
         if (operationId is "cad.program.preview" or "cad.program.commit")
         {
@@ -344,12 +352,23 @@ public static class CadProgramV02Parser
         if (operationId == "cad.program.commit")
         {
             preview = ParsePreview(arguments.GetProperty("preview_binding"));
+            receiptId = Identifier(arguments, "receipt_id", 128);
+        }
+        if (operationId == "cad.program.preview")
+        {
+            previewId = Identifier(arguments, "preview_id", 128);
         }
         if (operationId == "cad.program.validate")
         {
             validation = ParseValidation(arguments.GetProperty("validation"));
         }
-        return new CadProgramV02Request(program, binding, preview, validation);
+        return new CadProgramV02Request(
+            program,
+            binding,
+            previewId,
+            preview,
+            receiptId,
+            validation);
     }
 
     public static CadProgramV02 ParseProgram(JsonElement value)
@@ -811,7 +830,7 @@ public static class CadProgramV02Parser
     {
         EnsureObject(
             value,
-            ["receipt_id"],
+            ["validation_id", "receipt_id"],
             ["expected_entity_count", "expected_entity_types", "expected_layers"],
             "validation request");
         int? expectedCount = null;
@@ -824,6 +843,7 @@ public static class CadProgramV02Parser
             expectedCount = parsed;
         }
         return new CadValidationRequest(
+            Identifier(value, "validation_id", 128),
             Identifier(value, "receipt_id", 128),
             expectedCount,
             StringArray(value, "expected_entity_types", 16, 64, UpperType),
@@ -1277,11 +1297,13 @@ public sealed record DurableProgramReceiptV02(
 
     public string ReceiptId
     {
-        get
-        {
-            var digest = SHA256.HashData(Encoding.UTF8.GetBytes(IdempotencyKey));
-            return $"AUTOCAD_MCP_PROGRAM_{Convert.ToHexString(digest).ToLowerInvariant()[..32]}";
-        }
+        get => BuildReceiptId(IdempotencyKey);
+    }
+
+    public static string BuildReceiptId(string previewId)
+    {
+        var digest = SHA256.HashData(Encoding.UTF8.GetBytes(previewId));
+        return $"AUTOCAD_MCP_PROGRAM_{Convert.ToHexString(digest).ToLowerInvariant()[..32]}";
     }
 
     public string ReceiptDigest

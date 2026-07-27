@@ -8,10 +8,18 @@ from datetime import datetime, timezone
 from hashlib import sha256
 from typing import Any
 
-from autocad_contracts import canonical_json, validate_bounded_json
+from autocad_contracts import (
+    canonical_json,
+    canonical_preview_digest,
+    validate_bounded_json,
+)
 
 from ...domain.jobs import is_terminal, validate_transition
-from ...program_contract_adapter import MAX_RESULT_BYTES, program_wire_payload_hash
+from ...program_contract_adapter import (
+    MAX_RESULT_BYTES,
+    program_command_fields,
+    program_wire_payload_hash,
+)
 from .database import SqliteDatabase, new_id, utc_now
 from .repositories import RepositoryConflict
 
@@ -534,6 +542,14 @@ class ProgramRepository:
         now = utc_now()
         if kind == "program_preview":
             value = result.get("preview", result)
+            expected_preview_digest = canonical_preview_digest(
+                execution["preview_id"],
+                program_command_fields(
+                    kind="program_preview",
+                    effect_class="write",
+                    payload=payload,
+                )["binding"],
+            )
             required = {
                 "program_digest",
                 "execution_digest",
@@ -555,6 +571,9 @@ class ProgramRepository:
                 value["program_digest"] != execution["program_digest"]
                 or value["execution_digest"] != execution["execution_digest"]
                 or value["binding_digest"] != execution["binding_digest"]
+                or value["preview_id"] != execution["preview_id"]
+                or execution["preview_digest"] != expected_preview_digest
+                or value["preview_digest"] != expected_preview_digest
                 or value["document_revision_before"] != execution["expected_document_revision"]
                 or value["document_revision_after"] != execution["expected_document_revision"]
                 or value["preview_strategy"] != "database_transaction_abort"
@@ -654,6 +673,7 @@ class ProgramRepository:
             if not isinstance(value, dict) or set(value) != required:
                 raise RepositoryConflict("program_result_invalid")
             comparisons = {
+                "receipt_id": execution["receipt_id"],
                 "program_digest": execution["program_digest"],
                 "execution_digest": execution["execution_digest"],
                 "preview_execution_digest": execution["preview_execution_digest"],

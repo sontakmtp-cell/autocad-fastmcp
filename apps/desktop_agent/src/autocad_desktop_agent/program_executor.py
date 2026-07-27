@@ -145,11 +145,14 @@ class ProgramCommandExecutor:
                 mode="json",
                 exclude_none=True,
             )
-        if command.kind == "program_commit":
+        if command.kind == "program_preview":
+            arguments["preview_id"] = command.preview_id
+        elif command.kind == "program_commit":
             arguments["preview_binding"] = {
                 "preview_id": command.preview_id,
                 "preview_digest": command.preview_digest,
             }
+            arguments["receipt_id"] = command.receipt_id
         elif command.validation is not None:
             arguments["validation"] = command.validation.model_dump(
                 mode="json",

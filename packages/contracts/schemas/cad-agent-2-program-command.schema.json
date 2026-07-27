@@ -867,6 +867,12 @@
     "ProgramValidationRequest": {
       "additionalProperties": false,
       "properties": {
+        "validation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Validation Id",
+          "type": "string"
+        },
         "receipt_id": {
           "maxLength": 128,
           "minLength": 1,
@@ -910,6 +916,7 @@
         }
       },
       "required": [
+        "validation_id",
         "receipt_id"
       ],
       "title": "ProgramValidationRequest",
@@ -1068,6 +1075,20 @@
       "default": null,
       "title": "Preview Digest"
     },
+    "receipt_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Receipt Id"
+    },
     "validation": {
       "anyOf": [
         {
@@ -1109,7 +1130,8 @@
       },
       "then": {
         "required": [
-          "program"
+          "program",
+          "preview_id"
         ],
         "properties": {
           "effect_class": {
@@ -1117,18 +1139,21 @@
           },
           "program": {
             "$ref": "#/$defs/CadProgram"
+          },
+          "preview_id": {
+            "type": "string"
           }
         },
         "not": {
           "anyOf": [
             {
               "required": [
-                "preview_id"
+                "preview_digest"
               ]
             },
             {
               "required": [
-                "preview_digest"
+                "receipt_id"
               ]
             },
             {
@@ -1155,7 +1180,8 @@
         "required": [
           "program",
           "preview_id",
-          "preview_digest"
+          "preview_digest",
+          "receipt_id"
         ],
         "properties": {
           "effect_class": {
@@ -1168,6 +1194,9 @@
             "type": "string"
           },
           "preview_digest": {
+            "type": "string"
+          },
+          "receipt_id": {
             "type": "string"
           }
         },
@@ -1216,6 +1245,11 @@
             {
               "required": [
                 "preview_digest"
+              ]
+            },
+            {
+              "required": [
+                "receipt_id"
               ]
             }
           ]

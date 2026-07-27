@@ -64,7 +64,9 @@ internal sealed class AutoCadProgramOperations(
         {
             "cad.program.preview" => Preview(
                 document,
-                command.CommandId,
+                request.PreviewId ?? throw new ProtocolValidationException(
+                    "program_invalid",
+                    "Preview requires the Gateway preview ID."),
                 RequireProgram(request),
                 request.ExecutionBinding),
             "cad.program.commit" => Commit(
@@ -73,7 +75,10 @@ internal sealed class AutoCadProgramOperations(
                 request.ExecutionBinding,
                 request.Preview ?? throw new ProtocolValidationException(
                     "preview_required",
-                    "Commit requires an exact preview binding.")),
+                    "Commit requires an exact preview binding."),
+                request.ReceiptId ?? throw new ProtocolValidationException(
+                    "program_invalid",
+                    "Commit requires the exact durable receipt ID.")),
             "cad.program.validate" => Validate(
                 document,
                 request.ExecutionBinding,
@@ -140,10 +145,17 @@ internal sealed class AutoCadProgramOperations(
         Document document,
         CadProgramV02 program,
         CadExecutionBinding binding,
-        CadPreviewReference preview)
+        CadPreviewReference preview,
+        string receiptId)
     {
         var identity = identities.Get(document);
         var idempotencyKey = preview.PreviewId;
+        if (receiptId != DurableProgramReceiptV02.BuildReceiptId(preview.PreviewId))
+        {
+            throw new ProtocolValidationException(
+                "program_invalid",
+                "Receipt ID does not match the exact preview binding.");
+        }
         using (document.LockDocument())
         using (var duplicateTransaction = document.Database.TransactionManager.StartOpenCloseTransaction())
         {
@@ -281,7 +293,7 @@ internal sealed class AutoCadProgramOperations(
             }
             return new
             {
-                validation_id = $"validation-{Guid.NewGuid():N}",
+                validation_id = request.ValidationId,
                 valid = failures.Count == 0,
                 document_revision = revision,
                 checks,

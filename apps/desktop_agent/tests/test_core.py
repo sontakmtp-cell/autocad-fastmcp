@@ -18,6 +18,7 @@ from autocad_contracts import (
     ReconcileResultMessage,
     canonical_payload_hash,
     canonical_program_digest,
+    canonical_receipt_id,
     parse_agent_message,
 )
 
@@ -136,6 +137,7 @@ def make_program_command() -> ProgramCommandMessage:
         program=program,
         preview_id="preview-1",
         preview_digest=f"sha256:{'6' * 64}",
+        receipt_id=canonical_receipt_id("preview-1"),
     )
     return command.model_copy(
         update={"payload_hash": canonical_payload_hash(program_command_payload(command))}
@@ -146,6 +148,14 @@ class ProgramExecutor:
     def __init__(self, error: str | None = None):
         self.calls = 0
         self.error = error
+        self.result = {
+            "receipt_id": canonical_receipt_id("preview-1"),
+            "receipt_digest": f"sha256:{'7' * 64}",
+            "document_revision_before": "42",
+            "document_revision_after": "43",
+            "created_entity_count": 1,
+            "duplicate": False,
+        }
 
     def validate_command(self, command):
         return None
@@ -154,14 +164,7 @@ class ProgramExecutor:
         self.calls += 1
         if self.error:
             raise AgentExecutionError(self.error)
-        return {
-            "receipt_id": "receipt-1",
-            "receipt_digest": f"sha256:{'7' * 64}",
-            "document_revision_before": "42",
-            "document_revision_after": "43",
-            "created_entity_count": 1,
-            "duplicate": False,
-        }
+        return self.result
 
 
 def make_command(core):
@@ -236,7 +239,10 @@ async def test_program_terminal_persists_and_exact_duplicate_returns_evidence(tm
         if isinstance(message, ProgramResultMessage)
     ]
     assert len(results) == 2
-    assert all(result.result.receipt_id == "receipt-1" for result in results)
+    assert all(
+        result.result.receipt_id == canonical_receipt_id("preview-1")
+        for result in results
+    )
 
 
 @pytest.mark.asyncio
@@ -277,6 +283,70 @@ async def test_started_commit_transport_loss_is_outcome_unknown_and_not_retried(
     assert reply.error_code == "outcome_unknown"
     assert reply.kind == "program_commit"
     assert reply.binding == command.binding
+
+
+@pytest.mark.parametrize(
+    ("initial_state", "expected_state", "expected_calls"),
+    [
+        ("received", "succeeded", 1),
+        ("accepted", "succeeded", 1),
+        ("started", "outcome_unknown", 0),
+        ("succeeded", "succeeded", 0),
+        ("outcome_unknown", "outcome_unknown", 0),
+    ],
+)
+async def test_program_restart_resumes_only_safe_pre_execution_states(
+    tmp_path,
+    initial_state,
+    expected_state,
+    expected_calls,
+):
+    command = make_program_command()
+    core, _ = make_core(tmp_path, program_executor=ProgramExecutor())
+    core.set_write_lock(True)
+    package = {
+        "package_id": command.binding.package_id,
+        "version": command.binding.package_version,
+        "sha256": command.binding.package_hash.removeprefix("sha256:"),
+    }
+    core.ledger.record_received(
+        command_id=command.command_id,
+        job_id=command.job_id,
+        idempotency_key=command.idempotency_key,
+        payload_hash=command.payload_hash,
+        package=package,
+        session_id=command.session_id,
+        device_id=command.device_id,
+        kind=command.kind,
+        binding=command.binding.model_dump(mode="json"),
+    )
+    if initial_state in {"accepted", "started"}:
+        core.ledger.transition(command.command_id, "accepted")
+    if initial_state == "started":
+        core.ledger.transition(command.command_id, "started")
+    elif initial_state == "succeeded":
+        core.ledger.transition(
+            command.command_id,
+            "succeeded",
+            result=ProgramExecutor().result,
+        )
+    elif initial_state == "outcome_unknown":
+        core.ledger.transition(
+            command.command_id,
+            "outcome_unknown",
+            error_code="outcome_unknown",
+        )
+    core.ledger.close()
+
+    executor = ProgramExecutor()
+    restarted, _ = make_core(tmp_path, program_executor=executor)
+    socket = Socket()
+    await restarted._handle_program_command(socket, command)
+
+    entry = restarted.ledger.get(command.command_id)
+    assert entry is not None
+    assert entry.state == expected_state
+    assert executor.calls == expected_calls
 
 
 def test_diagnostics_is_allowlist_only(tmp_path):

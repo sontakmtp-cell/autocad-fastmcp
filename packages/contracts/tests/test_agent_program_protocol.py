@@ -12,8 +12,11 @@ from autocad_contracts import (
     agent_program_command_json_schema,
     agent_program_result_json_schema,
     canonical_payload_hash,
+    canonical_preview_digest,
     canonical_program_digest,
+    canonical_receipt_id,
     message_dict,
+    operation_registry_digest,
     parse_agent_message,
     program_command_payload,
     program_command_payload_hash,
@@ -40,8 +43,8 @@ def binding() -> dict:
         "package_hash": "sha256:" + "2" * 64,
         "capability_manifest_hash": "sha256:" + "3" * 64,
         "operation_registry_version": "cad.program/0.2",
-        "operation_registry_hash": "sha256:" + "4" * 64,
-        "policy_version": "phase6-lab-v1",
+        "operation_registry_hash": operation_registry_digest(),
+        "policy_version": "phase6-policy/1",
     }
 
 
@@ -65,11 +68,13 @@ def command(kind: str) -> dict:
     }
     if kind in {"program_preview", "program_commit"}:
         value["program"] = complete_program()
-    if kind == "program_commit":
         value["preview_id"] = "preview-001"
+    if kind == "program_commit":
         value["preview_digest"] = "sha256:" + "5" * 64
+        value["receipt_id"] = "AUTOCAD_MCP_PROGRAM_" + "6" * 32
     if kind == "program_validate":
         value["validation"] = {
+            "validation_id": "validation-001",
             "receipt_id": "receipt-001",
             "expected_entity_count": 6,
             "expected_entity_types": ["LINE", "CIRCLE"],
@@ -89,9 +94,9 @@ def test_typed_program_commands_round_trip(kind):
 @pytest.mark.parametrize("kind", ["program_preview", "program_commit", "program_validate"])
 def test_program_command_payload_projection_has_model_wire_and_hash_parity(kind):
     expected_hashes = {
-        "program_preview": "20cd61c47c41d506a1868341e1c5b981e53ae5c9ec5fdbe11ff05423fabc7bb4",
-        "program_commit": "0db21238e5063b2bc2b65252ea53ed9e0a8d3273c892a7144be277285025e93a",
-        "program_validate": "9b0d95a54f96b313c96f1009ece24356e41112afb4e1e4faedd669a880089cfb",
+        "program_preview": "4e63e8ba5c7d7aa051caf0a2067677b93131bcab6572d91801538862f4feb93f",
+        "program_commit": "8a95cb1e0cb748fef60efbf822fcdac1ce6540320a1e8d27ec1abc588af79f2d",
+        "program_validate": "644ac91b9b06052af52cfc1cea81846ad4f00dfe1093a6314463a42656b0eb58",
     }
     parsed = ProgramCommandMessage.model_validate(command(kind))
     wire = message_dict(parsed)
@@ -121,20 +126,32 @@ def test_program_command_requires_exact_semantic_binding():
         ProgramCommandMessage.model_validate(wrong_effect)
 
 
+def test_preview_digest_and_receipt_id_match_managed_host_golden_vector():
+    assert canonical_preview_digest("preview-001", binding()) == (
+        "sha256:85da3cf8f778c421b242cb37ccaf2d326ac46e0dc92720b749dc1272da7e7c91"
+    )
+    assert canonical_receipt_id("preview-001") == (
+        "AUTOCAD_MCP_PROGRAM_e3e78279e01c532929adc6d8515a6b83"
+    )
+
+
 def test_commit_requires_preview_and_preview_rejects_client_preview_fields():
     missing = command("program_commit")
     missing.pop("preview_digest")
-    with pytest.raises(ValidationError, match="commit requires exact preview binding"):
+    with pytest.raises(
+        ValidationError,
+        match="commit requires exact preview and receipt binding",
+    ):
         ProgramCommandMessage.model_validate(missing)
 
     injected = command("program_preview")
-    injected["preview_id"] = "client-selected"
-    with pytest.raises(ValidationError, match="preview cannot include"):
+    injected["preview_digest"] = "sha256:" + "5" * 64
+    with pytest.raises(ValidationError, match="preview requires its exact ID"):
         ProgramCommandMessage.model_validate(injected)
 
     injected_null = command("program_preview")
     injected_null["preview_id"] = None
-    with pytest.raises(ValidationError, match="preview cannot include"):
+    with pytest.raises(ValidationError, match="preview requires its exact ID"):
         ProgramCommandMessage.model_validate(injected_null)
 
 

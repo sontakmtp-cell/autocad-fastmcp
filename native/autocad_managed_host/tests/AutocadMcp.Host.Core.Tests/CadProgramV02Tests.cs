@@ -117,6 +117,62 @@ public sealed class CadProgramV02Tests
     }
 
     [Fact]
+    public void Request_CarriesExactPreviewReceiptAndValidationIds()
+    {
+        var previewArguments = PreviewArguments(GoldenProgram());
+        using var previewDocument = JsonDocument.Parse(previewArguments.ToJsonString());
+        var previewRequest = CadProgramV02Parser.ParseRequest(
+            "cad.program.preview",
+            previewDocument.RootElement);
+        Assert.Equal("preview-001", previewRequest.PreviewId);
+
+        var previewDigest = CadProgramV02Parser.BuildPreviewDigest(
+            previewRequest.PreviewId!,
+            previewRequest.Program!,
+            previewRequest.ExecutionBinding);
+        var receiptId = DurableProgramReceiptV02.BuildReceiptId(previewRequest.PreviewId!);
+        Assert.Equal(
+            "sha256:85da3cf8f778c421b242cb37ccaf2d326ac46e0dc92720b749dc1272da7e7c91",
+            previewDigest);
+        Assert.Equal(
+            "AUTOCAD_MCP_PROGRAM_e3e78279e01c532929adc6d8515a6b83",
+            receiptId);
+        var commitArguments = new JsonObject
+        {
+            ["program"] = GoldenProgram(),
+            ["execution_binding"] = Binding(),
+            ["preview_binding"] = new JsonObject
+            {
+                ["preview_id"] = previewRequest.PreviewId,
+                ["preview_digest"] = previewDigest
+            },
+            ["receipt_id"] = receiptId
+        };
+        using var commitDocument = JsonDocument.Parse(commitArguments.ToJsonString());
+        var commitRequest = CadProgramV02Parser.ParseRequest(
+            "cad.program.commit",
+            commitDocument.RootElement);
+        Assert.Equal("preview-001", commitRequest.Preview!.PreviewId);
+        Assert.Equal(receiptId, commitRequest.ReceiptId);
+
+        var validateArguments = new JsonObject
+        {
+            ["execution_binding"] = Binding(),
+            ["validation"] = new JsonObject
+            {
+                ["validation_id"] = "validation-001",
+                ["receipt_id"] = receiptId
+            }
+        };
+        using var validateDocument = JsonDocument.Parse(validateArguments.ToJsonString());
+        var validateRequest = CadProgramV02Parser.ParseRequest(
+            "cad.program.validate",
+            validateDocument.RootElement);
+        Assert.Equal("validation-001", validateRequest.Validation!.ValidationId);
+        Assert.Equal(receiptId, validateRequest.Validation.ReceiptId);
+    }
+
+    [Fact]
     public void HostCommandParser_AcceptsOnlyTypedV02ProgramArguments()
     {
         var payload = new JsonObject
@@ -302,7 +358,8 @@ public sealed class CadProgramV02Tests
     private static JsonObject PreviewArguments(JsonObject program) => new()
     {
         ["program"] = program,
-        ["execution_binding"] = Binding()
+        ["execution_binding"] = Binding(),
+        ["preview_id"] = "preview-001"
     };
 
     private static JsonObject Binding() => new()

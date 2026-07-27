@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from autocad_contracts import canonical_json, normalize_sha256_digest
+from autocad_contracts import (
+    canonical_json,
+    canonical_preview_digest,
+    canonical_receipt_id,
+    normalize_sha256_digest,
+)
 
 from .application.job_service import DurableJobError, DurableJobService
 from .contracts import (
@@ -32,6 +37,7 @@ from .program_contract_adapter import (
     canonical_program_digest_value,
     execution_digest,
     operation_registry_digest_value,
+    program_command_fields,
     validate_pin_set,
 )
 from .services import GatewayError
@@ -213,6 +219,15 @@ class ProgramGatewayService:
                 "expires_at": expires_at,
             },
         )
+        preview_fields = program_command_fields(
+            kind="program_preview",
+            effect_class="write",
+            payload=payload,
+        )
+        payload["execution"]["preview_digest"] = canonical_preview_digest(
+            preview_id,
+            preview_fields["binding"],
+        )
         job, _ = await self._create_job(
             program,
             action="preview",
@@ -279,7 +294,7 @@ class ProgramGatewayService:
                 )
                 raise GatewayError("preview_expired")
             await self._revalidate_program(program, preview=preview)
-        receipt_id = f"receipt-{uuid.uuid4()}"
+        receipt_id = canonical_receipt_id(preview["preview_id"])
         digest = execution_digest(
             action="commit",
             program_digest=program["program_digest"],
@@ -377,6 +392,7 @@ class ProgramGatewayService:
                 "expected_document_revision": receipt["document_revision_after"],
             },
             validation={
+                "validation_id": validation_id,
                 "receipt_id": receipt["receipt_id"],
                 "expected_entity_count": next(
                     (

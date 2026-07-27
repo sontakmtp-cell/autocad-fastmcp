@@ -277,6 +277,7 @@ async def _finish_preview(
     command = connection.websocket.messages[-1]
     assert "payload" not in command
     assert command["program"]["schema_version"] == "cad.program/0.2"
+    assert command["preview_id"] == execution["preview_id"]
     await service.job_service.handle_message(
         connection,
         ProgramResultMessage(
@@ -291,7 +292,7 @@ async def _finish_preview(
             binding=command["binding"],
             result={
                 "preview_id": execution["preview_id"],
-                "preview_digest": "sha256:" + ("1" * 64),
+                "preview_digest": execution["preview_digest"],
                 "expires_at": execution["expires_at"],
                 "planned_operation_count": 2,
                 "planned_entity_count": 1,
@@ -481,7 +482,7 @@ async def test_preview_materializes_atomically_and_enforces_one_write_per_docume
         "execution_digest": execution["execution_digest"],
         "binding_digest": execution["binding_digest"],
         "preview_id": execution["preview_id"],
-        "preview_digest": "sha256:" + ("1" * 64),
+        "preview_digest": execution["preview_digest"],
         "expires_at": execution["expires_at"],
         "document_revision_before": REVISION,
         "document_revision_after": REVISION,
@@ -495,6 +496,25 @@ async def test_preview_materializes_atomically_and_enforces_one_write_per_docume
             "bounds_valid": True,
         },
     }
+    for field, wrong_value in (
+        ("preview_id", "preview-wrong"),
+        ("preview_digest", "sha256:" + ("f" * 64)),
+    ):
+        invalid = dict(result)
+        invalid[field] = wrong_value
+        with pytest.raises(RepositoryConflict, match="binding_mismatch"):
+            await service.program_repository.finalize_program_job(
+                job_id=job["job_id"],
+                device_id=DEVICE,
+                command_id=job["command_id"],
+                payload_hash=job["payload_hash"],
+                target="succeeded",
+                result=invalid,
+                error_code=None,
+                error_summary=None,
+                session_id="session-phase6",
+                agent_sequence=1,
+            )
     await service.program_repository.finalize_program_job(
         job_id=job["job_id"],
         device_id=DEVICE,
@@ -573,8 +593,10 @@ async def test_commit_exact_duplicate_returns_prior_receipt_without_second_effec
     assert job is not None
     await service.repository.transition_job(job["job_id"], "acknowledged")
     execution = job["payload"]["execution"]
+    assert execution["receipt_id"].startswith("AUTOCAD_MCP_PROGRAM_")
     connection.active_document_revision = "e" * 64
     command = commit_messages[0]
+    assert command["receipt_id"] == execution["receipt_id"]
     await service.job_service.handle_message(
         connection,
         ProgramResultMessage(
@@ -648,6 +670,10 @@ async def test_commit_exact_duplicate_returns_prior_receipt_without_second_effec
     ][0]
     assert "program" not in validation_command
     assert validation_command["validation"]["receipt_id"] == execution["receipt_id"]
+    assert (
+        validation_command["validation"]["validation_id"]
+        == validation_job["payload"]["execution"]["validation_id"]
+    )
     await service.job_service.handle_message(
         connection,
         ProgramResultMessage(

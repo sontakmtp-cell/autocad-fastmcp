@@ -15,7 +15,7 @@
 - Live CAD target: AutoCAD Mechanical 2025, full edition, R25.0.
 - Authorized test drawing: `D:\Tai lieu\CAD\drawing33.dwg`.
 - Final unsigned lab bundle package hash:
-  `sha256:17b374bf436831af971d9871e0a5faff8b653e36f4bedb1c575b77490e6da4dd`.
+  `sha256:378e5f05663314ae7f3141ade64ae5820bcf4a9c5b77d1030184d808dabd740d`.
 
 ## 2. Requirement-to-evidence matrix
 
@@ -41,10 +41,10 @@ Final main-agent runs:
 
 | Surface | Result |
 |---|---|
-| Contracts and Host contracts | 46 passed |
+| Contracts and Host contracts | 47 passed |
 | Gateway | 204 passed |
-| Desktop Agent | 104 passed |
-| Managed Host core | 43 passed |
+| Desktop Agent | 110 passed |
+| Managed Host core | 44 passed |
 | Portal unit/component | 22 passed |
 | Portal Playwright | 6 passed |
 | Next.js production build | Pass |
@@ -54,10 +54,15 @@ Important regression coverage includes:
 
 - owner isolation and ID guessing returning `not_found`;
 - program/preview/commit/validation exact binding;
+- Gateway-owned preview, receipt, and validation IDs crossing Agent and Host;
+- cross-language canonical preview digest and deterministic receipt ID vectors;
+- materializer denial for mismatched preview ID, preview digest, and receipt ID;
 - one write per document and durable idempotency;
 - stale snapshot, package, capability, registry, and policy denial;
 - no LT or compatibility write fallback;
 - no blind retry after `outcome_unknown`;
+- restart recovery resuming only `received` and `accepted`, with `started`
+  commit becoming `outcome_unknown`;
 - expired unknown commits remaining nonterminal and reconciliation-eligible;
 - Agent ledger-persisted program kind and execution binding on reconciliation;
 - missing, mismatched, or still-unknown reconciliation retaining the write lock;
@@ -131,6 +136,28 @@ After rebuilding, reinstalling, and reopening the DWG with the final bundle:
 - validation: valid, with all six bounded checks and no failures;
 - drawing saved successfully after the run.
 
+### Typed-ID review-fix run
+
+After rebuilding and reinstalling the reviewed bundle, the real
+`ProgramCommandExecutor → Managed Host R25 → drawing33.dwg` path proved the
+Gateway-owned identifiers end to end:
+
+- package hash:
+  `sha256:378e5f05663314ae7f3141ade64ae5820bcf4a9c5b77d1030184d808dabd740d`;
+- preview ID:
+  `preview-fc9e57bd-eebd-4cd1-91ff-5d6e60579269`, echoed exactly by Host;
+- preview digest:
+  `sha256:adfe519cfbb81f32abf522120d7975ec9cc897096cc8593fa603217c0b70090f`;
+- durable receipt ID:
+  `AUTOCAD_MCP_PROGRAM_60090d379aa12f14046ac52d4d60aad2`,
+  identical before dispatch and after commit;
+- validation ID:
+  `validation-766e546c-66c2-4047-98a6-15213d8bdae2`, echoed exactly by Host;
+- revision `4990045275242070` to `4990045275242071`;
+- preview unchanged, commit created one entity, and all six validation checks
+  passed with no failures;
+- drawing saved successfully.
+
 ## 7. Portal and release-state evidence
 
 - Program, preview, receipt, validation, and job pages render bounded
@@ -163,6 +190,14 @@ evidence and releases the lock only after exact terminal receipt
 reconciliation. The focused regressions cover retention, recovery discovery,
 evidence denial, reconciliation, and the next permitted write. The final
 focused review result is recorded with the handoff.
+
+The PR review then identified four real contract/recovery defects and one CI
+failure cluster. The implementation now carries exact preview and validation
+IDs through the typed contracts, uses one deterministic receipt identity,
+recomputes and checks preview evidence at the Gateway materializer, and safely
+resumes only pre-execution Agent ledger states. The CI failure was caused by
+`poc/phase3-simulated-agent/uv.lock` still pinning `autocad-contracts` 0.1.1;
+that nested lockfile is updated to 0.2.0. The root lockfile was already current.
 
 No review evidence found LT write, COM write, raw command execution, high-risk
 operations, public trusted approval, or owner-boundary bypass.

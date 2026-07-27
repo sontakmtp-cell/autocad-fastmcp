@@ -204,11 +204,14 @@ def program_command_fields(
     }
     if kind in {"program_preview", "program_commit"}:
         values["program"] = payload["program"]
+    if kind == "program_preview":
+        values["preview_id"] = execution["preview_id"]
     if kind == "program_commit":
         values["preview_id"] = execution["preview_id"]
         values["preview_digest"] = normalize_sha256_digest(
             execution["preview_digest"], allow_legacy_raw=False
         )
+        values["receipt_id"] = execution["receipt_id"]
     if kind == "program_validate":
         values["validation"] = payload["validation"]
     return values

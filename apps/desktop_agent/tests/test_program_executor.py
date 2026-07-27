@@ -7,6 +7,8 @@ from types import SimpleNamespace
 import pytest
 from autocad_contracts import (
     ProgramCommandMessage,
+    canonical_preview_digest,
+    canonical_receipt_id,
     canonical_payload_hash,
     canonical_program_digest,
 )
@@ -81,14 +83,17 @@ def command(kind: str = "program_preview", **updates) -> ProgramCommandMessage:
     }
     if kind == "program_preview":
         values["program"] = program
+        values["preview_id"] = "preview-1"
     elif kind == "program_commit":
         values.update(
             program=program,
             preview_id="preview-1",
-            preview_digest=f"sha256:{'6' * 64}",
+            preview_digest=canonical_preview_digest("preview-1", binding),
+            receipt_id=canonical_receipt_id("preview-1"),
         )
     else:
         values["validation"] = {
+            "validation_id": "validation-1",
             "receipt_id": "receipt-1",
             "expected_entity_count": 1,
         }
@@ -129,8 +134,11 @@ class Adapter:
             await self.release.wait()
         payloads = {
             "program_preview": {
-                "preview_id": "preview-1",
-                "preview_digest": f"sha256:{'6' * 64}",
+                "preview_id": arguments.get("preview_id", "preview-1"),
+                "preview_digest": canonical_preview_digest(
+                    arguments.get("preview_id", "preview-1"),
+                    arguments["execution_binding"],
+                ),
                 "expires_at": (
                     datetime.now(timezone.utc) + timedelta(minutes=5)
                 ).isoformat(),
@@ -141,7 +149,10 @@ class Adapter:
                 "drawing_unchanged": True,
             },
             "program_commit": {
-                "receipt_id": "receipt-1",
+                "receipt_id": arguments.get(
+                    "receipt_id",
+                    canonical_receipt_id("preview-1"),
+                ),
                 "receipt_digest": f"sha256:{'7' * 64}",
                 "document_revision_before": "42",
                 "document_revision_after": "43",
@@ -149,7 +160,10 @@ class Adapter:
                 "duplicate": False,
             },
             "program_validate": {
-                "validation_id": "validation-1",
+                "validation_id": arguments.get("validation", {}).get(
+                    "validation_id",
+                    "validation-1",
+                ),
                 "valid": True,
                 "document_revision": "43",
                 "checks": ["entity_count"],
@@ -179,9 +193,29 @@ async def test_preview_uses_typed_managed_host_arguments():
 
     assert result["transaction_aborted"] is True
     assert adapter.calls[0][0] == "program_preview"
-    assert set(adapter.calls[0][1]) == {"program", "execution_binding"}
+    assert set(adapter.calls[0][1]) == {
+        "program",
+        "execution_binding",
+        "preview_id",
+    }
+    assert adapter.calls[0][1]["preview_id"] == "preview-1"
     assert broker.calls[0][1]["required_capability"] == "cad.program.preview"
     assert broker.calls[0][1]["write_required"] is True
+
+
+async def test_commit_and_validate_forward_exact_gateway_ids_to_host():
+    adapter = Adapter()
+    executor = ProgramCommandExecutor(Broker(adapter))
+
+    await executor.execute(command("program_commit"), write_lock_enabled=True)
+    await executor.execute(command("program_validate"), write_lock_enabled=True)
+
+    commit_arguments = adapter.calls[0][1]
+    assert commit_arguments["preview_binding"]["preview_id"] == "preview-1"
+    assert commit_arguments["receipt_id"] == canonical_receipt_id("preview-1")
+    validation_arguments = adapter.calls[1][1]["validation"]
+    assert validation_arguments["validation_id"] == "validation-1"
+    assert validation_arguments["receipt_id"] == "receipt-1"
 
 
 @pytest.mark.parametrize(

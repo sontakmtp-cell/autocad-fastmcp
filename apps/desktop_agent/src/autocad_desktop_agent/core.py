@@ -571,8 +571,9 @@ class AgentCore:
                 await self._ack(websocket, command, "already_terminal")
                 await self._send_program_terminal(websocket, command, entry)
                 return
-            await self._ack(websocket, command, "duplicate")
-            return
+            if entry.state == "started":
+                await self._ack(websocket, command, "duplicate")
+                return
         if self.paused:
             entry = self.ledger.transition(
                 command.command_id,
@@ -606,7 +607,8 @@ class AgentCore:
             await self._send_program_terminal(websocket, command, entry)
             return
 
-        self.ledger.transition(command.command_id, "accepted")
+        if entry.state == "received":
+            entry = self.ledger.transition(command.command_id, "accepted")
         await self._ack(websocket, command, "accepted")
         self.ledger.transition(command.command_id, "started")
         self._current_command_id = command.command_id

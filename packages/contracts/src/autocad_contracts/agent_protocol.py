@@ -522,7 +522,46 @@ class ProgramExecutionBinding(AgentModel):
         return normalize_sha256_digest(value, allow_legacy_raw=False)
 
 
+def canonical_preview_digest(
+    preview_id: str,
+    binding: ProgramExecutionBinding | dict[str, Any],
+) -> str:
+    """Return the cross-language digest used to bind preview to commit."""
+
+    parsed = (
+        binding
+        if isinstance(binding, ProgramExecutionBinding)
+        else ProgramExecutionBinding.model_validate(binding)
+    )
+    value = {
+        "preview_id": preview_id,
+        "program_digest": parsed.program_digest,
+        "document_id": parsed.document_id,
+        "document_revision": parsed.document_revision,
+        "runtime_id": parsed.runtime_id,
+        "runtime_role": parsed.runtime_role,
+        "host_family": parsed.host_family,
+        "host_version": parsed.host_version,
+        "package_id": parsed.package_id,
+        "package_version": parsed.package_version,
+        "package_hash": parsed.package_hash,
+        "capability_manifest_hash": parsed.capability_manifest_hash,
+        "operation_registry_version": parsed.operation_registry_version,
+        "operation_registry_hash": parsed.operation_registry_hash,
+        "policy_version": parsed.policy_version,
+    }
+    return f"sha256:{canonical_payload_hash(value)}"
+
+
+def canonical_receipt_id(preview_id: str) -> str:
+    """Return the durable DWG receipt ID derived from the exact preview ID."""
+
+    digest = sha256(preview_id.encode("utf-8")).hexdigest()[:32]
+    return f"AUTOCAD_MCP_PROGRAM_{digest}"
+
+
 class ProgramValidationRequest(AgentModel):
+    validation_id: str = Field(min_length=1, max_length=128)
     receipt_id: str = Field(min_length=1, max_length=128)
     expected_entity_count: int | None = Field(default=None, ge=0, le=256)
     expected_entity_types: list[
@@ -549,6 +588,7 @@ class ProgramCommandMessage(AgentEnvelope):
     program: "CadProgram | None" = None
     preview_id: str | None = Field(default=None, min_length=1, max_length=128)
     preview_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    receipt_id: str | None = Field(default=None, min_length=1, max_length=128)
     validation: ProgramValidationRequest | None = None
 
     @model_validator(mode="after")
@@ -557,15 +597,23 @@ class ProgramCommandMessage(AgentEnvelope):
             if self.effect_class != "write" or self.program is None:
                 raise ValueError("preview and commit require write effect and program")
         if self.kind == "program_preview":
-            if {"preview_id", "preview_digest", "validation"} & self.model_fields_set:
-                raise ValueError("preview cannot include prior preview or validation fields")
+            if (
+                self.preview_id is None
+                or {"preview_digest", "receipt_id", "validation"} & self.model_fields_set
+            ):
+                raise ValueError("preview requires its exact ID and no prior result fields")
         elif self.kind == "program_commit":
-            if self.preview_id is None or self.preview_digest is None or self.validation is not None:
-                raise ValueError("commit requires exact preview binding")
+            if (
+                self.preview_id is None
+                or self.preview_digest is None
+                or self.receipt_id is None
+                or self.validation is not None
+            ):
+                raise ValueError("commit requires exact preview and receipt binding")
         else:
             if self.effect_class != "read" or self.program is not None or self.validation is None:
                 raise ValueError("validate requires read effect and validation request")
-            if {"program", "preview_id", "preview_digest"} & self.model_fields_set:
+            if {"program", "preview_id", "preview_digest", "receipt_id"} & self.model_fields_set:
                 raise ValueError("validate cannot include preview fields")
         if self.program is not None:
             from .program import canonical_program_digest
@@ -600,6 +648,8 @@ def program_command_payload(
         payload["preview_id"] = parsed.preview_id
     if parsed.preview_digest is not None:
         payload["preview_digest"] = parsed.preview_digest
+    if parsed.receipt_id is not None:
+        payload["receipt_id"] = parsed.receipt_id
     if parsed.validation is not None:
         payload["validation"] = parsed.validation.model_dump(
             mode="json",
@@ -897,15 +947,16 @@ def agent_program_command_json_schema() -> dict[str, Any]:
                 "required": ["kind"],
             },
             "then": {
-                "required": ["program"],
+                "required": ["program", "preview_id"],
                 "properties": {
                     "effect_class": {"const": "write"},
                     "program": {"$ref": "#/$defs/CadProgram"},
+                    "preview_id": {"type": "string"},
                 },
                 "not": {
                     "anyOf": [
-                        {"required": ["preview_id"]},
                         {"required": ["preview_digest"]},
+                        {"required": ["receipt_id"]},
                         {"required": ["validation"]},
                     ]
                 },
@@ -917,12 +968,13 @@ def agent_program_command_json_schema() -> dict[str, Any]:
                 "required": ["kind"],
             },
             "then": {
-                "required": ["program", "preview_id", "preview_digest"],
+                "required": ["program", "preview_id", "preview_digest", "receipt_id"],
                 "properties": {
                     "effect_class": {"const": "write"},
                     "program": {"$ref": "#/$defs/CadProgram"},
                     "preview_id": {"type": "string"},
                     "preview_digest": {"type": "string"},
+                    "receipt_id": {"type": "string"},
                 },
                 "not": {"required": ["validation"]},
             },
@@ -943,6 +995,7 @@ def agent_program_command_json_schema() -> dict[str, Any]:
                         {"required": ["program"]},
                         {"required": ["preview_id"]},
                         {"required": ["preview_digest"]},
+                        {"required": ["receipt_id"]},
                     ]
                 },
             },
