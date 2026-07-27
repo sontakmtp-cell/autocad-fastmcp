@@ -1,92 +1,125 @@
 # Roadmap triển khai Phase 6–12 — AutoCAD MCP đa runtime
 
-> Trạng thái cập nhật 2026-07-26: PR #8 đã merge vào `main` tại commit `a3ddacc5e45fa2a3dbf1966ed2d35f12d04a55a7`.
+> Trạng thái cập nhật 2026-07-27: Phase 6 đã merge vào `main` qua PR #10 tại commit
+> `6edb9d9fb06b7e8565436b90e6891be80da0c7e0`.
 >
-> Phase 5 đã hấp thụ runtime foundation, production identity/pairing, owner isolation, Portal tối thiểu, local CAD Program POC, R25 packaging/signing/rollback engineering và telemetry pilot. Vì vậy phase numbering sau Phase 5 được chuẩn hóa lại.
+> Phase 6 đạt **Engineering GO cho local integration** và vẫn **Customer Pilot NO-GO** do các gate production bên ngoài chưa hoàn tất.
 >
-> Đây là roadmap sản phẩm. Kế hoạch chi tiết hiện tại nằm trong [Phase-6.md](./Phase-6.md), [Phase-7.md](./Phase-7.md), [Phase-8.md](./Phase-8.md) và [appendix-user-interface.md](./appendix-user-interface.md).
+> Phase hiện hành là **Phase 7 — Durable Recovery, Trusted Approval and Conflict-Safe Rollback**.
+>
+> Tài liệu chi tiết:
+>
+> - [Phase-6.md](./Phase-6.md)
+> - [phase6-public-cad-program-evidence.md](./phase6-public-cad-program-evidence.md)
+> - [Phase-7.md](./Phase-7.md)
+> - [Phase-8.md](./Phase-8.md)
+> - [appendix-user-interface.md](./appendix-user-interface.md)
 
-## 1. Baseline sau PR #8
+## 1. Baseline sau Phase 6
 
-Đã có:
+Đã có trên public/product path:
 
 - FastMCP public read surface;
 - durable Gateway job state machine;
 - outbound WSS Desktop Agent;
 - Managed .NET Host R25 và RuntimeBroker;
 - AutoLISP/File IPC compatibility path;
-- create-only CAD Program local POC;
-- browser pairing, device ownership và two-user/two-device pilot;
-- Portal tối thiểu;
-- signed R25 lab package, clean-VM upgrade/rollback evidence;
-- privacy-bounded telemetry fail-open pilot.
+- production identity/pairing và owner isolation;
+- `cad.program/0.2` create-only strict;
+- public owner-scoped `prepare → preview → commit → validate`;
+- exact runtime/package/capability/registry/policy binding;
+- preview transaction abort;
+- commit effect và durable DWG receipt trong cùng transaction;
+- exact duplicate không tạo effect thứ hai;
+- `outcome_unknown` giữ write lock và exact receipt reconciliation;
+- Portal observation-only cho program/preview/job/receipt/validation;
+- live Mechanical 2025 evidence;
+- write default-off và LT read compatibility không regression;
+- R25 lab packaging/rollback engineering và telemetry fail-open pilot.
 
-Chưa có ở public product path:
+Chưa có:
 
-- owner-scoped CAD Program lifecycle;
-- public preview/commit/validate;
-- trusted approval;
-- full recovery/drop matrix và public rollback;
+- immutable execution intent và trusted consent;
+- Agent local confirmation;
+- Portal recent-auth approval;
+- operator-facing RecoveryCase workflow;
+- Phase-7 geometry checkpoint;
+- public conflict-safe rollback;
+- full automated/live fault-injection matrix;
 - CAD Program v1 modify/delete/pattern;
 - skill/workflow platform;
 - Scene Graph;
 - full customer installer/update ecosystem;
 - production scale/SLO/ecosystem.
 
-## 2. Chuẩn hóa numbering
+External Customer Pilot gates vẫn còn:
 
-| Phase | Tên mới | Kết quả chính |
-|---:|---|---|
-| 5 | Runtime, Identity and Local Write Foundation | .NET R25 + LT compatibility + pairing/isolation + local write POC |
-| 6 | Public CAD Program v0 and Managed Write Pilot | Prepare/preview/commit/validate create-only qua public Gateway |
-| 7 | Durable Recovery, Trusted Approval and Rollback | C2 control envelope, drop recovery, consent và rollback |
-| 8 | CAD Program v1 and Cross-Runtime Capability | Variables, pattern, modify/delete, annotation và capability tiers |
-| 9 | Skill and Workflow Platform | Skill catalog, durable workflows, pause/resume/approval/recovery |
-| 10 | Scene Graph and Drawing Intelligence | Relation graph, contour/feature inference, validation nâng cao |
-| 11 | Packaging, Distribution and Multi-User Pilot | Installer, signed releases, update/rollback và customer pilot |
-| 12 | Production Hardening, Scale and Ecosystem | SLO, quota, backup/restore, scale và skill/capability ecosystem |
+- CA-issued code-signing certificate và trusted timestamp;
+- private-key custody/provenance/SBOM/malware approval;
+- public OAuth lifecycle run trên pilot tenant;
+- live revoke/re-pair drill;
+- modal/busy và unknown-outcome drill trên pilot device;
+- telemetry soak 3–7 ngày;
+- support ownership và explicit pilot cohort approval.
 
-Roadmap cũ đặt identity ở Phase 6 và kết thúc ở Phase 13. Mục tiêu identity đã được thực hiện trong Phase 5.6 nên các phase sau dịch lên một số. Tài liệu hoặc issue cũ vẫn có giá trị lịch sử nhưng numbering mới là nguồn hiện hành.
+## 2. Numbering hiện hành
+
+| Phase | Tên | Kết quả chính | Trạng thái |
+|---:|---|---|---|
+| 5 | Runtime, Identity and Local Write Foundation | .NET R25 + LT compatibility + pairing/isolation + local write POC | Merged |
+| 6 | Public CAD Program v0 and Managed Write Pilot | Public create-only prepare/preview/commit/validate | Engineering complete |
+| 7 | Durable Recovery, Trusted Approval and Conflict-Safe Rollback | Intent, consent, recovery case, checkpoint và rollback | Current |
+| 8 | CAD Program v1 and Cross-Runtime Capability | Variables, pattern, modify/delete, annotation và capability tiers | Planned |
+| 9 | Skill and Workflow Platform | Skill catalog, durable workflows, pause/resume/approval/recovery | Planned |
+| 10 | Scene Graph and Drawing Intelligence | Relation graph, contour/feature inference, validation nâng cao | Planned |
+| 11 | Packaging, Distribution and Multi-User Pilot | Installer, signed releases, update/rollback và customer pilot | Planned |
+| 12 | Production Hardening, Scale and Ecosystem | SLO, quota, backup/restore, scale và ecosystem | Planned |
+
+Roadmap cũ đặt identity ở Phase 6 và kết thúc ở Phase 13. Identity đã được hấp thụ vào Phase 5.6, vì vậy numbering trên là nguồn hiện hành.
 
 ## 3. Nguyên tắc thứ tự
 
-1. Không mở public write trước khi owner isolation và runtime evidence đủ mạnh.
-2. Không mở broad CAD Program trước preview/commit/validation create-only.
-3. Không cho model tự approve.
+1. Không mở public write trước owner isolation và runtime evidence.
+2. Không mở broad CAD Program trước create-only preview/commit/validate.
+3. Không cho model tự approve hoặc phát approval proof.
 4. Không auto retry write đã started hoặc chưa chứng minh not-started.
-5. Không mở modify/delete trước recovery và rollback.
-6. Không xây skill/workflow trước khi CAD Program contract ổn định.
-7. Không xây Scene Graph lớn trước snapshot/revision/entity model đủ tin cậy.
-8. Mọi phase thay runtime contract phải chạy LT compatibility regression.
-9. Không tuyên bố support release chỉ vì compile; cần real load/smoke.
-10. AutoCAD Full không bị hạ xuống giới hạn của AutoCAD LT.
+5. Không mở modify/delete trước trusted approval, recovery và rollback.
+6. Không coi bounds-only receipt cũ là rollback checkpoint mạnh.
+7. Không xây skill/workflow trước khi CAD Program contract ổn định.
+8. Không xây Scene Graph lớn trước snapshot/revision/entity model đủ tin cậy.
+9. Mọi phase thay runtime contract phải chạy LT compatibility regression.
+10. Không tuyên bố support release chỉ vì compile; cần real load/smoke.
+11. AutoCAD Full không bị hạ xuống giới hạn của AutoCAD LT.
 
 ---
 
 # Phase 6 — Public CAD Program v0 and Managed Write Pilot
 
-## Mục tiêu
+## Kết quả
 
-Productize local create-only POC thành public owner-scoped flow:
+Phase 6 đã productize local create-only POC thành public owner-scoped flow:
 
 ```text
 Observe → Prepare → Preview → Commit → Validate
 ```
 
-## Phạm vi
+Đã triển khai:
 
 - `cad.program/0.2` runtime-neutral;
-- create-only primitives;
-- public FastMCP write tools/resources;
+- create-only operation registry;
+- public FastMCP tools/resources;
 - owner-scoped program/preview/validation/receipt storage;
 - typed Gateway–Agent commands;
-- Agent write executor qua RuntimeBroker;
+- Agent ProgramCommandExecutor qua RuntimeBroker;
 - Managed .NET R25 primary write path;
 - runtime/package/capability/registry/policy pinning;
-- kill switches và allowlisted pilot;
+- write lock, hard pause, kill switches và allowlist;
+- retained unknown commit lock + exact receipt reconciliation;
 - live Mechanical 2025 E2E.
 
-## Exit
+## Exit status
+
+Engineering exit đã đạt:
 
 - preview không đổi DWG;
 - commit tạo effect một lần;
@@ -94,48 +127,78 @@ Observe → Prepare → Preview → Commit → Validate
 - stale document/runtime/package/policy bị chặn;
 - cross-owner access `not_found`;
 - hard pause/write lock chặn trước Host;
+- started/unknown write không blind retry;
 - LT vẫn read-only và regression xanh.
 
-## Chưa làm
+Customer Pilot vẫn NO-GO vì external production gates.
 
-Trusted approval, full drop recovery, public rollback, broad modify/delete, LT write và customer rollout.
+Chi tiết và evidence:
 
-Chi tiết: [Phase-6.md](./Phase-6.md).
+- [Phase-6.md](./Phase-6.md)
+- [phase6-public-cad-program-evidence.md](./phase6-public-cad-program-evidence.md)
 
 ---
 
-# Phase 7 — Durable Recovery, Trusted Approval and Rollback
+# Phase 7 — Durable Recovery, Trusted Approval and Conflict-Safe Rollback
 
 ## Mục tiêu
 
-Biến Phase 6 create-only write path thành C2 control envelope đủ an toàn cho pilot giới hạn.
+Bọc existing Phase 6 create-only path bằng C2 control envelope mà không xây lại durable jobs hoặc receipt reconciliation.
+
+```text
+cad_commit
+→ immutable intent
+→ trusted approval when required
+→ atomic consent consume + one job release
+→ existing durable execution/reconcile
+→ RecoveryCase when unresolved
+→ checkpointed rollback when conflict-free
+```
 
 ## Phạm vi
 
+- giữ public tool `cad_commit`, không tạo `cad_request_commit` mới;
 - immutable execution intent;
 - one-time owner-scoped consent;
-- Agent local confirmation và Portal recent-auth approval;
-- atomic consume/release;
-- ordered execution evidence across Gateway/Agent/Host;
-- drop matrix trước/sau ACK, transaction, effect và result;
-- no retry sau started;
-- `outcome_unknown` recovery case;
-- checkpoint, rollback preview và conflict detection;
-- hard pause, revoke và kill switches xuyên state machine;
-- operator diagnostics và manual recovery.
+- Agent local confirmation;
+- Portal recent-auth approval;
+- atomic consent consume, job create/reuse và intent release;
+- append-only execution evidence trên existing job state machine;
+- extended fault/drop matrix;
+- operator-facing `outcome_unknown` RecoveryCase;
+- Phase-7 checkpoint committed cùng new effect/receipt;
+- `cad_preview_rollback` và `cad_commit_rollback`;
+- strict revision/fingerprint/dependency conflict detection;
+- hard pause, revoke và kill switches xuyên intent/consent/job/recovery lifecycle;
+- operator diagnostics và safe evidence refresh.
+
+## Quan trọng
+
+- Phase 6 đã có unknown-outcome lock retention và exact receipt reconciliation; Phase 7 mở rộng, không thay thế.
+- Effect và receipt đang commit cùng AutoCAD transaction; không mô hình hóa durable “effect-only” state.
+- Existing Phase 6 receipt v2 mặc định `rollback_eligible=false` vì chưa có geometry fingerprint/provenance đủ mạnh.
+- Chỉ commit mới có `cad.rollback.checkpoint/1` mới được public rollback.
+- Rollback v0 chỉ xóa checkpoint-owned created entities; không xóa layer/style/block/shared object.
+- Strict rollback yêu cầu exact current document revision; scoped rebase để Phase 8.
+- Approval không bao giờ là MCP tool hoặc `confirm=true`.
 
 ## Exit
 
+- model không thể approve hoặc hạ assurance;
+- exact `cad_commit` retry trả cùng intent/job/receipt;
+- một consumed consent release tối đa một job;
 - mọi tested drop point không duplicate effect;
-- outcome được chứng minh hoặc chuyển needs-attention;
-- approval bind exact user/device/document/program/preview/runtime/package/policy/TTL;
-- một consent release tối đa một job;
-- rollback chỉ chạy khi conflict-free;
-- model không thể tự approve.
+- exact outcome được chứng minh hoặc giữ safely unknown với RecoveryCase;
+- recovery query không re-execute;
+- rollback chỉ chạy với Phase-7 checkpoint, strict conflict-free và trusted approval;
+- duplicate rollback không tạo effect thứ hai;
+- old receipts không bị quảng cáo sai là rollbackable;
+- owner isolation, hard pause, revoke và redaction xanh;
+- live Mechanical 2025 evidence hoàn tất.
 
 ## Chưa làm
 
-Broad CAD operations, team sharing, skill workflows, Scene Graph và production scale.
+Broad CAD operations, rollback rebase sau unrelated edits, layer/shared-object cleanup, team sharing, skill workflows, Scene Graph, LT write và production scale.
 
 Chi tiết: [Phase-7.md](./Phase-7.md).
 
@@ -154,12 +217,14 @@ Mở khả năng CAD tổng quát hơn mà không biến public MCP thành hàng
 - immutable snapshot/query references;
 - move/copy/rotate/scale/mirror;
 - offset/fillet/chamfer;
+- carefully gated trim/extend;
 - block insert/attributes;
 - annotation/dimension mở rộng;
 - erase/delete có risk floor;
 - program patch/rebase;
 - reusable component refs;
-- validation profiles.
+- validation profiles;
+- rollback conflict scope/rebase khi evidence đủ mạnh.
 
 ## Capability tiers
 
@@ -173,10 +238,11 @@ Mở khả năng CAD tổng quát hơn mà không biến public MCP thành hàng
 ## Exit
 
 - v1 program chạy trên Full/.NET;
-- operation unsupported fail `capability_missing`;
-- high-risk operations yêu cầu Phase 7 trusted approval;
+- unsupported operation fail `capability_missing`;
+- destructive/high-risk operations bắt buộc dùng Phase 7 trusted approval;
 - preview invalid khi registry/compiler/runtime thay đổi;
-- portable subset có conformance evidence trước khi mở LT.
+- portable subset có conformance evidence trước khi mở LT;
+- patch/rebase không bypass document revision và checkpoint policy.
 
 Chi tiết: [Phase-8.md](./Phase-8.md).
 
@@ -203,12 +269,12 @@ Biến CAD Program và primitive thành nền cho reusable engineering workflows
 
 - skill là kiến thức và template, không phải public tool riêng;
 - ChatGPT vẫn có thể tạo CAD Program tự do;
-- workflow không được bypass Gateway policy;
+- workflow không bypass Gateway policy hoặc Phase 7 consent;
 - không arbitrary third-party code.
 
 ## Exit
 
-- ít nhất ba workflows thật: auto-dimension, drawing cleanup và one domain workflow;
+- ít nhất ba workflows thật: auto-dimension, drawing cleanup và một domain workflow;
 - restart/reconnect không mất workflow state;
 - skill version pin vào execution/audit;
 - unsupported runtime được báo rõ.
@@ -242,7 +308,7 @@ Relations ưu tiên:
 - confidence/evidence cho inferred features;
 - stable relation IDs trong snapshot scope;
 - scene data không làm context nổ tung;
-- no inference used as destructive authority without revalidation.
+- inference không được dùng làm destructive authority nếu chưa revalidate.
 
 ---
 
@@ -262,7 +328,7 @@ Biến engineering artifacts thành product bundle có thể cài, cập nhật,
 - LT 2024+ real certification;
 - Portal download/update pages;
 - staged rollout, minimum/recommended versions;
-- previous-known-good rollback;
+- previous-known-good package rollback;
 - diagnostics/support bundles;
 - onboarding không yêu cầu `.env`, terminal, port hoặc tunnel;
 - limited customer pilot.
@@ -273,6 +339,7 @@ Biến engineering artifacts thành product bundle có thể cài, cập nhật,
 - exact family component selection;
 - LT không load Managed Host;
 - signed artifact validation fail closed;
+- Phase 7 C2 controls chạy trên pilot cohort;
 - pilot runbook, support ownership và incident rollback;
 - customer cohort evidence.
 
@@ -314,32 +381,36 @@ Biến engineering artifacts thành product bundle có thể cài, cập nhật,
 - Agent/Host validate lại binding;
 - arbitrary code/path/network off;
 - risk floor không thể bị UI/model hạ;
-- approval chỉ trusted channel;
-- replay/idempotency tests;
-- audit correlation end-to-end.
+- approval chỉ qua trusted channel;
+- replay/idempotency/CAS tests;
+- audit correlation end-to-end;
+- checkpoint provenance trước rollback.
 
 ### Runtime
 
 - Managed .NET primary cho Full;
 - LT compatibility không regression;
-- no silent fallback cho write;
+- no silent fallback cho write/preview/rollback;
 - ezdxf non-authoritative cho live DWG safety;
 - release support chỉ sau real evidence.
 
 ### Operations
 
-- kill switches riêng `managed_write`, `lt_write`, `high_risk`, operation packs;
+- kill switches riêng cho managed write, trusted approval, rollback, LT write và operation packs;
 - telemetry fail open;
-- no update giữa active job;
-- previous-known-good rollback;
-- external production signing gates rõ ràng.
+- no update giữa active effect-bearing job;
+- previous-known-good package rollback;
+- external production signing gates rõ ràng;
+- unresolved outcome records không được xóa hoặc tự động đánh success.
 
 ## 5. Tài liệu ưu tiên
 
 Khi mâu thuẫn:
 
 1. [fastmcp-multi-user-autocad-plan.md](./fastmcp-multi-user-autocad-plan.md) quyết định architecture boundaries.
-2. Tài liệu phase cụ thể quyết định scope/contract/exit gate của phase đó.
+2. Tài liệu phase cụ thể quyết định scope, contract và exit gate.
 3. Tài liệu này quyết định numbering và thứ tự Phase 6–12.
 4. [appendix-user-interface.md](./appendix-user-interface.md) quyết định cách render state và trusted actions.
-5. Evidence documents quyết định điều đã thực sự chứng minh; roadmap không tự biến kế hoạch thành support claim.
+5. Evidence documents quyết định điều gì đã thực sự được chứng minh.
+
+Phase hiện hành: [Phase-7.md](./Phase-7.md).
