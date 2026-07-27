@@ -49,3 +49,60 @@ def test_pause_and_sequence_survive_restart(tmp_path):
     reopened = CommandLedger(path)
     assert reopened.is_paused() is True
     assert reopened.next_sequence() == 2
+
+
+def test_program_idempotency_and_interrupted_commit_recovery(tmp_path):
+    path = tmp_path / "agent.db"
+    ledger = CommandLedger(path)
+    binding = {"execution_digest": f"sha256:{'d' * 64}"}
+    entry, created = ledger.record_received(
+        command_id="commit-1",
+        job_id="job-1",
+        idempotency_key="idem-commit",
+        payload_hash="e" * 64,
+        package=PACKAGE,
+        session_id="session-1",
+        device_id="device-1",
+        kind="program_commit",
+        binding=binding,
+    )
+    assert created is True
+    ledger.transition(entry.command_id, "accepted")
+    ledger.transition(entry.command_id, "started")
+
+    duplicate, created = ledger.record_received(
+        command_id="commit-retry",
+        job_id="job-retry",
+        idempotency_key="idem-commit",
+        payload_hash="e" * 64,
+        package=PACKAGE,
+        session_id="session-2",
+        device_id="device-1",
+        kind="program_commit",
+        binding=binding,
+    )
+    assert created is False
+    assert duplicate.command_id == "commit-1"
+
+    with pytest.raises(LedgerConflict, match="idempotency_conflict"):
+        ledger.record_received(
+            command_id="commit-conflict",
+            job_id="job-conflict",
+            idempotency_key="idem-commit",
+            payload_hash="f" * 64,
+            package=PACKAGE,
+            session_id="session-2",
+            device_id="device-1",
+            kind="program_commit",
+            binding=binding,
+        )
+    ledger.close()
+
+    restarted = CommandLedger(path)
+    assert restarted.initialize_write_lock(False) is False
+    unknown, failed = restarted.recover_interrupted_programs()
+    assert (unknown, failed) == (1, 0)
+    recovered = restarted.get("commit-1")
+    assert recovered is not None
+    assert recovered.state == "outcome_unknown"
+    assert recovered.error_code == "outcome_unknown"

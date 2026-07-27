@@ -107,22 +107,77 @@
             "space": { "enum": ["all", "model", "paper"] },
             "after_sequence": { "type": "integer", "minimum": 0 },
             "max_events": { "type": "integer", "minimum": 1, "maximum": 100 },
-            "program": { "$ref": "cad-program-0.1.schema.json" },
-            "preview": {
+            "program": { "$ref": "cad-program-0.2.schema.json" },
+            "execution_binding": {
               "type": "object",
               "additionalProperties": false,
               "required": [
                 "program_digest",
                 "execution_digest",
+                "document_id",
                 "document_revision",
-                "runtime_binding"
+                "runtime_id",
+                "runtime_role",
+                "host_family",
+                "host_version",
+                "package_id",
+                "package_version",
+                "package_hash",
+                "capability_manifest_hash",
+                "operation_registry_version",
+                "operation_registry_hash",
+                "policy_version"
               ],
               "properties": {
                 "program_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
                 "execution_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-                "document_revision": { "type": "integer", "minimum": 1 },
-                "runtime_binding": {
-                  "$ref": "cad-program-0.1.schema.json#/$defs/runtime_binding"
+                "document_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "document_revision": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^\\S+$"
+                },
+                "runtime_id": { "type": "string", "minLength": 1, "maxLength": 64 },
+                "runtime_role": { "const": "primary" },
+                "host_family": { "type": "string", "minLength": 1, "maxLength": 32 },
+                "host_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+                "package_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "package_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+                "package_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+                "capability_manifest_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+                "operation_registry_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+                "operation_registry_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+                "policy_version": { "type": "string", "minLength": 1, "maxLength": 64 }
+              }
+            },
+            "preview_binding": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["preview_id", "preview_digest"],
+              "properties": {
+                "preview_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "preview_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+              }
+            },
+            "validation": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["receipt_id"],
+              "properties": {
+                "receipt_id": { "type": "string", "minLength": 1, "maxLength": 128 },
+                "expected_entity_count": { "type": "integer", "minimum": 0, "maximum": 256 },
+                "expected_entity_types": {
+                  "type": "array",
+                  "maxItems": 16,
+                  "uniqueItems": true,
+                  "items": { "type": "string", "minLength": 1, "maxLength": 64 }
+                },
+                "expected_layers": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": { "type": "string", "minLength": 1, "maxLength": 255 }
                 }
               }
             }

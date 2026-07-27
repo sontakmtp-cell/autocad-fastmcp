@@ -83,6 +83,11 @@ class AgentWindow(QMainWindow):
                 ("component", "Thành phần AutoCAD"),
                 ("capability", "Khả năng"),
                 ("document", "Bản vẽ"),
+                ("write_lock", "Khóa ghi"),
+                ("hard_pause", "Dừng khẩn cấp"),
+                ("active_job", "Job đang chạy"),
+                ("mismatch", "Sai lệch binding"),
+                ("outcome", "Kết quả chưa rõ"),
                 ("task", "Tác vụ"),
                 ("version", "Phiên bản"),
                 ("support", "Mã hỗ trợ"),
@@ -149,9 +154,22 @@ class AgentWindow(QMainWindow):
         self.values["component"].setText(self._component_text(state))
         self.values["capability"].setText(self._capability_text(state))
         self.values["document"].setText(state.document_name or "Chưa có")
+        self.values["write_lock"].setText(
+            "Đã bật" if state.write_lock_enabled else "Đang tắt"
+        )
+        self.values["hard_pause"].setText(
+            "Đang bật" if state.hard_pause else "Đang tắt"
+        )
+        self.values["active_job"].setText(state.active_job_id or "Không có")
+        self.values["mismatch"].setText(state.mismatch_reason or "Không có")
+        self.values["outcome"].setText(
+            "Cần kiểm tra bản vẽ" if state.outcome_unknown else "Bình thường"
+        )
         self.values["task"].setText(state.current_task or "Không có")
         self.values["version"].setText(self._version_text(state))
-        self.values["support"].setText(state.support_code or "—")
+        self.values["support"].setText(
+            state.support_id or state.support_code or "—"
+        )
         label = "Tiếp tục" if state.paused else "Tạm dừng"
         self.pause_button.setText(label)
         self.tray_pause.setText("Tiếp tục mọi tác vụ" if state.paused else "Tạm dừng mọi tác vụ")

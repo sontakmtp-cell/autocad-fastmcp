@@ -11,8 +11,16 @@ from pathlib import Path
 from typing import Any, Literal
 
 
-LedgerState = Literal["received", "accepted", "started", "succeeded", "failed", "cancelled"]
-TERMINAL = frozenset({"succeeded", "failed", "cancelled"})
+LedgerState = Literal[
+    "received",
+    "accepted",
+    "started",
+    "succeeded",
+    "failed",
+    "cancelled",
+    "outcome_unknown",
+]
+TERMINAL = frozenset({"succeeded", "failed", "cancelled", "outcome_unknown"})
 
 
 def _now() -> str:
@@ -35,6 +43,8 @@ class LedgerEntry:
     device_id: str
     sequence: int
     cancel_requested: bool
+    kind: str
+    binding: dict[str, Any] | None
 
 
 class LedgerConflict(RuntimeError):
@@ -67,6 +77,8 @@ class CommandLedger:
                     device_id TEXT NOT NULL,
                     sequence INTEGER NOT NULL DEFAULT 0,
                     cancel_requested INTEGER NOT NULL DEFAULT 0,
+                    kind TEXT NOT NULL DEFAULT 'observe',
+                    binding_json TEXT,
                     created_at TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 );
@@ -76,6 +88,20 @@ class CommandLedger:
                 );
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in self._connection.execute(
+                    "PRAGMA table_info(commands)"
+                ).fetchall()
+            }
+            if "kind" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE commands ADD COLUMN kind TEXT NOT NULL DEFAULT 'observe'"
+                )
+            if "binding_json" not in columns:
+                self._connection.execute(
+                    "ALTER TABLE commands ADD COLUMN binding_json TEXT"
+                )
 
     def close(self) -> None:
         with self._lock:
@@ -91,19 +117,35 @@ class CommandLedger:
         package: dict[str, str],
         session_id: str,
         device_id: str,
+        kind: str = "observe",
+        binding: dict[str, Any] | None = None,
     ) -> tuple[LedgerEntry, bool]:
         with self._lock, self._connection:
             row = self._connection.execute(
                 "SELECT * FROM commands WHERE command_id = ?", (command_id,)
             ).fetchone()
+            matched_command_id = row is not None
+            if row is None:
+                row = self._connection.execute(
+                    "SELECT * FROM commands WHERE device_id = ? AND idempotency_key = ? "
+                    "ORDER BY created_at LIMIT 1",
+                    (device_id, idempotency_key),
+                ).fetchone()
             if row is not None:
                 entry = self._entry(row)
                 if (
-                    entry.job_id != job_id
-                    or entry.payload_hash != payload_hash
+                    entry.payload_hash != payload_hash
                     or entry.idempotency_key != idempotency_key
                     or entry.device_id != device_id
+                    or entry.kind != kind
+                    or entry.binding != binding
                 ):
+                    raise LedgerConflict(
+                        "replay_payload_mismatch"
+                        if matched_command_id
+                        else "idempotency_conflict"
+                    )
+                if entry.command_id == command_id and entry.job_id != job_id:
                     raise LedgerConflict("replay_payload_mismatch")
                 return entry, False
             now = _now()
@@ -111,8 +153,8 @@ class CommandLedger:
                 """
                 INSERT INTO commands(command_id, job_id, idempotency_key, payload_hash, state,
                     package_id, package_version, package_sha256, session_id, device_id,
-                    created_at, updated_at)
-                VALUES (?, ?, ?, ?, 'received', ?, ?, ?, ?, ?, ?, ?)
+                    kind, binding_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'received', ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     command_id,
@@ -124,6 +166,12 @@ class CommandLedger:
                     package["sha256"],
                     session_id,
                     device_id,
+                    kind,
+                    (
+                        json.dumps(binding, ensure_ascii=False, sort_keys=True)
+                        if binding is not None
+                        else None
+                    ),
                     now,
                     now,
                 ),
@@ -147,7 +195,15 @@ class CommandLedger:
                 if current.state == state and current.result == result and current.error_code == error_code:
                     return current
                 raise LedgerConflict("terminal_result_conflict")
-            order = {"received": 0, "accepted": 1, "started": 2, "succeeded": 3, "failed": 3, "cancelled": 3}
+            order = {
+                "received": 0,
+                "accepted": 1,
+                "started": 2,
+                "succeeded": 3,
+                "failed": 3,
+                "cancelled": 3,
+                "outcome_unknown": 3,
+            }
             if order[state] < order[current.state]:
                 raise LedgerConflict("invalid_transition")
             self._connection.execute(
@@ -208,6 +264,54 @@ class CommandLedger:
             ).fetchone()
         return bool(row and row[0] == "1")
 
+    def initialize_write_lock(self, enabled: bool) -> bool:
+        with self._lock, self._connection:
+            row = self._connection.execute(
+                "SELECT value FROM settings WHERE key = 'write_lock'"
+            ).fetchone()
+            if row is None:
+                self._connection.execute(
+                    "INSERT INTO settings(key, value) VALUES ('write_lock', ?)",
+                    ("1" if enabled else "0",),
+                )
+                return enabled
+            return row[0] == "1"
+
+    def set_write_lock(self, enabled: bool) -> None:
+        with self._lock, self._connection:
+            self._connection.execute(
+                "INSERT INTO settings(key, value) VALUES ('write_lock', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                ("1" if enabled else "0",),
+            )
+
+    def is_write_lock_enabled(self) -> bool:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT value FROM settings WHERE key = 'write_lock'"
+            ).fetchone()
+        return bool(row and row[0] == "1")
+
+    def recover_interrupted_programs(self) -> tuple[int, int]:
+        """Never make an interrupted started write eligible for blind retry."""
+
+        with self._lock, self._connection:
+            now = _now()
+            unknown = self._connection.execute(
+                "UPDATE commands SET state = 'outcome_unknown', "
+                "error_code = 'outcome_unknown', updated_at = ? "
+                "WHERE state = 'started' AND kind = 'program_commit'",
+                (now,),
+            ).rowcount
+            failed = self._connection.execute(
+                "UPDATE commands SET state = 'failed', "
+                "error_code = 'agent_restarted', updated_at = ? "
+                "WHERE state = 'started' AND kind IN "
+                "('program_preview', 'program_validate')",
+                (now,),
+            ).rowcount
+        return int(unknown), int(failed)
+
     def next_sequence(self) -> int:
         with self._lock, self._connection:
             row = self._connection.execute(
@@ -245,4 +349,10 @@ class CommandLedger:
             device_id=str(row["device_id"]),
             sequence=int(row["sequence"]),
             cancel_requested=bool(row["cancel_requested"]),
+            kind=str(row["kind"]),
+            binding=(
+                json.loads(row["binding_json"])
+                if row["binding_json"]
+                else None
+            ),
         )

@@ -42,6 +42,14 @@ class AgentConnection:
     current_command_id: str | None = None
     packages: tuple[dict[str, str], ...] = ()
     package_manifest_hash: str | None = None
+    capability_manifest: dict[str, Any] | None = None
+    capability_manifest_hash: str | None = None
+    operation_registry_hash: str | None = None
+    registry_version: str | None = None
+    write_lock_enabled: bool = False
+    hard_pause: bool = False
+    active_document_id: str | None = None
+    active_document_revision: str | None = None
     replaced_session_id: str | None = None
     send_timeout_seconds: float = 5.0
     _send_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
@@ -171,6 +179,11 @@ class ConnectionRegistry:
         document_name: str | None = None,
         paused: bool | None = None,
         current_command_id: str | None = None,
+        write_lock_enabled: bool | None = None,
+        hard_pause: bool | None = None,
+        active_document_id: str | None = None,
+        active_document_revision: str | None = None,
+        phase6_state_present: bool = False,
     ) -> bool:
         async with self._lock:
             connection = self._connections.get(device_id)
@@ -185,6 +198,11 @@ class ConnectionRegistry:
             if paused is not None:
                 connection.paused = paused
             connection.current_command_id = current_command_id
+            if phase6_state_present:
+                connection.write_lock_enabled = bool(write_lock_enabled)
+                connection.hard_pause = bool(hard_pause)
+                connection.active_document_id = active_document_id
+                connection.active_document_revision = active_document_revision
             return True
 
     async def stale_connections(self) -> list[AgentConnection]:

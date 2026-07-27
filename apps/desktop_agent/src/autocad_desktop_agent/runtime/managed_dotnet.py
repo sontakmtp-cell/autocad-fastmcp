@@ -19,12 +19,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Protocol
 
-from autocad_contracts import CapabilityManifest, canonical_json
+from autocad_contracts import (
+    CapabilityManifest,
+    canonical_json,
+    operation_registry_digest,
+)
 
 from .contracts import RuntimeProbe
 
 PROTOCOL = "cad.host/1"
-MAX_FRAME_BYTES = 65_536
+MAX_FRAME_BYTES = 1_048_576
 
 
 @dataclass(frozen=True)
@@ -335,15 +339,22 @@ class ManagedDotNetCadReadPort:
         if self._handshake is None:
             raise RuntimeError("managed_host_unavailable")
         handshake = self._handshake
+        allowed = {
+            "observe.summary",
+            "cad.program.preview",
+            "cad.program.commit",
+            "cad.program.validate",
+        }
         capabilities = [
-            "observe.summary"
+            capability
             for capability in handshake["capabilities"]
-            if capability == "observe.summary"
+            if capability in allowed
         ]
         return CapabilityManifest.model_validate(
             {
                 "schema_version": "cad.capability/1",
-                "registry_version": "cad.program/0",
+                "registry_version": "cad.program/0.2",
+                "operation_registry_hash": operation_registry_digest(),
                 "cad_products": [
                     {
                         "product": probe.product or handshake["product"],
@@ -365,6 +376,35 @@ class ManagedDotNetCadReadPort:
                 ],
             }
         )
+
+    async def program_command(
+        self,
+        kind: str,
+        *,
+        arguments: dict[str, Any],
+        deadline_at: str | None,
+    ) -> CadPortResult:
+        operation_id = {
+            "program_preview": "cad.program.preview",
+            "program_commit": "cad.program.commit",
+            "program_validate": "cad.program.validate",
+        }.get(kind)
+        if operation_id is None:
+            return CadPortResult(False, error_code="capability_missing")
+        try:
+            await self._ensure_handshake()
+            result = await self._command(
+                operation_id,
+                arguments=arguments,
+                document_id=arguments["execution_binding"]["document_id"],
+                deadline_at=deadline_at,
+            )
+        except Exception as error:
+            code = self._safe_error(error)
+            if code in {"managed_host_unavailable", "session_rejected"}:
+                self._handshake = None
+            return CadPortResult(False, error_code=code)
+        return CadPortResult(True, payload=result)
 
     async def _ensure_handshake(self) -> dict[str, Any]:
         if self._handshake is not None:
@@ -419,6 +459,7 @@ class ManagedDotNetCadReadPort:
         *,
         arguments: dict[str, Any],
         document_id: str | None = None,
+        deadline_at: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "operation_id": operation_id,
@@ -427,18 +468,46 @@ class ManagedDotNetCadReadPort:
         }
         if document_id is not None:
             payload["document_id"] = document_id
-        response = await self._transport.request(self._envelope("command", payload))
+        response = await self._transport.request(
+            self._envelope("command", payload, deadline_at=deadline_at)
+        )
         value = self._validate_response(response, expected_type="result")
         if value.get("operation_id") != operation_id:
             raise RuntimeError("protocol_mismatch")
         result = value.get("result")
         if not isinstance(result, dict):
             raise RuntimeError("protocol_mismatch")
+        runtime_evidence = value.get("runtime_evidence")
+        if not isinstance(runtime_evidence, dict):
+            raise RuntimeError("protocol_mismatch")
+        handshake = self._handshake or {}
+        if (
+            runtime_evidence.get("runtime_id") != "managed_dotnet"
+            or runtime_evidence.get("runtime_role") != "primary"
+            or runtime_evidence.get("host_family") != handshake.get("host_family")
+            or runtime_evidence.get("host_version") != handshake.get("host_version")
+        ):
+            raise RuntimeError("runtime_version_mismatch")
+        if value.get("status") == "duplicate":
+            result = dict(result)
+            result["duplicate"] = True
         return result
 
-    def _envelope(self, message_type: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _envelope(
+        self,
+        message_type: str,
+        payload: dict[str, Any],
+        *,
+        deadline_at: str | None = None,
+    ) -> dict[str, Any]:
         command_id = f"{message_type}-{uuid.uuid4().hex}"
-        deadline = datetime.now(timezone.utc) + timedelta(seconds=10)
+        if deadline_at is None:
+            deadline = datetime.now(timezone.utc) + timedelta(seconds=10)
+        else:
+            deadline = datetime.fromisoformat(deadline_at.replace("Z", "+00:00"))
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=timezone.utc)
+        deadline = deadline.astimezone(timezone.utc)
         # .NET's round-trip "O" parser requires seven fractional-second
         # digits; Python's ISO formatter emits six.
         deadline_at = (
@@ -491,12 +560,24 @@ class ManagedDotNetCadReadPort:
             "protocol_mismatch",
             "session_rejected",
             "payload_mismatch",
+            "deadline_expired",
             "runtime_version_mismatch",
             "capability_missing",
             "no_active_document",
             "autocad_busy",
             "modal_dialog_active",
             "active_document_changed",
+            "document_changed",
+            "stale_snapshot",
+            "program_invalid",
+            "preview_required",
+            "runtime_changed",
+            "duplicate_payload_mismatch",
+            "commit_validation_failed",
+            "preview_abort_failed",
+            "outcome_unknown",
+            "ledger_corrupt",
+            "ledger_full",
         }
         return code if code in allowed else "managed_host_unavailable"
 
@@ -563,6 +644,32 @@ class ReloadingManagedDotNetCadReadPort:
 
     async def drawing_info(self) -> CadPortResult:
         return await self._call_with_reload("drawing_info")
+
+    async def program_command(
+        self,
+        kind: str,
+        *,
+        arguments: dict[str, Any],
+        deadline_at: str | None,
+    ) -> CadPortResult:
+        """A started program command is sent once and is never retried here."""
+
+        try:
+            adapter = self._current_adapter()
+        except (OSError, ValueError):
+            self._clear_adapter()
+            return CadPortResult(False, error_code="managed_host_unavailable")
+        result = await adapter.program_command(
+            kind,
+            arguments=arguments,
+            deadline_at=deadline_at,
+        )
+        if result.error_code in {
+            "managed_host_unavailable",
+            "session_rejected",
+        }:
+            self._clear_adapter()
+        return result
 
     def manifest(self, probe: RuntimeProbe) -> CapabilityManifest:
         if self._adapter is None:

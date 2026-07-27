@@ -1,0 +1,65 @@
+[
+  {
+    "name": "CAD device capabilities",
+    "uriTemplate": "cad://devices/{device_id}/capabilities",
+    "description": "Read bounded capabilities for a known CAD device.",
+    "mimeType": "application/json",
+    "_meta": {"fastmcp": {"tags": []}}
+  },
+  {
+    "name": "CAD snapshot summary",
+    "uriTemplate": "cad://snapshots/{snapshot_id}/summary",
+    "description": "Read the bounded JSON summary for a known CAD snapshot.",
+    "mimeType": "application/json",
+    "_meta": {"fastmcp": {"tags": []}}
+  },
+  {
+    "name": "CAD snapshot entities",
+    "uriTemplate": "cad://snapshots/{snapshot_id}/entities{?cursor,limit,types,layers}",
+    "description": "Read a bounded, filtered page of entities from a known CAD snapshot.",
+    "mimeType": "application/json",
+    "_meta": {"fastmcp": {"tags": []}}
+  },
+  {
+    "name": "CAD artifact",
+    "uriTemplate": "cad://artifacts/{artifact_id}",
+    "description": "Read a bounded PNG preview artifact referenced by a CAD snapshot.",
+    "mimeType": "image/png",
+    "_meta": {"fastmcp": {"tags": []}}
+  },
+  {
+    "name": "CAD job",
+    "uriTemplate": "cad://jobs/{job_id}",
+    "description": "Read the bounded durable state and ordered events for a CAD job.",
+    "mimeType": "application/json",
+    "_meta": {"fastmcp": {"tags": []}}
+  },
+  {
+    "name": "CAD Program revision",
+    "uriTemplate": "cad://programs/{program_id}/revisions/{revision}",
+    "description": "Read one bounded immutable owner-scoped CAD Program revision.",
+    "mimeType": "application/json",
+    "_meta": {"fastmcp": {"tags": []}}
+  },
+  {
+    "name": "CAD Program preview",
+    "uriTemplate": "cad://previews/{preview_id}",
+    "description": "Read one bounded exact preview and its execution binding.",
+    "mimeType": "application/json",
+    "_meta": {"fastmcp": {"tags": []}}
+  },
+  {
+    "name": "CAD Program validation",
+    "uriTemplate": "cad://validations/{validation_id}",
+    "description": "Read one bounded owner-scoped validation report.",
+    "mimeType": "application/json",
+    "_meta": {"fastmcp": {"tags": []}}
+  },
+  {
+    "name": "CAD Program execution receipt",
+    "uriTemplate": "cad://receipts/{receipt_id}",
+    "description": "Read one bounded owner-scoped durable execution receipt.",
+    "mimeType": "application/json",
+    "_meta": {"fastmcp": {"tags": []}}
+  }
+]

@@ -1,3 +1,3 @@
-"""Read-only Windows Agent used by the Phase 4 C1 lab."""
+"""Windows Agent with isolated read and bounded CAD Program executors."""
 
 __version__ = "0.1.0"

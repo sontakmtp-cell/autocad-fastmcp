@@ -36,7 +36,11 @@ public sealed class HostSession(
                 return MarkDuplicate(replay);
             }
 
-            var command = EnvelopeValidator.ParseCommand(request.Payload);
+            var command = EnvelopeValidator.ParseCommand(request.Payload) with
+            {
+                CommandId = request.CommandId,
+                DeadlineAt = request.DeadlineAt
+            };
             var result = await operations.ExecuteAsync(command, deadlineCancellation.Token).ConfigureAwait(false);
             var payload = new OperationResult("succeeded", command.OperationId, result, runtimeEvidence);
             var response = SerializeResponse(request, "result", payload);

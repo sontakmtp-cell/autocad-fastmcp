@@ -51,10 +51,12 @@ class HostTransport:
         self.layers_truncated = layers_truncated
         self.public_truncated = public_truncated
         self.calls: list[str] = []
+        self.requests: list[dict] = []
 
     async def request(self, request):
         if self.crash:
             raise EOFError("pipe closed")
+        self.requests.append(request)
         payload = request["payload"]
         self.calls.append(payload.get("operation_id", request["message_type"]))
         if request["message_type"] == "handshake":
@@ -78,7 +80,13 @@ class HostTransport:
                 "release_year": 2025,
                 "series": "R25.0",
                 "active_document_id": "doc-1",
-                "capabilities": ["host.health", "observe.summary"],
+                "capabilities": [
+                    "host.health",
+                    "observe.summary",
+                    "cad.program.preview",
+                    "cad.program.commit",
+                    "cad.program.validate",
+                ],
             }
             return self._response(request, "handshake_result", response_payload)
         operation = payload["operation_id"]
@@ -87,8 +95,23 @@ class HostTransport:
                 "status": self.health_status,
                 "document_name": "mat-bich.dwg",
                 "active_document": "mat-bich.dwg",
+                "active_document_id": "doc-1",
+                "active_document_revision": "42",
             }
             if operation == "host.health"
+            else {
+                "preview_id": "preview-1",
+                "preview_digest": f"sha256:{'b' * 64}",
+                "expires_at": (
+                    datetime.now(timezone.utc) + timedelta(minutes=5)
+                ).isoformat(),
+                "planned_operation_count": 1,
+                "planned_entity_count": 0,
+                "planned_layer_count": 1,
+                "transaction_aborted": True,
+                "drawing_unchanged": True,
+            }
+            if operation == "cad.program.preview"
             else {
                 "document_id": "doc-1",
                 "document_name": r"C:\private\mat-bich.dwg",
@@ -219,6 +242,33 @@ async def test_managed_adapter_handshake_health_and_summary_are_bounded():
     ]
     assert not hasattr(adapter, "execute")
     assert not hasattr(adapter, "commit")
+
+
+async def test_managed_adapter_sends_typed_program_once():
+    transport = HostTransport()
+    adapter = ManagedDotNetCadReadPort(
+        transport,
+        session_secret=SECRET,
+        agent_version="0.1.0",
+        expected_host_family="R25",
+    )
+    result = await adapter.program_command(
+        "program_preview",
+        arguments={
+            "program": {"schema_version": "cad.program/0.2"},
+            "execution_binding": {"document_id": "doc-1"},
+        },
+        deadline_at=(
+            datetime.now(timezone.utc) + timedelta(minutes=1)
+        ).isoformat(),
+    )
+
+    assert result.ok is True
+    assert result.payload["transaction_aborted"] is True
+    assert transport.calls == ["handshake", "cad.program.preview"]
+    deadline_at = transport.requests[-1]["deadline_at"]
+    assert deadline_at.endswith("+00:00")
+    assert len(deadline_at.split(".", 1)[1].split("+", 1)[0]) == 7
 
 
 async def test_executor_reports_managed_primary_without_requiring_lisp_host_fields():

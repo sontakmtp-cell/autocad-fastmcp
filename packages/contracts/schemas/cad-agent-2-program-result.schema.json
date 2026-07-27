@@ -1,0 +1,587 @@
+{
+  "$defs": {
+    "ProgramCommitResult": {
+      "additionalProperties": false,
+      "properties": {
+        "receipt_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Receipt Id",
+          "type": "string"
+        },
+        "receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Receipt Digest",
+          "type": "string"
+        },
+        "document_revision_before": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Document Revision Before",
+          "type": "string"
+        },
+        "document_revision_after": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Document Revision After",
+          "type": "string"
+        },
+        "created_entity_count": {
+          "maximum": 256,
+          "minimum": 0,
+          "title": "Created Entity Count",
+          "type": "integer"
+        },
+        "duplicate": {
+          "default": false,
+          "title": "Duplicate",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "receipt_id",
+        "receipt_digest",
+        "document_revision_before",
+        "document_revision_after",
+        "created_entity_count"
+      ],
+      "title": "ProgramCommitResult",
+      "type": "object"
+    },
+    "ProgramExecutionBinding": {
+      "additionalProperties": false,
+      "description": "Server-selected binding. It is intentionally outside CAD Program.",
+      "properties": {
+        "program_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Program Digest",
+          "type": "string"
+        },
+        "execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Execution Digest",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Document Revision",
+          "type": "string"
+        },
+        "runtime_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Runtime Id",
+          "type": "string"
+        },
+        "runtime_role": {
+          "const": "primary",
+          "title": "Runtime Role",
+          "type": "string"
+        },
+        "host_family": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Host Family",
+          "type": "string"
+        },
+        "host_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Host Version",
+          "type": "string"
+        },
+        "package_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Package Id",
+          "type": "string"
+        },
+        "package_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Package Version",
+          "type": "string"
+        },
+        "package_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Hash",
+          "type": "string"
+        },
+        "capability_manifest_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Manifest Hash",
+          "type": "string"
+        },
+        "operation_registry_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Operation Registry Version",
+          "type": "string"
+        },
+        "operation_registry_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Registry Hash",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "program_digest",
+        "execution_digest",
+        "document_id",
+        "document_revision",
+        "runtime_id",
+        "runtime_role",
+        "host_family",
+        "host_version",
+        "package_id",
+        "package_version",
+        "package_hash",
+        "capability_manifest_hash",
+        "operation_registry_version",
+        "operation_registry_hash",
+        "policy_version"
+      ],
+      "title": "ProgramExecutionBinding",
+      "type": "object"
+    },
+    "ProgramPreviewResult": {
+      "additionalProperties": false,
+      "properties": {
+        "preview_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Preview Id",
+          "type": "string"
+        },
+        "preview_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Preview Digest",
+          "type": "string"
+        },
+        "expires_at": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Expires At",
+          "type": "string"
+        },
+        "planned_operation_count": {
+          "maximum": 256,
+          "minimum": 1,
+          "title": "Planned Operation Count",
+          "type": "integer"
+        },
+        "planned_entity_count": {
+          "maximum": 256,
+          "minimum": 0,
+          "title": "Planned Entity Count",
+          "type": "integer"
+        },
+        "planned_layer_count": {
+          "maximum": 64,
+          "minimum": 0,
+          "title": "Planned Layer Count",
+          "type": "integer"
+        },
+        "transaction_aborted": {
+          "const": true,
+          "title": "Transaction Aborted",
+          "type": "boolean"
+        },
+        "drawing_unchanged": {
+          "const": true,
+          "title": "Drawing Unchanged",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "preview_id",
+        "preview_digest",
+        "expires_at",
+        "planned_operation_count",
+        "planned_entity_count",
+        "planned_layer_count",
+        "transaction_aborted",
+        "drawing_unchanged"
+      ],
+      "title": "ProgramPreviewResult",
+      "type": "object"
+    },
+    "ProgramValidateResult": {
+      "additionalProperties": false,
+      "properties": {
+        "validation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Validation Id",
+          "type": "string"
+        },
+        "valid": {
+          "title": "Valid",
+          "type": "boolean"
+        },
+        "document_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Document Revision",
+          "type": "string"
+        },
+        "checks": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Checks",
+          "type": "array"
+        },
+        "failures": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Failures",
+          "type": "array"
+        }
+      },
+      "required": [
+        "validation_id",
+        "valid",
+        "document_revision"
+      ],
+      "title": "ProgramValidateResult",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "const": "cad.agent/2",
+      "default": "cad.agent/2",
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "message_type": {
+      "const": "result",
+      "default": "result",
+      "title": "Message Type",
+      "type": "string"
+    },
+    "message_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Message Id",
+      "type": "string"
+    },
+    "correlation_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Id"
+    },
+    "session_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "device_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Device Id",
+      "type": "string"
+    },
+    "job_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Job Id",
+      "type": "string"
+    },
+    "command_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Command Id",
+      "type": "string"
+    },
+    "sequence": {
+      "maximum": 1000000000,
+      "minimum": 1,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "issued_at": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Issued At",
+      "type": "string"
+    },
+    "deadline_at": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Deadline At"
+    },
+    "kind": {
+      "enum": [
+        "program_preview",
+        "program_commit",
+        "program_validate"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "cancelled",
+        "outcome_unknown"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "payload_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Payload Hash",
+      "type": "string"
+    },
+    "binding": {
+      "$ref": "#/$defs/ProgramExecutionBinding"
+    },
+    "result": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProgramPreviewResult"
+        },
+        {
+          "$ref": "#/$defs/ProgramCommitResult"
+        },
+        {
+          "$ref": "#/$defs/ProgramValidateResult"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Result"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Code"
+    },
+    "error_message": {
+      "anyOf": [
+        {
+          "maxLength": 2048,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Message"
+    }
+  },
+  "required": [
+    "session_id",
+    "device_id",
+    "job_id",
+    "command_id",
+    "sequence",
+    "kind",
+    "status",
+    "payload_hash",
+    "binding"
+  ],
+  "title": "cad.agent/2 typed CAD Program result",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kythuatvang.local/cad.agent/2/program-result.schema.json",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "program_preview"
+          },
+          "status": {
+            "const": "succeeded"
+          }
+        },
+        "required": [
+          "kind",
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "result"
+        ],
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/ProgramPreviewResult"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "program_commit"
+          },
+          "status": {
+            "const": "succeeded"
+          }
+        },
+        "required": [
+          "kind",
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "result"
+        ],
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/ProgramCommitResult"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "program_validate"
+          },
+          "status": {
+            "const": "succeeded"
+          }
+        },
+        "required": [
+          "kind",
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "result"
+        ],
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/ProgramValidateResult"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "failed"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "error_code"
+        ],
+        "properties": {
+          "result": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "cancelled",
+              "outcome_unknown"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "outcome_unknown"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "kind": {
+            "const": "program_commit"
+          }
+        }
+      }
+    }
+  ]
+}

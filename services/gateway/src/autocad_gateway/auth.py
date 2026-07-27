@@ -34,6 +34,7 @@ def build_phase4_auth(
     jwks_uri: str,
     public_origin: str,
     include_device_manage: bool = False,
+    include_write: bool = False,
 ) -> RemoteAuthProvider:
     """Build the fail-closed Auth0-compatible verifier for the C1 profile."""
 
@@ -55,6 +56,7 @@ def build_phase4_auth(
         scopes_supported=[
             "autocad.read",
             *(["autocad.device.manage"] if include_device_manage else []),
+            *(["autocad.write"] if include_write else []),
         ],
         resource_name="Kỹ Thuật Vàng AutoCAD",
     )

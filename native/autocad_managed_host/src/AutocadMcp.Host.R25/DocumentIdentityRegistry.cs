@@ -1,12 +1,10 @@
 using System.Runtime.CompilerServices;
-using System.Security.Cryptography;
-using System.Text;
 using AutocadMcp.Host.Core;
 using Autodesk.AutoCAD.ApplicationServices;
 
 namespace AutocadMcp.Host.R25;
 
-internal sealed class DocumentIdentityRegistry(byte[] identityKey)
+internal sealed class DocumentIdentityRegistry
 {
     private readonly ConditionalWeakTable<Document, Entry> _entries = new();
 
@@ -21,12 +19,13 @@ internal sealed class DocumentIdentityRegistry(byte[] identityKey)
 
     private Entry CreateEntry(Document document)
     {
-        using var hmac = new HMACSHA256(identityKey);
-        var nonce = RandomNumberGenerator.GetBytes(16);
-        var input = Encoding.UTF8.GetBytes(
-            $"{Environment.ProcessId}\n{RuntimeHelpers.GetHashCode(document)}\n{Convert.ToHexString(nonce)}");
-        var digest = Convert.ToHexString(hmac.ComputeHash(input)).ToLowerInvariant();
-        return new($"doc-{digest[..24]}", new DocumentRevisionState());
+        var fingerprint = GetDatabaseFingerprint(document);
+        var documentId = fingerprint == "unavailable"
+            ? $"doc-session-{Environment.ProcessId}-{RuntimeHelpers.GetHashCode(document):x}"
+            : StableDocumentIdentity.FromDatabaseFingerprint(fingerprint);
+        return new(
+            documentId,
+            new DocumentRevisionState(DocumentRevisionState.CreateIncarnationSeed()));
     }
 
     private static string GetDatabaseFingerprint(Document document)

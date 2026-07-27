@@ -6,8 +6,20 @@ import {
   mutationResultSchema,
   pairingSchema,
   parseOpaqueId,
+  phase6JobSchema,
+  phase6ReleaseStatusSchema,
+  previewSchema,
+  programRevisionSchema,
+  receiptSchema,
+  validationSchema,
   type Device,
+  type Phase6Job,
+  type Phase6ReleaseStatus,
   type Pairing,
+  type ProgramPreview,
+  type ProgramReceipt,
+  type ProgramRevision,
+  type ProgramValidation,
 } from "./contracts";
 import { portalEnv } from "./env";
 import type { PortalSession } from "./session";
@@ -23,6 +35,13 @@ export class GatewayError extends Error {
 
 export class GatewayClient {
   constructor(private readonly session: PortalSession) {}
+
+  async getPhase6ReleaseStatus(): Promise<Phase6ReleaseStatus> {
+    return this.request(
+      "/api/portal/v1/phase6/status",
+      phase6ReleaseStatusSchema,
+    );
+  }
 
   async listDevices(): Promise<Device[]> {
     return (await this.request("/api/portal/v1/devices", devicesSchema)).devices;
@@ -63,6 +82,45 @@ export class GatewayClient {
       `/api/portal/v1/devices/${encodeURIComponent(parseOpaqueId(deviceId))}/revoke`,
       mutationResultSchema,
       "POST",
+    );
+  }
+
+  async getProgram(programId: string, revision: number): Promise<ProgramRevision> {
+    if (!Number.isSafeInteger(revision) || revision < 1) {
+      throw new GatewayError(404, "NOT_FOUND");
+    }
+    return this.request(
+      `/api/portal/v1/programs/${encodeURIComponent(parseOpaqueId(programId))}`
+      + `/revisions/${revision}`,
+      programRevisionSchema,
+    );
+  }
+
+  async getPreview(previewId: string): Promise<ProgramPreview> {
+    return this.request(
+      `/api/portal/v1/previews/${encodeURIComponent(parseOpaqueId(previewId))}`,
+      previewSchema,
+    );
+  }
+
+  async getValidation(validationId: string): Promise<ProgramValidation> {
+    return this.request(
+      `/api/portal/v1/validations/${encodeURIComponent(parseOpaqueId(validationId))}`,
+      validationSchema,
+    );
+  }
+
+  async getReceipt(receiptId: string): Promise<ProgramReceipt> {
+    return this.request(
+      `/api/portal/v1/receipts/${encodeURIComponent(parseOpaqueId(receiptId))}`,
+      receiptSchema,
+    );
+  }
+
+  async getJob(jobId: string): Promise<Phase6Job> {
+    return this.request(
+      `/api/portal/v1/jobs/${encodeURIComponent(parseOpaqueId(jobId))}`,
+      phase6JobSchema,
     );
   }
 

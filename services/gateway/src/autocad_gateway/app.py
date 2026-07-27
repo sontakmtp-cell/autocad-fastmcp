@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 import logging
 import re
 import time
@@ -43,6 +44,14 @@ from .contracts import (
     CadObserveOutputC1,
     CadQueryInput,
     CadQueryOutput,
+    CadPrepareProgramInput,
+    CadPrepareProgramOutput,
+    CadPreviewInput,
+    CadPreviewOutput,
+    CadCommitInput,
+    CadCommitOutput,
+    CadValidateInput,
+    CadValidateOutput,
     Principal,
 )
 from .services import (
@@ -104,7 +113,13 @@ class GatewayConfig:
     snapshot_ttl_seconds: float = SNAPSHOT_TTL_SECONDS_DEFAULT
     max_snapshot_count: int = MAX_SNAPSHOT_COUNT_DEFAULT
     max_snapshot_store_bytes: int = MAX_SNAPSHOT_STORE_BYTES_DEFAULT
-    profile: Literal["local", "phase3_poc", "phase4_c1", "phase5_identity"] = "local"
+    profile: Literal[
+        "local",
+        "phase3_poc",
+        "phase4_c1",
+        "phase5_identity",
+        "phase6_program",
+    ] = "local"
     db_path: str | None = None
     fixture_tokens: tuple[tuple[str, str], ...] = ()
     fixture_owner_subject: str = "phase3-fixture-user"
@@ -122,6 +137,12 @@ class GatewayConfig:
     required_package_sha256: str | None = None
     write_disabled: bool = True
     device_display_name: str = "Máy AutoCAD Lab"
+    program_v0_enabled: bool = False
+    managed_write_enabled: bool = False
+    lt_write_enabled: bool = False
+    high_risk_enabled: bool = False
+    phase6_allowed_device_ids: tuple[str, ...] = ()
+    phase6_policy_version: str = "phase6-policy/1"
 
     @classmethod
     def from_env(cls) -> "GatewayConfig":
@@ -145,6 +166,16 @@ class GatewayConfig:
             if parts[0].strip() and parts[1].strip()
         )
         profile = os.environ.get("AUTOCAD_MCP_GATEWAY_PROFILE", "local").strip() or "local"
+        phase6_allowed_device_ids = tuple(
+            item.strip()
+            for item in re.split(
+                r"[;,]",
+                os.environ.get(
+                    "AUTOCAD_MCP_PHASE6_ALLOWED_DEVICE_IDS", ""
+                ),
+            )
+            if item.strip()
+        )
         if profile == "phase4_c1":
             device_id = os.environ.get("AUTOCAD_MCP_PHASE4_DEVICE_ID", "").strip()
             device_credential = os.environ.get(
@@ -201,14 +232,26 @@ class GatewayConfig:
             profile=profile,
             db_path=(
                 os.environ.get(
-                    "AUTOCAD_MCP_PHASE5_DB_PATH",
-                    os.environ.get("AUTOCAD_MCP_PHASE4_DB_PATH", ""),
+                    "AUTOCAD_MCP_PHASE6_DB_PATH",
+                    os.environ.get(
+                        "AUTOCAD_MCP_PHASE5_DB_PATH",
+                        os.environ.get("AUTOCAD_MCP_PHASE4_DB_PATH", ""),
+                    ),
                 ).strip()
-                if profile == "phase5_identity"
+                if profile == "phase6_program"
                 else (
-                    os.environ.get("AUTOCAD_MCP_PHASE4_DB_PATH", "").strip()
-                    if profile == "phase4_c1"
-                    else os.environ.get("AUTOCAD_MCP_PHASE3_DB_PATH", "").strip()
+                    os.environ.get(
+                        "AUTOCAD_MCP_PHASE5_DB_PATH",
+                        os.environ.get("AUTOCAD_MCP_PHASE4_DB_PATH", ""),
+                    ).strip()
+                    if profile == "phase5_identity"
+                    else (
+                        os.environ.get("AUTOCAD_MCP_PHASE4_DB_PATH", "").strip()
+                        if profile == "phase4_c1"
+                        else os.environ.get(
+                            "AUTOCAD_MCP_PHASE3_DB_PATH", ""
+                        ).strip()
+                    )
                 )
             ) or None,
             fixture_tokens=fixture_tokens,
@@ -250,6 +293,26 @@ class GatewayConfig:
             device_display_name=os.environ.get(
                 "AUTOCAD_MCP_PHASE4_DEVICE_DISPLAY_NAME", "Máy AutoCAD Lab"
             ).strip(),
+            program_v0_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V0_ENABLED", "0"
+            ).strip().lower()
+            in {"1", "true", "yes", "on"},
+            managed_write_enabled=os.environ.get(
+                "AUTOCAD_MCP_MANAGED_WRITE_ENABLED", "0"
+            ).strip().lower()
+            in {"1", "true", "yes", "on"},
+            lt_write_enabled=os.environ.get(
+                "AUTOCAD_MCP_LT_WRITE_ENABLED", "0"
+            ).strip().lower()
+            in {"1", "true", "yes", "on"},
+            high_risk_enabled=os.environ.get(
+                "AUTOCAD_MCP_HIGH_RISK_ENABLED", "0"
+            ).strip().lower()
+            in {"1", "true", "yes", "on"},
+            phase6_allowed_device_ids=phase6_allowed_device_ids,
+            phase6_policy_version=os.environ.get(
+                "AUTOCAD_MCP_PHASE6_POLICY_VERSION", "phase6-policy/1"
+            ).strip(),
         )
         return config.validate()
 
@@ -290,9 +353,15 @@ class GatewayConfig:
         )
         if self.max_snapshot_bytes > self.max_snapshot_store_bytes:
             raise ValueError("max_snapshot_bytes must not exceed max_snapshot_store_bytes")
-        if self.profile not in {"local", "phase3_poc", "phase4_c1", "phase5_identity"}:
+        if self.profile not in {
+            "local",
+            "phase3_poc",
+            "phase4_c1",
+            "phase5_identity",
+            "phase6_program",
+        }:
             raise ValueError(
-                "profile must be local, phase3_poc, phase4_c1 or phase5_identity"
+                "profile must be local, phase3_poc, phase4_c1, phase5_identity or phase6_program"
             )
         if not 1 <= self.stale_after_seconds <= 3600:
             raise ValueError("stale_after_seconds must be between 1 and 3600")
@@ -340,7 +409,7 @@ class GatewayConfig:
                     raise ValueError(f"phase4_c1 {name} must be a canonical HTTPS URL")
             if urlsplit(self.public_origin or "").path not in {"", "/"}:
                 raise ValueError("phase4_c1 public origin must not contain a path")
-        if self.profile == "phase5_identity":
+        if self.profile in {"phase5_identity", "phase6_program"}:
             required = {
                 "db_path": self.db_path,
                 "OAuth issuer": self.oauth_issuer,
@@ -350,11 +419,11 @@ class GatewayConfig:
             }
             missing = [name for name, value in required.items() if not value]
             if missing:
-                raise ValueError("phase5_identity requires " + ", ".join(missing))
+                raise ValueError(f"{self.profile} requires " + ", ".join(missing))
             if self.fixture_tokens:
-                raise ValueError("phase5_identity forbids fixture device tokens")
+                raise ValueError(f"{self.profile} forbids fixture device tokens")
             if not self.write_disabled:
-                raise ValueError("phase5_identity requires write_disabled=true")
+                raise ValueError(f"{self.profile} requires write_disabled=true")
             for name, value in {
                 "OAuth issuer": self.oauth_issuer,
                 "OAuth JWKS URI": self.oauth_jwks_uri,
@@ -368,12 +437,25 @@ class GatewayConfig:
                     or parsed.fragment
                 ):
                     raise ValueError(
-                        f"phase5_identity {name} must be a canonical HTTPS URL"
+                        f"{self.profile} {name} must be a canonical HTTPS URL"
                     )
             if urlsplit(self.public_origin or "").path not in {"", "/"}:
                 raise ValueError(
-                    "phase5_identity public origin must not contain a path"
+                    f"{self.profile} public origin must not contain a path"
                 )
+        if self.lt_write_enabled:
+            raise ValueError("Phase 6 forbids LT write")
+        if self.high_risk_enabled:
+            raise ValueError("Phase 6 forbids high-risk write")
+        if self.managed_write_enabled and not self.program_v0_enabled:
+            raise ValueError("managed_write requires program_v0")
+        if self.managed_write_enabled and not self.phase6_allowed_device_ids:
+            raise ValueError("managed_write requires an explicit Phase 6 device allowlist")
+        if (
+            not self.phase6_policy_version
+            or len(self.phase6_policy_version.encode("utf-8")) > 64
+        ):
+            raise ValueError("phase6 policy version is invalid")
         return self
 
     @property
@@ -603,12 +685,17 @@ class OuterHostOriginGuard:
         await self.app(scope, receive, send)
 
 
-def _tool_annotations(*, idempotent: bool) -> dict[str, bool]:
+def _tool_annotations(
+    *,
+    idempotent: bool,
+    read_only: bool = True,
+    destructive: bool = False,
+) -> dict[str, bool]:
     return {
-        "readOnlyHint": True,
+        "readOnlyHint": read_only,
         "idempotentHint": idempotent,
         "openWorldHint": False,
-        "destructiveHint": False,
+        "destructiveHint": destructive,
     }
 
 
@@ -631,7 +718,10 @@ def _principal(
     subject = token.claims.get("sub")
     if not isinstance(subject, str) or not subject:
         raise ToolError(f"invalid_token: subject claim required; correlation_id={correlation_id}")
-    if getattr(services, "profile", None) == "phase5_identity":
+    if getattr(services, "profile", None) in {
+        "phase5_identity",
+        "phase6_program",
+    }:
         issuer = token.claims.get("iss")
         if not isinstance(issuer, str) or not issuer:
             raise ToolError(
@@ -672,6 +762,16 @@ def _safe_error(error: GatewayError, correlation_id: str) -> ToolError:
         "paused_by_user": "the local user paused remote tasks",
         "outcome_unknown": "the write-like operation has an unknown outcome",
         "internal_error": "operation failed",
+        "feature_disabled": "the Phase 6 CAD Program feature is disabled",
+        "insufficient_scope": "autocad.write scope is required",
+        "stale_snapshot": "the source snapshot is not commit-safe or is stale",
+        "stale_revision": "the active document revision changed",
+        "binding_mismatch": "the exact runtime or preview binding changed",
+        "preview_expired": "the exact preview has expired",
+        "document_write_busy": "another write-like job is active for this document",
+        "write_lock_disabled": "the Desktop Agent write lock is disabled",
+        "policy_mismatch": "the Gateway write policy changed",
+        "runtime_mismatch": "the pinned Managed R25 runtime changed",
     }
     public_code = error.code if error.code in messages else "internal_error"
     details: list[str] = []
@@ -722,15 +822,27 @@ def build_mcp_server(
     auth_check = require_scopes("autocad.read") if auth is not None else None
     phase3 = bool(getattr(services, "is_phase3", False))
     phase4 = bool(getattr(services, "is_phase4", False))
+    phase6 = bool(getattr(services, "is_phase6", False))
+    write_auth_check = require_scopes("autocad.write") if auth is not None else None
     mcp = FastMCP(
         name=(
-            "AutoCAD Gateway public v1.2"
+            "AutoCAD Gateway public v1.3"
+            if phase6
+            else "AutoCAD Gateway public v1.2"
             if phase4
             else "AutoCAD Gateway public v1.1"
             if phase3
             else "AutoCAD Gateway public v1"
         ),
-        version="0.4.0" if phase4 else "0.3.0" if phase3 else "0.2.0",
+        version=(
+            "0.6.0"
+            if phase6
+            else "0.4.0"
+            if phase4
+            else "0.3.0"
+            if phase3
+            else "0.2.0"
+        ),
         auth=auth,
         mask_error_details=True,
     )
@@ -943,6 +1055,160 @@ def build_mcp_server(
             )
             return result.model_dump(mode="json")
 
+    if phase6:
+        program_service = services.program_service
+        if program_service is None:
+            raise RuntimeError("Phase 6 profile requires ProgramGatewayService")
+
+        @mcp.tool(
+            name="cad_prepare_program",
+            title="Prepare a CAD Program",
+            description=(
+                "Validate and store one owner-scoped create-only CAD Program without "
+                "dispatching it to the Desktop Agent."
+            ),
+            output_schema=CadPrepareProgramOutput.model_json_schema(),
+            annotations=_tool_annotations(idempotent=False, read_only=False),
+            auth=write_auth_check,
+        )
+        async def cad_prepare_program(
+            device_id: str,
+            source_snapshot_id: str,
+            operations: list[dict[str, Any]],
+            postconditions: list[dict[str, Any]] | None = None,
+            budget_overrides: dict[str, int] | None = None,
+            idempotency_key: Annotated[
+                str | None, Field(min_length=1, max_length=128)
+            ] = None,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
+            del ctx
+            correlation_id = current_correlation_id(make_correlation_id)
+            result = await _run(
+                lambda: program_service.prepare(
+                    CadPrepareProgramInput(
+                        device_id=device_id,
+                        source_snapshot_id=source_snapshot_id,
+                        operations=operations,
+                        postconditions=postconditions or [],
+                        budget_overrides=budget_overrides or {},
+                        idempotency_key=idempotency_key,
+                    ),
+                    _principal(auth, services, correlation_id),
+                    correlation_id,
+                ),
+                correlation_id,
+            )
+            return result.model_dump(mode="json")
+
+        @mcp.tool(
+            name="cad_preview",
+            title="Preview a CAD Program",
+            description=(
+                "Dispatch an exact pinned preview that must abort its AutoCAD "
+                "transaction and leave the drawing unchanged."
+            ),
+            output_schema=CadPreviewOutput.model_json_schema(),
+            annotations=_tool_annotations(idempotent=False, read_only=False),
+            auth=write_auth_check,
+        )
+        async def cad_preview(
+            program_id: str,
+            program_revision: int = 1,
+            idempotency_key: Annotated[
+                str | None, Field(min_length=1, max_length=128)
+            ] = None,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
+            del ctx
+            correlation_id = current_correlation_id(make_correlation_id)
+            result = await _run(
+                lambda: program_service.preview(
+                    CadPreviewInput(
+                        program_id=program_id,
+                        program_revision=program_revision,
+                        idempotency_key=idempotency_key,
+                    ),
+                    _principal(auth, services, correlation_id),
+                    correlation_id,
+                ),
+                correlation_id,
+            )
+            return result.model_dump(mode="json")
+
+        @mcp.tool(
+            name="cad_commit",
+            title="Commit a CAD Program",
+            description=(
+                "Commit one unexpired exact preview on an explicitly allowlisted "
+                "Managed .NET R25 device."
+            ),
+            output_schema=CadCommitOutput.model_json_schema(),
+            annotations=_tool_annotations(idempotent=False, read_only=False),
+            auth=write_auth_check,
+        )
+        async def cad_commit(
+            preview_id: str,
+            idempotency_key: Annotated[
+                str | None, Field(min_length=1, max_length=128)
+            ] = None,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
+            del ctx
+            correlation_id = current_correlation_id(make_correlation_id)
+            result = await _run(
+                lambda: program_service.commit(
+                    CadCommitInput(
+                        preview_id=preview_id,
+                        idempotency_key=idempotency_key,
+                    ),
+                    _principal(auth, services, correlation_id),
+                    correlation_id,
+                ),
+                correlation_id,
+            )
+            return result.model_dump(mode="json")
+
+        @mcp.tool(
+            name="cad_validate",
+            title="Validate a CAD Program receipt",
+            description=(
+                "Run bounded read-only validation against an owner-scoped durable "
+                "execution receipt."
+            ),
+            output_schema=CadValidateOutput.model_json_schema(),
+            annotations=_tool_annotations(
+                idempotent=False,
+                read_only=False,
+            ),
+            auth=write_auth_check,
+        )
+        async def cad_validate(
+            receipt_id: str,
+            idempotency_key: Annotated[
+                str | None, Field(min_length=1, max_length=128)
+            ] = None,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
+            del ctx
+            correlation_id = current_correlation_id(make_correlation_id)
+            result = await _run(
+                lambda: program_service.validate(
+                    CadValidateInput(
+                        receipt_id=receipt_id,
+                        idempotency_key=idempotency_key,
+                    ),
+                    _principal(auth, services, correlation_id),
+                    correlation_id,
+                ),
+                correlation_id,
+            )
+            return result.model_dump(mode="json")
+
     @mcp.resource(
         "cad://devices/{device_id}/capabilities",
         name="CAD device capabilities",
@@ -1042,6 +1308,89 @@ def build_mcp_server(
             )
             return ResourceResult([ResourceContent(content=value, mime_type="application/json")])
 
+    if phase6:
+        @mcp.resource(
+            "cad://programs/{program_id}/revisions/{revision}",
+            name="CAD Program revision",
+            description="Read one bounded immutable owner-scoped CAD Program revision.",
+            mime_type="application/json",
+            auth=write_auth_check,
+        )
+        async def program_revision_resource(
+            program_id: str, revision: int
+        ) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(
+                lambda: program_service.read_program(
+                    principal.subject, program_id, revision
+                ),
+                correlation_id,
+            )
+            return ResourceResult(
+                [ResourceContent(content=value, mime_type="application/json")]
+            )
+
+        @mcp.resource(
+            "cad://previews/{preview_id}",
+            name="CAD Program preview",
+            description="Read one bounded exact preview and its execution binding.",
+            mime_type="application/json",
+            auth=write_auth_check,
+        )
+        async def preview_resource(preview_id: str) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(
+                lambda: program_service.read_preview(
+                    principal.subject, preview_id
+                ),
+                correlation_id,
+            )
+            return ResourceResult(
+                [ResourceContent(content=value, mime_type="application/json")]
+            )
+
+        @mcp.resource(
+            "cad://validations/{validation_id}",
+            name="CAD Program validation",
+            description="Read one bounded owner-scoped validation report.",
+            mime_type="application/json",
+            auth=write_auth_check,
+        )
+        async def validation_resource(validation_id: str) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(
+                lambda: program_service.read_validation(
+                    principal.subject, validation_id
+                ),
+                correlation_id,
+            )
+            return ResourceResult(
+                [ResourceContent(content=value, mime_type="application/json")]
+            )
+
+        @mcp.resource(
+            "cad://receipts/{receipt_id}",
+            name="CAD Program execution receipt",
+            description="Read one bounded owner-scoped durable execution receipt.",
+            mime_type="application/json",
+            auth=write_auth_check,
+        )
+        async def receipt_resource(receipt_id: str) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(
+                lambda: program_service.read_receipt(
+                    principal.subject, receipt_id
+                ),
+                correlation_id,
+            )
+            return ResourceResult(
+                [ResourceContent(content=value, mime_type="application/json")]
+            )
+
     @mcp.prompt(
         name="plan_cad_change",
         title="Plan a CAD change",
@@ -1100,7 +1449,11 @@ def create_app(
     correlation_id_factory: CorrelationIdFactory | None = None,
 ) -> Starlette:
     config = (config or GatewayConfig.from_env()).validate()
-    if config.profile in {"phase4_c1", "phase5_identity"} and auth is None:
+    if config.profile in {
+        "phase4_c1",
+        "phase5_identity",
+        "phase6_program",
+    } and auth is None:
         raise ValueError(f"{config.profile} requires OAuth authentication")
     if stateless_http is not None:
         config = replace(config, stateless_http=stateless_http)
@@ -1456,6 +1809,125 @@ def create_app(
         await identity.revoke(owner_user_id=user_id, device_id=device_id)
         return {"status": "revoked"}
 
+    async def phase6_portal_owner(request: Request) -> str | JSONResponse:
+        try:
+            _, _, owner_subject = await identity_principal(
+                request, required_scope="autocad.read"
+            )
+        except IdentityHttpAuthError as error:
+            return identity_auth_error(error)
+        return owner_subject
+
+    def phase6_portal_response(value: dict[str, Any] | None) -> JSONResponse:
+        if value is None:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        encoded = json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        if len(encoded.encode("utf-8")) > 256_000:
+            return JSONResponse({"error": "response_too_large"}, status_code=413)
+        return JSONResponse(value)
+
+    async def portal_phase6_program(request: Request) -> JSONResponse:
+        owner = await phase6_portal_owner(request)
+        if isinstance(owner, JSONResponse):
+            return owner
+        value = await services.program_repository.get_program_revision(
+            owner,
+            request.path_params["program_id"],
+            int(request.path_params["revision"]),
+        )
+        if value is not None:
+            value = {
+                key: value[key]
+                for key in (
+                    "program_id",
+                    "program_revision",
+                    "device_id",
+                    "document_id",
+                    "source_snapshot_id",
+                    "expected_document_revision",
+                    "schema_version",
+                    "program_digest",
+                    "risk_class",
+                    "missing_capabilities",
+                    "pins",
+                    "created_at",
+                )
+            }
+        return phase6_portal_response(value)
+
+    async def portal_phase6_release_status(request: Request) -> JSONResponse:
+        owner = await phase6_portal_owner(request)
+        if isinstance(owner, JSONResponse):
+            return owner
+        return phase6_portal_response(
+            {
+                "program_v0_enabled": config.program_v0_enabled,
+                "managed_write_enabled": config.managed_write_enabled,
+                "kill_switch_active": not config.managed_write_enabled,
+            }
+        )
+
+    async def portal_phase6_preview(request: Request) -> JSONResponse:
+        owner = await phase6_portal_owner(request)
+        if isinstance(owner, JSONResponse):
+            return owner
+        return phase6_portal_response(
+            await services.program_repository.get_preview(
+                owner, request.path_params["preview_id"]
+            )
+        )
+
+    async def portal_phase6_validation(request: Request) -> JSONResponse:
+        owner = await phase6_portal_owner(request)
+        if isinstance(owner, JSONResponse):
+            return owner
+        return phase6_portal_response(
+            await services.program_repository.get_validation(
+                owner, request.path_params["validation_id"]
+            )
+        )
+
+    async def portal_phase6_receipt(request: Request) -> JSONResponse:
+        owner = await phase6_portal_owner(request)
+        if isinstance(owner, JSONResponse):
+            return owner
+        return phase6_portal_response(
+            await services.program_repository.get_receipt(
+                owner, request.path_params["receipt_id"]
+            )
+        )
+
+    async def portal_phase6_job(request: Request) -> JSONResponse:
+        owner = await phase6_portal_owner(request)
+        if isinstance(owner, JSONResponse):
+            return owner
+        job = await services.repository.get_job(
+            owner, request.path_params["job_id"]
+        )
+        if job is not None:
+            job = {
+                key: job[key]
+                for key in (
+                    "job_id",
+                    "device_id",
+                    "kind",
+                    "effect_class",
+                    "state",
+                    "progress",
+                    "result",
+                    "error_code",
+                    "created_at",
+                    "updated_at",
+                )
+            }
+        return phase6_portal_response(job)
+
     @asynccontextmanager
     async def lifespan(app: Starlette):
         await services.initialize()
@@ -1472,7 +1944,7 @@ def create_app(
             Route("/readyz", readyz, methods=["GET"]),
             WebSocketRoute("/agent/ws", agent_ws),
     ]
-    if config.profile == "phase5_identity":
+    if config.profile in {"phase5_identity", "phase6_program"}:
         routes.extend(
             [
                 Route("/api/agent/v1/enrollments", pairing_start, methods=["POST"]),
@@ -1534,6 +2006,41 @@ def create_app(
                 Route("/identity/device/challenge", device_challenge, methods=["POST"]),
                 Route("/identity/device/token", device_token, methods=["POST"]),
                 Route("/identity/device/revoke", device_revoke, methods=["POST"]),
+            ]
+        )
+    if config.profile == "phase6_program":
+        routes.extend(
+            [
+                Route(
+                    "/api/portal/v1/phase6/status",
+                    portal_phase6_release_status,
+                    methods=["GET"],
+                ),
+                Route(
+                    "/api/portal/v1/programs/{program_id:str}/revisions/{revision:int}",
+                    portal_phase6_program,
+                    methods=["GET"],
+                ),
+                Route(
+                    "/api/portal/v1/previews/{preview_id:str}",
+                    portal_phase6_preview,
+                    methods=["GET"],
+                ),
+                Route(
+                    "/api/portal/v1/validations/{validation_id:str}",
+                    portal_phase6_validation,
+                    methods=["GET"],
+                ),
+                Route(
+                    "/api/portal/v1/receipts/{receipt_id:str}",
+                    portal_phase6_receipt,
+                    methods=["GET"],
+                ),
+                Route(
+                    "/api/portal/v1/jobs/{job_id:str}",
+                    portal_phase6_job,
+                    methods=["GET"],
+                ),
             ]
         )
     routes.append(Mount("/", app=mcp_app))

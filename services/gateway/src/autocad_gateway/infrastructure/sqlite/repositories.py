@@ -53,6 +53,9 @@ def capability_manifest_hash(capabilities: list[str]) -> str:
     return protocol_capability_hash(canonical)
 
 
+_capability_list_hash = capability_manifest_hash
+
+
 def _request_fingerprint(kind: str, effect_class: EffectClass, payload_hash: str) -> str:
     value = {
         "effect_class": effect_class,
@@ -145,9 +148,17 @@ class SqliteRepository:
         runtime_state: str | None = None,
         document_name: str | None = None,
         paused: bool | None = None,
+        capability_manifest: dict[str, Any] | None = None,
+        capability_manifest_hash: str | None = None,
+        operation_registry_hash: str | None = None,
+        registry_version: str | None = None,
+        write_lock_enabled: bool = False,
+        hard_pause: bool = False,
+        active_document_id: str | None = None,
+        active_document_revision: str | None = None,
     ) -> dict[str, Any]:
         normalized_capabilities = canonical_capabilities(capabilities)
-        computed_hash = capability_manifest_hash(normalized_capabilities)
+        computed_hash = _capability_list_hash(normalized_capabilities)
         if capability_hash != computed_hash:
             raise RepositoryConflict("capability_hash_mismatch")
         if last_sequence < 0:
@@ -188,13 +199,21 @@ class SqliteRepository:
                 (now, device_id, session_id),
             )
             encoded_capabilities = _json(normalized_capabilities, limit=16_384)
+            encoded_manifest = (
+                _json(capability_manifest, limit=65_536)
+                if capability_manifest is not None
+                else None
+            )
             if existing_session is None:
                 conn.execute(
                     """
                     INSERT INTO agent_sessions(session_id, device_id, protocol_version, connected_at,
                         last_heartbeat_at, last_sequence, capabilities_json, capability_hash,
-                        agent_version, package_manifest_json, package_manifest_hash)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        agent_version, package_manifest_json, package_manifest_hash,
+                        capability_manifest_json, capability_manifest_hash,
+                        operation_registry_hash, registry_version, write_lock_enabled,
+                        hard_pause, active_document_id, active_document_revision)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         session_id,
@@ -208,6 +227,14 @@ class SqliteRepository:
                         agent_version,
                         _json(normalized_packages, limit=65_536),
                         computed_package_hash,
+                        encoded_manifest,
+                        capability_manifest_hash,
+                        operation_registry_hash,
+                        registry_version,
+                        int(write_lock_enabled),
+                        int(hard_pause),
+                        active_document_id,
+                        active_document_revision,
                     ),
                 )
             else:
@@ -217,7 +244,10 @@ class SqliteRepository:
                     SET disconnected_at = NULL, last_heartbeat_at = ?,
                         last_sequence = MAX(last_sequence, ?), capabilities_json = ?,
                         capability_hash = ?, agent_version = ?, package_manifest_json = ?,
-                        package_manifest_hash = ?
+                        package_manifest_hash = ?, capability_manifest_json = ?,
+                        capability_manifest_hash = ?, operation_registry_hash = ?,
+                        registry_version = ?, write_lock_enabled = ?, hard_pause = ?,
+                        active_document_id = ?, active_document_revision = ?
                     WHERE session_id = ?
                     """,
                     (
@@ -228,6 +258,14 @@ class SqliteRepository:
                         agent_version,
                         _json(normalized_packages, limit=65_536),
                         computed_package_hash,
+                        encoded_manifest,
+                        capability_manifest_hash,
+                        operation_registry_hash,
+                        registry_version,
+                        int(write_lock_enabled),
+                        int(hard_pause),
+                        active_document_id,
+                        active_document_revision,
                         session_id,
                     ),
                 )
@@ -238,7 +276,11 @@ class SqliteRepository:
             conn.execute(
                 "UPDATE devices SET status = 'online', capabilities_json = ?, capability_hash = ?, "
                 "agent_version = ?, runtime_state = ?, document_name = ?, paused = ?, "
-                "package_manifest_json = ?, package_manifest_hash = ?, runtime_updated_at = ?, "
+                "package_manifest_json = ?, package_manifest_hash = ?, "
+                "capability_manifest_json = ?, capability_manifest_hash = ?, "
+                "operation_registry_hash = ?, registry_version = ?, "
+                "write_lock_enabled = ?, hard_pause = ?, active_document_id = ?, "
+                "active_document_revision = ?, runtime_updated_at = ?, "
                 "updated_at = ? WHERE device_id = ?",
                 (
                     encoded_capabilities,
@@ -249,6 +291,14 @@ class SqliteRepository:
                     int(bool(paused)),
                     _json(normalized_packages, limit=65_536),
                     computed_package_hash,
+                    encoded_manifest,
+                    capability_manifest_hash,
+                    operation_registry_hash,
+                    registry_version,
+                    int(write_lock_enabled),
+                    int(hard_pause),
+                    active_document_id,
+                    active_document_revision,
                     now,
                     now,
                     device_id,
@@ -270,6 +320,14 @@ class SqliteRepository:
             "last_sequence": active_sequence,
             "packages": normalized_packages,
             "package_manifest_hash": computed_package_hash,
+            "capability_manifest": capability_manifest,
+            "capability_manifest_hash": capability_manifest_hash,
+            "operation_registry_hash": operation_registry_hash,
+            "registry_version": registry_version,
+            "write_lock_enabled": write_lock_enabled,
+            "hard_pause": hard_pause,
+            "active_document_id": active_document_id,
+            "active_document_revision": active_document_revision,
         }
 
     async def create_session(
@@ -301,6 +359,11 @@ class SqliteRepository:
         runtime_state: str | None = None,
         document_name: str | None = None,
         paused: bool | None = None,
+        write_lock_enabled: bool | None = None,
+        hard_pause: bool | None = None,
+        active_document_id: str | None = None,
+        active_document_revision: str | None = None,
+        phase6_state_present: bool = False,
     ) -> bool:
         if sequence < 0:
             raise RepositoryConflict("sequence_rejected")
@@ -308,20 +371,53 @@ class SqliteRepository:
         with self.database.transaction() as conn:
             updated = conn.execute(
                 "UPDATE agent_sessions SET last_heartbeat_at = ?, "
-                "last_sequence = MAX(last_sequence, ?) WHERE session_id = ? AND device_id = ? "
+                "last_sequence = MAX(last_sequence, ?), "
+                "write_lock_enabled = CASE WHEN ? THEN ? ELSE write_lock_enabled END, "
+                "hard_pause = CASE WHEN ? THEN ? ELSE hard_pause END, "
+                "active_document_id = CASE WHEN ? THEN ? ELSE active_document_id END, "
+                "active_document_revision = CASE WHEN ? THEN ? "
+                "ELSE active_document_revision END "
+                "WHERE session_id = ? AND device_id = ? "
                 "AND disconnected_at IS NULL",
-                (now, sequence, session_id, device_id),
+                (
+                    now,
+                    sequence,
+                    int(phase6_state_present),
+                    int(bool(write_lock_enabled)),
+                    int(phase6_state_present),
+                    int(bool(hard_pause)),
+                    int(phase6_state_present),
+                    active_document_id,
+                    int(phase6_state_present),
+                    active_document_revision,
+                    session_id,
+                    device_id,
+                ),
             )
             if updated.rowcount != 1:
                 return False
             conn.execute(
                 "UPDATE devices SET status = 'online', runtime_state = ?, document_name = ?, "
-                "paused = COALESCE(?, paused), runtime_updated_at = ?, updated_at = ? "
+                "paused = COALESCE(?, paused), "
+                "write_lock_enabled = CASE WHEN ? THEN ? ELSE write_lock_enabled END, "
+                "hard_pause = CASE WHEN ? THEN ? ELSE hard_pause END, "
+                "active_document_id = CASE WHEN ? THEN ? ELSE active_document_id END, "
+                "active_document_revision = CASE WHEN ? THEN ? "
+                "ELSE active_document_revision END, "
+                "runtime_updated_at = ?, updated_at = ? "
                 "WHERE device_id = ?",
                 (
                     runtime_state,
                     document_name,
                     int(paused) if paused is not None else None,
+                    int(phase6_state_present),
+                    int(bool(write_lock_enabled)),
+                    int(phase6_state_present),
+                    int(bool(hard_pause)),
+                    int(phase6_state_present),
+                    active_document_id,
+                    int(phase6_state_present),
+                    active_document_revision,
                     now,
                     now,
                     device_id,
@@ -365,6 +461,18 @@ class SqliteRepository:
             "agent_version": row["agent_version"],
             "packages": json.loads(row["package_manifest_json"]),
             "package_manifest_hash": row["package_manifest_hash"],
+            "capability_manifest": (
+                json.loads(row["capability_manifest_json"])
+                if row["capability_manifest_json"]
+                else None
+            ),
+            "capability_manifest_hash": row["capability_manifest_hash"],
+            "operation_registry_hash": row["operation_registry_hash"],
+            "registry_version": row["registry_version"],
+            "write_lock_enabled": bool(row["write_lock_enabled"]),
+            "hard_pause": bool(row["hard_pause"]),
+            "active_document_id": row["active_document_id"],
+            "active_document_revision": row["active_document_revision"],
         }
 
     async def close_session(self, session_id: str, *, device_id: str | None = None) -> bool:
@@ -952,6 +1060,18 @@ class SqliteRepository:
             "packages": json.loads(row["package_manifest_json"]),
             "package_manifest_hash": row["package_manifest_hash"],
             "runtime_updated_at": row["runtime_updated_at"],
+            "capability_manifest": (
+                json.loads(row["capability_manifest_json"])
+                if row["capability_manifest_json"]
+                else None
+            ),
+            "capability_manifest_hash": row["capability_manifest_hash"],
+            "operation_registry_hash": row["operation_registry_hash"],
+            "registry_version": row["registry_version"],
+            "write_lock_enabled": bool(row["write_lock_enabled"]),
+            "hard_pause": bool(row["hard_pause"]),
+            "active_document_id": row["active_document_id"],
+            "active_document_revision": row["active_document_revision"],
         }
 
     @staticmethod

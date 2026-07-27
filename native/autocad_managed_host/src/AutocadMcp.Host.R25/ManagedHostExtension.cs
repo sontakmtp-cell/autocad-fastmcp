@@ -10,7 +10,6 @@ namespace AutocadMcp.Host.R25;
 public sealed class ManagedHostExtension : IExtensionApplication
 {
     private static ManagedHostExtension? _instance;
-    private readonly byte[] _identityKey = RandomNumberGenerator.GetBytes(32);
     private BootstrapDescriptor? _bootstrap;
     private DocumentEventTracker? _documentEvents;
     private AutoCadIdleScheduler? _scheduler;
@@ -28,7 +27,7 @@ public sealed class ManagedHostExtension : IExtensionApplication
             var packageHash = ReadPackageHash();
             _bootstrap = BootstrapDescriptor.Create(packageHash);
             _scheduler = new AutoCadIdleScheduler();
-            var identities = new DocumentIdentityRegistry(_identityKey);
+            var identities = new DocumentIdentityRegistry();
             _documentEvents = new DocumentEventTracker(
                 Application.DocumentManager,
                 identities);
@@ -76,7 +75,6 @@ public sealed class ManagedHostExtension : IExtensionApplication
         _documentEvents = null;
         _bootstrap?.Dispose();
         _bootstrap = null;
-        CryptographicOperations.ZeroMemory(_identityKey);
     }
 
     private static string ReadPackageHash()

@@ -1,0 +1,1226 @@
+{
+  "$defs": {
+    "CadProgram": {
+      "additionalProperties": false,
+      "description": "Gateway-owned semantic program.\n\nRuntime, package, capability, registry hash, policy, and execution digest\ndeliberately do not exist in this runtime-neutral model.",
+      "properties": {
+        "schema_version": {
+          "const": "cad.program/0.2",
+          "default": "cad.program/0.2",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "registry_version": {
+          "const": "cad.program/0.2",
+          "default": "cad.program/0.2",
+          "title": "Registry Version",
+          "type": "string"
+        },
+        "program_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Program Id",
+          "type": "string"
+        },
+        "program_revision": {
+          "minimum": 1,
+          "title": "Program Revision",
+          "type": "integer"
+        },
+        "device_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Device Id",
+          "type": "string"
+        },
+        "source_snapshot_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Source Snapshot Id",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "expected_document_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Expected Document Revision",
+          "type": "string"
+        },
+        "operations": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "create_circle": "#/$defs/CreateCircleOperation",
+                "create_dimension_linear": "#/$defs/CreateDimensionLinearOperation",
+                "create_line": "#/$defs/CreateLineOperation",
+                "create_polyline": "#/$defs/CreatePolylineOperation",
+                "create_rectangle": "#/$defs/CreateRectangleOperation",
+                "create_text": "#/$defs/CreateTextOperation",
+                "ensure_layer": "#/$defs/EnsureLayerOperation"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/EnsureLayerOperation"
+              },
+              {
+                "$ref": "#/$defs/CreateLineOperation"
+              },
+              {
+                "$ref": "#/$defs/CreateCircleOperation"
+              },
+              {
+                "$ref": "#/$defs/CreatePolylineOperation"
+              },
+              {
+                "$ref": "#/$defs/CreateRectangleOperation"
+              },
+              {
+                "$ref": "#/$defs/CreateTextOperation"
+              },
+              {
+                "$ref": "#/$defs/CreateDimensionLinearOperation"
+              }
+            ]
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Operations",
+          "type": "array"
+        },
+        "preconditions": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "document_revision_equals": "#/$defs/DocumentRevisionPrecondition"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/DocumentRevisionPrecondition"
+              }
+            ]
+          },
+          "maxItems": 16,
+          "title": "Preconditions",
+          "type": "array"
+        },
+        "postconditions": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "entity_count": "#/$defs/EntityCountPostcondition",
+                "layer_exists": "#/$defs/LayerExistsPostcondition"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/EntityCountPostcondition"
+              },
+              {
+                "$ref": "#/$defs/LayerExistsPostcondition"
+              }
+            ]
+          },
+          "maxItems": 64,
+          "title": "Postconditions",
+          "type": "array"
+        },
+        "budgets": {
+          "$ref": "#/$defs/ProgramBudgets"
+        }
+      },
+      "required": [
+        "program_id",
+        "program_revision",
+        "device_id",
+        "source_snapshot_id",
+        "document_id",
+        "expected_document_revision",
+        "operations"
+      ],
+      "title": "CadProgram",
+      "type": "object"
+    },
+    "CreateCircleOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "create_circle",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]+$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRef"
+            }
+          ],
+          "title": "Layer"
+        },
+        "center": {
+          "$ref": "#/$defs/Point3d"
+        },
+        "radius": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000.0,
+          "title": "Radius",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "operation_id",
+        "layer",
+        "center",
+        "radius"
+      ],
+      "title": "CreateCircleOperation",
+      "type": "object"
+    },
+    "CreateDimensionLinearOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "create_dimension_linear",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]+$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRef"
+            }
+          ],
+          "title": "Layer"
+        },
+        "extension_line1_point": {
+          "$ref": "#/$defs/Point3d"
+        },
+        "extension_line2_point": {
+          "$ref": "#/$defs/Point3d"
+        },
+        "dimension_line_point": {
+          "$ref": "#/$defs/Point3d"
+        },
+        "text_override": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text Override"
+        }
+      },
+      "required": [
+        "kind",
+        "operation_id",
+        "layer",
+        "extension_line1_point",
+        "extension_line2_point",
+        "dimension_line_point"
+      ],
+      "title": "CreateDimensionLinearOperation",
+      "type": "object"
+    },
+    "CreateLineOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "create_line",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]+$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRef"
+            }
+          ],
+          "title": "Layer"
+        },
+        "start": {
+          "$ref": "#/$defs/Point3d"
+        },
+        "end": {
+          "$ref": "#/$defs/Point3d"
+        }
+      },
+      "required": [
+        "kind",
+        "operation_id",
+        "layer",
+        "start",
+        "end"
+      ],
+      "title": "CreateLineOperation",
+      "type": "object"
+    },
+    "CreatePolylineOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "create_polyline",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]+$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRef"
+            }
+          ],
+          "title": "Layer"
+        },
+        "vertices": {
+          "items": {
+            "$ref": "#/$defs/Point3d"
+          },
+          "maxItems": 4096,
+          "minItems": 2,
+          "title": "Vertices",
+          "type": "array"
+        },
+        "closed": {
+          "default": false,
+          "title": "Closed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kind",
+        "operation_id",
+        "layer",
+        "vertices"
+      ],
+      "title": "CreatePolylineOperation",
+      "type": "object"
+    },
+    "CreateRectangleOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "create_rectangle",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]+$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRef"
+            }
+          ],
+          "title": "Layer"
+        },
+        "first_corner": {
+          "$ref": "#/$defs/Point3d"
+        },
+        "opposite_corner": {
+          "$ref": "#/$defs/Point3d"
+        }
+      },
+      "required": [
+        "kind",
+        "operation_id",
+        "layer",
+        "first_corner",
+        "opposite_corner"
+      ],
+      "title": "CreateRectangleOperation",
+      "type": "object"
+    },
+    "CreateTextOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "create_text",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]+$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRef"
+            }
+          ],
+          "title": "Layer"
+        },
+        "position": {
+          "$ref": "#/$defs/Point3d"
+        },
+        "text": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "height": {
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000.0,
+          "title": "Height",
+          "type": "number"
+        },
+        "rotation_radians": {
+          "default": 0.0,
+          "maximum": 6.283185307179586,
+          "minimum": -6.283185307179586,
+          "title": "Rotation Radians",
+          "type": "number"
+        }
+      },
+      "required": [
+        "kind",
+        "operation_id",
+        "layer",
+        "position",
+        "text",
+        "height"
+      ],
+      "title": "CreateTextOperation",
+      "type": "object"
+    },
+    "DocumentRevisionPrecondition": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "document_revision_equals",
+          "title": "Kind",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "expected_document_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Expected Document Revision",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "document_id",
+        "expected_document_revision"
+      ],
+      "title": "DocumentRevisionPrecondition",
+      "type": "object"
+    },
+    "EnsureLayerOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "ensure_layer",
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "color_index": {
+          "anyOf": [
+            {
+              "maximum": 255,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color Index"
+        }
+      },
+      "required": [
+        "kind",
+        "operation_id",
+        "name"
+      ],
+      "title": "EnsureLayerOperation",
+      "type": "object"
+    },
+    "EntityCountPostcondition": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "entity_count",
+          "title": "Kind",
+          "type": "string"
+        },
+        "expected_created": {
+          "maximum": 256,
+          "minimum": 0,
+          "title": "Expected Created",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "expected_created"
+      ],
+      "title": "EntityCountPostcondition",
+      "type": "object"
+    },
+    "LayerExistsPostcondition": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "layer_exists",
+          "title": "Kind",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]+$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRef"
+            }
+          ],
+          "title": "Layer"
+        }
+      },
+      "required": [
+        "kind",
+        "layer"
+      ],
+      "title": "LayerExistsPostcondition",
+      "type": "object"
+    },
+    "LayerOutputRef": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "output": {
+          "const": "layer",
+          "default": "layer",
+          "title": "Output",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "LayerOutputRef",
+      "type": "object"
+    },
+    "Point3d": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "maximum": 1000000000.0,
+          "minimum": -1000000000.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1000000000.0,
+          "minimum": -1000000000.0,
+          "title": "Y",
+          "type": "number"
+        },
+        "z": {
+          "maximum": 1000000000.0,
+          "minimum": -1000000000.0,
+          "title": "Z",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "title": "Point3d",
+      "type": "object"
+    },
+    "ProgramBudgets": {
+      "additionalProperties": false,
+      "properties": {
+        "max_operations": {
+          "default": 256,
+          "maximum": 256,
+          "minimum": 1,
+          "title": "Max Operations",
+          "type": "integer"
+        },
+        "max_entities": {
+          "default": 256,
+          "maximum": 256,
+          "minimum": 1,
+          "title": "Max Entities",
+          "type": "integer"
+        },
+        "max_layers": {
+          "default": 64,
+          "maximum": 64,
+          "minimum": 1,
+          "title": "Max Layers",
+          "type": "integer"
+        },
+        "max_vertices": {
+          "default": 4096,
+          "maximum": 4096,
+          "minimum": 2,
+          "title": "Max Vertices",
+          "type": "integer"
+        },
+        "max_text_bytes": {
+          "default": 65536,
+          "maximum": 65536,
+          "minimum": 1,
+          "title": "Max Text Bytes",
+          "type": "integer"
+        },
+        "max_payload_bytes": {
+          "default": 1048576,
+          "maximum": 1048576,
+          "minimum": 1024,
+          "title": "Max Payload Bytes",
+          "type": "integer"
+        },
+        "max_result_bytes": {
+          "default": 1048576,
+          "maximum": 1048576,
+          "minimum": 1024,
+          "title": "Max Result Bytes",
+          "type": "integer"
+        },
+        "max_artifact_bytes": {
+          "default": 5242880,
+          "maximum": 5242880,
+          "minimum": 1024,
+          "title": "Max Artifact Bytes",
+          "type": "integer"
+        },
+        "max_coordinate_abs": {
+          "default": 1000000000.0,
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000.0,
+          "title": "Max Coordinate Abs",
+          "type": "number"
+        },
+        "max_radius": {
+          "default": 1000000000.0,
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000.0,
+          "title": "Max Radius",
+          "type": "number"
+        },
+        "max_text_height": {
+          "default": 1000000000.0,
+          "exclusiveMinimum": 0,
+          "maximum": 1000000000.0,
+          "title": "Max Text Height",
+          "type": "number"
+        },
+        "execution_deadline_seconds": {
+          "default": 120,
+          "maximum": 300,
+          "minimum": 1,
+          "title": "Execution Deadline Seconds",
+          "type": "integer"
+        },
+        "preview_ttl_seconds": {
+          "default": 900,
+          "maximum": 3600,
+          "minimum": 1,
+          "title": "Preview Ttl Seconds",
+          "type": "integer"
+        }
+      },
+      "title": "ProgramBudgets",
+      "type": "object"
+    },
+    "ProgramExecutionBinding": {
+      "additionalProperties": false,
+      "description": "Server-selected binding. It is intentionally outside CAD Program.",
+      "properties": {
+        "program_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Program Digest",
+          "type": "string"
+        },
+        "execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Execution Digest",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Document Revision",
+          "type": "string"
+        },
+        "runtime_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Runtime Id",
+          "type": "string"
+        },
+        "runtime_role": {
+          "const": "primary",
+          "title": "Runtime Role",
+          "type": "string"
+        },
+        "host_family": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Host Family",
+          "type": "string"
+        },
+        "host_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Host Version",
+          "type": "string"
+        },
+        "package_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Package Id",
+          "type": "string"
+        },
+        "package_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Package Version",
+          "type": "string"
+        },
+        "package_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Hash",
+          "type": "string"
+        },
+        "capability_manifest_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Manifest Hash",
+          "type": "string"
+        },
+        "operation_registry_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Operation Registry Version",
+          "type": "string"
+        },
+        "operation_registry_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Registry Hash",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "program_digest",
+        "execution_digest",
+        "document_id",
+        "document_revision",
+        "runtime_id",
+        "runtime_role",
+        "host_family",
+        "host_version",
+        "package_id",
+        "package_version",
+        "package_hash",
+        "capability_manifest_hash",
+        "operation_registry_version",
+        "operation_registry_hash",
+        "policy_version"
+      ],
+      "title": "ProgramExecutionBinding",
+      "type": "object"
+    },
+    "ProgramValidationRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "receipt_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Receipt Id",
+          "type": "string"
+        },
+        "expected_entity_count": {
+          "anyOf": [
+            {
+              "maximum": 256,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected Entity Count"
+        },
+        "expected_entity_types": {
+          "items": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[A-Z][A-Z0-9_]*$",
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Expected Entity Types",
+          "type": "array"
+        },
+        "expected_layers": {
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Expected Layers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "receipt_id"
+      ],
+      "title": "ProgramValidationRequest",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "protocol_version": {
+      "const": "cad.agent/2",
+      "default": "cad.agent/2",
+      "title": "Protocol Version",
+      "type": "string"
+    },
+    "message_type": {
+      "const": "command",
+      "default": "command",
+      "title": "Message Type",
+      "type": "string"
+    },
+    "message_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Message Id",
+      "type": "string"
+    },
+    "correlation_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Correlation Id"
+    },
+    "session_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "device_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Device Id",
+      "type": "string"
+    },
+    "job_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Job Id",
+      "type": "string"
+    },
+    "command_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Command Id",
+      "type": "string"
+    },
+    "sequence": {
+      "default": 0,
+      "maximum": 1000000000,
+      "minimum": 0,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "issued_at": {
+      "maxLength": 64,
+      "minLength": 1,
+      "title": "Issued At",
+      "type": "string"
+    },
+    "deadline_at": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Deadline At"
+    },
+    "idempotency_key": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Idempotency Key",
+      "type": "string"
+    },
+    "payload_hash": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Payload Hash",
+      "type": "string"
+    },
+    "kind": {
+      "enum": [
+        "program_preview",
+        "program_commit",
+        "program_validate"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "effect_class": {
+      "enum": [
+        "write",
+        "read"
+      ],
+      "title": "Effect Class",
+      "type": "string"
+    },
+    "binding": {
+      "$ref": "#/$defs/ProgramExecutionBinding"
+    },
+    "program": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CadProgram"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "preview_id": {
+      "anyOf": [
+        {
+          "maxLength": 128,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Preview Id"
+    },
+    "preview_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Preview Digest"
+    },
+    "validation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProgramValidationRequest"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    }
+  },
+  "required": [
+    "session_id",
+    "device_id",
+    "job_id",
+    "command_id",
+    "idempotency_key",
+    "payload_hash",
+    "kind",
+    "effect_class",
+    "binding"
+  ],
+  "title": "cad.agent/2 typed CAD Program command",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kythuatvang.local/cad.agent/2/program-command.schema.json",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "program_preview"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "program"
+        ],
+        "properties": {
+          "effect_class": {
+            "const": "write"
+          },
+          "program": {
+            "$ref": "#/$defs/CadProgram"
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "preview_id"
+              ]
+            },
+            {
+              "required": [
+                "preview_digest"
+              ]
+            },
+            {
+              "required": [
+                "validation"
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "program_commit"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "program",
+          "preview_id",
+          "preview_digest"
+        ],
+        "properties": {
+          "effect_class": {
+            "const": "write"
+          },
+          "program": {
+            "$ref": "#/$defs/CadProgram"
+          },
+          "preview_id": {
+            "type": "string"
+          },
+          "preview_digest": {
+            "type": "string"
+          }
+        },
+        "not": {
+          "required": [
+            "validation"
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "program_validate"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "required": [
+          "validation"
+        ],
+        "properties": {
+          "effect_class": {
+            "const": "read"
+          },
+          "validation": {
+            "$ref": "#/$defs/ProgramValidationRequest"
+          }
+        },
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "program"
+              ]
+            },
+            {
+              "required": [
+                "preview_id"
+              ]
+            },
+            {
+              "required": [
+                "preview_digest"
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

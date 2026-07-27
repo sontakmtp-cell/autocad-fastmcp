@@ -33,6 +33,17 @@ def _env_flag(name: str, default: bool) -> bool:
     raise ValueError(f"{name} must be 0 or 1")
 
 
+def _env_device_ids(name: str) -> frozenset[str]:
+    raw = os.environ.get(name, "")
+    values = frozenset(item.strip() for item in raw.split(",") if item.strip())
+    if any(
+        re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", item) is None
+        for item in values
+    ):
+        raise ValueError(f"{name} contains a malformed device ID")
+    return values
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     gateway_ws_url: str
@@ -50,6 +61,12 @@ class AgentConfig:
     managed_host_enabled: bool = False
     allow_full_compat_fallback: bool = False
     lt_runtime_enabled: bool = True
+    program_v0_enabled: bool = False
+    managed_write_enabled: bool = False
+    lt_write_enabled: bool = False
+    write_lock_enabled: bool = False
+    phase6_allowed_device_ids: frozenset[str] = frozenset()
+    program_policy_version: str = ""
     identity_mode: IdentityMode = IdentityMode.LAB_CREDENTIAL
     gateway_http_url: str = ""
     portal_url: str = ""
@@ -79,6 +96,26 @@ class AgentConfig:
                 False,
             ),
             lt_runtime_enabled=_env_flag("AUTOCAD_MCP_LT_RUNTIME_ENABLED", True),
+            program_v0_enabled=_env_flag(
+                "AUTOCAD_MCP_PROGRAM_V0_ENABLED",
+                False,
+            ),
+            managed_write_enabled=_env_flag(
+                "AUTOCAD_MCP_MANAGED_WRITE_ENABLED",
+                False,
+            ),
+            lt_write_enabled=_env_flag("AUTOCAD_MCP_LT_WRITE_ENABLED", False),
+            write_lock_enabled=_env_flag(
+                "AUTOCAD_AGENT_WRITE_LOCK_ENABLED",
+                False,
+            ),
+            phase6_allowed_device_ids=_env_device_ids(
+                "AUTOCAD_MCP_PHASE6_ALLOWED_DEVICE_IDS"
+            ),
+            program_policy_version=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_POLICY_VERSION",
+                "",
+            ).strip(),
             identity_mode=IdentityMode(
                 os.environ.get(
                     "AUTOCAD_AGENT_IDENTITY_MODE",
@@ -153,6 +190,18 @@ class AgentConfig:
             raise ValueError("managed_dotnet runtime requires AUTOCAD_MCP_MANAGED_HOST_ENABLED=1")
         if self.runtime_mode == RuntimeMode.AUTOLISP_COMPAT and not self.lt_runtime_enabled:
             raise ValueError("autolisp_compat runtime requires AUTOCAD_MCP_LT_RUNTIME_ENABLED=1")
+        if self.lt_write_enabled:
+            raise ValueError("AutoCAD LT write is unavailable in Phase 6")
+        if self.managed_write_enabled and not (
+            self.program_v0_enabled and self.managed_host_enabled
+        ):
+            raise ValueError(
+                "managed write requires CAD Program v0 and Managed Host"
+            )
+        if self.managed_write_enabled and not self.program_policy_version:
+            raise ValueError(
+                "managed write requires AUTOCAD_MCP_PROGRAM_POLICY_VERSION"
+            )
         return self
 
     @property

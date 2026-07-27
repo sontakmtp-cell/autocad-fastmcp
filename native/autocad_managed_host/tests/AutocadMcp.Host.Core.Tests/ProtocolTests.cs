@@ -119,6 +119,36 @@ public sealed class ProtocolTests
     }
 
     [Fact]
+    public async Task Session_RejectsExpiredDeadlineAndNonIncreasingSequence()
+    {
+        var operations = new FakeOperations();
+        var session = CreateSession(operations);
+        await session.HandleAsync(BuildEnvelope("handshake", HandshakePayload(), sequence: 0), default);
+
+        var expired = await session.HandleAsync(
+            BuildEnvelope(
+                "command",
+                CommandPayload(),
+                sequence: 1,
+                deadline: Now.AddSeconds(-1)),
+            default);
+        Assert.Equal(
+            "deadline_expired",
+            ReadPayload(expired).GetProperty("error_code").GetString());
+
+        await session.HandleAsync(
+            BuildEnvelope("command", CommandPayload(), sequence: 2, commandId: "command-2"),
+            default);
+        var stale = await session.HandleAsync(
+            BuildEnvelope("command", CommandPayload(), sequence: 1, commandId: "command-1"),
+            default);
+        Assert.Equal(
+            "session_rejected",
+            ReadPayload(stale).GetProperty("error_code").GetString());
+        Assert.Equal(1, operations.ExecutionCount);
+    }
+
+    [Fact]
     public async Task FrameCodec_RejectsOversizedDeclaredFrame()
     {
         var bytes = BitConverter.GetBytes(HostProtocol.MaxFrameBytes + 1);
@@ -214,6 +244,20 @@ public sealed class ProtocolTests
         Assert.Equal(0, snapshot.EventSequence);
     }
 
+    [Fact]
+    public void DocumentRevision_NewIncarnationRejectsPriorSnapshot()
+    {
+        var prior = new DocumentRevisionState(100);
+        var reopened = new DocumentRevisionState(200);
+        var staleRevision = prior.Snapshot(Now).Revision;
+
+        var error = Assert.Throws<ProtocolValidationException>(
+            () => reopened.AssertRevision(staleRevision, Now.AddSeconds(1)));
+
+        Assert.Equal("stale_snapshot", error.Code);
+        Assert.Equal(200, reopened.Snapshot(Now).Revision);
+    }
+
     private static HostSession CreateSession(FakeOperations operations) =>
         new(
             Enumerable.Repeat((byte)0x2a, 32).ToArray(),
@@ -251,7 +295,9 @@ public sealed class ProtocolTests
         JsonObject payload,
         long sequence = 1,
         string protocol = HostProtocol.Version,
-        string? payloadHash = null)
+        string? payloadHash = null,
+        DateTimeOffset? deadline = null,
+        string? commandId = null)
     {
         using var document = JsonDocument.Parse(payload.ToJsonString());
         var envelope = new JsonObject
@@ -259,9 +305,10 @@ public sealed class ProtocolTests
             ["protocol_version"] = protocol,
             ["message_type"] = messageType,
             ["session_id"] = "session-test",
-            ["command_id"] = messageType == "handshake" ? "handshake-test" : "command-test",
+            ["command_id"] = commandId ??
+                (messageType == "handshake" ? "handshake-test" : "command-test"),
             ["sequence"] = sequence,
-            ["deadline_at"] = Now.AddMinutes(1).ToString("O"),
+            ["deadline_at"] = (deadline ?? Now.AddMinutes(1)).ToString("O"),
             ["payload_hash"] = payloadHash ?? CanonicalJson.Hash(document.RootElement),
             ["payload"] = payload
         };
