@@ -9,7 +9,7 @@ import re
 import uuid
 from datetime import datetime, timezone
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias, Union
+from typing import TYPE_CHECKING, Annotated, Any, Literal, TypeAlias, Union
 
 from pydantic import (
     BaseModel,
@@ -40,6 +40,17 @@ MAX_PACKAGES = 32
 
 _CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
+_PREFIXED_SHA256_PATTERN = r"^sha256:[0-9a-f]{64}$"
+_PHASE6_STATE_FIELDS = {
+    "write_lock_enabled",
+    "hard_pause",
+    "active_document_id",
+    "active_document_revision",
+    "active_job_id",
+    "support_id",
+    "mismatch_reason",
+    "outcome_unknown",
+}
 
 if TYPE_CHECKING:
     from .runtime import CapabilityManifest
@@ -110,6 +121,26 @@ def canonical_json(value: Any) -> str:
 
 def canonical_payload_hash(payload: dict[str, Any]) -> str:
     return sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+
+
+def normalize_sha256_digest(
+    value: str,
+    *,
+    allow_legacy_raw: bool = True,
+) -> str:
+    """Normalize an explicit SHA-256 value to the Phase 6 wire representation.
+
+    Legacy capability/package manifests use lowercase raw 64-hex values.
+    Phase 6 execution bindings use ``sha256:<64hex>`` and stay strict.
+    """
+
+    if not isinstance(value, str):
+        raise ValueError("SHA-256 digest must be a string")
+    if re.fullmatch(_PREFIXED_SHA256_PATTERN, value):
+        return value
+    if allow_legacy_raw and re.fullmatch(_SHA256_PATTERN, value):
+        return f"sha256:{value}"
+    raise ValueError("SHA-256 digest must be lowercase sha256:<64hex>")
 
 
 def canonical_capabilities(capabilities: list[str] | tuple[str, ...]) -> tuple[str, ...]:
@@ -245,6 +276,35 @@ class AgentEnvelope(AgentModel):
         return self
 
 
+def _validate_phase6_presence(message: AgentEnvelope) -> None:
+    # Pydantic's default ``model_dump()`` includes optional fields as ``null``.
+    # Treat those null placeholders as absent so a cad.agent/1 message can be
+    # serialized and parsed again without accidentally opting into Phase 6.
+    present = {
+        field
+        for field in _PHASE6_STATE_FIELDS
+        if field in message.model_fields_set and getattr(message, field, None) is not None
+    }
+    if present and message.protocol_version != PHASE5_PROTOCOL_VERSION:
+        raise ValueError("Phase 6 presence fields require cad.agent/2")
+    active_document_id = getattr(message, "active_document_id", None)
+    active_document_revision = getattr(message, "active_document_revision", None)
+    if (active_document_id is None) != (active_document_revision is None):
+        raise ValueError("active document identity and revision must be provided together")
+    paused = getattr(message, "paused", None)
+    hard_pause = getattr(message, "hard_pause", None)
+    if paused is not None and hard_pause is not None and paused != hard_pause:
+        raise ValueError("hard_pause must match legacy paused state")
+    current_job_id = getattr(message, "current_job_id", None)
+    active_job_id = getattr(message, "active_job_id", None)
+    if (
+        current_job_id is not None
+        and active_job_id is not None
+        and current_job_id != active_job_id
+    ):
+        raise ValueError("active_job_id must match legacy current_job_id")
+
+
 class HelloMessage(AgentEnvelope):
     message_type: Literal["hello"] = "hello"
     device_id: str = Field(min_length=1, max_length=128)
@@ -264,6 +324,39 @@ class HelloMessage(AgentEnvelope):
     package_manifest_hash: str | None = Field(default=None, pattern=_SHA256_PATTERN)
     capability_manifest: "CapabilityManifest | None" = None
     capability_manifest_hash: str | None = Field(default=None, pattern=_SHA256_PATTERN)
+    write_lock_enabled: bool | None = None
+    hard_pause: bool | None = None
+    active_document_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^\S+$",
+    )
+    active_document_revision: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=256,
+        pattern=r"^\S+$",
+    )
+    active_job_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^\S+$",
+    )
+    support_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^\S+$",
+    )
+    mismatch_reason: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z][a-z0-9_.-]*$",
+    )
+    outcome_unknown: bool | None = None
 
     @model_validator(mode="after")
     def _proof_matches_protocol(self) -> "HelloMessage":
@@ -272,6 +365,11 @@ class HelloMessage(AgentEnvelope):
         if self.protocol_version == PHASE5_PROTOCOL_VERSION:
             if self.fixture_proof is not None or self.device_proof is None:
                 raise ValueError("cad.agent/2 requires only device_proof")
+        return self
+
+    @model_validator(mode="after")
+    def _phase6_presence_is_consistent(self) -> "HelloMessage":
+        _validate_phase6_presence(self)
         return self
 
     @field_validator("capabilities", mode="before")
@@ -337,11 +435,45 @@ class HeartbeatMessage(AgentEnvelope):
     document_name: str | None = Field(default=None, max_length=255)
     paused: bool | None = None
     current_command_id: str | None = Field(default=None, max_length=128)
+    write_lock_enabled: bool | None = None
+    hard_pause: bool | None = None
+    active_document_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^\S+$",
+    )
+    active_document_revision: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=256,
+        pattern=r"^\S+$",
+    )
+    active_job_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^\S+$",
+    )
+    support_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^\S+$",
+    )
+    mismatch_reason: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z][a-z0-9_.-]*$",
+    )
+    outcome_unknown: bool | None = None
 
     @model_validator(mode="after")
     def _processed_sequence_is_not_future(self) -> "HeartbeatMessage":
         if self.last_processed_sequence >= self.sequence:
             raise ValueError("last_processed_sequence must precede heartbeat sequence")
+        _validate_phase6_presence(self)
         return self
 
 
@@ -356,6 +488,276 @@ class CommandMessage(AgentEnvelope):
     kind: Literal["observe", "write_fixture"] = "observe"
     effect_class: Literal["read", "write"] = "read"
     payload: dict[str, Any] = Field(default_factory=dict, max_length=MAX_PAYLOAD_ITEMS)
+
+
+class ProgramExecutionBinding(AgentModel):
+    """Server-selected binding. It is intentionally outside CAD Program."""
+
+    program_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    execution_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    document_id: str = Field(min_length=1, max_length=128)
+    document_revision: str = Field(min_length=1, max_length=256, pattern=r"^\S+$")
+    runtime_id: str = Field(min_length=1, max_length=64)
+    runtime_role: Literal["primary"]
+    host_family: str = Field(min_length=1, max_length=32)
+    host_version: str = Field(min_length=1, max_length=64)
+    package_id: str = Field(min_length=1, max_length=128)
+    package_version: str = Field(min_length=1, max_length=64)
+    package_hash: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    capability_manifest_hash: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    operation_registry_version: str = Field(min_length=1, max_length=64)
+    operation_registry_hash: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    policy_version: str = Field(min_length=1, max_length=64)
+
+    @field_validator(
+        "program_digest",
+        "execution_digest",
+        "package_hash",
+        "capability_manifest_hash",
+        "operation_registry_hash",
+        mode="before",
+    )
+    @classmethod
+    def _wire_digests_are_prefixed(cls, value: str) -> str:
+        return normalize_sha256_digest(value, allow_legacy_raw=False)
+
+
+def canonical_preview_digest(
+    preview_id: str,
+    binding: ProgramExecutionBinding | dict[str, Any],
+) -> str:
+    """Return the cross-language digest used to bind preview to commit."""
+
+    parsed = (
+        binding
+        if isinstance(binding, ProgramExecutionBinding)
+        else ProgramExecutionBinding.model_validate(binding)
+    )
+    value = {
+        "preview_id": preview_id,
+        "program_digest": parsed.program_digest,
+        "document_id": parsed.document_id,
+        "document_revision": parsed.document_revision,
+        "runtime_id": parsed.runtime_id,
+        "runtime_role": parsed.runtime_role,
+        "host_family": parsed.host_family,
+        "host_version": parsed.host_version,
+        "package_id": parsed.package_id,
+        "package_version": parsed.package_version,
+        "package_hash": parsed.package_hash,
+        "capability_manifest_hash": parsed.capability_manifest_hash,
+        "operation_registry_version": parsed.operation_registry_version,
+        "operation_registry_hash": parsed.operation_registry_hash,
+        "policy_version": parsed.policy_version,
+    }
+    return f"sha256:{canonical_payload_hash(value)}"
+
+
+def canonical_receipt_id(preview_id: str) -> str:
+    """Return the durable DWG receipt ID derived from the exact preview ID."""
+
+    digest = sha256(preview_id.encode("utf-8")).hexdigest()[:32]
+    return f"AUTOCAD_MCP_PROGRAM_{digest}"
+
+
+class ProgramValidationRequest(AgentModel):
+    validation_id: str = Field(min_length=1, max_length=128)
+    receipt_id: str = Field(min_length=1, max_length=128)
+    expected_entity_count: int | None = Field(default=None, ge=0, le=256)
+    expected_entity_types: list[
+        Annotated[str, Field(min_length=1, max_length=64, pattern=r"^[A-Z][A-Z0-9_]*$")]
+    ] = Field(default_factory=list, max_length=16)
+    expected_layers: list[Annotated[str, Field(min_length=1, max_length=255)]] = Field(
+        default_factory=list,
+        max_length=64,
+    )
+
+
+class ProgramCommandMessage(AgentEnvelope):
+    protocol_version: Literal["cad.agent/2"] = PHASE5_PROTOCOL_VERSION
+    message_type: Literal["command"] = "command"
+    session_id: str = Field(min_length=1, max_length=128)
+    device_id: str = Field(min_length=1, max_length=128)
+    job_id: str = Field(min_length=1, max_length=128)
+    command_id: str = Field(min_length=1, max_length=128)
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    payload_hash: str = Field(pattern=_SHA256_PATTERN)
+    kind: Literal["program_preview", "program_commit", "program_validate"]
+    effect_class: Literal["write", "read"]
+    binding: ProgramExecutionBinding
+    program: "CadProgram | None" = None
+    preview_id: str | None = Field(default=None, min_length=1, max_length=128)
+    expires_at: str | None = Field(default=None, min_length=1, max_length=64)
+    preview_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    receipt_id: str | None = Field(default=None, min_length=1, max_length=128)
+    validation: ProgramValidationRequest | None = None
+
+    @field_validator("expires_at")
+    @classmethod
+    def _preview_expiry_is_timezone_aware(cls, value: str | None) -> str | None:
+        return _timezone_timestamp(value) if value is not None else None
+
+    @model_validator(mode="after")
+    def _fields_match_kind(self) -> "ProgramCommandMessage":
+        if self.kind in {"program_preview", "program_commit"}:
+            if self.effect_class != "write" or self.program is None:
+                raise ValueError("preview and commit require write effect and program")
+        if self.kind == "program_preview":
+            if (
+                self.preview_id is None
+                or self.expires_at is None
+                or {"preview_digest", "receipt_id", "validation"} & self.model_fields_set
+            ):
+                raise ValueError(
+                    "preview requires its exact ID and expiry and no prior result fields"
+                )
+        elif self.kind == "program_commit":
+            if (
+                self.preview_id is None
+                or self.preview_digest is None
+                or self.receipt_id is None
+                or self.validation is not None
+                or "expires_at" in self.model_fields_set
+            ):
+                raise ValueError("commit requires exact preview and receipt binding")
+        else:
+            if self.effect_class != "read" or self.program is not None or self.validation is None:
+                raise ValueError("validate requires read effect and validation request")
+            if {
+                "program",
+                "preview_id",
+                "expires_at",
+                "preview_digest",
+                "receipt_id",
+            } & self.model_fields_set:
+                raise ValueError("validate cannot include preview fields")
+        if self.program is not None:
+            from .program import canonical_program_digest
+
+            if canonical_program_digest(self.program) != self.binding.program_digest:
+                raise ValueError("binding program_digest does not match program")
+            if self.program.document_id != self.binding.document_id:
+                raise ValueError("binding document_id does not match program")
+            if self.program.expected_document_revision != self.binding.document_revision:
+                raise ValueError("binding document revision does not match program")
+        return self
+
+
+def program_command_payload(
+    command: ProgramCommandMessage | dict[str, Any],
+) -> dict[str, Any]:
+    """Return the only canonical projection covered by Program payload_hash."""
+
+    parsed = (
+        command
+        if isinstance(command, ProgramCommandMessage)
+        else ProgramCommandMessage.model_validate(command)
+    )
+    payload: dict[str, Any] = {
+        "kind": parsed.kind,
+        "effect_class": parsed.effect_class,
+        "binding": parsed.binding.model_dump(mode="json"),
+    }
+    if parsed.program is not None:
+        payload["program"] = parsed.program.model_dump(mode="json", exclude_none=True)
+    if parsed.preview_id is not None:
+        payload["preview_id"] = parsed.preview_id
+    if parsed.expires_at is not None:
+        payload["expires_at"] = parsed.expires_at
+    if parsed.preview_digest is not None:
+        payload["preview_digest"] = parsed.preview_digest
+    if parsed.receipt_id is not None:
+        payload["receipt_id"] = parsed.receipt_id
+    if parsed.validation is not None:
+        payload["validation"] = parsed.validation.model_dump(
+            mode="json",
+            exclude_none=True,
+        )
+    return payload
+
+
+def program_command_payload_hash(
+    command: ProgramCommandMessage | dict[str, Any],
+) -> str:
+    """Return the raw lowercase 64-hex hash used by Agent envelope payload_hash."""
+
+    return canonical_payload_hash(program_command_payload(command))
+
+
+class ProgramPreviewResult(AgentModel):
+    preview_id: str = Field(min_length=1, max_length=128)
+    preview_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    expires_at: str = Field(min_length=1, max_length=64)
+    planned_operation_count: int = Field(ge=1, le=256)
+    planned_entity_count: int = Field(ge=0, le=256)
+    planned_layer_count: int = Field(ge=0, le=64)
+    transaction_aborted: Literal[True]
+    drawing_unchanged: Literal[True]
+
+
+class ProgramCommitResult(AgentModel):
+    receipt_id: str = Field(min_length=1, max_length=128)
+    receipt_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    document_revision_before: str = Field(min_length=1, max_length=256, pattern=r"^\S+$")
+    document_revision_after: str = Field(min_length=1, max_length=256, pattern=r"^\S+$")
+    created_entity_count: int = Field(ge=0, le=256)
+    duplicate: bool = False
+
+class ProgramValidateResult(AgentModel):
+    validation_id: str = Field(min_length=1, max_length=128)
+    valid: bool
+    document_revision: str = Field(min_length=1, max_length=256, pattern=r"^\S+$")
+    checks: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
+        default_factory=list,
+        max_length=64,
+    )
+    failures: list[Annotated[str, Field(min_length=1, max_length=256)]] = Field(
+        default_factory=list,
+        max_length=64,
+    )
+
+
+ProgramResultPayload: TypeAlias = Annotated[
+    Union[ProgramPreviewResult, ProgramCommitResult, ProgramValidateResult],
+    Field(union_mode="left_to_right"),
+]
+
+
+class ProgramResultMessage(AgentEnvelope):
+    protocol_version: Literal["cad.agent/2"] = PHASE5_PROTOCOL_VERSION
+    message_type: Literal["result"] = "result"
+    session_id: str = Field(min_length=1, max_length=128)
+    device_id: str = Field(min_length=1, max_length=128)
+    job_id: str = Field(min_length=1, max_length=128)
+    command_id: str = Field(min_length=1, max_length=128)
+    sequence: int = Field(ge=1, le=MAX_SEQUENCE)
+    kind: Literal["program_preview", "program_commit", "program_validate"]
+    status: Literal["succeeded", "failed", "cancelled", "outcome_unknown"]
+    payload_hash: str = Field(pattern=_SHA256_PATTERN)
+    binding: ProgramExecutionBinding
+    result: ProgramResultPayload | None = None
+    error_code: str | None = Field(default=None, max_length=64)
+    error_message: str | None = Field(default=None, max_length=MAX_MESSAGE_TEXT)
+
+    @model_validator(mode="after")
+    def _terminal_fields_match_status_and_kind(self) -> "ProgramResultMessage":
+        if self.status == "succeeded":
+            expected = {
+                "program_preview": ProgramPreviewResult,
+                "program_commit": ProgramCommitResult,
+                "program_validate": ProgramValidateResult,
+            }[self.kind]
+            if not isinstance(self.result, expected):
+                raise ValueError("successful program result payload does not match kind")
+            if self.error_code is not None or self.error_message is not None:
+                raise ValueError("successful result cannot include error fields")
+        elif self.result is not None:
+            raise ValueError("non-successful program result cannot include result payload")
+        elif self.status == "failed" and self.error_code is None:
+            raise ValueError("failed program result requires error_code")
+        elif self.status == "outcome_unknown" and self.kind != "program_commit":
+            raise ValueError("only commit may have outcome_unknown")
+        return self
 
 
 class AckMessage(AgentEnvelope):
@@ -451,6 +853,8 @@ class ReconcileResultMessage(AgentEnvelope):
     result: dict[str, Any] | None = Field(default=None, max_length=MAX_RESULT_ITEMS)
     error_code: str | None = Field(default=None, max_length=64)
     error_message: str | None = Field(default=None, max_length=MAX_MESSAGE_TEXT)
+    kind: Literal["program_preview", "program_commit", "program_validate"] | None = None
+    binding: ProgramExecutionBinding | None = None
 
     @model_validator(mode="after")
     def _reconcile_fields_match_status(self) -> "ReconcileResultMessage":
@@ -459,6 +863,8 @@ class ReconcileResultMessage(AgentEnvelope):
             self.result,
             self.error_code,
             self.error_message,
+            self.kind,
+            self.binding,
         )
         if self.status != "terminal":
             if any(value is not None for value in terminal_fields):
@@ -472,6 +878,8 @@ class ReconcileResultMessage(AgentEnvelope):
             self.error_code is not None or self.error_message is not None
         ):
             raise ValueError("only failed reconciliation may include error fields")
+        if (self.kind is None) != (self.binding is None):
+            raise ValueError("program reconciliation requires kind and binding together")
         return self
 
 
@@ -497,9 +905,11 @@ AgentMessage: TypeAlias = Union[
     WelcomeMessage,
     HeartbeatMessage,
     CommandMessage,
+    ProgramCommandMessage,
     AckMessage,
     ProgressMessage,
     ResultMessage,
+    ProgramResultMessage,
     CancelMessage,
     ReconcileMessage,
     ReconcileResultMessage,
@@ -543,6 +953,140 @@ def message_dict(message: AgentMessage) -> dict[str, Any]:
     return value
 
 
+def agent_program_command_json_schema() -> dict[str, Any]:
+    schema = ProgramCommandMessage.model_json_schema(mode="validation")
+    schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+    schema["$id"] = "https://schemas.kythuatvang.local/cad.agent/2/program-command.schema.json"
+    schema["title"] = "cad.agent/2 typed CAD Program command"
+    schema["allOf"] = [
+        {
+            "if": {
+                "properties": {"kind": {"const": "program_preview"}},
+                "required": ["kind"],
+            },
+            "then": {
+                "required": ["program", "preview_id", "expires_at"],
+                "properties": {
+                    "effect_class": {"const": "write"},
+                    "program": {"$ref": "#/$defs/CadProgram"},
+                    "preview_id": {"type": "string"},
+                    "expires_at": {"type": "string"},
+                },
+                "not": {
+                    "anyOf": [
+                        {"required": ["preview_digest"]},
+                        {"required": ["receipt_id"]},
+                        {"required": ["validation"]},
+                    ]
+                },
+            },
+        },
+        {
+            "if": {
+                "properties": {"kind": {"const": "program_commit"}},
+                "required": ["kind"],
+            },
+            "then": {
+                "required": ["program", "preview_id", "preview_digest", "receipt_id"],
+                "properties": {
+                    "effect_class": {"const": "write"},
+                    "program": {"$ref": "#/$defs/CadProgram"},
+                    "preview_id": {"type": "string"},
+                    "preview_digest": {"type": "string"},
+                    "receipt_id": {"type": "string"},
+                },
+                "not": {
+                    "anyOf": [
+                        {"required": ["expires_at"]},
+                        {"required": ["validation"]},
+                    ]
+                },
+            },
+        },
+        {
+            "if": {
+                "properties": {"kind": {"const": "program_validate"}},
+                "required": ["kind"],
+            },
+            "then": {
+                "required": ["validation"],
+                "properties": {
+                    "effect_class": {"const": "read"},
+                    "validation": {"$ref": "#/$defs/ProgramValidationRequest"},
+                },
+                "not": {
+                    "anyOf": [
+                        {"required": ["program"]},
+                        {"required": ["preview_id"]},
+                        {"required": ["expires_at"]},
+                        {"required": ["preview_digest"]},
+                        {"required": ["receipt_id"]},
+                    ]
+                },
+            },
+        },
+    ]
+    return schema
+
+
+def agent_program_result_json_schema() -> dict[str, Any]:
+    schema = ProgramResultMessage.model_json_schema(mode="validation")
+    schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+    schema["$id"] = "https://schemas.kythuatvang.local/cad.agent/2/program-result.schema.json"
+    schema["title"] = "cad.agent/2 typed CAD Program result"
+    schema["allOf"] = [
+        {
+            "if": {
+                "properties": {
+                    "kind": {"const": kind},
+                    "status": {"const": "succeeded"},
+                },
+                "required": ["kind", "status"],
+            },
+            "then": {
+                "required": ["result"],
+                "properties": {"result": {"$ref": f"#/$defs/{definition}"}},
+            },
+        }
+        for kind, definition in (
+            ("program_preview", "ProgramPreviewResult"),
+            ("program_commit", "ProgramCommitResult"),
+            ("program_validate", "ProgramValidateResult"),
+        )
+    ]
+    schema["allOf"].extend(
+        [
+            {
+                "if": {
+                    "properties": {"status": {"const": "failed"}},
+                    "required": ["status"],
+                },
+                "then": {
+                    "required": ["error_code"],
+                    "properties": {"result": {"type": "null"}},
+                },
+            },
+            {
+                "if": {
+                    "properties": {"status": {"enum": ["cancelled", "outcome_unknown"]}},
+                    "required": ["status"],
+                },
+                "then": {"properties": {"result": {"type": "null"}}},
+            },
+            {
+                "if": {
+                    "properties": {"status": {"const": "outcome_unknown"}},
+                    "required": ["status"],
+                },
+                "then": {"properties": {"kind": {"const": "program_commit"}}},
+            },
+        ]
+    )
+    return schema
+
+
 from .runtime import CapabilityManifest
+from .program import CadProgram
 
 HelloMessage.model_rebuild()
+ProgramCommandMessage.model_rebuild()

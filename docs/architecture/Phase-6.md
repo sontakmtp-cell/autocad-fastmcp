@@ -2,15 +2,13 @@
 
 > Trạng thái: kế hoạch triển khai chi tiết.
 >
-> Baseline: `main` sau merge PR #8, commit `a3ddacc5e45fa2a3dbf1966ed2d35f12d04a55a7`.
->
 > Tài liệu nguồn:
 >
-> - [fastmcp-multi-user-autocad-plan.md](./fastmcp-multi-user-autocad-plan.md)
-> - [Phase-6-plus.md](./Phase-6-plus.md)
-> - [appendix-user-interface.md](./appendix-user-interface.md)
-> - [phase5-runtime-foundation-evidence.md](./phase5-runtime-foundation-evidence.md)
-> - [phase56-identity-isolation-evidence.md](./phase56-identity-isolation-evidence.md)
+> - fastmcp-multi-user-autocad-plan.md
+> - Phase-6-plus.md
+> - appendix-user-interface.md
+> - phase5-runtime-foundation-evidence.md
+> - phase56-identity-isolation-evidence.md
 >
 > Phase 6 chỉ productize write create-only đã có POC trong Phase 5. Không mở broad CAD capability, trusted approval hoàn chỉnh hoặc LT write.
 

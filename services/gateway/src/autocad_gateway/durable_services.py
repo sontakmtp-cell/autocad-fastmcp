@@ -43,6 +43,8 @@ from .infrastructure.agent_transport.connection_registry import ConnectionRegist
 from .infrastructure.agent_transport.authenticator import FixtureDeviceAuthenticator
 from .infrastructure.sqlite.database import DatabaseError, SqliteDatabase
 from .infrastructure.sqlite.repositories import RepositoryConflict, SqliteRepository
+from .infrastructure.sqlite.program_repository import ProgramRepository
+from .program_services import ProgramGatewayPolicy, ProgramGatewayService
 
 
 PHASE3_OWNER = "phase3-fixture-user"
@@ -69,6 +71,15 @@ _SAFE_JOB_ERROR_CODES = frozenset(
         "payload_mismatch",
         "package_mismatch",
         "paused_by_user",
+        "binding_mismatch",
+        "document_write_busy",
+        "feature_disabled",
+        "policy_mismatch",
+        "preview_expired",
+        "runtime_mismatch",
+        "stale_revision",
+        "stale_snapshot",
+        "write_lock_disabled",
     }
 )
 
@@ -92,24 +103,39 @@ class DurableGatewayServices:
         agent_authenticator: Any | None = None,
         required_package: dict[str, str] | None = None,
         display_name: str | None = None,
+        program_enabled: bool = False,
+        managed_write_enabled: bool = False,
+        allowed_write_device_ids: tuple[str, ...] = (),
+        program_policy_version: str = "phase6-policy/1",
     ) -> None:
         self.database = database
         self.registry = registry
         self.repository = SqliteRepository(database)
+        self.is_phase6 = profile == "phase6_program"
+        self.program_repository = ProgramRepository(database) if self.is_phase6 else None
         self.job_service = DurableJobService(
             self.repository,
             registry,
             request_wait_timeout_seconds=request_wait_timeout_seconds,
             required_package=required_package,
+            program_repository=self.program_repository,
+            program_policy_version=(
+                program_policy_version if self.is_phase6 else None
+            ),
+            managed_write_enabled=managed_write_enabled,
+            allowed_write_device_ids=allowed_write_device_ids,
         )
         self.device_tokens = dict(device_tokens)
         self.agent_authenticator = agent_authenticator
-        if self.agent_authenticator is None and profile != "phase5_identity":
+        if self.agent_authenticator is None and profile not in {
+            "phase5_identity",
+            "phase6_program",
+        }:
             self.agent_authenticator = FixtureDeviceAuthenticator(self.device_tokens)
         self.owner_subject = owner_subject
         self.profile = profile
-        self.is_phase4 = profile in {"phase4_c1", "phase5_identity"}
-        self.is_phase5_identity = profile == "phase5_identity"
+        self.is_phase4 = profile in {"phase4_c1", "phase5_identity", "phase6_program"}
+        self.is_phase5_identity = profile in {"phase5_identity", "phase6_program"}
         self.required_package = dict(required_package or {})
         self.display_name = display_name
         self.job_deadline_seconds = max(1.0, min(float(job_deadline_seconds), 86_400.0))
@@ -117,6 +143,23 @@ class DurableGatewayServices:
         self._initialized = False
         self._maintenance_task: asyncio.Task[None] | None = None
         self._maintenance_error: BaseException | None = None
+        self.program_service = (
+            ProgramGatewayService(
+                self.repository,
+                self.program_repository,
+                registry,
+                self.job_service,
+                ProgramGatewayPolicy(
+                    program_enabled=program_enabled,
+                    managed_write_enabled=managed_write_enabled,
+                    allowed_device_ids=allowed_write_device_ids,
+                    policy_version=program_policy_version,
+                    job_deadline_seconds=self.job_deadline_seconds,
+                ),
+            )
+            if self.program_repository is not None
+            else None
+        )
 
     async def initialize(self) -> None:
         if self._initialized:
@@ -235,6 +278,14 @@ class DurableGatewayServices:
             runtime_state=connection.runtime_state,
             document_name=connection.document_name,
             paused=connection.paused,
+            capability_manifest=connection.capability_manifest,
+            capability_manifest_hash=connection.capability_manifest_hash,
+            operation_registry_hash=connection.operation_registry_hash,
+            registry_version=connection.registry_version,
+            write_lock_enabled=connection.write_lock_enabled,
+            hard_pause=connection.hard_pause,
+            active_document_id=connection.active_document_id,
+            active_document_revision=connection.active_document_revision,
         )
         if session["capability_changed"]:
             logger.info(
@@ -247,6 +298,15 @@ class DurableGatewayServices:
         await self.job_service.handle_connected(connection)
 
     async def on_agent_heartbeat(self, connection: Any, message: Any) -> None:
+        phase6_state_present = bool(
+            {
+                "write_lock_enabled",
+                "hard_pause",
+                "active_document_id",
+                "active_document_revision",
+            }
+            & message.model_fields_set
+        )
         updated = await self.repository.heartbeat_session(
             connection.session_id,
             device_id=connection.device_id,
@@ -254,6 +314,11 @@ class DurableGatewayServices:
             runtime_state=message.runtime_state,
             document_name=message.document_name,
             paused=message.paused,
+            write_lock_enabled=message.write_lock_enabled,
+            hard_pause=message.hard_pause,
+            active_document_id=message.active_document_id,
+            active_document_revision=message.active_document_revision,
+            phase6_state_present=phase6_state_present,
         )
         if not updated:
             raise DurableJobError("invalid_message")

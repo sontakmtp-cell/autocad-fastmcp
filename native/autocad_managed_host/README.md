@@ -1,9 +1,14 @@
-# AutoCAD MCP Managed Host — R25 lab
+# AutoCAD MCP Managed Host — R25 Phase 6 pilot
 
-Phase 5.1–5.3 lab plug-in for AutoCAD/AutoCAD Mechanical 2025 on Windows x64.
+Managed plug-in for AutoCAD/AutoCAD Mechanical 2025 on Windows x64.
 It targets .NET 8 and exposes a fixed `cad.host/1` registry: health/drawing
 summary, bounded entity/events observation, and the create-only
-`cad.program/0.1` preview/commit/validate POC.
+`cad.program/0.2` preview/commit/validate lifecycle.
+
+The exact write registry is `ensure_layer`, `create_line`, `create_circle`,
+`create_polyline`, `create_rectangle`, `create_text`, and
+`create_dimension_linear`. Write remains controlled by the Agent/Gateway
+feature flags and is unsupported for AutoCAD LT and pre-R25 families.
 
 ## Security boundary
 
@@ -18,6 +23,9 @@ summary, bounded entity/events observation, and the create-only
 - A disconnected command is never retried by the Host. Successful create-only
   commits carry an atomic bounded receipt in the DWG so an explicit reconcile
   can return `duplicate` without reapplying effects.
+- Preview uses an AutoCAD database transaction that is always aborted. Commit
+  creates geometry and its durable receipt in one transaction. Validation is
+  read-only and checks receipt-bound entity handles, types, layers, and bounds.
 - AutoCAD API work is queued from the pipe worker and executed on AutoCAD's
   `Idle` callback.
 

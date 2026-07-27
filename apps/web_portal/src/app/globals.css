@@ -59,3 +59,65 @@ a:focus-visible {
   border-radius: 0.8rem;
   padding: 1.25rem;
 }
+
+.eyebrow {
+  color: #175cd3;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status-panel,
+.warning-panel {
+  border: 1px solid;
+  border-radius: 0.8rem;
+  padding: 1rem 1.25rem;
+}
+
+.status-safe {
+  background: #ecfdf3;
+  border-color: #abefc6;
+  color: #067647;
+}
+
+.status-caution,
+.warning-panel {
+  background: #fffaeb;
+  border-color: #fedf89;
+  color: #93370d;
+}
+
+.summary-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  margin: 0;
+}
+
+.summary-grid > div {
+  min-width: 0;
+}
+
+.summary-grid dt {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+}
+
+.summary-grid dd {
+  margin: 0;
+}
+
+.digest {
+  display: inline-block;
+  font-size: 0.78rem;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.break-anywhere {
+  overflow-wrap: anywhere;
+}

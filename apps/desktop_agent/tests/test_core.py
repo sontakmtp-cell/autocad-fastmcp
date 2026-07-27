@@ -11,16 +11,22 @@ import pytest
 from autocad_contracts import (
     CancelMessage,
     CommandMessage,
+    ProgramCommandMessage,
+    ProgramResultMessage,
     ReconcileCommandDescriptor,
     ReconcileMessage,
     ReconcileResultMessage,
     canonical_payload_hash,
+    canonical_program_digest,
+    canonical_receipt_id,
     parse_agent_message,
 )
 
 from autocad_desktop_agent.config import AgentConfig
 from autocad_desktop_agent.core import AgentCore
+from autocad_desktop_agent.executor import AgentExecutionError
 from autocad_desktop_agent.ledger import CommandLedger
+from autocad_desktop_agent.program_executor import program_command_payload
 from autocad_desktop_agent.state import AgentIntent, RuntimeState
 
 
@@ -60,7 +66,7 @@ class Socket:
         self.messages.append(parse_agent_message(value))
 
 
-def make_core(tmp_path):
+def make_core(tmp_path, *, program_executor=None):
     package_path = tmp_path / "mcp_dispatch.lsp"
     package_path.write_text("phase4", encoding="utf-8")
     digest = hashlib.sha256(package_path.read_bytes()).hexdigest()
@@ -73,9 +79,92 @@ def make_core(tmp_path):
         package_sha256=digest,
     )
     executor = Executor()
-    core = AgentCore(config, Credentials(), CommandLedger(config.ledger_path), executor)
+    core = AgentCore(
+        config,
+        Credentials(),
+        CommandLedger(config.ledger_path),
+        executor,
+        program_executor=program_executor,
+    )
     core._session_id = "session-1"
     return core, executor
+
+
+def make_program_command() -> ProgramCommandMessage:
+    program = {
+        "schema_version": "cad.program/0.2",
+        "registry_version": "cad.program/0.2",
+        "program_id": "program-1",
+        "program_revision": 1,
+        "device_id": "device-1",
+        "source_snapshot_id": "snapshot-1",
+        "document_id": "doc-1",
+        "expected_document_revision": "42",
+        "operations": [
+            {
+                "kind": "ensure_layer",
+                "operation_id": "layer-1",
+                "name": "PHASE6",
+            }
+        ],
+    }
+    command = ProgramCommandMessage(
+        session_id="session-1",
+        device_id="device-1",
+        job_id="job-program",
+        command_id="command-program",
+        idempotency_key="idem-program",
+        payload_hash="0" * 64,
+        kind="program_commit",
+        effect_class="write",
+        binding={
+            "program_digest": canonical_program_digest(program),
+            "execution_digest": f"sha256:{'2' * 64}",
+            "document_id": "doc-1",
+            "document_revision": "42",
+            "runtime_id": "managed_dotnet",
+            "runtime_role": "primary",
+            "host_family": "R25",
+            "host_version": "0.2.0",
+            "package_id": "autocad.managed_host.r25",
+            "package_version": "0.2.0",
+            "package_hash": f"sha256:{'3' * 64}",
+            "capability_manifest_hash": f"sha256:{'4' * 64}",
+            "operation_registry_version": "cad.program/0.2",
+            "operation_registry_hash": f"sha256:{'5' * 64}",
+            "policy_version": "phase6-low-risk-v1",
+        },
+        program=program,
+        preview_id="preview-1",
+        preview_digest=f"sha256:{'6' * 64}",
+        receipt_id=canonical_receipt_id("preview-1"),
+    )
+    return command.model_copy(
+        update={"payload_hash": canonical_payload_hash(program_command_payload(command))}
+    )
+
+
+class ProgramExecutor:
+    def __init__(self, error: str | None = None):
+        self.calls = 0
+        self.error = error
+        self.result = {
+            "receipt_id": canonical_receipt_id("preview-1"),
+            "receipt_digest": f"sha256:{'7' * 64}",
+            "document_revision_before": "42",
+            "document_revision_after": "43",
+            "created_entity_count": 1,
+            "duplicate": False,
+        }
+
+    def validate_command(self, command):
+        return None
+
+    async def execute(self, command, *, write_lock_enabled):
+        self.calls += 1
+        if self.error:
+            raise AgentExecutionError(self.error)
+        return self.result
 
 
 def make_command(core):
@@ -115,6 +204,149 @@ async def test_hard_pause_rejects_before_executor_and_persists(tmp_path):
     assert executor.calls == 0
     reopened = CommandLedger(core.config.ledger_path)
     assert reopened.is_paused() is True
+
+
+@pytest.mark.asyncio
+async def test_program_write_lock_is_off_by_default_and_rejects_before_host(tmp_path):
+    program_executor = ProgramExecutor()
+    core, _ = make_core(tmp_path, program_executor=program_executor)
+    socket = Socket()
+
+    await core._handle_program_command(socket, make_program_command())
+
+    assert program_executor.calls == 0
+    assert core.ledger.get("command-program").error_code == "write_lock_disabled"
+    assert isinstance(socket.messages[-1], ProgramResultMessage)
+    assert socket.messages[-1].status == "failed"
+
+
+@pytest.mark.asyncio
+async def test_program_terminal_persists_and_exact_duplicate_returns_evidence(tmp_path):
+    program_executor = ProgramExecutor()
+    core, _ = make_core(tmp_path, program_executor=program_executor)
+    core.set_write_lock(True)
+    socket = Socket()
+    command = make_program_command()
+
+    await core._handle_program_command(socket, command)
+    await core._handle_program_command(socket, command)
+
+    assert program_executor.calls == 1
+    assert core.ledger.get(command.command_id).state == "succeeded"
+    results = [
+        message
+        for message in socket.messages
+        if isinstance(message, ProgramResultMessage)
+    ]
+    assert len(results) == 2
+    assert all(
+        result.result.receipt_id == canonical_receipt_id("preview-1")
+        for result in results
+    )
+
+
+@pytest.mark.asyncio
+async def test_started_commit_transport_loss_is_outcome_unknown_and_not_retried(tmp_path):
+    program_executor = ProgramExecutor("managed_host_unavailable")
+    core, _ = make_core(tmp_path, program_executor=program_executor)
+    core.set_write_lock(True)
+    socket = Socket()
+    command = make_program_command()
+
+    await core._handle_program_command(socket, command)
+    await core._handle_program_command(socket, command)
+
+    assert program_executor.calls == 1
+    assert core.ledger.get(command.command_id).state == "outcome_unknown"
+    assert core.view_state.runtime_state == RuntimeState.OUTCOME_UNKNOWN
+    assert core.view_state.outcome_unknown is True
+    assert socket.messages[-1].status == "outcome_unknown"
+
+    reconcile_socket = Socket()
+    await core._handle_reconcile(
+        reconcile_socket,
+        ReconcileMessage(
+            session_id="session-1",
+            device_id="device-1",
+            commands=[
+                ReconcileCommandDescriptor(
+                    job_id=command.job_id,
+                    command_id=command.command_id,
+                    payload_hash=command.payload_hash,
+                )
+            ],
+        ),
+    )
+    reply = reconcile_socket.messages[0]
+    assert isinstance(reply, ReconcileResultMessage)
+    assert reply.result_status == "failed"
+    assert reply.error_code == "outcome_unknown"
+    assert reply.kind == "program_commit"
+    assert reply.binding == command.binding
+
+
+@pytest.mark.parametrize(
+    ("initial_state", "expected_state", "expected_calls"),
+    [
+        ("received", "succeeded", 1),
+        ("accepted", "succeeded", 1),
+        ("started", "outcome_unknown", 0),
+        ("succeeded", "succeeded", 0),
+        ("outcome_unknown", "outcome_unknown", 0),
+    ],
+)
+async def test_program_restart_resumes_only_safe_pre_execution_states(
+    tmp_path,
+    initial_state,
+    expected_state,
+    expected_calls,
+):
+    command = make_program_command()
+    core, _ = make_core(tmp_path, program_executor=ProgramExecutor())
+    core.set_write_lock(True)
+    package = {
+        "package_id": command.binding.package_id,
+        "version": command.binding.package_version,
+        "sha256": command.binding.package_hash.removeprefix("sha256:"),
+    }
+    core.ledger.record_received(
+        command_id=command.command_id,
+        job_id=command.job_id,
+        idempotency_key=command.idempotency_key,
+        payload_hash=command.payload_hash,
+        package=package,
+        session_id=command.session_id,
+        device_id=command.device_id,
+        kind=command.kind,
+        binding=command.binding.model_dump(mode="json"),
+    )
+    if initial_state in {"accepted", "started"}:
+        core.ledger.transition(command.command_id, "accepted")
+    if initial_state == "started":
+        core.ledger.transition(command.command_id, "started")
+    elif initial_state == "succeeded":
+        core.ledger.transition(
+            command.command_id,
+            "succeeded",
+            result=ProgramExecutor().result,
+        )
+    elif initial_state == "outcome_unknown":
+        core.ledger.transition(
+            command.command_id,
+            "outcome_unknown",
+            error_code="outcome_unknown",
+        )
+    core.ledger.close()
+
+    executor = ProgramExecutor()
+    restarted, _ = make_core(tmp_path, program_executor=executor)
+    socket = Socket()
+    await restarted._handle_program_command(socket, command)
+
+    entry = restarted.ledger.get(command.command_id)
+    assert entry is not None
+    assert entry.state == expected_state
+    assert executor.calls == expected_calls
 
 
 def test_diagnostics_is_allowlist_only(tmp_path):

@@ -25,10 +25,19 @@ def fixture_token_map(config: GatewayConfig) -> dict[str, str]:
 
 
 def build_services(config: GatewayConfig) -> Any:
-    if config.profile in {"phase3_poc", "phase4_c1", "phase5_identity"}:
+    if config.profile in {
+        "phase3_poc",
+        "phase4_c1",
+        "phase5_identity",
+        "phase6_program",
+    }:
         tokens = fixture_token_map(config)
         phase4 = config.profile == "phase4_c1"
-        managed_profile = config.profile in {"phase4_c1", "phase5_identity"}
+        managed_profile = config.profile in {
+            "phase4_c1",
+            "phase5_identity",
+            "phase6_program",
+        }
         services = DurableGatewayServices(
             SqliteDatabase(Path(config.db_path or "")),
             ConnectionRegistry(stale_after_seconds=config.stale_after_seconds),
@@ -40,8 +49,12 @@ def build_services(config: GatewayConfig) -> Any:
             agent_authenticator=(LabDeviceAuthenticator(tokens) if phase4 else None),
             required_package=config.required_package if managed_profile else None,
             display_name=config.device_display_name if managed_profile else None,
+            program_enabled=config.program_v0_enabled,
+            managed_write_enabled=config.managed_write_enabled,
+            allowed_write_device_ids=config.phase6_allowed_device_ids,
+            program_policy_version=config.phase6_policy_version,
         )
-        if config.profile == "phase5_identity":
+        if config.profile in {"phase5_identity", "phase6_program"}:
             services.identity = Phase5IdentityService(services.database, services.registry)
             services.agent_authenticator = PairedDeviceAuthenticator(services.identity)
         return services
@@ -67,12 +80,13 @@ def build_agent_authenticator(config: GatewayConfig) -> FixtureDeviceAuthenticat
 
 
 def build_human_auth(config: GatewayConfig) -> Any | None:
-    if config.profile not in {"phase4_c1", "phase5_identity"}:
+    if config.profile not in {"phase4_c1", "phase5_identity", "phase6_program"}:
         return None
     return build_phase4_auth(
         issuer=config.oauth_issuer or "",
         audience=config.oauth_audience or "",
         jwks_uri=config.oauth_jwks_uri or "",
         public_origin=config.public_origin or "",
-        include_device_manage=config.profile == "phase5_identity",
+        include_device_manage=config.profile in {"phase5_identity", "phase6_program"},
+        include_write=config.profile == "phase6_program",
     )

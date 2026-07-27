@@ -19,6 +19,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             <div className="flex gap-4">
               <Link href="/pair">Liên kết</Link>
               <Link href="/devices">Thiết bị</Link>
+              <Link href="/programs">CAD Program</Link>
             </div>
           </nav>
         </header>

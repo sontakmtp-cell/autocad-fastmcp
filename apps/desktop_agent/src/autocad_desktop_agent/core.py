@@ -1,4 +1,4 @@
-"""Headless C1 Agent: outbound WSS, durable ledger, pause and read-only routing."""
+"""Outbound Agent session with isolated read and CAD Program routing."""
 
 from __future__ import annotations
 
@@ -20,12 +20,15 @@ from autocad_contracts import (
     ErrorMessage,
     HeartbeatMessage,
     HelloMessage,
+    ProgramCommandMessage,
+    ProgramResultMessage,
     ReconcileMessage,
     ReconcileResultMessage,
     ResultMessage,
     WelcomeMessage,
     canonical_capabilities,
     canonical_capability_hash,
+    canonical_capability_manifest_hash,
     canonical_package_manifest_hash,
     canonical_payload_hash,
     message_dict,
@@ -40,6 +43,7 @@ from .executor import AgentExecutionError, DrawingInfoExecutor
 from .ledger import CommandLedger, LedgerConflict, TERMINAL
 from .manifest import PackageMismatch, verify_package
 from .state import AgentIntent, AgentViewState, RuntimeState, runtime_user_label
+from .program_executor import ProgramCommandExecutor
 
 
 class AgentCore:
@@ -50,16 +54,26 @@ class AgentCore:
         ledger: CommandLedger,
         executor: DrawingInfoExecutor,
         runtime_broker: Any | None = None,
+        program_executor: ProgramCommandExecutor | None = None,
     ) -> None:
         self.config = config.validate()
         self.credentials = credentials
         self.ledger = ledger
         self.executor = executor
-        if runtime_broker is not None:
+        self.runtime_broker = runtime_broker
+        self.program_executor = program_executor
+        if runtime_broker is not None and hasattr(
+            self.executor,
+            "set_runtime_broker",
+        ):
             self.executor.set_runtime_broker(runtime_broker)
         self.package = config.package
         self._package_valid = self._refresh_package()
         self.paused = ledger.is_paused()
+        self.write_lock_enabled = ledger.initialize_write_lock(
+            config.write_lock_enabled
+        )
+        interrupted_unknown, _ = ledger.recover_interrupted_programs()
         self._stop = asyncio.Event()
         self._retry = asyncio.Event()
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -78,6 +92,14 @@ class AgentCore:
                 else RuntimeState.PAUSED if self.paused else RuntimeState.OFFLINE
             ),
             paused=self.paused,
+            hard_pause=self.paused,
+            write_lock_enabled=self.write_lock_enabled,
+            outcome_unknown=interrupted_unknown > 0,
+            support_id=(
+                "P6-RECOVERY-UNKNOWN"
+                if interrupted_unknown > 0
+                else None
+            ),
             agent_version=__version__,
             package_version=config.package_version,
             managed_host_enabled=config.managed_host_enabled,
@@ -97,6 +119,11 @@ class AgentCore:
             self._set_event(self._retry)
         elif intent in {AgentIntent.PAUSE, AgentIntent.RESUME}:
             self.set_paused(intent == AgentIntent.PAUSE)
+        elif intent in {
+            AgentIntent.ENABLE_WRITE_LOCK,
+            AgentIntent.DISABLE_WRITE_LOCK,
+        }:
+            self.set_write_lock(intent == AgentIntent.ENABLE_WRITE_LOCK)
         elif intent == AgentIntent.EXPORT_DIAGNOSTICS:
             if diagnostics_target is None:
                 raise ValueError("diagnostics target is required")
@@ -121,6 +148,16 @@ class AgentCore:
                     "host_handshake_state": self._state.host_handshake_state,
                     "capability_manifest_hash": self._state.capability_manifest_hash,
                     "registry_version": self._state.registry_version,
+                    "active_document_id": self._state.active_document_id,
+                    "active_document_revision": (
+                        self._state.active_document_revision
+                    ),
+                    "write_lock_enabled": self._state.write_lock_enabled,
+                    "hard_pause": self._state.hard_pause,
+                    "active_job_id": self._state.active_job_id,
+                    "mismatch_reason": self._state.mismatch_reason,
+                    "outcome_unknown": self._state.outcome_unknown,
+                    "support_id": self._state.support_id,
                     **self._last_ids,
                 },
             )
@@ -144,9 +181,15 @@ class AgentCore:
         self._publish(
             runtime_state=RuntimeState.PAUSED if paused else RuntimeState.CONNECTING,
             paused=paused,
+            hard_pause=paused,
         )
         if not paused:
             self._set_event(self._retry)
+
+    def set_write_lock(self, enabled: bool) -> None:
+        self.write_lock_enabled = enabled
+        self.ledger.set_write_lock(enabled)
+        self._publish(write_lock_enabled=enabled)
 
     async def run_forever(self) -> None:
         import websockets
@@ -258,7 +301,48 @@ class AgentCore:
                 hashlib.sha256,
             ).hexdigest()
             fixture_proof = "phase4-c1"
-        capabilities = list(canonical_capabilities(["observe"]))
+        capabilities = ["observe"]
+        capability_manifest = None
+        packages = [self.package]
+        if self.runtime_broker is not None and self.config.program_v0_enabled:
+            try:
+                selection = await self.runtime_broker.describe_managed_runtime()
+            except Exception:
+                pass
+            else:
+                capability_manifest = selection.manifest
+                product = (
+                    capability_manifest.cad_products[0]
+                    if capability_manifest.cad_products
+                    else None
+                )
+                if product is not None:
+                    mapping = {
+                        "cad.program.preview": "program_preview",
+                        "cad.program.commit": "program_commit",
+                        "cad.program.validate": "program_validate",
+                    }
+                    capabilities.extend(
+                        mapping[item]
+                        for item in product.capabilities
+                        if item in mapping
+                    )
+                    runtime = product.runtime
+                    if (
+                        runtime.package_id
+                        and runtime.package_version
+                        and runtime.package_hash
+                    ):
+                        packages.append(
+                            {
+                                "package_id": runtime.package_id,
+                                "version": runtime.package_version,
+                                "sha256": runtime.package_hash.removeprefix(
+                                    "sha256:"
+                                ),
+                            }
+                        )
+        capabilities = list(canonical_capabilities(capabilities))
         proof_fields = (
             {"device_proof": proof}
             if protocol_version == "cad.agent/2"
@@ -278,8 +362,15 @@ class AgentCore:
             document_name=self._state.document_name,
             paused=self.paused,
             current_command_id=self._current_command_id,
-            packages=[self.package],
-            package_manifest_hash=canonical_package_manifest_hash([self.package]),
+            packages=packages,
+            package_manifest_hash=canonical_package_manifest_hash(packages),
+            capability_manifest=capability_manifest,
+            capability_manifest_hash=(
+                canonical_capability_manifest_hash(capability_manifest)
+                if capability_manifest is not None
+                else None
+            ),
+            **self._phase6_presence_fields(protocol_version),
             **proof_fields,
         )
         await self._send(websocket, hello)
@@ -292,7 +383,9 @@ class AgentCore:
         self._last_ids["connection_stage"] = "online"
         self._last_ids.pop("safe_error_code", None)
         self._last_ids.pop("safe_error_type", None)
-        queue: asyncio.Queue[CommandMessage] = asyncio.Queue(maxsize=self.config.queue_size)
+        queue: asyncio.Queue[CommandMessage | ProgramCommandMessage] = asyncio.Queue(
+            maxsize=self.config.queue_size
+        )
         receiver = asyncio.create_task(self._receive_loop(websocket, queue))
         worker = asyncio.create_task(self._worker(websocket, queue))
         heartbeat = asyncio.create_task(
@@ -310,10 +403,14 @@ class AgentCore:
             if error:
                 raise error
 
-    async def _receive_loop(self, websocket: Any, queue: asyncio.Queue[CommandMessage]) -> None:
+    async def _receive_loop(
+        self,
+        websocket: Any,
+        queue: asyncio.Queue[CommandMessage | ProgramCommandMessage],
+    ) -> None:
         async for raw in websocket:
             message = parse_agent_message(raw)
-            if isinstance(message, CommandMessage):
+            if isinstance(message, (CommandMessage, ProgramCommandMessage)):
                 if message.session_id != self._session_id or message.device_id != self.config.device_id:
                     raise RuntimeError("command binding mismatch")
                 try:
@@ -333,11 +430,18 @@ class AgentCore:
                     )
                 raise RuntimeError("Gateway rejected Agent compatibility")
 
-    async def _worker(self, websocket: Any, queue: asyncio.Queue[CommandMessage]) -> None:
+    async def _worker(
+        self,
+        websocket: Any,
+        queue: asyncio.Queue[CommandMessage | ProgramCommandMessage],
+    ) -> None:
         while True:
             command = await queue.get()
             try:
-                await self._handle_command(websocket, command)
+                if isinstance(command, ProgramCommandMessage):
+                    await self._handle_program_command(websocket, command)
+                else:
+                    await self._handle_command(websocket, command)
             finally:
                 queue.task_done()
 
@@ -389,7 +493,11 @@ class AgentCore:
             job_id=command.job_id,
             correlation_id=command.correlation_id,
         )
-        self._publish(runtime_state=RuntimeState.BUSY_REMOTE, current_task="Đọc thông tin bản vẽ")
+        self._publish(
+            runtime_state=RuntimeState.BUSY_REMOTE,
+            current_task="Đọc thông tin bản vẽ",
+            active_job_id=command.job_id,
+        )
         terminal_state = RuntimeState.READY
         try:
             result = await self.executor.execute(command)
@@ -418,8 +526,197 @@ class AgentCore:
             self._publish(
                 runtime_state=RuntimeState.PAUSED if self.paused else terminal_state,
                 current_task=None,
+                active_job_id=None,
             )
         await self._send_terminal(websocket, command, entry)
+
+    async def _handle_program_command(
+        self,
+        websocket: Any,
+        command: ProgramCommandMessage,
+    ) -> None:
+        if self.program_executor is None:
+            self._publish_program_rejection(command, "capability_missing")
+            await self._reject(websocket, command, "capability_missing")
+            return
+        binding = command.binding.model_dump(mode="json")
+        package = {
+            "package_id": command.binding.package_id,
+            "version": command.binding.package_version,
+            "sha256": command.binding.package_hash.removeprefix("sha256:"),
+        }
+        try:
+            entry, created = self.ledger.record_received(
+                command_id=command.command_id,
+                job_id=command.job_id,
+                idempotency_key=command.idempotency_key,
+                payload_hash=command.payload_hash,
+                package=package,
+                session_id=command.session_id,
+                device_id=command.device_id,
+                kind=command.kind,
+                binding=binding,
+            )
+        except LedgerConflict as error:
+            code = (
+                "idempotency_conflict"
+                if str(error) == "idempotency_conflict"
+                else "payload_mismatch"
+            )
+            self._publish_program_rejection(command, code)
+            await self._reject(websocket, command, code)
+            return
+        if not created:
+            if entry.state in TERMINAL:
+                await self._ack(websocket, command, "already_terminal")
+                await self._send_program_terminal(websocket, command, entry)
+                return
+            if entry.state == "started":
+                await self._ack(websocket, command, "duplicate")
+                return
+        if self.paused:
+            entry = self.ledger.transition(
+                command.command_id,
+                "failed",
+                error_code="paused_by_user",
+            )
+            self._publish_program_rejection(command, "paused_by_user")
+            await self._reject(websocket, command, "paused_by_user")
+            await self._send_program_terminal(websocket, command, entry)
+            return
+        if command.effect_class == "write" and not self.write_lock_enabled:
+            entry = self.ledger.transition(
+                command.command_id,
+                "failed",
+                error_code="write_lock_disabled",
+            )
+            self._publish_program_rejection(command, "write_lock_disabled")
+            await self._reject(websocket, command, "write_lock_disabled")
+            await self._send_program_terminal(websocket, command, entry)
+            return
+        try:
+            self.program_executor.validate_command(command)
+        except AgentExecutionError as error:
+            entry = self.ledger.transition(
+                command.command_id,
+                "failed",
+                error_code=error.code,
+            )
+            self._publish_program_rejection(command, error.code)
+            await self._reject(websocket, command, error.code)
+            await self._send_program_terminal(websocket, command, entry)
+            return
+
+        if entry.state == "received":
+            entry = self.ledger.transition(command.command_id, "accepted")
+        await self._ack(websocket, command, "accepted")
+        self.ledger.transition(command.command_id, "started")
+        self._current_command_id = command.command_id
+        support_id = f"P6-{command.command_id[-12:]}"
+        self._last_ids.update(
+            command_id=command.command_id,
+            job_id=command.job_id,
+            correlation_id=command.correlation_id,
+            execution_digest=command.binding.execution_digest,
+            program_digest=command.binding.program_digest,
+        )
+        self._publish(
+            runtime_state=RuntimeState.BUSY_REMOTE,
+            current_task={
+                "program_preview": "Đang xem trước CAD Program",
+                "program_commit": "Đang tạo đối tượng trong bản vẽ",
+                "program_validate": "Đang kiểm tra kết quả CAD Program",
+            }[command.kind],
+            active_job_id=command.job_id,
+            mismatch_reason=None,
+            outcome_unknown=False,
+            support_id=support_id,
+        )
+        terminal_state = RuntimeState.READY
+        try:
+            result = await self.program_executor.execute(
+                command,
+                write_lock_enabled=self.write_lock_enabled,
+            )
+        except AgentExecutionError as error:
+            uncertain = (
+                command.kind == "program_commit"
+                and error.code
+                in {
+                    "managed_host_unavailable",
+                    "session_rejected",
+                    "deadline_expired",
+                    "outcome_unknown",
+                }
+            )
+            if uncertain:
+                entry = self.ledger.transition(
+                    command.command_id,
+                    "outcome_unknown",
+                    error_code="outcome_unknown",
+                )
+                terminal_state = RuntimeState.OUTCOME_UNKNOWN
+                self._publish(
+                    mismatch_reason=error.code,
+                    outcome_unknown=True,
+                )
+            else:
+                entry = self.ledger.transition(
+                    command.command_id,
+                    "failed",
+                    error_code=error.code,
+                )
+                terminal_state = self._program_error_state(error.code)
+                self._publish(mismatch_reason=error.code)
+            self._last_ids["safe_error_code"] = error.code
+        except Exception:
+            if command.kind == "program_commit":
+                entry = self.ledger.transition(
+                    command.command_id,
+                    "outcome_unknown",
+                    error_code="outcome_unknown",
+                )
+                terminal_state = RuntimeState.OUTCOME_UNKNOWN
+                self._publish(
+                    mismatch_reason="backend_error",
+                    outcome_unknown=True,
+                )
+            else:
+                entry = self.ledger.transition(
+                    command.command_id,
+                    "failed",
+                    error_code="backend_error",
+                )
+                terminal_state = RuntimeState.INCOMPATIBLE
+        else:
+            entry = self.ledger.transition(
+                command.command_id,
+                "succeeded",
+                result=result,
+            )
+            revision = (
+                result.get("document_revision_after")
+                if command.kind == "program_commit"
+                else result.get("document_revision")
+                if command.kind == "program_validate"
+                else command.binding.document_revision
+            )
+            self._publish(
+                active_document_id=command.binding.document_id,
+                active_document_revision=(
+                    str(revision) if revision is not None else None
+                ),
+            )
+        finally:
+            self._current_command_id = None
+            self._publish(
+                runtime_state=(
+                    RuntimeState.PAUSED if self.paused else terminal_state
+                ),
+                current_task=None,
+                active_job_id=None,
+            )
+        await self._send_program_terminal(websocket, command, entry)
 
     async def _handle_reconcile(self, websocket: Any, message: ReconcileMessage) -> None:
         if message.session_id != self._session_id or message.device_id != self.config.device_id:
@@ -433,10 +730,21 @@ class AgentCore:
                 status, entry = "started", None
             kwargs: dict[str, Any] = {}
             if status == "terminal" and entry is not None:
-                kwargs["result_status"] = entry.state
+                kwargs["result_status"] = (
+                    "failed"
+                    if entry.state == "outcome_unknown"
+                    else entry.state
+                )
+                if entry.kind in {
+                    "program_preview",
+                    "program_commit",
+                    "program_validate",
+                }:
+                    kwargs["kind"] = entry.kind
+                    kwargs["binding"] = entry.binding
                 if entry.state == "succeeded":
                     kwargs["result"] = entry.result
-                elif entry.state == "failed":
+                elif entry.state in {"failed", "outcome_unknown"}:
                     kwargs["error_code"] = entry.error_code or "backend_error"
                     kwargs["error_message"] = "Agent command failed"
             await self._send(
@@ -492,11 +800,16 @@ class AgentCore:
                     sequence=self.ledger.next_sequence(),
                     busy=self._current_command_id is not None,
                     last_processed_sequence=max(0, self.ledger.last_sequence() - 1),
-                    current_job_id=self._last_ids.get("job_id") if self._current_command_id else None,
+                    current_job_id=(
+                        self._state.active_job_id
+                        if self._current_command_id
+                        else None
+                    ),
                     runtime_state=self._state.runtime_state.value,
                     document_name=self._state.document_name,
                     paused=self.paused,
                     current_command_id=self._current_command_id,
+                    **self._phase6_presence_fields(self._protocol_version),
                 ),
             )
 
@@ -511,6 +824,16 @@ class AgentCore:
             server_connected=server_connected,
             autocad_state=presence.autocad_state,
             document_name=presence.document_name,
+            active_document_id=getattr(
+                presence,
+                "active_document_id",
+                None,
+            ),
+            active_document_revision=getattr(
+                presence,
+                "active_document_revision",
+                None,
+            ),
             support_code=(
                 {
                     "incompatible": "C1-PKG-002",
@@ -598,6 +921,80 @@ class AgentCore:
             )
         await self._send(websocket, message)
 
+    async def _send_program_terminal(
+        self,
+        websocket: Any,
+        command: ProgramCommandMessage,
+        entry: Any,
+    ) -> None:
+        status = entry.state
+        kwargs: dict[str, Any] = {}
+        if status == "succeeded":
+            kwargs["result"] = entry.result
+        elif status == "failed":
+            kwargs["error_code"] = entry.error_code or "backend_error"
+            kwargs["error_message"] = "Agent CAD Program command failed"
+        elif status == "outcome_unknown":
+            kwargs["error_code"] = "outcome_unknown"
+            kwargs["error_message"] = (
+                "Commit may have started; inspect the drawing before any retry"
+            )
+        await self._send(
+            websocket,
+            ProgramResultMessage(
+                protocol_version="cad.agent/2",
+                session_id=self._session_id,
+                device_id=self.config.device_id,
+                job_id=command.job_id,
+                command_id=command.command_id,
+                sequence=self.ledger.next_sequence(),
+                kind=command.kind,
+                status=status,
+                payload_hash=entry.payload_hash,
+                binding=command.binding,
+                **kwargs,
+            ),
+        )
+
+    @staticmethod
+    def _program_error_state(code: str) -> RuntimeState:
+        return {
+            "autocad_busy": RuntimeState.BUSY_USER,
+            "modal_dialog_active": RuntimeState.MODAL,
+            "no_active_document": RuntimeState.NO_DOCUMENT,
+            "active_document_changed": RuntimeState.RUNTIME_CHANGED,
+            "stale_snapshot": RuntimeState.RUNTIME_CHANGED,
+            "runtime_mismatch": RuntimeState.RUNTIME_CHANGED,
+            "runtime_changed": RuntimeState.RUNTIME_CHANGED,
+            "package_mismatch": RuntimeState.VERSION_MISMATCH,
+            "capability_mismatch": RuntimeState.CAPABILITY_MISSING,
+            "capability_missing": RuntimeState.CAPABILITY_MISSING,
+            "registry_mismatch": RuntimeState.CAPABILITY_MISSING,
+            "policy_mismatch": RuntimeState.RUNTIME_CHANGED,
+            "write_lock_disabled": RuntimeState.READY,
+            "paused_by_user": RuntimeState.PAUSED,
+        }.get(code, RuntimeState.INCOMPATIBLE)
+
+    def _publish_program_rejection(
+        self,
+        command: ProgramCommandMessage,
+        code: str,
+    ) -> None:
+        self._last_ids.update(
+            command_id=command.command_id,
+            job_id=command.job_id,
+            safe_error_code=code,
+        )
+        self._publish(
+            runtime_state=(
+                RuntimeState.PAUSED
+                if self.paused
+                else self._program_error_state(code)
+            ),
+            mismatch_reason=code,
+            support_id=f"P6-{command.command_id[-12:]}",
+        )
+
     @staticmethod
     async def _send(websocket: Any, message: Any) -> None:
         await websocket.send(json.dumps(message_dict(message), ensure_ascii=False))
@@ -611,3 +1008,30 @@ class AgentCore:
         for callback in tuple(self._observers):
             with suppress(Exception):
                 callback(self._state)
+
+    def _phase6_presence_fields(
+        self,
+        protocol_version: str,
+    ) -> dict[str, Any]:
+        if protocol_version != "cad.agent/2":
+            return {}
+        fields: dict[str, Any] = {
+            "write_lock_enabled": self.write_lock_enabled,
+            "hard_pause": self.paused,
+            "outcome_unknown": self._state.outcome_unknown,
+        }
+        if (
+            self._state.active_document_id is not None
+            and self._state.active_document_revision is not None
+        ):
+            fields.update(
+                active_document_id=self._state.active_document_id,
+                active_document_revision=self._state.active_document_revision,
+            )
+        if self._state.active_job_id is not None:
+            fields["active_job_id"] = self._state.active_job_id
+        if self._state.support_id is not None:
+            fields["support_id"] = self._state.support_id
+        if self._state.mismatch_reason is not None:
+            fields["mismatch_reason"] = self._state.mismatch_reason
+        return fields

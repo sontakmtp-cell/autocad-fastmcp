@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+
 namespace AutocadMcp.Host.Core;
 
 public enum DocumentEventKind
@@ -42,9 +44,26 @@ public sealed class DocumentRevisionState
 
     private readonly object _gate = new();
     private readonly LinkedList<MutableEventBatch> _batches = new();
-    private long _revision = 1;
+    private long _revision;
     private long _eventSequence;
     private int _suppressionDepth;
+
+    public DocumentRevisionState(long initialRevision = 1)
+    {
+        if (initialRevision < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(initialRevision));
+        }
+        _revision = initialRevision;
+    }
+
+    public static long CreateIncarnationSeed()
+    {
+        Span<byte> bytes = stackalloc byte[8];
+        RandomNumberGenerator.Fill(bytes);
+        var seed = BitConverter.ToInt64(bytes) & 0x001f_ffff_ffff_ffff;
+        return seed == 0 ? 1 : seed;
+    }
 
     public DocumentRevisionEvidence Snapshot(DateTimeOffset observedAt)
     {

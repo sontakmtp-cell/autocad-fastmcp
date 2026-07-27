@@ -36,11 +36,23 @@ def test_window_maps_state_and_sends_typed_intents(qtbot, tmp_path):
             autocad_state="Đã kết nối",
             document_name="mat-bich.dwg",
             paused=True,
+            hard_pause=True,
+            write_lock_enabled=False,
+            active_job_id="job-phase6",
+            mismatch_reason="policy_mismatch",
+            outcome_unknown=True,
+            support_id="P6-1234",
         )
     )
     assert window.primary.text() == "Đã tạm dừng"
     assert window.values["document"].text() == "mat-bich.dwg"
     assert window.pause_button.text() == "Tiếp tục"
+    assert window.values["write_lock"].text() == "Đang tắt"
+    assert window.values["hard_pause"].text() == "Đang bật"
+    assert window.values["active_job"].text() == "job-phase6"
+    assert window.values["mismatch"].text() == "policy_mismatch"
+    assert window.values["outcome"].text() == "Cần kiểm tra bản vẽ"
+    assert window.values["support"].text() == "P6-1234"
     window.retry_button.click()
     window.pause_button.click()
     assert [item[0] for item in core.intents] == [AgentIntent.RETRY, AgentIntent.RESUME]

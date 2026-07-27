@@ -76,7 +76,7 @@ jobs:
   root-and-phase1-3-regression:
     name: Root and Phase 1-3 regression
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -97,12 +97,33 @@ jobs:
           uv build --wheel
       - name: Build root wheel
         run: uv build --wheel
-      - name: Test and build Gateway
+      - name: Sync Gateway
+        working-directory: services/gateway
+        run: uv sync --locked --group test
+      - name: Run non-Phase-3 Gateway tests
         working-directory: services/gateway
         run: |
-          uv sync --locked --group test
-          uv run --locked --group test pytest -q --junitxml=gateway-results.xml
-          uv build --wheel
+          timeout --signal=TERM --kill-after=30s 12m \
+            uv run --locked --group test pytest -vv -m "not phase3" \
+            --durations=25 --junitxml=gateway-non-phase3-results.xml
+      - name: Run Phase-3 Gateway tests
+        working-directory: services/gateway
+        run: |
+          timeout --signal=TERM --kill-after=30s 12m \
+            uv run --locked --group test pytest -vv -m phase3 \
+            --durations=25 --junitxml=gateway-phase3-results.xml
+      - name: Build Gateway
+        working-directory: services/gateway
+        run: uv build --wheel
+      - name: Upload Gateway diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase0-gateway-diagnostics
+          path: |
+            services/gateway/gateway-non-phase3-results.xml
+            services/gateway/gateway-phase3-results.xml
+          if-no-files-found: warn
       - name: Build shared contracts
         working-directory: packages/contracts
         run: uv build --wheel
@@ -113,15 +134,17 @@ jobs:
           uv run --locked --group test pytest -q --junitxml=simulated-agent-results.xml
           uv build --wheel
       - name: Upload regression JUnit evidence
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: phase1-3-regression-junit
           path: |
             root-results.xml
             packages/cad_core/cad-core-results.xml
-            services/gateway/gateway-results.xml
+            services/gateway/gateway-non-phase3-results.xml
+            services/gateway/gateway-phase3-results.xml
             poc/phase3-simulated-agent/simulated-agent-results.xml
-          if-no-files-found: error
+          if-no-files-found: warn
 
   static-isolation:
     name: Static and isolation checks

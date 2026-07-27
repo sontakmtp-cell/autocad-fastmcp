@@ -1,10 +1,10 @@
 [project]
 name = "autocad-desktop-agent"
 version = "0.1.0"
-description = "Phase 4 C1 read-only Windows Desktop Agent for AutoCAD"
+description = "Windows Desktop Agent for bounded AutoCAD reads and CAD Programs"
 requires-python = ">=3.12,<3.14"
 dependencies = [
-    "autocad-contracts==0.1.1",
+    "autocad-contracts==0.2.0",
     "autocad-mcp==3.0.0",
     "cryptography>=45,<47",
     "httpx>=0.27,<1.0",

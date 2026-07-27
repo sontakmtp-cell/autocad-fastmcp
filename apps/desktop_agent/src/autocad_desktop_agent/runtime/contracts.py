@@ -32,6 +32,16 @@ class CadRuntimeAdapter(Protocol):
     def manifest(self, probe: RuntimeProbe) -> CapabilityManifest: ...
 
 
+class CadProgramRuntimeAdapter(CadRuntimeAdapter, Protocol):
+    async def program_command(
+        self,
+        kind: str,
+        *,
+        arguments: dict[str, Any],
+        deadline_at: str | None,
+    ) -> Any: ...
+
+
 @dataclass(frozen=True)
 class BrokerSelection:
     adapter: CadRuntimeAdapter

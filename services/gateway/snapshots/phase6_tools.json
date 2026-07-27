@@ -1,0 +1,90 @@
+[
+  {
+    "name": "cad_list_devices",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "input_schema_sha256": "3abab0d17b2ccbd46c3c32ff6886105d4cad8e981ea1273570f056308cdc3f9f",
+    "output_schema_sha256": "c44a7c321b7a1c2f39bf878181e922f0ea23b06690e95fc06431cfec74447e72"
+  },
+  {
+    "name": "cad_observe",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "input_schema_sha256": "396c4c9ac16413dbc26af13ed82c8f8db0e1b1c96ff31e731ed701fa8ece00a4",
+    "output_schema_sha256": "81b8d179f8cf099572f0d9ae78b6d8d1796b2b093c251729ed37462b7ae48989"
+  },
+  {
+    "name": "cad_query",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "input_schema_sha256": "26e5f25f4bb5197f068a0bde512136021d4d552002e590aef4f99b1e604af948",
+    "output_schema_sha256": "f2a613bf544025354646a44f3c31abc24e013aad0111d61f26d4890bdff870b9"
+  },
+  {
+    "name": "cad_get_job",
+    "annotations": {
+      "readOnlyHint": true,
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false
+    },
+    "input_schema_sha256": "e904d8f9485d00332acf4f75eb238e14a6c31d419dddebe30fa8d7111ca1115a",
+    "output_schema_sha256": "df78ddd7db81fab3a08c08129f25ea140b4480d956b216ffe4b476545bc558e2"
+  },
+  {
+    "name": "cad_prepare_program",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "input_schema_sha256": "243fa3b041f10bedd60a9387ee09859e23f3ec47d7692173e29adc0c8cc3ed68",
+    "output_schema_sha256": "07d07ed2f6894c65a733fdaa59773d5095139b28f6593de39b2c7ad42d5a56e0"
+  },
+  {
+    "name": "cad_preview",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "input_schema_sha256": "1c0ec464679a9579c08be11da9aaa2c8c0ad427a52ef5ee0c6afe0969c21a9b1",
+    "output_schema_sha256": "c429cd2364e60b139933a69809917f878c6b09f4f2881a70004a15e9b8390e38"
+  },
+  {
+    "name": "cad_commit",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "input_schema_sha256": "15e5d47fc583e1aa6b3f26a2889d3de253f6a614c166c8b1504a6d4ce1339a6a",
+    "output_schema_sha256": "d34171e77b2f8c893fc14e8ebc00d15ad3b8a97ed1706223b11157bb06e74486"
+  },
+  {
+    "name": "cad_validate",
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": false,
+      "idempotentHint": false,
+      "openWorldHint": false
+    },
+    "input_schema_sha256": "9af2d4cb41dddc09d4dba7e5a47e507bbda39ffd83bee666901a11cb9f08577e",
+    "output_schema_sha256": "026da108f1c680f0e55a7a1559db4d87078d0d24760468b384a2dfd7db58812e"
+  }
+]

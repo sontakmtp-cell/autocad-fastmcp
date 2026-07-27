@@ -5,7 +5,12 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from autocad_contracts import CapabilityManifest
+from autocad_contracts import (
+    CapabilityManifest,
+    ProgramExecutionBinding,
+    canonical_capability_manifest_hash,
+    operation_registry_digest,
+)
 from autocad_desktop_agent.config import AgentConfig, RuntimeMode
 from autocad_desktop_agent.runtime import RuntimeBroker, RuntimeProbe, RuntimeSelectionError
 
@@ -28,6 +33,7 @@ class FakeAdapter:
     runtime_id: str
     available: bool = True
     edition: str = "full"
+    program: bool = False
 
     async def probe(self):
         return RuntimeProbe(
@@ -49,18 +55,51 @@ class FakeAdapter:
         return CapabilityManifest.model_validate(
             {
                 "schema_version": "cad.capability/1",
-                "registry_version": "cad.program/0",
+                "registry_version": (
+                    "cad.program/0.2" if self.program else "cad.program/0"
+                ),
+                **(
+                    {"operation_registry_hash": operation_registry_digest()}
+                    if self.program
+                    else {}
+                ),
                 "cad_products": [
                     {
                         "product": probe.product,
                         "edition": probe.edition,
                         "release_year": probe.release_year,
-                        "runtime": {"id": self.runtime_id, "role": role},
-                        "capabilities": ["observe.summary"],
+                        "runtime": {
+                            "id": self.runtime_id,
+                            "role": role,
+                            **(
+                                {
+                                    "host_family": "R25",
+                                    "host_version": "0.2.0",
+                                    "package_id": "autocad.managed_host.r25",
+                                    "package_version": "0.2.0",
+                                    "package_hash": f"sha256:{'a' * 64}",
+                                }
+                                if self.program
+                                else {}
+                            ),
+                        },
+                        "capabilities": (
+                            [
+                                "observe.summary",
+                                "cad.program.preview",
+                                "cad.program.commit",
+                                "cad.program.validate",
+                            ]
+                            if self.program
+                            else ["observe.summary"]
+                        ),
                     }
                 ],
             }
         )
+
+    async def program_command(self, *args, **kwargs):
+        return SimpleNamespace(ok=True, payload={})
 
 
 async def test_default_mode_keeps_file_ipc_adapter_first():
@@ -112,3 +151,106 @@ def test_invalid_feature_flag_fails_closed(monkeypatch):
     monkeypatch.setenv("AUTOCAD_MCP_MANAGED_HOST_ENABLED", "yes")
     with pytest.raises(ValueError, match="must be 0 or 1"):
         AgentConfig.from_env()
+
+
+def test_phase6_write_flags_fail_closed(monkeypatch):
+    monkeypatch.setenv("AUTOCAD_AGENT_GATEWAY_WS_URL", "wss://gateway.example/agent/ws")
+    monkeypatch.setenv("AUTOCAD_AGENT_DEVICE_ID", "device-a")
+    monkeypatch.setenv("AUTOCAD_AGENT_PACKAGE_SHA256", "a" * 64)
+    monkeypatch.setenv("AUTOCAD_MCP_LT_WRITE_ENABLED", "1")
+    with pytest.raises(ValueError, match="LT write is unavailable"):
+        AgentConfig.from_env()
+
+
+async def test_write_selection_is_exact_r25_and_never_falls_back():
+    managed = FakeAdapter("managed_dotnet", program=True)
+    compat = FakeAdapter("autolisp_file_ipc")
+    config = _config(
+        runtime_mode=RuntimeMode.AUTO,
+        managed_host_enabled=True,
+        program_v0_enabled=True,
+        managed_write_enabled=True,
+        phase6_allowed_device_ids=frozenset({"device-a"}),
+        program_policy_version="phase6-low-risk-v1",
+    )
+    broker = RuntimeBroker(config, [compat, managed])
+    manifest = managed.manifest(await managed.probe())
+    binding = ProgramExecutionBinding(
+        program_digest=f"sha256:{'1' * 64}",
+        execution_digest=f"sha256:{'2' * 64}",
+        document_id="doc-1",
+        document_revision="42",
+        runtime_id="managed_dotnet",
+        runtime_role="primary",
+        host_family="R25",
+        host_version="0.2.0",
+        package_id="autocad.managed_host.r25",
+        package_version="0.2.0",
+        package_hash=f"sha256:{'a' * 64}",
+        capability_manifest_hash=(
+            f"sha256:{canonical_capability_manifest_hash(manifest)}"
+        ),
+        operation_registry_version="cad.program/0.2",
+        operation_registry_hash=operation_registry_digest(),
+        policy_version="phase6-low-risk-v1",
+    )
+
+    selection = await broker.select_write_runtime(
+        binding,
+        required_capability="cad.program.commit",
+        write_lock_enabled=True,
+    )
+    assert selection.adapter is managed
+
+    unavailable = RuntimeBroker(config, [compat])
+    with pytest.raises(RuntimeSelectionError, match="managed_host_unavailable"):
+        await unavailable.select_write_runtime(
+            binding,
+            required_capability="cad.program.commit",
+            write_lock_enabled=True,
+        )
+
+
+async def test_write_selection_rejects_lock_and_binding_changes():
+    managed = FakeAdapter("managed_dotnet", program=True)
+    config = _config(
+        runtime_mode=RuntimeMode.AUTO,
+        managed_host_enabled=True,
+        program_v0_enabled=True,
+        managed_write_enabled=True,
+        phase6_allowed_device_ids=frozenset({"device-a"}),
+        program_policy_version="phase6-low-risk-v1",
+    )
+    broker = RuntimeBroker(config, [managed])
+    manifest = managed.manifest(await managed.probe())
+    binding = ProgramExecutionBinding(
+        program_digest=f"sha256:{'1' * 64}",
+        execution_digest=f"sha256:{'2' * 64}",
+        document_id="doc-1",
+        document_revision="42",
+        runtime_id="managed_dotnet",
+        runtime_role="primary",
+        host_family="R25",
+        host_version="0.2.0",
+        package_id="autocad.managed_host.r25",
+        package_version="0.2.0",
+        package_hash=f"sha256:{'a' * 64}",
+        capability_manifest_hash=(
+            f"sha256:{canonical_capability_manifest_hash(manifest)}"
+        ),
+        operation_registry_version="cad.program/0.2",
+        operation_registry_hash=operation_registry_digest(),
+        policy_version="phase6-low-risk-v1",
+    )
+    with pytest.raises(RuntimeSelectionError, match="write_lock_disabled"):
+        await broker.select_write_runtime(
+            binding,
+            required_capability="cad.program.commit",
+            write_lock_enabled=False,
+        )
+    with pytest.raises(RuntimeSelectionError, match="policy_mismatch"):
+        await broker.select_write_runtime(
+            binding.model_copy(update={"policy_version": "changed"}),
+            required_capability="cad.program.commit",
+            write_lock_enabled=True,
+        )

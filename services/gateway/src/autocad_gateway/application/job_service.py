@@ -14,16 +14,20 @@ from autocad_contracts import (
     CancelMessage,
     CommandMessage,
     ProgressMessage,
+    ProgramCommandMessage,
+    ProgramResultMessage,
     ReconcileCommandDescriptor,
     ReconcileMessage,
     ReconcileResultMessage,
     ResultMessage,
     RuntimeEvidence,
+    program_command_payload_hash,
 )
 
 from ..domain.jobs import InvalidJobTransition, is_terminal
 from ..infrastructure.agent_transport.connection_registry import AgentConnection, ConnectionRegistry
 from ..infrastructure.sqlite.repositories import RepositoryConflict, SqliteRepository
+from ..program_contract_adapter import program_command_fields
 
 
 logger = logging.getLogger(__name__)
@@ -52,6 +56,10 @@ class DurableJobService:
         request_wait_timeout_seconds: float = 30,
         command_timeout_seconds: float | None = None,
         required_package: dict[str, str] | None = None,
+        program_repository: Any | None = None,
+        program_policy_version: str | None = None,
+        managed_write_enabled: bool = False,
+        allowed_write_device_ids: tuple[str, ...] = (),
     ) -> None:
         self.repository = repository
         self.registry = registry
@@ -63,6 +71,38 @@ class DurableJobService:
         self._waiters: dict[str, asyncio.Future[dict[str, Any]]] = {}
         self._dispatch_lock = asyncio.Lock()
         self.required_package = dict(required_package or {})
+        self.program_repository = program_repository
+        self.program_policy_version = program_policy_version
+        self.managed_write_enabled = managed_write_enabled
+        self.allowed_write_device_ids = frozenset(allowed_write_device_ids)
+
+    async def wait_for_existing_job(
+        self,
+        job: dict[str, Any],
+        *,
+        owner_subject: str,
+        correlation_id: str,
+    ) -> dict[str, Any]:
+        if is_terminal(job["state"]):
+            return job
+        waiter = self._waiter_for(job["job_id"])
+        try:
+            await self.dispatch(job["job_id"], correlation_id=correlation_id)
+        except DurableJobError as error:
+            current = await self.repository.get_job(owner_subject, job["job_id"])
+            raise DurableJobError(
+                error.code,
+                job_id=job["job_id"],
+                job_state=current["state"] if current else job["state"],
+            ) from None
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(waiter),
+                timeout=self.request_wait_timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            current = await self.repository.get_job(owner_subject, job["job_id"])
+            return current or job
 
     async def create_and_observe(
         self,
@@ -140,20 +180,54 @@ class DurableJobService:
                     job_state=updated["state"] if updated else raw["state"],
                 )
             await self._require_dispatch_capability(raw, connection=connection)
-            command = CommandMessage(
-                protocol_version=connection.protocol_version,
-                correlation_id=correlation_id,
-                session_id=connection.session_id,
-                device_id=raw["device_id"],
-                job_id=job_id,
-                command_id=raw["command_id"],
-                deadline_at=raw["deadline_at"],
-                idempotency_key=raw["idempotency_key"],
-                payload_hash=raw["payload_hash"],
-                kind=raw["kind"],
-                effect_class=raw["effect_class"],
-                payload=raw["payload"],
-            )
+            command_values = {
+                "protocol_version": connection.protocol_version,
+                "correlation_id": correlation_id,
+                "session_id": connection.session_id,
+                "device_id": raw["device_id"],
+                "job_id": job_id,
+                "command_id": raw["command_id"],
+                "deadline_at": raw["deadline_at"],
+                "idempotency_key": raw["idempotency_key"],
+                "payload_hash": raw["payload_hash"],
+                "kind": raw["kind"],
+                "effect_class": raw["effect_class"],
+                "payload": raw["payload"],
+            }
+            if raw["kind"] in {
+                "program_preview",
+                "program_commit",
+                "program_validate",
+            }:
+                program_values = {
+                    **{
+                        key: value
+                        for key, value in command_values.items()
+                        if key != "payload"
+                    },
+                    **program_command_fields(
+                        kind=raw["kind"],
+                        effect_class=raw["effect_class"],
+                        payload=raw["payload"],
+                    ),
+                }
+                command = ProgramCommandMessage(**program_values)
+                if program_command_payload_hash(command) != raw["payload_hash"]:
+                    updated = await self.repository.transition_job(
+                        job_id,
+                        "failed",
+                        error_code="payload_mismatch",
+                        error_summary="Typed Program command hash did not match durable job",
+                    )
+                    await self._release_program_lock_if_terminal(updated)
+                    self._resolve(updated)
+                    raise DurableJobError(
+                        "payload_mismatch",
+                        job_id=job_id,
+                        job_state=updated["state"] if updated else raw["state"],
+                    )
+            else:
+                command = CommandMessage(**command_values)
             try:
                 await connection.send(command.model_dump(mode="json", exclude_none=True))
             except Exception as error:
@@ -177,6 +251,15 @@ class DurableJobService:
             except ValueError:
                 expired = True
             if expired:
+                if (
+                    job["kind"] == "program_commit"
+                    and job["state"] == "outcome_unknown"
+                ):
+                    logger.warning(
+                        "Expired Program commit remains recoverable pending receipt reconciliation",
+                        extra={"job_id": job["job_id"], "state": job["state"]},
+                    )
+                    continue
                 target = "needs_attention" if job["state"] == "outcome_unknown" else "failed"
                 try:
                     updated = await self.repository.transition_job(
@@ -217,7 +300,7 @@ class DurableJobService:
             await self._handle_ack(connection, job, message)
         elif isinstance(message, ProgressMessage):
             await self._handle_progress(job, message)
-        elif isinstance(message, ResultMessage):
+        elif isinstance(message, (ResultMessage, ProgramResultMessage)):
             await self._handle_result(job, message)
         elif isinstance(message, ReconcileResultMessage):
             await self.handle_reconcile_result(connection, message, job=job)
@@ -309,18 +392,59 @@ class DurableJobService:
             await self._fail_payload(job)
             return
         if message.status == "terminal" and message.result_status:
-            result = ResultMessage(
-                session_id=connection.session_id,
-                device_id=connection.device_id,
-                job_id=job["job_id"],
-                command_id=job["command_id"],
-                sequence=message.sequence,
-                payload_hash=message.payload_hash,
-                status=message.result_status,
-                result=message.result,
-                error_code=message.error_code,
-                error_message=message.error_message,
+            if (
+                job["kind"] == "program_commit"
+                and job["state"] == "outcome_unknown"
+                and message.result_status == "failed"
+                and message.error_code == "outcome_unknown"
+            ):
+                logger.warning(
+                    "Agent reconciliation still reports an unknown Program commit outcome",
+                    extra={"job_id": job["job_id"], "state": job["state"]},
+                )
+                return
+            if job["kind"] in {
+                "program_preview",
+                "program_commit",
+                "program_validate",
+            } and (
+                message.kind != job["kind"]
+                or message.binding is None
+                or message.binding.model_dump(mode="json")
+                != self._program_result_binding(job)
+            ):
+                logger.warning(
+                    "Program reconciliation did not prove its durable execution binding",
+                    extra={"job_id": job["job_id"], "state": job["state"]},
+                )
+                return
+            message_type = (
+                ProgramResultMessage
+                if job["kind"] in {
+                    "program_preview",
+                    "program_commit",
+                    "program_validate",
+                }
+                else ResultMessage
             )
+            result_values = {
+                "session_id": connection.session_id,
+                "device_id": connection.device_id,
+                "job_id": job["job_id"],
+                "command_id": job["command_id"],
+                "sequence": message.sequence,
+                "payload_hash": message.payload_hash,
+                "status": message.result_status,
+                "result": message.result,
+                "error_code": message.error_code,
+                "error_message": message.error_message,
+            }
+            if message_type is ProgramResultMessage:
+                result_values.update(
+                    kind=message.kind,
+                    binding=message.binding,
+                )
+            result = message_type(**result_values)
             await self._handle_result(job, result)
             return
         if message.status == "terminal":
@@ -619,12 +743,33 @@ class DurableJobService:
         if updated:
             self._resolve(updated)
 
-    async def _handle_result(self, job: dict[str, Any], message: ResultMessage) -> None:
+    async def _handle_result(
+        self, job: dict[str, Any], message: ResultMessage | ProgramResultMessage
+    ) -> None:
         if message.payload_hash != job["payload_hash"]:
             await self._fail_payload(job)
             return
         target = message.status
         result = message.result
+        if isinstance(message, ProgramResultMessage):
+            self._validate_program_result_binding(job, message)
+            if target == "outcome_unknown":
+                try:
+                    updated = await self.repository.transition_job(
+                        job["job_id"],
+                        "outcome_unknown",
+                        error_code="outcome_unknown",
+                        error_summary="Agent reported an unknown commit outcome",
+                    )
+                except (InvalidJobTransition, RepositoryConflict) as error:
+                    raise DurableJobError(
+                        "outcome_unknown",
+                        job_id=job["job_id"],
+                        job_state=job["state"],
+                    ) from error
+                self._resolve(updated)
+                return
+            result = self._normalize_program_result(job, message)
         error_code: str | None = None
         error_summary: str | None = None
         snapshot: dict[str, Any] | None = None
@@ -655,6 +800,75 @@ class DurableJobService:
             result = None
             error_code = "cancelled"
             error_summary = "Agent confirmed cancellation"
+        if job["kind"] in {
+            "program_preview",
+            "program_commit",
+            "program_validate",
+        }:
+            if self.program_repository is None:
+                raise DurableJobError(
+                    "backend_error", job_id=job["job_id"], job_state=job["state"]
+                )
+            try:
+                updated = await self.program_repository.finalize_program_job(
+                    job_id=job["job_id"],
+                    device_id=job["device_id"],
+                    command_id=job["command_id"],
+                    payload_hash=job["payload_hash"],
+                    target=target,
+                    result=result,
+                    error_code=error_code,
+                    error_summary=error_summary,
+                    session_id=message.session_id,
+                    agent_sequence=message.sequence,
+                )
+            except RepositoryConflict as error:
+                if error.code not in {
+                    "program_result_invalid",
+                    "binding_mismatch",
+                    "payload_too_large",
+                }:
+                    raise
+                release_write_lock = True
+                latest = await self._get_internal_job(job["job_id"])
+                if (
+                    job["kind"] == "program_commit"
+                    and latest is not None
+                    and latest["state"] in {
+                        "acknowledged",
+                        "running",
+                        "cancel_requested",
+                        "outcome_unknown",
+                    }
+                ):
+                    updated = latest
+                    if latest["state"] != "outcome_unknown":
+                        updated = await self.repository.transition_job(
+                            job["job_id"],
+                            "outcome_unknown",
+                            error_code="binding_mismatch",
+                            error_summary=(
+                                "Commit result did not prove its exact execution binding"
+                            ),
+                        )
+                    else:
+                        logger.warning(
+                            "Reconciled commit evidence still did not prove its binding",
+                            extra={"job_id": job["job_id"]},
+                        )
+                    release_write_lock = False
+                else:
+                    updated = await self.repository.transition_job(
+                        job["job_id"],
+                        "failed",
+                        error_code=error.code,
+                        error_summary="Agent returned invalid bounded CAD Program evidence",
+                    )
+                if release_write_lock:
+                    await self.program_repository.release_write_lock(job["job_id"])
+            if updated:
+                self._resolve(updated)
+            return
         try:
             updated = await self.repository.finalize_job_result(
                 job_id=job["job_id"],
@@ -686,6 +900,102 @@ class DurableJobService:
             ) from error
         if updated:
             self._resolve(updated)
+
+    @staticmethod
+    def _program_result_binding(job: dict[str, Any]) -> dict[str, Any]:
+        execution = job["payload"]["execution"]
+        pins = execution["pins"]
+        return {
+            "program_digest": execution["program_digest"],
+            "execution_digest": execution["execution_digest"],
+            "document_id": execution["document_id"],
+            "document_revision": execution["expected_document_revision"],
+            "runtime_id": pins["runtime_id"],
+            "runtime_role": pins["runtime_role"],
+            "host_family": pins["host_family"],
+            "host_version": pins["host_version"],
+            "package_id": pins["package_id"],
+            "package_version": pins["package_version"],
+            "package_hash": pins["package_hash"],
+            "capability_manifest_hash": pins["capability_manifest_hash"],
+            "operation_registry_version": pins["registry_version"],
+            "operation_registry_hash": pins["operation_registry_hash"],
+            "policy_version": pins["policy_version"],
+        }
+
+    @staticmethod
+    def _validate_program_result_binding(
+        job: dict[str, Any], message: ProgramResultMessage
+    ) -> None:
+        if message.kind != job["kind"]:
+            raise DurableJobError(
+                "binding_mismatch",
+                job_id=job["job_id"],
+                job_state=job["state"],
+            )
+        expected = DurableJobService._program_result_binding(job)
+        if message.binding.model_dump(mode="json") != expected:
+            raise DurableJobError(
+                "binding_mismatch",
+                job_id=job["job_id"],
+                job_state=job["state"],
+            )
+
+    @staticmethod
+    def _normalize_program_result(
+        job: dict[str, Any], message: ProgramResultMessage
+    ) -> dict[str, Any] | None:
+        if message.result is None:
+            return None
+        value = message.result.model_dump(mode="json")
+        execution = job["payload"]["execution"]
+        if message.kind == "program_preview":
+            return {
+                "program_digest": execution["program_digest"],
+                "execution_digest": execution["execution_digest"],
+                "binding_digest": execution["binding_digest"],
+                "preview_id": value["preview_id"],
+                "preview_digest": value["preview_digest"],
+                "expires_at": value["expires_at"],
+                "document_revision_before": execution["expected_document_revision"],
+                "document_revision_after": execution["expected_document_revision"],
+                "preview_strategy": "database_transaction_abort",
+                "planned_operation_count": value["planned_operation_count"],
+                "planned_entity_count": value["planned_entity_count"],
+                "planned_layer_count": value["planned_layer_count"],
+                "validation": {
+                    "transaction_aborted": value["transaction_aborted"],
+                    "drawing_unchanged": value["drawing_unchanged"],
+                },
+            }
+        if message.kind == "program_commit":
+            return {
+                "receipt_id": value["receipt_id"],
+                "receipt_digest": value["receipt_digest"],
+                "program_digest": execution["program_digest"],
+                "execution_digest": execution["execution_digest"],
+                "preview_execution_digest": execution["preview_execution_digest"],
+                "binding_digest": execution["binding_digest"],
+                "document_id": execution["document_id"],
+                "document_revision_before": value["document_revision_before"],
+                "document_revision_after": value["document_revision_after"],
+                "effect_summary": {
+                    "created_entities": value["created_entity_count"],
+                    "duplicate": value["duplicate"],
+                },
+                "durable_receipt": value,
+            }
+        return {
+            "validation_id": value["validation_id"],
+            "execution_digest": execution["execution_digest"],
+            "binding_digest": execution["binding_digest"],
+            "document_revision": value["document_revision"],
+            "passed": value["valid"],
+            "report": {
+                "checks": value["checks"],
+                "failures": value["failures"],
+            },
+        }
 
     def _validate_c1_observation(
         self,
@@ -820,6 +1130,7 @@ class DurableJobService:
                 error_code="payload_mismatch",
                 error_summary="Agent payload hash did not match Gateway",
             )
+            await self._release_program_lock_if_terminal(updated)
             self._resolve(updated)
         except (InvalidJobTransition, RepositoryConflict):
             logger.info(
@@ -864,6 +1175,10 @@ class DurableJobService:
         elif connection is not None and connection.paused:
             failure_code = "paused_by_user"
             failure_summary = "Agent is paused by the local user"
+        elif job["kind"] in {"program_preview", "program_commit", "program_validate"}:
+            failure_code, failure_summary = self._program_dispatch_failure(
+                job, connection
+            )
         else:
             required_package = dict(
                 job.get("payload", {}).get("package") or self.required_package
@@ -894,11 +1209,94 @@ class DurableJobService:
                 job_state=job["state"],
             ) from error
         self._resolve(updated)
+        await self._release_program_lock_if_terminal(updated)
         raise DurableJobError(
             failure_code,
             job_id=job["job_id"],
             job_state=updated["state"] if updated else job["state"],
         )
+
+    async def _release_program_lock_if_terminal(
+        self, job: dict[str, Any] | None
+    ) -> None:
+        if (
+            job is not None
+            and self.program_repository is not None
+            and job.get("kind") in {"program_preview", "program_commit"}
+            and is_terminal(job["state"])
+        ):
+            await self.program_repository.release_write_lock(job["job_id"])
+
+    def _program_dispatch_failure(
+        self,
+        job: dict[str, Any],
+        connection: AgentConnection | None,
+    ) -> tuple[str | None, str]:
+        if connection is None:
+            return "device_offline", "Agent is not connected"
+        execution = job.get("payload", {}).get("execution")
+        if not isinstance(execution, dict) or not isinstance(execution.get("pins"), dict):
+            return "binding_mismatch", "Program execution binding is missing"
+        pins = execution["pins"]
+        if (
+            self.program_policy_version is None
+            or pins.get("policy_version") != self.program_policy_version
+        ):
+            return "policy_mismatch", "Gateway policy changed after preparation"
+        if (
+            job["kind"] in {"program_preview", "program_commit"}
+            and (
+                not self.managed_write_enabled
+                or connection.device_id not in self.allowed_write_device_ids
+            )
+        ):
+            return "feature_disabled", "Managed write is not enabled for this device"
+        if connection.hard_pause or connection.paused:
+            return "paused_by_user", "Agent hard pause is active"
+        if job["kind"] in {"program_preview", "program_commit"} and not connection.write_lock_enabled:
+            return "write_lock_disabled", "Agent write lock is disabled"
+        capability_hash = str(connection.capability_manifest_hash or "")
+        registry_hash = str(connection.operation_registry_hash or "")
+        capability_hash = (
+            capability_hash
+            if capability_hash.startswith("sha256:")
+            else "sha256:" + capability_hash
+        )
+        registry_hash = (
+            registry_hash
+            if registry_hash.startswith("sha256:")
+            else "sha256:" + registry_hash
+        )
+        if (
+            capability_hash != pins.get("capability_manifest_hash")
+            or registry_hash != pins.get("operation_registry_hash")
+            or connection.registry_version != pins.get("registry_version")
+        ):
+            return "binding_mismatch", "Capability or registry evidence changed"
+        packages = list(connection.packages)
+        package = {
+            "package_id": pins.get("package_id"),
+            "version": pins.get("package_version"),
+            "sha256": str(pins.get("package_hash", "")).removeprefix("sha256:"),
+        }
+        if package not in packages:
+            return "package_mismatch", "Managed Host package evidence changed"
+        manifest = connection.capability_manifest or {}
+        products = manifest.get("cad_products", [])
+        matching = [
+            item
+            for item in products
+            if isinstance(item, dict)
+            and isinstance(item.get("runtime"), dict)
+            and item["runtime"].get("id") == pins.get("runtime_id")
+            and item["runtime"].get("role") == pins.get("runtime_role")
+            and item["runtime"].get("host_family") == pins.get("host_family")
+            and item["runtime"].get("host_version") == pins.get("host_version")
+            and item.get("edition") == "full"
+        ]
+        if len(matching) != 1:
+            return "runtime_mismatch", "Managed R25 runtime evidence changed"
+        return None, ""
 
     @staticmethod
     def _validate_message_binding(

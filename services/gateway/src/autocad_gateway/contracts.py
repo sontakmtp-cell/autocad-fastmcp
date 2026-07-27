@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 CONTRACT_VERSION = "cad.mcp/1.0"
 PHASE3_CONTRACT_VERSION = "cad.mcp/1.1"
 PHASE4_CONTRACT_VERSION = "cad.mcp/1.2"
+PHASE6_CONTRACT_VERSION = "cad.mcp/1.3"
 MAX_ENTITY_TYPE_LENGTH = 64
 MAX_LAYER_NAME_LENGTH = 255
 MAX_FILTER_BYTES = 4096
@@ -264,10 +265,156 @@ class CadGetJobOutputC1(CadGetJobOutput):
     runtime_evidence: dict[str, Any] | None = None
 
 
+class CadPrepareProgramInput(StrictModel):
+    device_id: str = Field(min_length=1, max_length=128)
+    source_snapshot_id: str = Field(min_length=1, max_length=128)
+    operations: list[dict[str, Any]] = Field(min_length=1, max_length=256)
+    postconditions: list[dict[str, Any]] = Field(default_factory=list, max_length=64)
+    budget_overrides: dict[str, int] = Field(default_factory=dict, max_length=16)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @field_validator("device_id", "source_snapshot_id")
+    @classmethod
+    def validate_public_ids(cls, value: str, info: Any) -> str:
+        return _bounded_public_id(value, info.field_name)
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def validate_prepare_key(cls, value: str | None) -> str | None:
+        return _idempotency_key(value)
+
+
+class CadPrepareProgramOutput(StrictModel):
+    contract_version: str = PHASE6_CONTRACT_VERSION
+    correlation_id: str
+    program_id: str
+    program_revision: int = Field(ge=1)
+    program_digest: str
+    document_id: str
+    expected_document_revision: str
+    execution_binding: dict[str, str]
+    risk_class: Literal["low"]
+    missing_capabilities: list[str] = Field(max_length=256)
+    resource_uri: str
+    ready_for_preview: bool
+
+
+class CadPreviewInput(StrictModel):
+    program_id: str = Field(min_length=1, max_length=128)
+    program_revision: int = Field(default=1, ge=1)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @field_validator("program_id")
+    @classmethod
+    def validate_program_id(cls, value: str) -> str:
+        return _bounded_public_id(value, "program_id")
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def validate_preview_key(cls, value: str | None) -> str | None:
+        return _idempotency_key(value)
+
+
+class CadPreviewOutput(StrictModel):
+    contract_version: str = PHASE6_CONTRACT_VERSION
+    correlation_id: str
+    program_id: str
+    program_revision: int = Field(ge=1)
+    preview_id: str | None = None
+    job_id: str
+    state: str
+    program_digest: str
+    execution_digest: str
+    binding_digest: str
+    planned_operation_count: int | None = Field(default=None, ge=0)
+    planned_entity_count: int | None = Field(default=None, ge=0)
+    planned_layer_count: int | None = Field(default=None, ge=0)
+    validation: dict[str, Any] | None = None
+    expires_at: str
+    job_uri: str
+    resource_uri: str | None = None
+
+
+class CadCommitInput(StrictModel):
+    preview_id: str = Field(min_length=1, max_length=128)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @field_validator("preview_id")
+    @classmethod
+    def validate_preview_id(cls, value: str) -> str:
+        return _bounded_public_id(value, "preview_id")
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def validate_commit_key(cls, value: str | None) -> str | None:
+        return _idempotency_key(value)
+
+
+class CadCommitOutput(StrictModel):
+    contract_version: str = PHASE6_CONTRACT_VERSION
+    correlation_id: str
+    program_id: str
+    program_revision: int = Field(ge=1)
+    preview_id: str
+    receipt_id: str | None = None
+    job_id: str
+    state: str
+    program_digest: str
+    execution_digest: str
+    binding_digest: str
+    document_revision_before: str
+    document_revision_after: str | None = None
+    effect_summary: dict[str, Any] | None = None
+    duplicate: bool = False
+    job_uri: str
+    resource_uri: str | None = None
+
+
+class CadValidateInput(StrictModel):
+    receipt_id: str = Field(min_length=1, max_length=128)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @field_validator("receipt_id")
+    @classmethod
+    def validate_receipt_id(cls, value: str) -> str:
+        return _bounded_public_id(value, "receipt_id")
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def validate_validate_key(cls, value: str | None) -> str | None:
+        return _idempotency_key(value)
+
+
+class CadValidateOutput(StrictModel):
+    contract_version: str = PHASE6_CONTRACT_VERSION
+    correlation_id: str
+    program_id: str
+    program_revision: int = Field(ge=1)
+    receipt_id: str
+    validation_id: str | None = None
+    job_id: str
+    state: str
+    execution_digest: str
+    binding_digest: str
+    passed: bool | None = None
+    report: dict[str, Any] | None = None
+    job_uri: str
+    resource_uri: str | None = None
+
+
 def _bounded_public_id(value: str, field_name: str) -> str:
     canonical = value.strip()
     if not canonical or not _PUBLIC_ID.fullmatch(canonical):
         raise ValueError(f"{field_name} is malformed")
+    return canonical
+
+
+def _idempotency_key(value: str | None) -> str | None:
+    if value is None:
+        return None
+    canonical = value.strip()
+    if not canonical or any(character.isspace() for character in canonical):
+        raise ValueError("idempotency_key is malformed")
     return canonical
 
 

@@ -33,6 +33,8 @@ class AgentIntent(StrEnum):
     RETRY_RUNTIME_PROBE = "retry_runtime_probe"
     PAUSE = "pause"
     RESUME = "resume"
+    ENABLE_WRITE_LOCK = "enable_write_lock"
+    DISABLE_WRITE_LOCK = "disable_write_lock"
     EXPORT_DIAGNOSTICS = "export_diagnostics"
     EXIT = "exit"
 
@@ -44,10 +46,18 @@ class AgentViewState:
     server_connected: bool = False
     autocad_state: str = "Chưa kiểm tra"
     document_name: str | None = None
+    active_document_id: str | None = None
+    active_document_revision: str | None = None
     current_task: str | None = None
     agent_version: str = "0.1.0"
     package_version: str = "3.3-c1"
     paused: bool = False
+    hard_pause: bool = False
+    write_lock_enabled: bool = False
+    active_job_id: str | None = None
+    mismatch_reason: str | None = None
+    outcome_unknown: bool = False
+    support_id: str | None = None
     support_code: str | None = None
     product: str | None = None
     edition: str | None = None

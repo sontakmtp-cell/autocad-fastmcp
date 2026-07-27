@@ -20,6 +20,7 @@ from .pairing import (
     PairedCredentialProvider,
     PairingApiClient,
 )
+from .program_executor import ProgramCommandExecutor
 from .runtime.autolisp_file_ipc import AutoLispFileIPCCadReadPort
 from .runtime.broker import RuntimeBroker
 from .runtime.managed_dotnet import ReloadingManagedDotNetCadReadPort
@@ -75,7 +76,14 @@ def build_core(config: AgentConfig, *, headless: bool) -> AgentCore:
     telemetry = TelemetryClient.from_env()
     if telemetry is not None:
         executor = TelemetryDrawingInfoExecutor(executor, telemetry)
-    return AgentCore(config, credentials, ledger, executor)
+    return AgentCore(
+        config,
+        credentials,
+        ledger,
+        executor,
+        runtime_broker=runtime_broker,
+        program_executor=ProgramCommandExecutor(runtime_broker),
+    )
 
 
 async def pair_device(config: AgentConfig) -> None:

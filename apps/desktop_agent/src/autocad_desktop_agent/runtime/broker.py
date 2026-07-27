@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from autocad_contracts import RuntimeEvidence
+from autocad_contracts import (
+    ProgramExecutionBinding,
+    RuntimeEvidence,
+    canonical_capability_manifest_hash,
+    operation_registry_digest,
+)
 
 from ..config import AgentConfig, RuntimeMode
 from .autolisp_file_ipc import AutoLispFileIPCCadReadPort
@@ -72,6 +77,80 @@ class RuntimeBroker:
         )
         if selection is None:
             raise RuntimeSelectionError(reason or "runtime_unavailable")
+        return selection
+
+    async def describe_managed_runtime(self) -> BrokerSelection:
+        selection, reason = await self._try_adapter(
+            "managed_dotnet",
+            "managed_dotnet",
+        )
+        if selection is None:
+            raise RuntimeSelectionError(reason or "managed_host_unavailable")
+        return selection
+
+    async def select_write_runtime(
+        self,
+        binding: ProgramExecutionBinding,
+        *,
+        required_capability: str,
+        write_lock_enabled: bool,
+        write_required: bool = True,
+    ) -> BrokerSelection:
+        """Select the exact R25 Managed Host. Write never has a fallback."""
+
+        if not self._config.program_v0_enabled:
+            raise RuntimeSelectionError("feature_disabled")
+        if write_required and not self._config.managed_write_enabled:
+            raise RuntimeSelectionError("feature_disabled")
+        if self._config.lt_write_enabled:
+            raise RuntimeSelectionError("capability_missing")
+        if write_required and (
+            not self._config.phase6_allowed_device_ids
+            or self._config.device_id not in self._config.phase6_allowed_device_ids
+        ):
+            raise RuntimeSelectionError("device_not_allowed")
+        if write_required and not write_lock_enabled:
+            raise RuntimeSelectionError("write_lock_disabled")
+        if binding.runtime_id != "managed_dotnet" or binding.runtime_role != "primary":
+            raise RuntimeSelectionError("runtime_mismatch")
+        if binding.policy_version != self._config.program_policy_version:
+            raise RuntimeSelectionError("policy_mismatch")
+        selection = await self.describe_managed_runtime()
+        product = selection.manifest.cad_products[0] if selection.manifest.cad_products else None
+        runtime = selection.evidence
+        if (
+            product is None
+            or selection.probe.edition != "full"
+            or selection.probe.release_year != 2025
+            or runtime.id != binding.runtime_id
+            or runtime.role != binding.runtime_role
+            or runtime.host_family != binding.host_family
+            or runtime.host_family != "R25"
+            or runtime.host_version != binding.host_version
+            or runtime.package_id != binding.package_id
+            or runtime.package_version != binding.package_version
+            or runtime.package_hash != binding.package_hash
+        ):
+            raise RuntimeSelectionError("runtime_mismatch")
+        manifest_hash = canonical_capability_manifest_hash(selection.manifest)
+        if f"sha256:{manifest_hash}" != binding.capability_manifest_hash:
+            raise RuntimeSelectionError("capability_mismatch")
+        if selection.manifest.registry_version != binding.operation_registry_version:
+            raise RuntimeSelectionError("registry_mismatch")
+        manifest_registry_hash = getattr(
+            selection.manifest,
+            "operation_registry_hash",
+            None,
+        )
+        if (
+            manifest_registry_hash != binding.operation_registry_hash
+            or manifest_registry_hash != operation_registry_digest()
+        ):
+            raise RuntimeSelectionError("registry_mismatch")
+        if required_capability not in product.capabilities:
+            raise RuntimeSelectionError("capability_missing")
+        if not hasattr(selection.adapter, "program_command"):
+            raise RuntimeSelectionError("capability_missing")
         return selection
 
     async def _select_compatibility(

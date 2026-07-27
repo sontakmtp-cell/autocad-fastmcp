@@ -14,7 +14,8 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:evidence": "node ../../scripts/validate-phase6-portal-safety.mjs"
   },
   "dependencies": {
     "jose": "^6.0.13",

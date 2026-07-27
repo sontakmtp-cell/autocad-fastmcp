@@ -29,6 +29,14 @@ ALLOWED_FIELDS = frozenset(
         "capability_hash",
         "capability_manifest_hash",
         "registry_version",
+        "active_document_id",
+        "active_document_revision",
+        "write_lock_enabled",
+        "hard_pause",
+        "active_job_id",
+        "mismatch_reason",
+        "outcome_unknown",
+        "support_id",
         "package_manifest_hash",
         "heartbeat_id",
         "job_id",
@@ -41,7 +49,13 @@ ALLOWED_FIELDS = frozenset(
 )
 
 SHORT_ID_FIELDS = frozenset(
-    {"heartbeat_id", "job_id", "command_id", "correlation_id"}
+    {
+        "heartbeat_id",
+        "job_id",
+        "command_id",
+        "correlation_id",
+        "active_job_id",
+    }
 )
 
 

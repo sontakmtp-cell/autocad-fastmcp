@@ -1,7 +1,30 @@
-# Phase 4 C1 Desktop Agent
+# Desktop Agent
 
 Agent Windows chỉ đọc cho một máy lab. Agent chủ động mở kết nối outbound tới
 `/agent/ws`; không mở listener hoặc tunnel trên máy người dùng.
+
+Phase 6 bổ sung đường CAD Program create-only riêng:
+
+```text
+ProgramCommandExecutor → RuntimeBroker.select_write_runtime
+→ Managed .NET Host R25
+```
+
+Đường đọc Phase 3/4/5 vẫn dùng `ReadCommandExecutor`. CAD Program không fallback
+sang AutoLISP hoặc AutoCAD LT. Write lock mặc định tắt; hard pause, exact binding,
+per-document mutex, local ledger và `outcome_unknown` được Agent enforce trước
+khi trả evidence về Gateway.
+
+Các cờ Phase 6 phía Agent:
+
+```text
+AUTOCAD_MCP_PROGRAM_V0_ENABLED=0
+AUTOCAD_MCP_MANAGED_WRITE_ENABLED=0
+AUTOCAD_MCP_LT_WRITE_ENABLED=0
+AUTOCAD_MCP_PHASE6_ALLOWED_DEVICE_IDS=
+AUTOCAD_MCP_PROGRAM_POLICY_VERSION=
+AUTOCAD_AGENT_WRITE_LOCK_ENABLED=0
+```
 
 ## Provision lab
 

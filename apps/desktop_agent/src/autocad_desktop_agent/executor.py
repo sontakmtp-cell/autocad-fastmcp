@@ -67,6 +67,8 @@ class CadPresence:
     autocad_state: str
     document_name: str | None = None
     safe_error_code: str | None = None
+    active_document_id: str | None = None
+    active_document_revision: str | None = None
     product: str | None = None
     edition: str | None = None
     release_year: int | None = None
@@ -83,7 +85,7 @@ class CadPresence:
     registry_version: str | None = None
 
 
-class DrawingInfoExecutor:
+class ReadCommandExecutor:
     def __init__(
         self,
         port: CadReadPort,
@@ -154,6 +156,34 @@ class DrawingInfoExecutor:
         probe = getattr(selection, "probe", None)
         manifest = getattr(selection, "manifest", None)
         runtime_fields = {
+            "active_document_id": (
+                str(
+                    details.get(
+                        "active_document_id",
+                        details.get("document_id"),
+                    )
+                )
+                if details.get(
+                    "active_document_id",
+                    details.get("document_id"),
+                )
+                is not None
+                else None
+            ),
+            "active_document_revision": (
+                str(
+                    details.get(
+                        "active_document_revision",
+                        details.get("document_revision"),
+                    )
+                )
+                if details.get(
+                    "active_document_revision",
+                    details.get("document_revision"),
+                )
+                is not None
+                else None
+            ),
             "product": getattr(probe, "product", None),
             "edition": getattr(probe, "edition", None),
             "release_year": getattr(probe, "release_year", None),
@@ -313,3 +343,7 @@ class DrawingInfoExecutor:
             "dispatcher_missing_in_active_document": "dispatcher_not_loaded",
         }.get(code, code)
         return normalized if normalized in SAFE_BACKEND_ERRORS else "backend_error"
+
+
+# Compatibility name retained for Phase 3/4/5 callers and packaging.
+DrawingInfoExecutor = ReadCommandExecutor

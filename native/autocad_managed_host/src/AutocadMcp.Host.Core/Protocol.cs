@@ -34,7 +34,9 @@ public sealed record CommandRequest(
     string OperationId,
     int OperationVersion,
     string? DocumentId,
-    JsonElement Arguments);
+    JsonElement Arguments,
+    string CommandId = "",
+    DateTimeOffset? DeadlineAt = null);
 
 public sealed record RuntimeEvidence(
     string RuntimeId,
@@ -60,13 +62,18 @@ public static class CanonicalJson
 
     public static string Hash(JsonElement value)
     {
+        var canonical = Serialize(value);
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant();
+    }
+
+    public static string Serialize(JsonElement value)
+    {
         using var stream = new MemoryStream();
         using (var writer = new Utf8JsonWriter(stream, WriterOptions))
         {
             WriteCanonical(writer, value);
         }
-
-        return Convert.ToHexString(SHA256.HashData(stream.ToArray())).ToLowerInvariant();
+        return Encoding.UTF8.GetString(stream.ToArray());
     }
 
     private static void WriteCanonical(Utf8JsonWriter writer, JsonElement value)
@@ -94,18 +101,11 @@ public static class CanonicalJson
                 writer.WriteStringValue(value.GetString());
                 break;
             case JsonValueKind.Number:
-                if (value.TryGetInt64(out var integer))
-                {
-                    writer.WriteNumberValue(integer);
-                }
-                else if (value.TryGetDecimal(out var decimalValue))
-                {
-                    writer.WriteRawValue(decimalValue.ToString(CultureInfo.InvariantCulture));
-                }
-                else
+                if (!value.TryGetDouble(out var number) || !double.IsFinite(number))
                 {
                     throw new ProtocolValidationException("invalid_envelope", "Non-finite or unsupported number.");
                 }
+                writer.WriteRawValue(value.GetRawText());
                 break;
             case JsonValueKind.True:
                 writer.WriteBooleanValue(true);
@@ -287,9 +287,9 @@ public static class EnvelopeValidator
 
     private static void ValidateArguments(string operationId, JsonElement arguments)
     {
-        if (CadProgramContract.OperationIds.Contains(operationId))
+        if (CadProgramV02Contract.OperationIds.Contains(operationId))
         {
-            _ = CadProgramParser.ParseRequest(operationId, arguments);
+            _ = CadProgramV02Parser.ParseRequest(operationId, arguments);
             return;
         }
         if (operationId == "entity.snapshot.page")

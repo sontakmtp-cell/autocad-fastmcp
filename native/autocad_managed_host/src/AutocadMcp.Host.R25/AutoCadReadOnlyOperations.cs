@@ -37,8 +37,12 @@ internal sealed class AutoCadReadOnlyOperations(
                 "observe.summary",
                 "entity.snapshot.v2",
                 "document.events.v1",
-                "cad.program.v0",
-                "preview.database_abort.v1"
+                "cad.program.v0.2",
+                "cad.program.preview",
+                "cad.program.commit",
+                "cad.program.validate",
+                "preview.database_abort.v1",
+                "durable.receipt.v2"
             }
         };
     }
@@ -57,6 +61,7 @@ internal sealed class AutoCadReadOnlyOperations(
     {
         var document = Application.DocumentManager.MdiActiveDocument;
         var commandActive = GetCommandActive();
+        var identity = document is null ? null : identities.Get(document);
         return new
         {
             status = document is null
@@ -70,7 +75,10 @@ internal sealed class AutoCadReadOnlyOperations(
             edition = "full",
             release_year = 2025,
             series = "R25.0",
-            active_document_id = document is null ? null : identities.Get(document).DocumentId,
+            active_document_id = identity?.DocumentId,
+            active_document_revision = identity?.Revision
+                .Snapshot(DateTimeOffset.UtcNow)
+                .Revision.ToString(System.Globalization.CultureInfo.InvariantCulture),
             active_document_name = document is null ? null : Path.GetFileName(document.Name),
             is_quiescent = commandActive == 0,
             is_modal_dialog = (commandActive & 8) != 0,
@@ -80,8 +88,12 @@ internal sealed class AutoCadReadOnlyOperations(
                 "observe.summary",
                 "entity.snapshot.v2",
                 "document.events.v1",
-                "cad.program.v0",
-                "preview.database_abort.v1"
+                "cad.program.v0.2",
+                "cad.program.preview",
+                "cad.program.commit",
+                "cad.program.validate",
+                "preview.database_abort.v1",
+                "durable.receipt.v2"
             }
         };
     }

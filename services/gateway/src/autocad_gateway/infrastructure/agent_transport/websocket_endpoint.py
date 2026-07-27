@@ -17,6 +17,7 @@ from autocad_contracts import (
     HelloMessage,
     MAX_WEBSOCKET_MESSAGE_BYTES,
     ProgressMessage,
+    ProgramResultMessage,
     PROTOCOL_VERSION,
     ReconcileResultMessage,
     ResultMessage,
@@ -46,6 +47,7 @@ _RUNTIME_AGENT_MESSAGES = (
     ProgressMessage,
     ResultMessage,
     ReconcileResultMessage,
+    ProgramResultMessage,
 )
 
 
@@ -170,6 +172,11 @@ async def serve_agent_websocket(
             return
 
         session_id = f"session-{uuid.uuid4()}"
+        capability_manifest = (
+            hello.capability_manifest.model_dump(mode="json", exclude_none=True)
+            if hello.capability_manifest is not None
+            else None
+        )
         connection = AgentConnection(
             device_id=authenticated_device,
             session_id=session_id,
@@ -185,6 +192,22 @@ async def serve_agent_websocket(
             current_command_id=hello.current_command_id,
             packages=tuple(item.model_dump(mode="json") for item in hello.packages),
             package_manifest_hash=hello.package_manifest_hash,
+            capability_manifest=capability_manifest,
+            capability_manifest_hash=hello.capability_manifest_hash,
+            operation_registry_hash=(
+                capability_manifest.get("operation_registry_hash")
+                if capability_manifest is not None
+                else None
+            ),
+            registry_version=(
+                capability_manifest.get("registry_version")
+                if capability_manifest is not None
+                else None
+            ),
+            write_lock_enabled=bool(hello.write_lock_enabled),
+            hard_pause=bool(hello.hard_pause),
+            active_document_id=hello.active_document_id,
+            active_document_revision=hello.active_document_revision,
         )
         await registry.add(connection)
         active_check = getattr(authenticator, "is_active", None)
@@ -274,6 +297,15 @@ async def serve_agent_websocket(
                 continue
 
             if isinstance(message, HeartbeatMessage):
+                phase6_state_present = bool(
+                    {
+                        "write_lock_enabled",
+                        "hard_pause",
+                        "active_document_id",
+                        "active_document_revision",
+                    }
+                    & message.model_fields_set
+                )
                 marked = await registry.mark_heartbeat(
                     connection.device_id,
                     connection.session_id,
@@ -284,6 +316,11 @@ async def serve_agent_websocket(
                     document_name=message.document_name,
                     paused=message.paused,
                     current_command_id=message.current_command_id,
+                    write_lock_enabled=message.write_lock_enabled,
+                    hard_pause=message.hard_pause,
+                    active_document_id=message.active_document_id,
+                    active_document_revision=message.active_document_revision,
+                    phase6_state_present=phase6_state_present,
                 )
                 if not marked:
                     await _safe_close(websocket, code=4001, reason="connection replaced")
