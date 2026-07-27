@@ -147,6 +147,7 @@ class ProgramCommandExecutor:
             )
         if command.kind == "program_preview":
             arguments["preview_id"] = command.preview_id
+            arguments["expires_at"] = command.expires_at
         elif command.kind == "program_commit":
             arguments["preview_binding"] = {
                 "preview_id": command.preview_id,

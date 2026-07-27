@@ -587,9 +587,15 @@ class ProgramCommandMessage(AgentEnvelope):
     binding: ProgramExecutionBinding
     program: "CadProgram | None" = None
     preview_id: str | None = Field(default=None, min_length=1, max_length=128)
+    expires_at: str | None = Field(default=None, min_length=1, max_length=64)
     preview_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
     receipt_id: str | None = Field(default=None, min_length=1, max_length=128)
     validation: ProgramValidationRequest | None = None
+
+    @field_validator("expires_at")
+    @classmethod
+    def _preview_expiry_is_timezone_aware(cls, value: str | None) -> str | None:
+        return _timezone_timestamp(value) if value is not None else None
 
     @model_validator(mode="after")
     def _fields_match_kind(self) -> "ProgramCommandMessage":
@@ -599,21 +605,31 @@ class ProgramCommandMessage(AgentEnvelope):
         if self.kind == "program_preview":
             if (
                 self.preview_id is None
+                or self.expires_at is None
                 or {"preview_digest", "receipt_id", "validation"} & self.model_fields_set
             ):
-                raise ValueError("preview requires its exact ID and no prior result fields")
+                raise ValueError(
+                    "preview requires its exact ID and expiry and no prior result fields"
+                )
         elif self.kind == "program_commit":
             if (
                 self.preview_id is None
                 or self.preview_digest is None
                 or self.receipt_id is None
                 or self.validation is not None
+                or "expires_at" in self.model_fields_set
             ):
                 raise ValueError("commit requires exact preview and receipt binding")
         else:
             if self.effect_class != "read" or self.program is not None or self.validation is None:
                 raise ValueError("validate requires read effect and validation request")
-            if {"program", "preview_id", "preview_digest", "receipt_id"} & self.model_fields_set:
+            if {
+                "program",
+                "preview_id",
+                "expires_at",
+                "preview_digest",
+                "receipt_id",
+            } & self.model_fields_set:
                 raise ValueError("validate cannot include preview fields")
         if self.program is not None:
             from .program import canonical_program_digest
@@ -646,6 +662,8 @@ def program_command_payload(
         payload["program"] = parsed.program.model_dump(mode="json", exclude_none=True)
     if parsed.preview_id is not None:
         payload["preview_id"] = parsed.preview_id
+    if parsed.expires_at is not None:
+        payload["expires_at"] = parsed.expires_at
     if parsed.preview_digest is not None:
         payload["preview_digest"] = parsed.preview_digest
     if parsed.receipt_id is not None:
@@ -947,11 +965,12 @@ def agent_program_command_json_schema() -> dict[str, Any]:
                 "required": ["kind"],
             },
             "then": {
-                "required": ["program", "preview_id"],
+                "required": ["program", "preview_id", "expires_at"],
                 "properties": {
                     "effect_class": {"const": "write"},
                     "program": {"$ref": "#/$defs/CadProgram"},
                     "preview_id": {"type": "string"},
+                    "expires_at": {"type": "string"},
                 },
                 "not": {
                     "anyOf": [
@@ -976,7 +995,12 @@ def agent_program_command_json_schema() -> dict[str, Any]:
                     "preview_digest": {"type": "string"},
                     "receipt_id": {"type": "string"},
                 },
-                "not": {"required": ["validation"]},
+                "not": {
+                    "anyOf": [
+                        {"required": ["expires_at"]},
+                        {"required": ["validation"]},
+                    ]
+                },
             },
         },
         {
@@ -994,6 +1018,7 @@ def agent_program_command_json_schema() -> dict[str, Any]:
                     "anyOf": [
                         {"required": ["program"]},
                         {"required": ["preview_id"]},
+                        {"required": ["expires_at"]},
                         {"required": ["preview_digest"]},
                         {"required": ["receipt_id"]},
                     ]

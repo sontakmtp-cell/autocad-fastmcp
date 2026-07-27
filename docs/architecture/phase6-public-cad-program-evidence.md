@@ -15,7 +15,7 @@
 - Live CAD target: AutoCAD Mechanical 2025, full edition, R25.0.
 - Authorized test drawing: `D:\Tai lieu\CAD\drawing33.dwg`.
 - Final unsigned lab bundle package hash:
-  `sha256:378e5f05663314ae7f3141ade64ae5820bcf4a9c5b77d1030184d808dabd740d`.
+  `sha256:704ac7f244463ddddd47443cdd4e937709375a020c928a62aa050ec1a35c0e09`.
 
 ## 2. Requirement-to-evidence matrix
 
@@ -28,6 +28,7 @@
 | Atomic create-only commit | Host transaction contains geometry and XRecord receipt; live commit and validation | Pass |
 | Exact retry has no second effect | durable receipt lookup and duplicate tests; live duplicate receipt run | Pass |
 | Exact binding and stale denial | document/runtime/package/capability/registry/policy checks and tests | Pass |
+| Gateway-owned preview expiry | exact expiry is hashed, forwarded, echoed, and materialized without a second Host clock | Pass |
 | Unknown outcome safety | `outcome_unknown` retains the document write lock and remains recoverable after deadline; an exact terminal reconciliation releases it | Pass |
 | Write default-off | Gateway/Agent config defaults and launcher regression test | Pass |
 | Managed R25 only | runtime broker has no write fallback; LT and high-risk flags are rejected | Pass |
@@ -41,10 +42,10 @@ Final main-agent runs:
 
 | Surface | Result |
 |---|---|
-| Contracts and Host contracts | 47 passed |
+| Contracts and Host contracts | 48 passed |
 | Gateway | 204 passed |
 | Desktop Agent | 110 passed |
-| Managed Host core | 44 passed |
+| Managed Host core | 45 passed |
 | Portal unit/component | 22 passed |
 | Portal Playwright | 6 passed |
 | Next.js production build | Pass |
@@ -57,6 +58,8 @@ Important regression coverage includes:
 - Gateway-owned preview, receipt, and validation IDs crossing Agent and Host;
 - cross-language canonical preview digest and deterministic receipt ID vectors;
 - materializer denial for mismatched preview ID, preview digest, and receipt ID;
+- exact Gateway preview expiry crossing Agent and Host, delayed-Host success,
+  and materializer denial for a tampered return value;
 - one write per document and durable idempotency;
 - stale snapshot, package, capability, registry, and policy denial;
 - no LT or compatibility write fallback;
@@ -158,6 +161,27 @@ Gateway-owned identifiers end to end:
   passed with no failures;
 - drawing saved successfully.
 
+### Exact preview-expiry review-fix run
+
+After the second PR review, the live typed
+`ProgramCommandExecutor → Managed Host R25 → drawing33.dwg` path deliberately
+waited 250 ms after the Gateway-style expiry was created and proved:
+
+- package hash:
+  `sha256:704ac7f244463ddddd47443cdd4e937709375a020c928a62aa050ec1a35c0e09`;
+- preview ID:
+  `preview-916be592-1932-498f-8ec0-d2b25387de2b`;
+- Gateway expiry and Host result expiry were exactly identical:
+  `2026-07-27T13:02:51.847033+00:00`;
+- preview digest:
+  `sha256:10d4b609dd684c1cd4e574c313c5afd787b7b60864e0c816cb090d88f2c8c75a`;
+- receipt:
+  `AUTOCAD_MCP_PROGRAM_c012d8b93abe6f01ed8758805b41dd71`;
+- revision `2734262597804127` to `2734262597804128`;
+- preview left the drawing unchanged, commit created one entity, and all six
+  validation checks passed with no failures;
+- drawing saved successfully.
+
 ## 7. Portal and release-state evidence
 
 - Program, preview, receipt, validation, and job pages render bounded
@@ -199,6 +223,13 @@ resumes only pre-execution Agent ledger states. The CI failure was caused by
 `poc/phase3-simulated-agent/uv.lock` still pinning `autocad-contracts` 0.1.1;
 that nested lockfile is updated to 0.2.0. The root lockfile was already current.
 
+The second PR review identified that Gateway and Host independently calculated
+preview expiry. The Gateway now owns one exact timezone-aware `expires_at`
+value. It is covered by the typed payload hash, forwarded unchanged through the
+Agent, parsed for the Host ledger without reformatting, echoed unchanged, and
+required to match exactly during Gateway materialization. Tests cover a delayed
+Host, missing or malformed expiry, hash changes, and tampered return values.
+
 No review evidence found LT write, COM write, raw command execution, high-risk
 operations, public trusted approval, or owner-boundary bypass.
 
@@ -230,5 +261,5 @@ this implementation and remain required:
 - Set program and managed-write flags off; keep LT read-only.
 - Preserve audit, program, job, and receipt records for investigation.
 - Restore the prior per-user bundle backup:
-  `AutocadMcp.ManagedHost.R25.bundle.backup-20260727-181615`.
+  `AutocadMcp.ManagedHost.R25.bundle.backup-20260727-194223`.
 - Restart Mechanical 2025 and verify the read-only health/observation path.

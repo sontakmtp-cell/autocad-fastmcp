@@ -69,6 +69,8 @@ def command(kind: str) -> dict:
     if kind in {"program_preview", "program_commit"}:
         value["program"] = complete_program()
         value["preview_id"] = "preview-001"
+    if kind == "program_preview":
+        value["expires_at"] = "2026-07-26T01:15:00+00:00"
     if kind == "program_commit":
         value["preview_digest"] = "sha256:" + "5" * 64
         value["receipt_id"] = "AUTOCAD_MCP_PROGRAM_" + "6" * 32
@@ -94,7 +96,7 @@ def test_typed_program_commands_round_trip(kind):
 @pytest.mark.parametrize("kind", ["program_preview", "program_commit", "program_validate"])
 def test_program_command_payload_projection_has_model_wire_and_hash_parity(kind):
     expected_hashes = {
-        "program_preview": "4e63e8ba5c7d7aa051caf0a2067677b93131bcab6572d91801538862f4feb93f",
+        "program_preview": "3cad8aa251b71658020bda9ee7447bed7958e9093bf771514290eb42995cb30f",
         "program_commit": "8a95cb1e0cb748fef60efbf822fcdac1ce6540320a1e8d27ec1abc588af79f2d",
         "program_validate": "644ac91b9b06052af52cfc1cea81846ad4f00dfe1093a6314463a42656b0eb58",
     }
@@ -146,13 +148,43 @@ def test_commit_requires_preview_and_preview_rejects_client_preview_fields():
 
     injected = command("program_preview")
     injected["preview_digest"] = "sha256:" + "5" * 64
-    with pytest.raises(ValidationError, match="preview requires its exact ID"):
+    with pytest.raises(
+        ValidationError,
+        match="preview requires its exact ID and expiry",
+    ):
         ProgramCommandMessage.model_validate(injected)
 
     injected_null = command("program_preview")
     injected_null["preview_id"] = None
-    with pytest.raises(ValidationError, match="preview requires its exact ID"):
+    with pytest.raises(
+        ValidationError,
+        match="preview requires its exact ID and expiry",
+    ):
         ProgramCommandMessage.model_validate(injected_null)
+
+    missing_expiry = command("program_preview")
+    missing_expiry.pop("expires_at")
+    with pytest.raises(
+        ValidationError,
+        match="preview requires its exact ID and expiry",
+    ):
+        ProgramCommandMessage.model_validate(missing_expiry)
+
+    for kind in ("program_commit", "program_validate"):
+        injected_expiry = command(kind)
+        injected_expiry["expires_at"] = "2026-07-26T01:15:00+00:00"
+        with pytest.raises(ValidationError):
+            ProgramCommandMessage.model_validate(injected_expiry)
+
+
+def test_preview_expiry_is_canonical_and_covered_by_payload_hash():
+    value = command("program_preview")
+    value["expires_at"] = "2026-07-26T08:15:00+07:00"
+    parsed = ProgramCommandMessage.model_validate(value)
+    assert parsed.expires_at == "2026-07-26T01:15:00+00:00"
+    original_hash = program_command_payload_hash(parsed)
+    changed = parsed.model_copy(update={"expires_at": "2026-07-26T01:15:01+00:00"})
+    assert program_command_payload_hash(changed) != original_hash
 
 
 @pytest.mark.parametrize(

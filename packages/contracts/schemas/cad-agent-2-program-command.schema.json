@@ -1062,6 +1062,20 @@
       "default": null,
       "title": "Preview Id"
     },
+    "expires_at": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expires At"
+    },
     "preview_digest": {
       "anyOf": [
         {
@@ -1131,7 +1145,8 @@
       "then": {
         "required": [
           "program",
-          "preview_id"
+          "preview_id",
+          "expires_at"
         ],
         "properties": {
           "effect_class": {
@@ -1141,6 +1156,9 @@
             "$ref": "#/$defs/CadProgram"
           },
           "preview_id": {
+            "type": "string"
+          },
+          "expires_at": {
             "type": "string"
           }
         },
@@ -1201,8 +1219,17 @@
           }
         },
         "not": {
-          "required": [
-            "validation"
+          "anyOf": [
+            {
+              "required": [
+                "expires_at"
+              ]
+            },
+            {
+              "required": [
+                "validation"
+              ]
+            }
           ]
         }
       }
@@ -1240,6 +1267,11 @@
             {
               "required": [
                 "preview_id"
+              ]
+            },
+            {
+              "required": [
+                "expires_at"
               ]
             },
             {

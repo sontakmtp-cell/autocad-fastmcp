@@ -125,6 +125,7 @@ public sealed class CadProgramV02Tests
             "cad.program.preview",
             previewDocument.RootElement);
         Assert.Equal("preview-001", previewRequest.PreviewId);
+        Assert.Equal("2026-07-26T01:15:00+00:00", previewRequest.PreviewExpiresAt);
 
         var previewDigest = CadProgramV02Parser.BuildPreviewDigest(
             previewRequest.PreviewId!,
@@ -170,6 +171,28 @@ public sealed class CadProgramV02Tests
             validateDocument.RootElement);
         Assert.Equal("validation-001", validateRequest.Validation!.ValidationId);
         Assert.Equal(receiptId, validateRequest.Validation.ReceiptId);
+    }
+
+    [Fact]
+    public void PreviewRequest_RequiresAnExactTimezoneAwareGatewayExpiry()
+    {
+        var missing = PreviewArguments(GoldenProgram());
+        missing.Remove("expires_at");
+        using var missingDocument = JsonDocument.Parse(missing.ToJsonString());
+        var missingError = Assert.Throws<ProtocolValidationException>(
+            () => CadProgramV02Parser.ParseRequest(
+                "cad.program.preview",
+                missingDocument.RootElement));
+        Assert.Equal("program_invalid", missingError.Code);
+
+        var localTime = PreviewArguments(GoldenProgram());
+        localTime["expires_at"] = "2026-07-26T01:15:00";
+        using var localDocument = JsonDocument.Parse(localTime.ToJsonString());
+        var localError = Assert.Throws<ProtocolValidationException>(
+            () => CadProgramV02Parser.ParseRequest(
+                "cad.program.preview",
+                localDocument.RootElement));
+        Assert.Equal("program_invalid", localError.Code);
     }
 
     [Fact]
@@ -359,7 +382,8 @@ public sealed class CadProgramV02Tests
     {
         ["program"] = program,
         ["execution_binding"] = Binding(),
-        ["preview_id"] = "preview-001"
+        ["preview_id"] = "preview-001",
+        ["expires_at"] = "2026-07-26T01:15:00+00:00"
     };
 
     private static JsonObject Binding() => new()

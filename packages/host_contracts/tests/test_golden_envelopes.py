@@ -60,6 +60,7 @@ def test_schemas_are_json_schema_2020_12_and_forbid_extra_envelope_fields():
     command_arguments = payloads["$defs"]["command"]["properties"]["arguments"]["properties"]
     assert command_arguments["program"]["$ref"] == "cad-program-0.2.schema.json"
     assert command_arguments["preview_id"]["maxLength"] == 128
+    assert command_arguments["expires_at"]["format"] == "date-time"
     assert command_arguments["receipt_id"]["maxLength"] == 128
     assert set(command_arguments["validation"]["required"]) == {
         "validation_id",

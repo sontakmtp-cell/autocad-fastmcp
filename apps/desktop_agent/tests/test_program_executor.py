@@ -84,6 +84,9 @@ def command(kind: str = "program_preview", **updates) -> ProgramCommandMessage:
     if kind == "program_preview":
         values["program"] = program
         values["preview_id"] = "preview-1"
+        values["expires_at"] = (
+            datetime.now(timezone.utc) + timedelta(minutes=5)
+        ).isoformat()
     elif kind == "program_commit":
         values.update(
             program=program,
@@ -139,9 +142,7 @@ class Adapter:
                     arguments.get("preview_id", "preview-1"),
                     arguments["execution_binding"],
                 ),
-                "expires_at": (
-                    datetime.now(timezone.utc) + timedelta(minutes=5)
-                ).isoformat(),
+                "expires_at": arguments.get("expires_at"),
                 "planned_operation_count": 2,
                 "planned_entity_count": 1,
                 "planned_layer_count": 1,
@@ -186,8 +187,9 @@ class Broker:
 async def test_preview_uses_typed_managed_host_arguments():
     adapter = Adapter()
     broker = Broker(adapter)
+    preview_command = command()
     result = await ProgramCommandExecutor(broker).execute(
-        command(),
+        preview_command,
         write_lock_enabled=True,
     )
 
@@ -197,8 +199,10 @@ async def test_preview_uses_typed_managed_host_arguments():
         "program",
         "execution_binding",
         "preview_id",
+        "expires_at",
     }
     assert adapter.calls[0][1]["preview_id"] == "preview-1"
+    assert adapter.calls[0][1]["expires_at"] == preview_command.expires_at
     assert broker.calls[0][1]["required_capability"] == "cad.program.preview"
     assert broker.calls[0][1]["write_required"] is True
 

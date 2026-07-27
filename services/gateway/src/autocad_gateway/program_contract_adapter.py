@@ -206,6 +206,7 @@ def program_command_fields(
         values["program"] = payload["program"]
     if kind == "program_preview":
         values["preview_id"] = execution["preview_id"]
+        values["expires_at"] = execution["expires_at"]
     if kind == "program_commit":
         values["preview_id"] = execution["preview_id"]
         values["preview_digest"] = normalize_sha256_digest(

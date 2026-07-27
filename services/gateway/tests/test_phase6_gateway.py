@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from datetime import datetime, timedelta, timezone
@@ -278,6 +279,7 @@ async def _finish_preview(
     assert "payload" not in command
     assert command["program"]["schema_version"] == "cad.program/0.2"
     assert command["preview_id"] == execution["preview_id"]
+    assert command["expires_at"] == execution["expires_at"]
     await service.job_service.handle_message(
         connection,
         ProgramResultMessage(
@@ -393,6 +395,7 @@ async def test_gateway_program_command_validates_and_hashes_identically_for_agen
     assert command.payload_hash == job["payload_hash"]
     assert command.payload_hash == program_command_payload_hash(command)
     assert command.binding.capability_manifest_hash == "sha256:" + CAPABILITY_SHA
+    assert command.expires_at == job["payload"]["execution"]["expires_at"]
 
 
 async def test_typed_heartbeat_updates_and_clears_phase6_write_document_state(phase6):
@@ -496,13 +499,21 @@ async def test_preview_materializes_atomically_and_enforces_one_write_per_docume
             "bounds_valid": True,
         },
     }
-    for field, wrong_value in (
-        ("preview_id", "preview-wrong"),
-        ("preview_digest", "sha256:" + ("f" * 64)),
+    for field, wrong_value, error in (
+        ("preview_id", "preview-wrong", "binding_mismatch"),
+        ("preview_digest", "sha256:" + ("f" * 64), "binding_mismatch"),
+        (
+            "expires_at",
+            (
+                datetime.fromisoformat(execution["expires_at"])
+                + timedelta(seconds=1)
+            ).isoformat(),
+            "program_result_invalid",
+        ),
     ):
         invalid = dict(result)
         invalid[field] = wrong_value
-        with pytest.raises(RepositoryConflict, match="binding_mismatch"):
+        with pytest.raises(RepositoryConflict, match=error):
             await service.program_repository.finalize_program_job(
                 job_id=job["job_id"],
                 device_id=DEVICE,
@@ -515,6 +526,7 @@ async def test_preview_materializes_atomically_and_enforces_one_write_per_docume
                 session_id="session-phase6",
                 agent_sequence=1,
             )
+    await asyncio.sleep(0.01)
     await service.program_repository.finalize_program_job(
         job_id=job["job_id"],
         device_id=DEVICE,

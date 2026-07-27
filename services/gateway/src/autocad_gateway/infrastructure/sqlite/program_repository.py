@@ -595,7 +595,8 @@ class ProgramRepository:
             if (
                 result_expiry.tzinfo is None
                 or result_expiry <= datetime.now(timezone.utc)
-                or result_expiry > gateway_expiry
+                or result_expiry != gateway_expiry
+                or value["expires_at"] != execution["expires_at"]
             ):
                 raise RepositoryConflict("program_result_invalid")
             for field in (

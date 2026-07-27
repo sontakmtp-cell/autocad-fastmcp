@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -135,6 +136,7 @@ public sealed record CadProgramV02Request(
     CadProgramV02? Program,
     CadExecutionBinding ExecutionBinding,
     string? PreviewId,
+    string? PreviewExpiresAt,
     CadPreviewReference? Preview,
     string? ReceiptId,
     CadValidationRequest? Validation);
@@ -319,7 +321,7 @@ public static class CadProgramV02Parser
         {
             "cad.program.preview" => new HashSet<string>
             {
-                "program", "execution_binding", "preview_id"
+                "program", "execution_binding", "preview_id", "expires_at"
             },
             "cad.program.commit" => new HashSet<string>
             {
@@ -336,6 +338,7 @@ public static class CadProgramV02Parser
         var binding = ParseExecutionBinding(arguments.GetProperty("execution_binding"));
         CadProgramV02? program = null;
         string? previewId = null;
+        string? previewExpiresAt = null;
         CadPreviewReference? preview = null;
         string? receiptId = null;
         CadValidationRequest? validation = null;
@@ -357,6 +360,7 @@ public static class CadProgramV02Parser
         if (operationId == "cad.program.preview")
         {
             previewId = Identifier(arguments, "preview_id", 128);
+            previewExpiresAt = Timestamp(arguments, "expires_at");
         }
         if (operationId == "cad.program.validate")
         {
@@ -366,6 +370,7 @@ public static class CadProgramV02Parser
             program,
             binding,
             previewId,
+            previewExpiresAt,
             preview,
             receiptId,
             validation);
@@ -1080,6 +1085,26 @@ public static class CadProgramV02Parser
             throw Invalid($"{name} contains whitespace.");
         }
         return revision;
+    }
+
+    private static string Timestamp(JsonElement value, string name)
+    {
+        var timestamp = RequiredString(value, name, 64);
+        var hasExplicitOffset =
+            timestamp.EndsWith("Z", StringComparison.Ordinal) ||
+            (timestamp.Length >= 6 &&
+             timestamp[^6] is '+' or '-' &&
+             timestamp[^3] == ':');
+        if (!hasExplicitOffset ||
+            !DateTimeOffset.TryParse(
+                timestamp,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out _))
+        {
+            throw Invalid($"{name} must be an ISO 8601 timestamp with a UTC offset.");
+        }
+        return timestamp;
     }
 
     private static string Digest(JsonElement value, string name)

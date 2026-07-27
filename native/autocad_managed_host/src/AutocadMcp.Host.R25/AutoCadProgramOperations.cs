@@ -67,6 +67,9 @@ internal sealed class AutoCadProgramOperations(
                 request.PreviewId ?? throw new ProtocolValidationException(
                     "program_invalid",
                     "Preview requires the Gateway preview ID."),
+                request.PreviewExpiresAt ?? throw new ProtocolValidationException(
+                    "program_invalid",
+                    "Preview requires the Gateway expiry."),
                 RequireProgram(request),
                 request.ExecutionBinding),
             "cad.program.commit" => Commit(
@@ -94,6 +97,7 @@ internal sealed class AutoCadProgramOperations(
     private object Preview(
         Document document,
         string previewId,
+        string previewExpiresAt,
         CadProgramV02 program,
         CadExecutionBinding binding)
     {
@@ -121,7 +125,16 @@ internal sealed class AutoCadProgramOperations(
                 "Preview transaction changed the drawing revision after abort.");
         }
         var previewDigest = CadProgramV02Parser.BuildPreviewDigest(previewId, program, binding);
-        var expiresAt = DateTimeOffset.UtcNow.AddSeconds(program.Budgets.PreviewTtlSeconds);
+        var expiresAt = DateTimeOffset.Parse(
+            previewExpiresAt,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.RoundtripKind);
+        if (expiresAt <= DateTimeOffset.UtcNow)
+        {
+            throw new ProtocolValidationException(
+                "preview_expired",
+                "The Gateway preview expiry has elapsed.");
+        }
         _previews.Add(new CadPreviewRecord(
             previewId,
             previewDigest,
@@ -132,7 +145,7 @@ internal sealed class AutoCadProgramOperations(
         {
             preview_id = previewId,
             preview_digest = previewDigest,
-            expires_at = expiresAt.ToString("O"),
+            expires_at = previewExpiresAt,
             planned_operation_count = program.Operations.Count,
             planned_entity_count = applied.Entities.Count,
             planned_layer_count = applied.EnsuredLayers.Count,
