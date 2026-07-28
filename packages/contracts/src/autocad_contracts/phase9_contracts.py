@@ -37,13 +37,18 @@ class OpaqueCatalogRef(Phase9Model):
     digest: str = Field(pattern=_DIGEST)
 
 
-class PersistedOutputRef(Phase9Model):
+class StepOutputRef(Phase9Model):
+    kind: Literal["step_output"]
     source_step_id: str = Field(pattern=_ID)
     output_path: str = Field(pattern=r"^[a-zA-Z0-9_.-]{1,128}$")
 
+class RunInputRef(Phase9Model):
+    kind: Literal["run_input"]
+    input_path: str = Field(pattern=r"^[a-zA-Z0-9_.-]{1,128}$")
+
 
 class TypedCondition(Phase9Model):
-    left: PersistedOutputRef
+    left: StepOutputRef
     operator: Literal["eq", "neq", "in"]
     value: str | int | bool | list[str | int | bool] = Field(max_length=16)
 
@@ -134,7 +139,7 @@ class WorkflowStep(Phase9Model):
     step_id: str = Field(pattern=_ID)
     kind: Literal["observe", "query", "run_planner", "render_template", "prepare_program", "preview_program", "wait_user_input", "wait_program_revision", "request_commit", "wait_job", "validate_receipt", "branch", "emit_report", "request_rollback", "finish"]
     depends_on: list[str] = Field(default_factory=list, max_length=8)
-    input_bindings: dict[str, Any] = Field(default_factory=dict, max_length=32)
+    input_bindings: dict[str, RunInputRef | StepOutputRef | str | int | bool | list[str | int | bool]] = Field(default_factory=dict, max_length=32)
     condition: TypedCondition | None = None
     output_schema: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: int = Field(ge=1, le=86_400)
@@ -150,7 +155,7 @@ class WorkflowStep(Phase9Model):
             if not re.fullmatch(_ID, name) or not isinstance(binding, (str, int, bool, type(None), list, dict)):
                 raise ValueError("workflow binding is invalid")
             if isinstance(binding, dict):
-                PersistedOutputRef.model_validate(binding)
+                raise ValueError("workflow binding must use a strict discriminated ref")
             if isinstance(binding, list) and (len(binding) > 16 or not all(isinstance(x, (str, int, bool)) for x in binding)):
                 raise ValueError("workflow literal list is invalid")
         if self.kind == "branch" and self.condition is None:
@@ -183,6 +188,18 @@ class WorkflowDefinition(Phase9Model):
         known = set(ids)
         if any(not set(step.depends_on) <= known for step in self.steps):
             raise ValueError("workflow dependency is missing")
+        ancestors = {step.step_id: set(step.depends_on) for step in self.steps}
+        changed = True
+        while changed:
+            changed = False
+            for key, values in ancestors.items():
+                expanded = values | set().union(*(ancestors.get(value, set()) for value in values))
+                if expanded != values: ancestors[key] = expanded; changed = True
+        for step in self.steps:
+            refs = list(step.input_bindings.values()) + ([step.condition.left] if step.condition else [])
+            for ref in refs:
+                if isinstance(ref, StepOutputRef) and ref.source_step_id not in ancestors[step.step_id]:
+                    raise ValueError("step output binding must reference an ancestor dependency")
         children = {step_id: 0 for step_id in ids}
         for step in self.steps:
             for dependency in step.depends_on:

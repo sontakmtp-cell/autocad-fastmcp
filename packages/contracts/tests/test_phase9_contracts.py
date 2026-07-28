@@ -56,7 +56,7 @@ def test_skill_and_workflow_are_strict_and_domain_separated():
 def test_workflow_rejects_cycles_and_wait_schema_is_pinned():
     payload = workflow_payload()
     payload["steps"] = [
-        {"step_id": "a", "kind": "branch", "depends_on": ["b"], "input_bindings": {}, "condition": {"left": {"source_step_id": "b", "output_path": "state"}, "operator": "eq", "value": "ok"}, "output_schema": {}, "timeout_seconds": 1},
+        {"step_id": "a", "kind": "branch", "depends_on": ["b"], "input_bindings": {}, "condition": {"left": {"kind": "step_output", "source_step_id": "b", "output_path": "state"}, "operator": "eq", "value": "ok"}, "output_schema": {}, "timeout_seconds": 1},
         {"step_id": "b", "kind": "finish", "depends_on": ["a"], "input_bindings": {}, "output_schema": {}, "timeout_seconds": 1},
     ]
     payload["definition_digest"] = canonical_workflow_definition_digest(payload)
