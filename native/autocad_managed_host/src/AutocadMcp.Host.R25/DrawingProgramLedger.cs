@@ -12,6 +12,14 @@ internal static class DrawingProgramLedger
     private const string LedgerDictionaryKey = "AUTOCAD_MCP_PROGRAM_RECEIPTS";
     private const string CheckpointDictionaryKey = "AUTOCAD_MCP_ROLLBACK_CHECKPOINTS";
     private const string RollbackReceiptDictionaryKey = "AUTOCAD_MCP_ROLLBACK_RECEIPTS";
+    private const string Phase8ReceiptDictionaryKey = "AUTOCAD_MCP_PHASE8_RECEIPTS";
+    private const string Phase8CreatedCheckpointDictionaryKey =
+        "AUTOCAD_MCP_PHASE8_CREATED_CHECKPOINTS";
+    private const string CheckpointV2DictionaryKey = "AUTOCAD_MCP_ROLLBACK_CHECKPOINTS_V2";
+    private const string Phase8RestoreReceiptDictionaryKey =
+        "AUTOCAD_MCP_PHASE8_RESTORE_RECEIPTS";
+    private const string Phase8CreatedRollbackReceiptDictionaryKey =
+        "AUTOCAD_MCP_PHASE8_CREATED_ROLLBACK_RECEIPTS";
     private const int MaximumReceipts = 4096;
 
     public static DurableProgramReceipt? Find(
@@ -326,6 +334,187 @@ internal static class DrawingProgramLedger
             transaction,
             RollbackReceiptDictionaryKey,
             receipt.DictionaryKey,
+            receipt.Serialize());
+
+    public static CadManagedCommitRecord? FindPhase8Commit(
+        Database database,
+        Transaction transaction,
+        string receiptId)
+    {
+        CadRollbackCheckpointV1.RequireId(receiptId, 128);
+        var json = ReadRecord(
+            database,
+            transaction,
+            Phase8ReceiptDictionaryKey,
+            receiptId);
+        if (json is null)
+        {
+            return null;
+        }
+        var record = CadManagedCommitRecord.Parse(json);
+        if (record.Receipt.ReceiptId != receiptId)
+        {
+            throw new ProtocolValidationException(
+                "ledger_corrupt",
+                "Phase 8 receipt key does not match its durable content.");
+        }
+        return record;
+    }
+
+    public static void AddPhase8Commit(
+        Database database,
+        Transaction transaction,
+        CadManagedCommitRecord record) =>
+        AddRecord(
+            database,
+            transaction,
+            Phase8ReceiptDictionaryKey,
+            record.Receipt.ReceiptId,
+            record.Serialize());
+
+    public static CadCreatedOutputCheckpointV1? FindPhase8CreatedCheckpoint(
+        Database database,
+        Transaction transaction,
+        string checkpointId)
+    {
+        CadRollbackCheckpointV1.RequireId(checkpointId, 64);
+        var json = ReadRecord(
+            database,
+            transaction,
+            Phase8CreatedCheckpointDictionaryKey,
+            checkpointId);
+        if (json is null)
+        {
+            return null;
+        }
+        var checkpoint = CadCreatedOutputCheckpointV1.Parse(json);
+        if (checkpoint.CheckpointId != checkpointId)
+        {
+            throw new ProtocolValidationException(
+                "ledger_corrupt",
+                "Created-output checkpoint key differs from its content.");
+        }
+        return checkpoint;
+    }
+
+    public static void AddPhase8CreatedCheckpoint(
+        Database database,
+        Transaction transaction,
+        CadCreatedOutputCheckpointV1 checkpoint) =>
+        AddRecord(
+            database,
+            transaction,
+            Phase8CreatedCheckpointDictionaryKey,
+            checkpoint.CheckpointId,
+            checkpoint.Serialize());
+
+    public static CadRollbackCheckpointV2? FindCheckpointV2(
+        Database database,
+        Transaction transaction,
+        string checkpointId)
+    {
+        CadRollbackCheckpointV1.RequireId(checkpointId, 64);
+        var json = ReadRecord(
+            database,
+            transaction,
+            CheckpointV2DictionaryKey,
+            checkpointId);
+        if (json is null)
+        {
+            return null;
+        }
+        var checkpoint = CadRollbackCheckpointV2.Parse(json);
+        if (checkpoint.CheckpointId != checkpointId)
+        {
+            throw new ProtocolValidationException(
+                "ledger_corrupt",
+                "Checkpoint v2 key does not match its durable content.");
+        }
+        return checkpoint;
+    }
+
+    public static void AddCheckpointV2(
+        Database database,
+        Transaction transaction,
+        CadRollbackCheckpointV2 checkpoint) =>
+        AddRecord(
+            database,
+            transaction,
+            CheckpointV2DictionaryKey,
+            checkpoint.CheckpointId,
+            checkpoint.Serialize());
+
+    public static CadManagedRestoreReceipt? FindPhase8RestoreReceipt(
+        Database database,
+        Transaction transaction,
+        string restoreReceiptId)
+    {
+        CadRollbackCheckpointV1.RequireId(restoreReceiptId, 64);
+        var json = ReadRecord(
+            database,
+            transaction,
+            Phase8RestoreReceiptDictionaryKey,
+            restoreReceiptId);
+        if (json is null)
+        {
+            return null;
+        }
+        var receipt = CadManagedRestoreReceipt.Parse(json);
+        if (receipt.RestoreReceiptId != restoreReceiptId)
+        {
+            throw new ProtocolValidationException(
+                "ledger_corrupt",
+                "Restore receipt key differs from its durable content.");
+        }
+        return receipt;
+    }
+
+    public static void AddPhase8RestoreReceipt(
+        Database database,
+        Transaction transaction,
+        CadManagedRestoreReceipt receipt) =>
+        AddRecord(
+            database,
+            transaction,
+            Phase8RestoreReceiptDictionaryKey,
+            receipt.RestoreReceiptId,
+            receipt.Serialize());
+
+    public static CadCreatedOutputRollbackReceiptV1?
+        FindPhase8CreatedRollbackReceipt(
+            Database database,
+            Transaction transaction,
+            string rollbackReceiptId)
+    {
+        CadRollbackCheckpointV1.RequireId(rollbackReceiptId, 64);
+        var json = ReadRecord(
+            database,
+            transaction,
+            Phase8CreatedRollbackReceiptDictionaryKey,
+            rollbackReceiptId);
+        if (json is null)
+        {
+            return null;
+        }
+        var receipt = CadCreatedOutputRollbackReceiptV1.Parse(json);
+        if (receipt.RollbackReceiptId != rollbackReceiptId)
+        {
+            throw new ProtocolValidationException(
+                "ledger_corrupt",
+                "Created-output rollback receipt key differs from its content.");
+        }
+        return receipt;
+    }
+
+    public static void AddPhase8CreatedRollbackReceipt(
+        Database database,
+        Transaction transaction,
+        CadCreatedOutputRollbackReceiptV1 receipt) =>
+        AddRecord(
+            database,
+            transaction,
+            Phase8CreatedRollbackReceiptDictionaryKey,
+            receipt.RollbackReceiptId,
             receipt.Serialize());
 
     private static string? ReadRecord(
