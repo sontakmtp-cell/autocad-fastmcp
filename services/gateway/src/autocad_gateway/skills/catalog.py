@@ -127,8 +127,13 @@ class SkillCatalog:
     def list(self) -> Iterable[SkillManifest]:
         return tuple(self._snapshot.manifests[key] for key in sorted(self._snapshot.manifests))
 
-    def support_for(self, manifest: SkillManifest, *, enabled: bool, capabilities: set[str], operation_packs: set[str], policy_epoch: int, required_policy_epoch: int) -> SkillSupport:
-        if not enabled:
+    def support_for(self, manifest: SkillManifest, *, capabilities: set[str], operation_packs: set[str], policy_epoch: int, required_policy_epoch: int, publication_status: str = "published", owner_access: bool = True, device_access: bool = True, runtime_release_verified: bool = True, capability_evidence_verified: bool = True, planner_available: bool = True, templates_available: bool = True, catalog_enabled: bool = True, workflow_enabled: bool = True, preview_enabled: bool = True, write_enabled: bool = False, certified: bool = False) -> SkillSupport:
+        """Return a monotonic support level from Gateway-derived trusted inputs."""
+        if publication_status in {"withdrawn", "security_revoked"}:
+            return SkillSupport("unsupported", publication_status)
+        if not owner_access or not device_access:
+            return SkillSupport("unsupported", "not_found")
+        if not catalog_enabled:
             return SkillSupport("unsupported", "skill_catalog_disabled")
         if policy_epoch != required_policy_epoch:
             return SkillSupport("unsupported", "policy_epoch_mismatch")
@@ -138,4 +143,16 @@ class SkillCatalog:
         missing_packs = sorted(set(manifest.required_operation_packs) - operation_packs)
         if missing_packs:
             return SkillSupport("unsupported", "missing_operation_pack:" + missing_packs[0])
-        return SkillSupport("supported")
+        if not runtime_release_verified or not capability_evidence_verified:
+            return SkillSupport("catalog_only", "runtime_or_capability_evidence_unverified")
+        if not planner_available or not templates_available:
+            return SkillSupport("catalog_only", "catalog_component_unavailable")
+        if not workflow_enabled:
+            return SkillSupport("catalog_only")
+        if not preview_enabled:
+            return SkillSupport("dry_run")
+        if not write_enabled:
+            return SkillSupport("preview_only", "write_workflows_disabled")
+        if certified:
+            return SkillSupport("certified", "deprecated" if publication_status == "deprecated" else None)
+        return SkillSupport("lab_commit", "deprecated" if publication_status == "deprecated" else None)
