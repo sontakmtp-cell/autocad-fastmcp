@@ -31,15 +31,27 @@ public sealed class ManagedHostExtension : IExtensionApplication
             _documentEvents = new DocumentEventTracker(
                 Application.DocumentManager,
                 identities);
-            var observations = new AutoCadReadOnlyOperations(
+            var phase8 = new AutoCadPhase8CanonicalOperations(
                 _scheduler,
                 identities,
                 packageHash);
+            var observations = new AutoCadReadOnlyOperations(
+                _scheduler,
+                identities,
+                packageHash,
+                phase8.RuntimeEvidence,
+                phase8.SourceEnabled,
+                phase8.CreatePackEnabled,
+                phase8.TransformPackEnabled,
+                phase8.CheckpointV2Enabled);
             var programs = new AutoCadProgramOperations(
                 _scheduler,
                 identities,
                 packageHash);
-            var operations = new CadProgramHostOperations(observations, programs);
+            var operations = new CadProgramHostOperations(
+                observations,
+                programs,
+                phase8);
             var evidence = new RuntimeEvidence(
                 "managed_dotnet",
                 "primary",

@@ -146,6 +146,44 @@ public sealed class Phase8ManagedOperationsTests
     }
 
     [Fact]
+    public void HostAdmission_RejectsMixedCheckpointStrategies()
+    {
+        var copy = new CadCopyEntityOperation(
+            "copy-1",
+            Target("LINE"),
+            new CadManagedVector(10, 0, 0),
+            "copy-1.out");
+        var move = new CadMoveEntityOperation(
+            "move-1",
+            Target("LINE"),
+            new CadManagedVector(0, 10, 0));
+        var plan = Plan([copy, move]);
+        var capabilities = plan.Operations
+            .Select(operation => Phase8ManagedOperationRegistry.Require(
+                operation.Kind,
+                operation.Target.EntityType).CapabilityKey)
+            .ToHashSet(StringComparer.Ordinal);
+        var admission = new CadManagedHostAdmission(
+            Pins(),
+            capabilities,
+            new HashSet<string>(StringComparer.Ordinal)
+            {
+                "copy_entity",
+                "move_entity"
+            },
+            IndependentCapabilityEvidenceVerified: true,
+            CreatePackEnabled: true,
+            CheckpointV2Enabled: true,
+            TransformPackEnabled: true);
+
+        var error = Assert.Throws<ProtocolValidationException>(
+            () => admission.AssertAllowed(plan));
+
+        Assert.Equal("capability_missing", error.Code);
+        Assert.Contains("compound atomic rollback", error.Message);
+    }
+
+    [Fact]
     public void CheckpointV2_RoundTripsBoundedHostRestoreDescriptors()
     {
         var checkpoint = Checkpoint();

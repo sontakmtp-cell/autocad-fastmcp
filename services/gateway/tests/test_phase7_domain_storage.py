@@ -476,7 +476,16 @@ async def repository(tmp_path):
 
 @pytest.mark.asyncio
 async def test_migration_has_exact_phase7_tables_and_owner_key(repository):
-    assert repository.database.migration_checksums.keys() == {1, 2, 3, 4, 5, 6, 7}
+    assert repository.database.migration_checksums.keys() == {
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+    }
     expected = {
         "execution_intents",
         "consents",

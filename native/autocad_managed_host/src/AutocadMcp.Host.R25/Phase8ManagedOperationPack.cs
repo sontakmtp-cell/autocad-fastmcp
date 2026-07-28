@@ -46,6 +46,11 @@ internal sealed record Phase8CreatedRollbackResult(
 /// </summary>
 internal static class Phase8ManagedOperationPack
 {
+    internal static string EntityFingerprint(
+        Entity entity,
+        Transaction transaction) =>
+        Fingerprint(entity, transaction);
+
     public static Phase8PreviewResult Preview(
         Database database,
         CadManagedSealedPlan plan,
@@ -75,10 +80,12 @@ internal static class Phase8ManagedOperationPack
         CadManagedSealedPlan plan,
         CadManagedHostAdmission admission,
         string documentRevisionAfter,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        CadManagedEffectIdentity? trustedIdentity = null)
     {
         admission.AssertAllowed(plan);
-        var identity = CadManagedEffectIdentity.Create(plan);
+        var identity = trustedIdentity ?? CadManagedEffectIdentity.Create(plan);
+        identity.Validate();
         using var transaction = database.TransactionManager.StartTransaction();
         var existing = DrawingProgramLedger.FindPhase8Commit(
             database,

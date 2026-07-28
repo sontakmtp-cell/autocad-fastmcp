@@ -1,0 +1,455 @@
+{
+  "schema_version": "cad.phase8-live-r25-e2e/1",
+  "created_at": "2026-07-28T12:41:02.0754310+00:00",
+  "drawing": "drawing33.dwg",
+  "profile": "signed-r25-lab",
+  "package_signature": {
+    "signed": true,
+    "lab_only": true,
+    "certificate_thumbprint": "A8D8F13F906B1A216EFE2A1EEFE89AFA9376A5F2",
+    "timestamped": false
+  },
+  "host_evidence": {
+    "schema_version": "cad.host-capability-evidence/1",
+    "runtime_id": "managed_dotnet",
+    "runtime_role": "primary",
+    "host_family": "R25",
+    "host_version": "0.8.0",
+    "package_id": "autocad.managed_host.r25",
+    "package_version": "0.8.0",
+    "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236",
+    "operation_registry_version": "cad.operation-registry/1",
+    "operation_registry_hash": "sha256:1b840d43a4872322882f4443c07fb0f0b238cbb1d122cbefb4fe7e59097024a5",
+    "host_evidence_digest": "sha256:323e9ae4b6bc2e1805873a5a27dbec2a88fe121ccd2ee7b0f113c492c08a8d8b"
+  },
+  "capability_manifest_hash": "sha256:c1ab0755a4918039f79d84f99bf3196d02859a69daaa33e08e375fa729692051",
+  "drills": [
+    {
+      "kind": "copy_entity",
+      "entity_type": "LINE",
+      "target_handle": "373",
+      "target_fingerprint_before": "sha256:677aa7a01f2151db6377e25994e504af1892c8079cd21d6db65b7e2d9bf52e96",
+      "execution_plan_digest": "sha256:584e3c577eefbc7940e971673ed4a83f764060990187455034fc17b285f3038f",
+      "effect_manifest_digest": "sha256:a9d116f4d8908812296ee881322e9368360e39bc95ca9fb1cff8fd1275cb6be2",
+      "required_capabilities": [
+        "cad.program.v1.compile",
+        "cad.op.copy.line.v1"
+      ],
+      "preview": {
+        "command_id": "command-27c3a48efdf6443cbc7e915912e37711",
+        "status": "succeeded",
+        "result": {
+          "preview_digest": "sha256:454e26836bda44285e1210ab875f37c9b2c925b74765b0fa0bf2b37c23c842a1",
+          "created_outputs": [
+            {
+              "operation_id": "copy-copy-20260728124101",
+              "output_id": "copy-copy-20260728124101",
+              "entity_type": "LINE",
+              "layer": "0",
+              "fingerprint": "sha256:aff03792fc703083ba9246a9cdeb11d655528f03d3fd4d74ba780e4ec5bcf010"
+            }
+          ],
+          "modified_entities": [],
+          "transaction_aborted": true,
+          "drawing_unchanged": true,
+          "execution_plan_digest": "sha256:584e3c577eefbc7940e971673ed4a83f764060990187455034fc17b285f3038f",
+          "effect_manifest_digest": "sha256:a9d116f4d8908812296ee881322e9368360e39bc95ca9fb1cff8fd1275cb6be2",
+          "target_refs_digest": "sha256:50fbbd1be106c12a8b4793cfb3661f91b583e35880b619ca7354969d0575cd0c",
+          "hard_budgets_digest": "sha256:9a291a2c8cde2dbdd16054a0a39adc1eb66036eb8b5f0ff36f9a81cb015cb243",
+          "rollout_policy_digest": "sha256:e4068556eb31661746a5839212b42660c3faf9f8481388e0052c0fb08dcaa6dd"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "commit": {
+        "command_id": "command-81d90d6e36f442fbb4ec33dceeffc2c1",
+        "status": "succeeded",
+        "result": {
+          "receipt_id": "AUTOCAD_MCP_PHASE8_c5a7aa666b634b7bae4e95ce4455a83a",
+          "receipt_digest": "sha256:82bd82098eae0ab3e96607d5c225ccd04623e02dbb496450556661edc808f32b",
+          "effect_identity_digest": "sha256:165b5b5ef227fdeb758c691c57d74525fe87ae4271e41a53783c5e486f383734",
+          "document_revision_before": "2802535820633473",
+          "document_revision_after": "2802535820633474",
+          "created_outputs": [
+            {
+              "operation_id": "copy-copy-20260728124101",
+              "output_id": "copy-copy-20260728124101",
+              "entity_id": "589",
+              "entity_type": "LINE",
+              "layer": "0",
+              "fingerprint": "sha256:aff03792fc703083ba9246a9cdeb11d655528f03d3fd4d74ba780e4ec5bcf010"
+            }
+          ],
+          "modified_entities": [],
+          "checkpoint": {
+            "schema_version": "cad.created-output.checkpoint/1",
+            "id": "AUTOCAD_MCP_CHECKPOINT_579261c79e36c3bc0e2d518a714fb73f",
+            "digest": "sha256:1993dc66049a11bb3765906ef45907860a8f54d9a500c5151a3399b81cb8a98a"
+          },
+          "duplicate": false,
+          "milestone": "effect_and_receipt_committed",
+          "execution_plan_digest": "sha256:584e3c577eefbc7940e971673ed4a83f764060990187455034fc17b285f3038f",
+          "effect_manifest_digest": "sha256:a9d116f4d8908812296ee881322e9368360e39bc95ca9fb1cff8fd1275cb6be2",
+          "target_refs_digest": "sha256:50fbbd1be106c12a8b4793cfb3661f91b583e35880b619ca7354969d0575cd0c",
+          "hard_budgets_digest": "sha256:9a291a2c8cde2dbdd16054a0a39adc1eb66036eb8b5f0ff36f9a81cb015cb243",
+          "rollout_policy_digest": "sha256:e4068556eb31661746a5839212b42660c3faf9f8481388e0052c0fb08dcaa6dd"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "after_commit_revision": "2802535820633474",
+      "receipt_query": {
+        "command_id": "command-ff1d12c5b3664da98ca90fa6b0d505d9",
+        "status": "succeeded",
+        "result": {
+          "found": true,
+          "receipt_id": "AUTOCAD_MCP_PHASE8_c5a7aa666b634b7bae4e95ce4455a83a",
+          "receipt_digest": "sha256:82bd82098eae0ab3e96607d5c225ccd04623e02dbb496450556661edc808f32b",
+          "execution_plan_digest": "sha256:584e3c577eefbc7940e971673ed4a83f764060990187455034fc17b285f3038f",
+          "effect_manifest_digest": "sha256:a9d116f4d8908812296ee881322e9368360e39bc95ca9fb1cff8fd1275cb6be2",
+          "effect_identity_digest": "sha256:165b5b5ef227fdeb758c691c57d74525fe87ae4271e41a53783c5e486f383734",
+          "document_id": "doc-5f7ace4316b601749ae3981e",
+          "document_revision_after": "2802535820633474",
+          "rollback_eligible": true,
+          "checkpoint_id": "AUTOCAD_MCP_CHECKPOINT_579261c79e36c3bc0e2d518a714fb73f",
+          "checkpoint_digest": "sha256:1993dc66049a11bb3765906ef45907860a8f54d9a500c5151a3399b81cb8a98a"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "checkpoint_query": {
+        "command_id": "command-674537ce87e74cf5b1005a3cfe6d5670",
+        "status": "succeeded",
+        "result": {
+          "found": true,
+          "schema_version": "cad.created-output.checkpoint/1",
+          "checkpoint_id": "AUTOCAD_MCP_CHECKPOINT_579261c79e36c3bc0e2d518a714fb73f",
+          "checkpoint_digest": "sha256:1993dc66049a11bb3765906ef45907860a8f54d9a500c5151a3399b81cb8a98a",
+          "receipt_id": "AUTOCAD_MCP_PHASE8_c5a7aa666b634b7bae4e95ce4455a83a",
+          "effect_identity_digest": "sha256:165b5b5ef227fdeb758c691c57d74525fe87ae4271e41a53783c5e486f383734",
+          "execution_plan_digest": "sha256:584e3c577eefbc7940e971673ed4a83f764060990187455034fc17b285f3038f",
+          "effect_manifest_digest": "sha256:a9d116f4d8908812296ee881322e9368360e39bc95ca9fb1cff8fd1275cb6be2",
+          "document_id": "doc-5f7ace4316b601749ae3981e",
+          "document_revision_before": "2802535820633473",
+          "document_revision_after": "2802535820633474",
+          "created_entity_count": 1
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "rollback_preview": {
+        "command_id": "command-3c25202c1004481bb23319750a51a31c",
+        "status": "succeeded",
+        "result": {
+          "rollback_plan_id": "rollback-copy-20260728124101",
+          "rollback_plan_digest": "sha256:5ca4bd04bbfc1f5956445768cac39b74da777850d296d11f899ac1d055f0ae2f",
+          "rollback_receipt_id": "AUTOCAD_MCP_CREATED_RB_0e08b44bb8a1ddc0aa41769c01188e38",
+          "checkpoint_id": "AUTOCAD_MCP_CHECKPOINT_579261c79e36c3bc0e2d518a714fb73f",
+          "checkpoint_digest": "sha256:1993dc66049a11bb3765906ef45907860a8f54d9a500c5151a3399b81cb8a98a",
+          "checkpoint_schema": "cad.created-output.checkpoint/1",
+          "document_revision": "2802535820633474",
+          "conflict_count": 0,
+          "can_commit": true,
+          "expires_at": "2026-07-28T13:11:01.9797340+00:00",
+          "drawing_unchanged": true
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "rollback_commit": {
+        "command_id": "command-2d15d8cb681445d39492bab36e7cee44",
+        "status": "succeeded",
+        "result": {
+          "rollback_receipt_id": "AUTOCAD_MCP_CREATED_RB_0e08b44bb8a1ddc0aa41769c01188e38",
+          "receipt_digest": "sha256:2934c25c735ca032d9bb679d4b04bf51104c8d18c5533500e2b0b0507583291c",
+          "checkpoint_id": "AUTOCAD_MCP_CHECKPOINT_579261c79e36c3bc0e2d518a714fb73f",
+          "checkpoint_digest": "sha256:1993dc66049a11bb3765906ef45907860a8f54d9a500c5151a3399b81cb8a98a",
+          "execution_plan_digest": "sha256:584e3c577eefbc7940e971673ed4a83f764060990187455034fc17b285f3038f",
+          "effect_manifest_digest": "sha256:a9d116f4d8908812296ee881322e9368360e39bc95ca9fb1cff8fd1275cb6be2",
+          "document_revision_before": "2802535820633474",
+          "document_revision_after": "2802535820633475",
+          "removed_entities": [
+            {
+              "output_id": "copy-copy-20260728124101",
+              "entity_id": "589",
+              "entity_type": "LINE",
+              "fingerprint": "sha256:aff03792fc703083ba9246a9cdeb11d655528f03d3fd4d74ba780e4ec5bcf010"
+            }
+          ],
+          "duplicate": false,
+          "milestone": "rollback_effect_and_receipt_committed"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "rollback_validation": {
+        "command_id": "command-5bfeafcf22c0433f9e83acd33de69466",
+        "status": "succeeded",
+        "result": {
+          "rollback_receipt_id": "AUTOCAD_MCP_CREATED_RB_0e08b44bb8a1ddc0aa41769c01188e38",
+          "valid": true,
+          "failures": [],
+          "checkpoint_id": "AUTOCAD_MCP_CHECKPOINT_579261c79e36c3bc0e2d518a714fb73f",
+          "checkpoint_digest": "sha256:1993dc66049a11bb3765906ef45907860a8f54d9a500c5151a3399b81cb8a98a",
+          "execution_plan_digest": null,
+          "effect_manifest_digest": null,
+          "document_revision_after": "2802535820633475"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "after_rollback_revision": "2802535820633475",
+      "target_fingerprint_after_rollback": "sha256:677aa7a01f2151db6377e25994e504af1892c8079cd21d6db65b7e2d9bf52e96",
+      "entity_count_before": 37,
+      "entity_count_after_rollback": 37
+    },
+    {
+      "kind": "move_entity",
+      "entity_type": "CIRCLE",
+      "target_handle": "36A",
+      "target_fingerprint_before": "sha256:588fb8712e254089b472eb116ec0c8a895dcbc3685ad1b2ec6c0c46287eb8ff6",
+      "execution_plan_digest": "sha256:ac2d56f0dd0b053aca50674b5718b9a9277db5b70b4f3ffc68e6342844883f03",
+      "effect_manifest_digest": "sha256:79f7786ec20441bec50975579637267b4b44d78737191d230dab61ca083b0f69",
+      "required_capabilities": [
+        "cad.program.v1.compile",
+        "cad.op.move.circle.v1"
+      ],
+      "preview": {
+        "command_id": "command-98701b90c3ed4242847c1e313aae1e30",
+        "status": "succeeded",
+        "result": {
+          "preview_digest": "sha256:0800b4e97bd5720d8d875c165d6255452854890078b18c2f45d946da463a7705",
+          "created_outputs": [],
+          "modified_entities": [
+            {
+              "operation_id": "move-move-20260728124101",
+              "entity_type": "CIRCLE",
+              "fingerprint_before": "sha256:588fb8712e254089b472eb116ec0c8a895dcbc3685ad1b2ec6c0c46287eb8ff6",
+              "fingerprint_after": "sha256:2e6f73fad3056a9157ef1165e4a16baf9feb881b15f05a7de8073e86b4d4dd5c"
+            }
+          ],
+          "transaction_aborted": true,
+          "drawing_unchanged": true,
+          "execution_plan_digest": "sha256:ac2d56f0dd0b053aca50674b5718b9a9277db5b70b4f3ffc68e6342844883f03",
+          "effect_manifest_digest": "sha256:79f7786ec20441bec50975579637267b4b44d78737191d230dab61ca083b0f69",
+          "target_refs_digest": "sha256:8a789c1cab7af08aedb015d7e2a70148e58cc52d6a093820c797745aa925726e",
+          "hard_budgets_digest": "sha256:9a291a2c8cde2dbdd16054a0a39adc1eb66036eb8b5f0ff36f9a81cb015cb243",
+          "rollout_policy_digest": "sha256:e4068556eb31661746a5839212b42660c3faf9f8481388e0052c0fb08dcaa6dd"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "commit": {
+        "command_id": "command-7077d9d4303c4bfea6571036376a1bd6",
+        "status": "succeeded",
+        "result": {
+          "receipt_id": "AUTOCAD_MCP_PHASE8_86c5408c75f0276159d9379e27c50c63",
+          "receipt_digest": "sha256:da0b706e0e950d1a4ad535c0629a92262819e3904f4a01dd191a2af8f4f94a36",
+          "effect_identity_digest": "sha256:65b5b155adad93fa46c8c432f3348617c56720ac5eda7c99245d3be21548f347",
+          "document_revision_before": "2802535820633475",
+          "document_revision_after": "2802535820633476",
+          "created_outputs": [],
+          "modified_entities": [
+            {
+              "operation_id": "move-move-20260728124101",
+              "entity_id": "36A",
+              "entity_type": "CIRCLE",
+              "fingerprint_before": "sha256:588fb8712e254089b472eb116ec0c8a895dcbc3685ad1b2ec6c0c46287eb8ff6",
+              "fingerprint_after": "sha256:2e6f73fad3056a9157ef1165e4a16baf9feb881b15f05a7de8073e86b4d4dd5c"
+            }
+          ],
+          "checkpoint": {
+            "schema_version": "cad.rollback.checkpoint/2",
+            "id": "AUTOCAD_MCP_CHECKPOINT_V2_7c29e9425a9e452b6efb75fa9d72aeb5",
+            "digest": "sha256:2b4e49f7bb47a2a92cdf621b70861c1e035be201f8d297e8c3db6575973215bc"
+          },
+          "duplicate": false,
+          "milestone": "effect_and_receipt_committed",
+          "execution_plan_digest": "sha256:ac2d56f0dd0b053aca50674b5718b9a9277db5b70b4f3ffc68e6342844883f03",
+          "effect_manifest_digest": "sha256:79f7786ec20441bec50975579637267b4b44d78737191d230dab61ca083b0f69",
+          "target_refs_digest": "sha256:8a789c1cab7af08aedb015d7e2a70148e58cc52d6a093820c797745aa925726e",
+          "hard_budgets_digest": "sha256:9a291a2c8cde2dbdd16054a0a39adc1eb66036eb8b5f0ff36f9a81cb015cb243",
+          "rollout_policy_digest": "sha256:e4068556eb31661746a5839212b42660c3faf9f8481388e0052c0fb08dcaa6dd"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "after_commit_revision": "2802535820633476",
+      "receipt_query": {
+        "command_id": "command-d031bd613d6d431fbe96796dc1f8670b",
+        "status": "succeeded",
+        "result": {
+          "found": true,
+          "receipt_id": "AUTOCAD_MCP_PHASE8_86c5408c75f0276159d9379e27c50c63",
+          "receipt_digest": "sha256:da0b706e0e950d1a4ad535c0629a92262819e3904f4a01dd191a2af8f4f94a36",
+          "execution_plan_digest": "sha256:ac2d56f0dd0b053aca50674b5718b9a9277db5b70b4f3ffc68e6342844883f03",
+          "effect_manifest_digest": "sha256:79f7786ec20441bec50975579637267b4b44d78737191d230dab61ca083b0f69",
+          "effect_identity_digest": "sha256:65b5b155adad93fa46c8c432f3348617c56720ac5eda7c99245d3be21548f347",
+          "document_id": "doc-5f7ace4316b601749ae3981e",
+          "document_revision_after": "2802535820633476",
+          "rollback_eligible": true,
+          "checkpoint_id": "AUTOCAD_MCP_CHECKPOINT_V2_7c29e9425a9e452b6efb75fa9d72aeb5",
+          "checkpoint_digest": "sha256:2b4e49f7bb47a2a92cdf621b70861c1e035be201f8d297e8c3db6575973215bc"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "checkpoint_query": {
+        "command_id": "command-be58a5f3ac4f4bfc883b73157b7a5679",
+        "status": "succeeded",
+        "result": {
+          "found": true,
+          "schema_version": "cad.rollback.checkpoint/2",
+          "checkpoint_id": "AUTOCAD_MCP_CHECKPOINT_V2_7c29e9425a9e452b6efb75fa9d72aeb5",
+          "checkpoint_digest": "sha256:2b4e49f7bb47a2a92cdf621b70861c1e035be201f8d297e8c3db6575973215bc",
+          "receipt_id": "AUTOCAD_MCP_PHASE8_86c5408c75f0276159d9379e27c50c63",
+          "execution_plan_digest": "sha256:ac2d56f0dd0b053aca50674b5718b9a9277db5b70b4f3ffc68e6342844883f03",
+          "effect_manifest_digest": "sha256:79f7786ec20441bec50975579637267b4b44d78737191d230dab61ca083b0f69",
+          "document_id": "doc-5f7ace4316b601749ae3981e",
+          "document_revision_before": "2802535820633475",
+          "document_revision_after": "2802535820633476",
+          "modified_entity_count": 1
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "rollback_preview": {
+        "command_id": "command-80a851a09da74fa1804a20bc43085ad3",
+        "status": "succeeded",
+        "result": {
+          "rollback_plan_id": "rollback-move-20260728124101",
+          "rollback_plan_digest": "sha256:6a7f13c7c5e75c639795aff97ac2cb411b9a0734c29a0e7bdf32c89266543ee7",
+          "rollback_receipt_id": "AUTOCAD_MCP_RESTORE_V2_fd3c48f9beee52448978cc5ea92d1c28",
+          "checkpoint_id": "AUTOCAD_MCP_CHECKPOINT_V2_7c29e9425a9e452b6efb75fa9d72aeb5",
+          "checkpoint_digest": "sha256:2b4e49f7bb47a2a92cdf621b70861c1e035be201f8d297e8c3db6575973215bc",
+          "checkpoint_schema": "cad.rollback.checkpoint/2",
+          "document_revision": "2802535820633476",
+          "conflict_count": 0,
+          "can_commit": true,
+          "expires_at": "2026-07-28T13:11:02.0551370+00:00",
+          "drawing_unchanged": true
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "rollback_commit": {
+        "command_id": "command-b73161b9475045db980d31f893de7757",
+        "status": "succeeded",
+        "result": {
+          "rollback_receipt_id": "AUTOCAD_MCP_RESTORE_V2_fd3c48f9beee52448978cc5ea92d1c28",
+          "receipt_digest": "sha256:86b72912ec972b5416ca8c187823661dee9805a2c5f5883ccb47c30cebeb5f28",
+          "checkpoint_id": "AUTOCAD_MCP_CHECKPOINT_V2_7c29e9425a9e452b6efb75fa9d72aeb5",
+          "checkpoint_digest": "sha256:2b4e49f7bb47a2a92cdf621b70861c1e035be201f8d297e8c3db6575973215bc",
+          "execution_plan_digest": "sha256:ac2d56f0dd0b053aca50674b5718b9a9277db5b70b4f3ffc68e6342844883f03",
+          "effect_manifest_digest": "sha256:79f7786ec20441bec50975579637267b4b44d78737191d230dab61ca083b0f69",
+          "document_revision_before": "2802535820633476",
+          "document_revision_after": "2802535820633477",
+          "restored_entities": [
+            {
+              "operation_id": "move-move-20260728124101",
+              "entity_id": "36A",
+              "entity_type": "CIRCLE",
+              "fingerprint_before": "sha256:2e6f73fad3056a9157ef1165e4a16baf9feb881b15f05a7de8073e86b4d4dd5c",
+              "fingerprint_after": "sha256:588fb8712e254089b472eb116ec0c8a895dcbc3685ad1b2ec6c0c46287eb8ff6"
+            }
+          ],
+          "duplicate": false,
+          "milestone": "rollback_effect_and_receipt_committed"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "rollback_validation": {
+        "command_id": "command-801e16eb46274515957ad7443738fb0d",
+        "status": "succeeded",
+        "result": {
+          "rollback_receipt_id": "AUTOCAD_MCP_RESTORE_V2_fd3c48f9beee52448978cc5ea92d1c28",
+          "valid": true,
+          "failures": [],
+          "checkpoint_id": "AUTOCAD_MCP_CHECKPOINT_V2_7c29e9425a9e452b6efb75fa9d72aeb5",
+          "checkpoint_digest": "sha256:2b4e49f7bb47a2a92cdf621b70861c1e035be201f8d297e8c3db6575973215bc",
+          "execution_plan_digest": "sha256:ac2d56f0dd0b053aca50674b5718b9a9277db5b70b4f3ffc68e6342844883f03",
+          "effect_manifest_digest": "sha256:79f7786ec20441bec50975579637267b4b44d78737191d230dab61ca083b0f69",
+          "document_revision_after": "2802535820633477"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:b30fa2d41698bc654c3bd350713ea244c64a0e26db4e876cdbbc30cdeb2ed236"
+        }
+      },
+      "after_rollback_revision": "2802535820633477",
+      "target_fingerprint_after_rollback": "sha256:588fb8712e254089b472eb116ec0c8a895dcbc3685ad1b2ec6c0c46287eb8ff6",
+      "entity_count_before": 37,
+      "entity_count_after_rollback": 37
+    }
+  ],
+  "success": true
+}

@@ -13,6 +13,7 @@ PHASE3_CONTRACT_VERSION = "cad.mcp/1.1"
 PHASE4_CONTRACT_VERSION = "cad.mcp/1.2"
 PHASE6_CONTRACT_VERSION = "cad.mcp/1.3"
 PHASE7_CONTRACT_VERSION = "cad.mcp/1.4"
+PHASE8_CONTRACT_VERSION = "cad.mcp/1.5"
 MAX_ENTITY_TYPE_LENGTH = 64
 MAX_LAYER_NAME_LENGTH = 255
 MAX_FILTER_BYTES = 4096
@@ -296,6 +297,24 @@ class CadPrepareProgramOutput(StrictModel):
     execution_binding: dict[str, str]
     risk_class: Literal["low"]
     missing_capabilities: list[str] = Field(max_length=256)
+    resource_uri: str
+    ready_for_preview: bool
+
+
+class CadPrepareProgramV1Output(StrictModel):
+    contract_version: str = PHASE8_CONTRACT_VERSION
+    schema_version: Literal["cad.program/1.0"] = "cad.program/1.0"
+    correlation_id: str
+    program_id: str
+    program_revision: int = Field(ge=1)
+    source_digest: str
+    execution_plan_id: str
+    execution_plan_digest: str
+    execution_binding: dict[str, Any]
+    effect_manifest_digest: str
+    document_id: str
+    expected_document_revision: str
+    risk_class: Literal["low"]
     resource_uri: str
     ready_for_preview: bool
 

@@ -24,12 +24,25 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
         var blockTable = (BlockTable)transaction.GetObject(
             document.Database.BlockTableId,
             OpenMode.ForRead);
-        var spaces = blockTable
-            .Cast<ObjectId>()
-            .Select(id => (BlockTableRecord)transaction.GetObject(id, OpenMode.ForRead))
-            .Where(record => record.IsLayout && IncludesSpace(record, request.Space))
-            .OrderBy(record => record.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var spaces = new List<BlockTableRecord>();
+        if (request.Space is "all" or "model")
+        {
+            spaces.Add((BlockTableRecord)transaction.GetObject(
+                blockTable[BlockTableRecord.ModelSpace],
+                OpenMode.ForRead));
+        }
+        if (request.Space is "all" or "paper")
+        {
+            spaces.AddRange(blockTable
+                .Cast<ObjectId>()
+                .Select(id => (BlockTableRecord)transaction.GetObject(
+                    id,
+                    OpenMode.ForRead))
+                .Where(record =>
+                    record.IsLayout &&
+                    record.Name != BlockTableRecord.ModelSpace)
+                .OrderBy(record => record.Name, StringComparer.OrdinalIgnoreCase));
+        }
 
         var entities = new List<object>(request.Limit);
         var absoluteIndex = 0;
@@ -54,7 +67,10 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
                 {
                     continue;
                 }
-                entities.Add(ToMetadata(entity, SpaceName(space)));
+                entities.Add(ToMetadata(
+                    entity,
+                    SpaceName(space),
+                    transaction));
             }
             if (!exhausted)
             {
@@ -162,13 +178,13 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
         identity.Revision.AssertRevision(expectedRevision, DateTimeOffset.UtcNow);
     }
 
-    private static bool IncludesSpace(BlockTableRecord record, string requested) =>
-        requested == "all" ||
-        requested == "model" && record.Name == BlockTableRecord.ModelSpace ||
-        requested == "paper" && record.Name != BlockTableRecord.ModelSpace;
-
     private static string SpaceName(BlockTableRecord record) =>
-        record.Name == BlockTableRecord.ModelSpace ? "model" : "paper";
+        string.Equals(
+            record.Name,
+            BlockTableRecord.ModelSpace,
+            StringComparison.OrdinalIgnoreCase)
+            ? "model"
+            : "paper";
 
     private static bool Matches(Entity entity, EntitySnapshotRequest request)
     {
@@ -177,13 +193,19 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
             (request.Layers.Count == 0 || request.Layers.Contains(entity.Layer));
     }
 
-    private static object ToMetadata(Entity entity, string space) => new
+    private static object ToMetadata(
+        Entity entity,
+        string space,
+        Transaction transaction) => new
     {
         handle = entity.Handle.ToString(),
         type = Bound(GetEntityType(entity), 64),
         layer = Bound(entity.Layer, 255),
         space,
-        bounds = TryGetBounds(entity)
+        bounds = TryGetBounds(entity),
+        fingerprint = Phase8ManagedOperationPack.EntityFingerprint(
+            entity,
+            transaction)
     };
 
     private static string GetEntityType(Entity entity) =>

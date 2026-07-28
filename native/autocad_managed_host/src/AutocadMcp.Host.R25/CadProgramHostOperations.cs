@@ -8,14 +8,20 @@ namespace AutocadMcp.Host.R25;
 /// </summary>
 internal sealed class CadProgramHostOperations(
     IReadOnlyHostOperations observations,
-    AutoCadProgramOperations programs) : IReadOnlyHostOperations
+    AutoCadProgramOperations programs,
+    AutoCadPhase8CanonicalOperations phase8) : IReadOnlyHostOperations
 {
     public Task<object> GetHandshakeEvidenceAsync(CancellationToken cancellationToken) =>
         observations.GetHandshakeEvidenceAsync(cancellationToken);
 
-    public Task<object> ExecuteAsync(CommandRequest command, CancellationToken cancellationToken) =>
-        CadProgramV02Contract.OperationIds.Contains(command.OperationId) ||
-        Phase7RollbackContract.OperationIds.Contains(command.OperationId)
-            ? programs.ExecuteAsync(command, cancellationToken)
-            : observations.ExecuteAsync(command, cancellationToken);
+    public Task<object> ExecuteAsync(
+        CommandRequest command,
+        CancellationToken cancellationToken) =>
+        Phase8CanonicalHostCommandParser.IsPhase8(command.Arguments) ||
+        AutoCadPhase8CanonicalOperations.IsCanonicalRecovery(command)
+            ? phase8.ExecuteAsync(command, cancellationToken)
+            : CadProgramV02Contract.OperationIds.Contains(command.OperationId) ||
+              Phase7RollbackContract.OperationIds.Contains(command.OperationId)
+                ? programs.ExecuteAsync(command, cancellationToken)
+                : observations.ExecuteAsync(command, cancellationToken);
 }

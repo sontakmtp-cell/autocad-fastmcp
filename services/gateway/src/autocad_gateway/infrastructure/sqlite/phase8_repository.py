@@ -9,7 +9,14 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from typing import Any
 
-from autocad_contracts import canonical_json, validate_bounded_json
+from autocad_contracts import (
+    MaterializedTargetRef,
+    Phase8CapabilityEvidence,
+    canonical_json,
+    canonical_phase8_capability_evidence_digest,
+    canonical_target_refs_digest,
+    validate_bounded_json,
+)
 
 from ...phase8_contract_adapter import CompiledProgram
 from .database import SqliteDatabase, new_id, utc_now
@@ -426,6 +433,109 @@ class Phase8Repository:
             ]
         return result
 
+    async def get_plan_for_program(
+        self, owner_subject: str, program_id: str, revision: int
+    ) -> dict[str, Any] | None:
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT plan_id FROM phase8_execution_plans "
+                "WHERE owner_subject = ? AND program_id = ? "
+                "AND program_revision = ?",
+                (owner_subject, program_id, revision),
+            ).fetchone()
+        if row is None:
+            return None
+        return await self.get_plan(owner_subject, str(row["plan_id"]))
+
+    async def create_preview(
+        self,
+        *,
+        owner_subject: str,
+        plan_id: str,
+        preview_id: str,
+        job_id: str,
+        execution_binding: dict[str, Any],
+        capability_evidence_ids: list[str],
+        expires_at: str,
+        idempotency_key: str,
+        request_digest: str,
+    ) -> tuple[dict[str, Any], bool]:
+        _token(owner_subject, "owner_subject")
+        _token(plan_id, "plan_id")
+        _token(preview_id, "preview_id")
+        _token(job_id, "job_id")
+        _token(idempotency_key, "idempotency_key")
+        request_digest = _digest(request_digest, "request_digest")
+        binding_digest = _digest(
+            execution_binding.get("execution_binding_digest"),
+            "execution_binding_digest",
+        )
+        _timestamp(expires_at)
+        binding_json = _json(execution_binding)
+        evidence_json = _json(capability_evidence_ids, limit=65_536)
+        now = utc_now()
+        with self.database.transaction() as conn:
+            plan = conn.execute(
+                "SELECT 1 FROM phase8_execution_plans "
+                "WHERE owner_subject = ? AND plan_id = ?",
+                (owner_subject, plan_id),
+            ).fetchone()
+            if plan is None:
+                raise RepositoryConflict("not_found")
+            existing = conn.execute(
+                "SELECT * FROM phase8_previews "
+                "WHERE owner_subject = ? AND plan_id = ? AND idempotency_key = ?",
+                (owner_subject, plan_id, idempotency_key),
+            ).fetchone()
+            if existing is not None:
+                value = self._preview(existing)
+                if (
+                    value["preview_id"] == preview_id
+                    and value["job_id"] == job_id
+                    and value["execution_binding"] == execution_binding
+                    and value["capability_evidence_ids"] == capability_evidence_ids
+                    and value["expires_at"] == expires_at
+                    and value["request_digest"] == request_digest
+                ):
+                    return value, True
+                raise RepositoryConflict("idempotency_conflict")
+            conn.execute(
+                "INSERT INTO phase8_previews("
+                "preview_id, owner_subject, plan_id, job_id, "
+                "execution_binding_json, execution_binding_digest, "
+                "capability_evidence_json, expires_at, idempotency_key, "
+                "request_digest, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    preview_id,
+                    owner_subject,
+                    plan_id,
+                    job_id,
+                    binding_json,
+                    binding_digest,
+                    evidence_json,
+                    expires_at,
+                    idempotency_key,
+                    request_digest,
+                    now,
+                ),
+            )
+            row = conn.execute(
+                "SELECT * FROM phase8_previews WHERE preview_id = ?",
+                (preview_id,),
+            ).fetchone()
+        return self._preview(row), False
+
+    async def get_preview(
+        self, owner_subject: str, preview_id: str
+    ) -> dict[str, Any] | None:
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM phase8_previews "
+                "WHERE owner_subject = ? AND preview_id = ?",
+                (owner_subject, preview_id),
+            ).fetchone()
+        return self._preview(row) if row is not None else None
+
     async def invalidate_plan(
         self,
         *,
@@ -507,14 +617,95 @@ class Phase8Repository:
             "component",
         }:
             raise RepositoryConflict("materialized_ref_kind_invalid")
-        result_digest = _digest(result_digest, "result_digest")
-        fingerprint_digest = _digest(fingerprint_digest, "fingerprint_digest")
-        target_set_digest = _digest(target_set_digest, "target_set_digest")
-        reference_digest = _digest(reference_digest, "reference_digest")
+        supplied_digests = {
+            "result_digest": _digest(result_digest, "result_digest"),
+            "fingerprint_digest": _digest(
+                fingerprint_digest, "fingerprint_digest"
+            ),
+            "target_set_digest": _digest(
+                target_set_digest, "target_set_digest"
+            ),
+            "reference_digest": _digest(
+                reference_digest, "reference_digest"
+            ),
+        }
         if ref_kind == "query_result":
             query_digest = _digest(query_digest, "query_digest")
         elif query_digest is not None:
             query_digest = _digest(query_digest, "query_digest")
+        if set(materialized) != {"schema_version", "target_refs"} or (
+            materialized.get("schema_version") != "cad.materialized-ref/1"
+            or not isinstance(materialized.get("target_refs"), list)
+        ):
+            raise RepositoryConflict("materialized_ref_invalid")
+        try:
+            refs = [
+                MaterializedTargetRef.model_validate(item)
+                for item in materialized["target_refs"]
+            ]
+        except (TypeError, ValueError) as error:
+            raise RepositoryConflict("materialized_ref_invalid") from error
+        if not refs or [item.ref_id for item in refs] != sorted(
+            item.ref_id for item in refs
+        ):
+            raise RepositoryConflict("materialized_ref_invalid")
+        if len({item.ref_id for item in refs}) != len(refs):
+            raise RepositoryConflict("materialized_ref_invalid")
+        ref_values = [item.model_dump(mode="json") for item in refs]
+        materialized = {
+            "schema_version": "cad.materialized-ref/1",
+            "target_refs": ref_values,
+        }
+        computed = {
+            "result_digest": self._domain_digest(
+                "cad.materialized-ref.result/1",
+                {
+                    "ref_kind": ref_kind,
+                    "query_digest": query_digest,
+                    **materialized,
+                },
+            ),
+            "fingerprint_digest": self._domain_digest(
+                "cad.materialized-ref.fingerprints/1",
+                {
+                    "fingerprints": [
+                        {
+                            "ref_id": item.ref_id,
+                            "fingerprint": item.fingerprint,
+                        }
+                        for item in refs
+                    ]
+                },
+            ),
+            "target_set_digest": canonical_target_refs_digest(refs),
+            "reference_digest": self._domain_digest(
+                "cad.materialized-ref.references/1",
+                {
+                    "ref_kind": ref_kind,
+                    "references": [
+                        {
+                            "ref_id": item.ref_id,
+                            "entity_id": item.entity_id,
+                            "fingerprint": item.fingerprint,
+                        }
+                        for item in refs
+                    ],
+                },
+            ),
+        }
+        if supplied_digests != computed:
+            raise RepositoryConflict("materialized_ref_digest_mismatch")
+        (
+            result_digest,
+            fingerprint_digest,
+            target_set_digest,
+            reference_digest,
+        ) = (
+            computed["result_digest"],
+            computed["fingerprint_digest"],
+            computed["target_set_digest"],
+            computed["reference_digest"],
+        )
         encoded = _json(materialized)
         now = utc_now()
         with self.database.transaction() as conn:
@@ -536,6 +727,15 @@ class Phase8Repository:
             if plan is None or snapshot is None:
                 raise RepositoryConflict("not_found")
             if (
+                any(item.owner_id != owner_subject for item in refs)
+                or any(item.device_id != device_id for item in refs)
+                or any(item.document_id != document_id for item in refs)
+                or any(item.snapshot_id != snapshot_id for item in refs)
+                or any(
+                    item.document_revision != document_revision
+                    for item in refs
+                )
+                or
                 str(snapshot["device_id"]) != device_id
                 or str(snapshot["document_revision"]) != document_revision
                 or str(plan["device_id"]) != device_id
@@ -597,6 +797,26 @@ class Phase8Repository:
                 (materialized_ref_id,),
             ).fetchone()
         return self._materialized_ref(row), False
+
+    async def get_materialized_ref(
+        self, owner_subject: str, materialized_ref_id: str
+    ) -> dict[str, Any] | None:
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM phase8_materialized_refs "
+                "WHERE owner_subject = ? AND materialized_ref_id = ?",
+                (owner_subject, materialized_ref_id),
+            ).fetchone()
+        return self._materialized_ref(row) if row is not None else None
+
+    @staticmethod
+    def _domain_digest(domain: str, value: dict[str, Any]) -> str:
+        encoded = canonical_json(
+            {"domain": domain, "value": value}
+        ).encode("utf-8")
+        from hashlib import sha256
+
+        return "sha256:" + sha256(encoded).hexdigest()
 
     async def create_conflict_report(
         self,
@@ -760,10 +980,24 @@ class Phase8Repository:
             result = self._conflict_report(conn, report)
         return result
 
+    async def get_conflict_report(
+        self, owner_subject: str, conflict_report_id: str
+    ) -> dict[str, Any] | None:
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM phase8_conflict_reports "
+                "WHERE owner_subject = ? AND conflict_report_id = ?",
+                (owner_subject, conflict_report_id),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._conflict_report(conn, row)
+
     async def record_capability_evidence(
         self, value: dict[str, Any]
     ) -> tuple[dict[str, Any], bool]:
         required = {
+            "schema_version",
             "evidence_id",
             "evidence_authority",
             "owner_subject",
@@ -782,46 +1016,38 @@ class Phase8Repository:
             "host_evidence_digest",
             "cohort",
             "evidence_version",
+            "issued_at",
             "valid_until",
             "evidence_digest",
         }
         if set(value) != required:
             raise RepositoryConflict("capability_evidence_invalid")
-        if value["evidence_authority"] != "gateway_server":
-            raise RepositoryConflict("capability_evidence_untrusted")
-        support_state = value["support_state"]
-        if support_state not in {
-            "unsupported",
-            "contract_only",
-            "preview_only",
-            "lab_commit",
-            "certified",
-        }:
+        owner_subject = _token(value["owner_subject"], "owner_subject")
+        wire_value = {
+            key: item
+            for key, item in value.items()
+            if key != "owner_subject"
+        }
+        supplied_digest = wire_value.pop("evidence_digest")
+        wire_value["evidence_digest"] = (
+            canonical_phase8_capability_evidence_digest(wire_value)
+        )
+        if supplied_digest != wire_value["evidence_digest"]:
             raise RepositoryConflict("capability_evidence_invalid")
-        for field in (
-            "package_hash",
-            "capability_manifest_hash",
-            "operation_registry_hash",
-            "agent_evidence_digest",
-            "host_evidence_digest",
-            "evidence_digest",
-        ):
-            _digest(value[field], field)
-        for field in required - {
-            "package_signature_verified",
-            "valid_until",
-            "support_state",
-            "package_hash",
-            "capability_manifest_hash",
-            "operation_registry_hash",
-            "agent_evidence_digest",
-            "host_evidence_digest",
-            "evidence_digest",
-        }:
-            _token(value[field], field)
-        if not isinstance(value["package_signature_verified"], bool):
-            raise RepositoryConflict("capability_evidence_invalid")
-        _timestamp(value["valid_until"])
+        try:
+            evidence = Phase8CapabilityEvidence.model_validate(wire_value)
+        except (TypeError, ValueError) as error:
+            code = (
+                "capability_evidence_untrusted"
+                if value.get("evidence_authority") != "gateway_server"
+                or value.get("package_signature_verified") is not True
+                else "capability_evidence_invalid"
+            )
+            raise RepositoryConflict(code) from error
+        value = {
+            **evidence.model_dump(mode="json"),
+            "owner_subject": owner_subject,
+        }
         now = utc_now()
         with self.database.transaction() as conn:
             existing = conn.execute(
@@ -841,7 +1067,9 @@ class Phase8Repository:
             ).fetchone()
             if owned is None:
                 raise RepositoryConflict("not_found")
-            columns = list(required)
+            columns = [
+                key for key in required if key != "schema_version"
+            ]
             conn.execute(
                 "INSERT INTO phase8_capability_evidence("
                 + ", ".join(columns)
@@ -861,6 +1089,17 @@ class Phase8Repository:
                 (value["evidence_id"],),
             ).fetchone()
         return self._capability_evidence(row), False
+
+    async def get_capability_evidence(
+        self, owner_subject: str, evidence_id: str
+    ) -> dict[str, Any] | None:
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM phase8_capability_evidence "
+                "WHERE owner_subject = ? AND evidence_id = ?",
+                (owner_subject, evidence_id),
+            ).fetchone()
+        return self._capability_evidence(row) if row is not None else None
 
     async def append_usage_event(
         self,
@@ -1082,6 +1321,17 @@ class Phase8Repository:
             ).fetchone()
         return dict(row), False
 
+    async def get_intent_binding(
+        self, owner_subject: str, intent_id: str
+    ) -> dict[str, Any] | None:
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM phase8_intent_bindings "
+                "WHERE owner_subject = ? AND intent_id = ?",
+                (owner_subject, intent_id),
+            ).fetchone()
+        return dict(row) if row is not None else None
+
     async def bind_consent(
         self,
         *,
@@ -1139,6 +1389,17 @@ class Phase8Repository:
                 (consent_id,),
             ).fetchone()
         return dict(row), False
+
+    async def get_consent_binding(
+        self, owner_subject: str, consent_id: str
+    ) -> dict[str, Any] | None:
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM phase8_consent_bindings "
+                "WHERE owner_subject = ? AND consent_id = ?",
+                (owner_subject, consent_id),
+            ).fetchone()
+        return dict(row) if row is not None else None
 
     @staticmethod
     def _strict_tokens(values: tuple[str, ...], field: str) -> None:
@@ -1252,7 +1513,19 @@ class Phase8Repository:
     @staticmethod
     def _capability_evidence(row: Any) -> dict[str, Any]:
         value = dict(row)
+        value["schema_version"] = "cad.capability-evidence/1"
         value["package_signature_verified"] = bool(
             value["package_signature_verified"]
+        )
+        return value
+
+    @staticmethod
+    def _preview(row: Any) -> dict[str, Any]:
+        value = dict(row)
+        value["execution_binding"] = json.loads(
+            value.pop("execution_binding_json")
+        )
+        value["capability_evidence_ids"] = json.loads(
+            value.pop("capability_evidence_json")
         )
         return value

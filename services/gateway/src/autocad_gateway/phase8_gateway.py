@@ -113,6 +113,19 @@ class Phase8GatewayService:
         plan_id: str | None = None,
     ) -> dict[str, Any]:
         compilation = self._compile(source)
+        self._require_source_binding(
+            compilation,
+            program_id=program_id,
+            device_id=device_id,
+            document_id=document_id,
+            source_snapshot_id=source_snapshot_id,
+            expected_document_revision=expected_document_revision,
+        )
+        canonical_plan_id = compilation.plan.get("plan_id")
+        if not isinstance(canonical_plan_id, str) or not canonical_plan_id:
+            canonical_plan_id = plan_id
+        if plan_id is not None and canonical_plan_id != plan_id:
+            raise RepositoryConflict("plan_id_mismatch")
         revision, _ = await self.repository.create_revision(
             owner_subject=owner_subject,
             program_id=program_id,
@@ -133,7 +146,7 @@ class Phase8GatewayService:
             compilation=compilation,
             rollout_policy_digest=self._rollout_policy_digest(),
             rollout_policy_epoch=self.flags.rollout_policy_epoch,
-            plan_id=plan_id,
+            plan_id=canonical_plan_id,
         )
         return {"revision": revision, "plan": plan}
 
@@ -409,6 +422,14 @@ class Phase8GatewayService:
             "action": action,
             "binding_digest": phase8_binding_digest(plan),
             "capability_evidence_ids": [item["evidence_id"] for item in evidence],
+            "capability_evidence": [
+                {
+                    key: value
+                    for key, value in item.items()
+                    if key not in {"owner_subject", "created_at"}
+                }
+                for item in evidence
+            ],
         }
 
     def _compile(self, source: dict[str, Any]) -> CompiledProgram:
@@ -420,6 +441,31 @@ class Phase8GatewayService:
         if not isinstance(result, CompiledProgram):
             raise RepositoryConflict("compiler_result_invalid")
         return result
+
+    @staticmethod
+    def _require_source_binding(
+        compilation: CompiledProgram,
+        *,
+        program_id: str,
+        device_id: str,
+        document_id: str,
+        source_snapshot_id: str,
+        expected_document_revision: str,
+    ) -> None:
+        expected = {
+            "program_id": program_id,
+            "program_revision": 1,
+            "device_id": device_id,
+            "document_id": document_id,
+            "source_snapshot_id": source_snapshot_id,
+            "expected_document_revision": expected_document_revision,
+        }
+        for field, value in expected.items():
+            actual = compilation.source.get(field)
+            # Legacy injected test adapters did not carry the canonical fields.
+            # A real cad.program/1.0 source always does and must match exactly.
+            if actual is not None and actual != value:
+                raise RepositoryConflict("source_binding_mismatch")
 
     def _require_revision_adapter(self) -> None:
         if self.revision_adapter is None:

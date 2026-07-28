@@ -80,6 +80,14 @@
       "title": "Source Schema Version",
       "type": "string"
     },
+    "source_registry_version": {
+      "enum": [
+        "cad.program/1.0-create-core",
+        "cad.program/1.0-phase8-core"
+      ],
+      "title": "Source Registry Version",
+      "type": "string"
+    },
     "source_program_id": {
       "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
       "title": "Source Program Id",
@@ -101,7 +109,7 @@
       "type": "string"
     },
     "compiler_version": {
-      "const": "1.0.0",
+      "const": "1.1.0",
       "title": "Compiler Version",
       "type": "string"
     },
@@ -238,6 +246,7 @@
     "schema_version",
     "action",
     "source_schema_version",
+    "source_registry_version",
     "source_program_id",
     "source_program_revision",
     "source_digest",

@@ -1164,6 +1164,52 @@ class Phase7Repository:
             ):
                 raise RepositoryConflict("job_binding_mismatch")
             return
+        binding = payload.get("binding")
+        if (
+            isinstance(binding, dict)
+            and binding.get("schema_version")
+            == "cad.execution-binding/1"
+        ):
+            approval = payload.get("approval_binding")
+            if (
+                set(payload)
+                != {
+                    "binding",
+                    "execution_plan",
+                    "approval_binding",
+                    "capability_evidence",
+                    "preview_id",
+                    "expires_at",
+                    "preview_digest",
+                    "receipt_id",
+                }
+                or not isinstance(approval, dict)
+                or approval.get("intent_id") != intent.intent_id
+                or approval.get("intent_digest") != intent.intent_digest
+                or binding.get("action") != "commit"
+                or binding.get("source_program_id") != intent.program_id
+                or binding.get("source_program_revision")
+                != intent.program_revision
+                or binding.get("source_digest") != intent.program_digest
+                or binding.get("device_id") != intent.device_id
+                or binding.get("document_id") != intent.document_id
+                or binding.get("document_revision")
+                != intent.expected_document_revision
+                or binding.get("preview_id") != intent.preview_id
+                or binding.get("preview_expires_at")
+                != intent.preview_expires_at
+                or binding.get("receipt_id")
+                != intent.deterministic_receipt_id
+                or binding.get("execution_binding_digest")
+                != intent.commit_execution_digest
+                or payload.get("preview_id") != intent.preview_id
+                or payload.get("expires_at") != intent.preview_expires_at
+                or payload.get("preview_digest") != intent.preview_digest
+                or payload.get("receipt_id")
+                != intent.deterministic_receipt_id
+            ):
+                raise RepositoryConflict("job_binding_mismatch")
+            return
         execution = payload.get("execution")
         if not isinstance(execution, dict):
             raise RepositoryConflict("job_binding_mismatch")
@@ -1195,9 +1241,27 @@ class Phase7Repository:
             (intent.owner_subject, intent.intent_id),
         ).fetchone()
         if binding is None:
+            execution_binding = payload.get("binding")
+            legacy_execution = payload.get("execution")
+            if (
+                isinstance(execution_binding, dict)
+                and execution_binding.get("schema_version")
+                == "cad.execution-binding/1"
+            ) or (
+                isinstance(legacy_execution, dict)
+                and (
+                    "phase8_binding_digest" in legacy_execution
+                    or "plan_digest" in legacy_execution
+                    or "effect_digest" in legacy_execution
+                )
+            ):
+                raise RepositoryConflict("job_binding_mismatch")
             return
-        execution = payload.get("execution")
-        expected = {
+        plan = payload.get("execution_plan")
+        execution_binding = payload.get("binding")
+        approval = payload.get("approval_binding")
+        legacy_execution = payload.get("execution")
+        legacy_expected = {
             "source_digest": binding["source_digest"],
             "semantic_digest": binding["semantic_digest"],
             "plan_digest": binding["plan_digest"],
@@ -1214,8 +1278,31 @@ class Phase7Repository:
             "rollout_policy_epoch": binding["rollout_policy_epoch"],
             "phase8_binding_digest": binding["binding_digest"],
         }
-        if not isinstance(execution, dict) or any(
-            execution.get(key) != value for key, value in expected.items()
+        legacy_matches = isinstance(legacy_execution, dict) and all(
+            legacy_execution.get(key) == value
+            for key, value in legacy_expected.items()
+        )
+        if (
+            not legacy_matches
+            and (
+            not isinstance(plan, dict)
+            or not isinstance(execution_binding, dict)
+            or not isinstance(approval, dict)
+            or plan.get("source_digest") != binding["source_digest"]
+            or plan.get("execution_plan_digest") != binding["plan_digest"]
+            or plan.get("expansion_digest") != binding["expansion_digest"]
+            or plan.get("effect_manifest_digest") != binding["effect_digest"]
+            or plan.get("target_refs_digest") != binding["target_set_digest"]
+            or plan.get("compiler", {}).get("compiler_package_hash")
+            != binding["compiler_hash"]
+            or execution_binding.get("source_digest")
+            != binding["source_digest"]
+            or execution_binding.get("execution_plan_digest")
+            != binding["plan_digest"]
+            or approval.get("intent_id") != intent.intent_id
+            or approval.get("intent_digest") != intent.intent_digest
+            or approval.get("consent_id") != consent_id
+            )
         ):
             raise RepositoryConflict("job_binding_mismatch")
         if intent.required_assurance == "none":

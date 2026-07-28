@@ -240,6 +240,17 @@ public sealed record CadManagedHostAdmission(
                 "capability_missing",
                 "Host capability evidence or compiled operation registry is unverified.");
         }
+        var effectClasses = plan.Operations
+            .Select(operation => Phase8ManagedOperationRegistry.Require(
+                operation.Kind,
+                operation.Target.EntityType).EffectClass)
+            .ToHashSet();
+        if (effectClasses.Count > 1)
+        {
+            throw new ProtocolValidationException(
+                "capability_missing",
+                "Mixed create-equivalent and exact-transform plans remain disabled until a compound atomic rollback contract is available.");
+        }
         foreach (var operation in plan.Operations)
         {
             var descriptor = Phase8ManagedOperationRegistry.Require(
@@ -291,6 +302,12 @@ public sealed record CadManagedEffectIdentity(
     string ReceiptId,
     string EffectIdentityDigest)
 {
+    public void Validate()
+    {
+        Phase8ManagedOperationRegistry.RequireIdentifier(ReceiptId, 128);
+        Phase8ManagedOperationRegistry.RequireDigest(EffectIdentityDigest);
+    }
+
     public static CadManagedEffectIdentity Create(CadManagedSealedPlan plan)
     {
         plan.Validate();
@@ -332,7 +349,9 @@ public sealed record CadManagedEffectIdentity(
                     }).ToArray(),
                 plan.Pins
             });
-        return new CadManagedEffectIdentity(receiptId, identity);
+        var value = new CadManagedEffectIdentity(receiptId, identity);
+        value.Validate();
+        return value;
     }
 
     private static string DomainHash(string domain, object value)

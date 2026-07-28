@@ -9,9 +9,17 @@ namespace AutocadMcp.Host.R25;
 internal sealed class AutoCadReadOnlyOperations(
     AutoCadIdleScheduler scheduler,
     DocumentIdentityRegistry identities,
-    string packageHash) : IReadOnlyHostOperations
+    string packageHash,
+    Phase8HostRuntimeEvidence phase8Runtime,
+    bool phase8SourceEnabled,
+    bool phase8CreatePackEnabled,
+    bool phase8TransformPackEnabled,
+    bool phase8CheckpointV2Enabled) : IReadOnlyHostOperations
 {
     private readonly AutoCadEntitySnapshotOperations _entityOperations = new(identities);
+    private bool Phase8Enabled =>
+        phase8SourceEnabled &&
+        (phase8CreatePackEnabled || phase8TransformPackEnabled);
 
     public Task<object> GetHandshakeEvidenceAsync(CancellationToken cancellationToken) =>
         scheduler.RunAsync<object>(GetHandshakeEvidence, cancellationToken);
@@ -31,24 +39,27 @@ internal sealed class AutoCadReadOnlyOperations(
             release_year = 2025,
             series = "R25.0",
             active_document_id = document is null ? null : identities.Get(document).DocumentId,
-            capabilities = new[]
-            {
-                "host.health",
-                "observe.summary",
-                "entity.snapshot.v2",
-                "document.events.v1",
-                "cad.program.v0.2",
-                "cad.program.preview",
-                "cad.program.commit",
-                "cad.program.validate",
-                "cad.recovery.receipt_query",
-                "cad.rollback.checkpoint.lookup",
-                "cad.rollback.preview",
-                "cad.rollback.commit",
-                "cad.rollback.validate",
-                "preview.database_abort.v1",
-                "durable.receipt.v2"
-            }
+            capabilities = Capabilities(),
+            capability_states = Phase8CapabilityStates(),
+            phase8_host_evidence = Phase8Enabled
+                ? new
+                {
+                    schema_version = "cad.host-capability-evidence/1",
+                    runtime_id = phase8Runtime.RuntimeId,
+                    runtime_role = phase8Runtime.RuntimeRole,
+                    host_family = phase8Runtime.HostFamily,
+                    host_version = phase8Runtime.HostVersion,
+                    package_id = phase8Runtime.PackageId,
+                    package_version = phase8Runtime.PackageVersion,
+                    package_hash = phase8Runtime.PackageHash,
+                    operation_registry_version =
+                        phase8Runtime.OperationRegistryVersion,
+                    operation_registry_hash =
+                        phase8Runtime.OperationRegistryHash,
+                    host_evidence_digest =
+                        phase8Runtime.HostEvidenceDigest
+                }
+                : null
         };
     }
 
@@ -87,20 +98,79 @@ internal sealed class AutoCadReadOnlyOperations(
             active_document_name = document is null ? null : Path.GetFileName(document.Name),
             is_quiescent = commandActive == 0,
             is_modal_dialog = (commandActive & 8) != 0,
-            capabilities = new[]
-            {
-                "host.health",
-                "observe.summary",
-                "entity.snapshot.v2",
-                "document.events.v1",
-                "cad.program.v0.2",
-                "cad.program.preview",
-                "cad.program.commit",
-                "cad.program.validate",
-                "preview.database_abort.v1",
-                "durable.receipt.v2"
-            }
+            capabilities = Capabilities(),
+            capability_states = Phase8CapabilityStates(),
+            phase8_host_evidence_digest = Phase8Enabled
+                ? phase8Runtime.HostEvidenceDigest
+                : null
         };
+    }
+
+    private string[] Capabilities() =>
+        new[]
+        {
+            "host.health",
+            "observe.summary",
+            "entity.snapshot.v2",
+            "document.events.v1",
+            "cad.program.v0.2",
+            "cad.program.preview",
+            "cad.program.commit",
+            "cad.program.validate",
+            "cad.recovery.receipt_query",
+            "cad.rollback.checkpoint.lookup",
+            "cad.rollback.preview",
+            "cad.rollback.commit",
+            "cad.rollback.validate",
+            "preview.database_abort.v1",
+            "durable.receipt.v2"
+        }
+        .Concat(Phase8CapabilityStates().Keys)
+        .Distinct(StringComparer.Ordinal)
+        .Order(StringComparer.Ordinal)
+        .ToArray();
+
+    private Dictionary<string, string> Phase8CapabilityStates()
+    {
+        var states = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (!Phase8Enabled)
+        {
+            return states;
+        }
+        Add("cad.program.v1.preview");
+        Add("cad.program.v1.commit");
+        Add("cad.program.v1.compile");
+        Add("cad.validation.geometry.basic.v1");
+        Add("cad.validation.document.revision.v1");
+        Add("cad.validation.layer.exists.v1");
+        Add("cad.validation.entity.fingerprint.v1");
+        Add("cad.validation.transform.result.v1");
+        Add("cad.validation.rollback.eligibility.v1");
+
+        if (phase8CreatePackEnabled)
+        {
+            AddEntityPack("copy");
+            AddEntityPack("offset");
+        }
+        if (phase8TransformPackEnabled && phase8CheckpointV2Enabled)
+        {
+            AddEntityPack("move");
+            foreach (var entity in new[] { "line", "circle", "lwpolyline" })
+            {
+                Add($"cad.rollback.checkpoint.v2.{entity}");
+            }
+        }
+        return states;
+
+        void AddEntityPack(string operation)
+        {
+            foreach (var entity in new[] { "line", "circle", "lwpolyline" })
+            {
+                Add($"cad.op.{operation}.{entity}.v1");
+            }
+        }
+
+        void Add(string capability) => states[capability] = "lab_commit";
     }
 
     private object Observe(CommandRequest command)

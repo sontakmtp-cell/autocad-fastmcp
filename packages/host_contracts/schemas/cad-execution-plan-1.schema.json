@@ -9,7 +9,7 @@
           "type": "string"
         },
         "compiler_version": {
-          "const": "1.0.0",
+          "const": "1.1.0",
           "title": "Compiler Version",
           "type": "string"
         },
@@ -44,7 +44,10 @@
             "create_polyline",
             "create_rectangle",
             "create_text",
-            "create_dimension_linear"
+            "create_dimension_linear",
+            "copy_entity",
+            "offset_entity",
+            "move_entity"
           ],
           "title": "Kind",
           "type": "string"
@@ -300,6 +303,57 @@
           ],
           "default": null,
           "title": "Text Override"
+        },
+        "target_ref_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Ref Id"
+        },
+        "displacement_mm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConcreteVector3d"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "signed_distance_mm": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Signed Distance Mm"
+        },
+        "output_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Id"
         }
       },
       "required": [
@@ -341,6 +395,36 @@
       "title": "ConcretePoint3d",
       "type": "object"
     },
+    "ConcreteVector3d": {
+      "additionalProperties": false,
+      "properties": {
+        "x_mm": {
+          "maxLength": 40,
+          "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+          "title": "X Mm",
+          "type": "string"
+        },
+        "y_mm": {
+          "maxLength": 40,
+          "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+          "title": "Y Mm",
+          "type": "string"
+        },
+        "z_mm": {
+          "maxLength": 40,
+          "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+          "title": "Z Mm",
+          "type": "string"
+        }
+      },
+      "required": [
+        "x_mm",
+        "y_mm",
+        "z_mm"
+      ],
+      "title": "ConcreteVector3d",
+      "type": "object"
+    },
     "EffectEntry": {
       "additionalProperties": false,
       "properties": {
@@ -363,6 +447,7 @@
         "effect_class": {
           "enum": [
             "create_only",
+            "modify_in_place",
             "ensure_non_entity"
           ],
           "title": "Effect Class",
@@ -388,7 +473,8 @@
           "type": "integer"
         },
         "modifies": {
-          "const": 0,
+          "maximum": 1,
+          "minimum": 0,
           "title": "Modifies",
           "type": "integer"
         },
@@ -400,7 +486,8 @@
         "checkpoint_strategy": {
           "enum": [
             "none",
-            "cad.rollback.checkpoint/1-created-entities"
+            "cad.rollback.checkpoint/1-created-entities",
+            "cad.rollback.checkpoint/2"
           ],
           "title": "Checkpoint Strategy",
           "type": "string"
@@ -444,7 +531,8 @@
           "type": "integer"
         },
         "modifies": {
-          "const": 0,
+          "maximum": 1024,
+          "minimum": 0,
           "title": "Modifies",
           "type": "integer"
         },
@@ -460,12 +548,18 @@
           "type": "integer"
         },
         "risk_floor": {
-          "const": "low",
+          "enum": [
+            "low",
+            "medium"
+          ],
           "title": "Risk Floor",
           "type": "string"
         },
         "checkpoint_strategy": {
-          "const": "cad.rollback.checkpoint/1-created-entities",
+          "enum": [
+            "cad.rollback.checkpoint/1-created-entities",
+            "cad.rollback.checkpoint/2"
+          ],
           "title": "Checkpoint Strategy",
           "type": "string"
         }
@@ -668,7 +762,11 @@
           "type": "string"
         },
         "entity_type": {
-          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "enum": [
+            "LINE",
+            "CIRCLE",
+            "LWPOLYLINE"
+          ],
           "title": "Entity Type",
           "type": "string"
         },
@@ -794,6 +892,14 @@
     "source_schema_version": {
       "const": "cad.program/1.0",
       "title": "Source Schema Version",
+      "type": "string"
+    },
+    "source_registry_version": {
+      "enum": [
+        "cad.program/1.0-create-core",
+        "cad.program/1.0-phase8-core"
+      ],
+      "title": "Source Registry Version",
       "type": "string"
     },
     "source_program_id": {
@@ -926,7 +1032,10 @@
       "type": "array"
     },
     "checkpoint_strategy": {
-      "const": "cad.rollback.checkpoint/1-created-entities",
+      "enum": [
+        "cad.rollback.checkpoint/1-created-entities",
+        "cad.rollback.checkpoint/2"
+      ],
       "title": "Checkpoint Strategy",
       "type": "string"
     },
@@ -940,6 +1049,7 @@
     "schema_version",
     "plan_id",
     "source_schema_version",
+    "source_registry_version",
     "source_program_id",
     "source_program_revision",
     "source_digest",

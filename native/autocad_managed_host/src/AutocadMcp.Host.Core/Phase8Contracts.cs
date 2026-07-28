@@ -10,12 +10,13 @@ public static class Phase8Contract
 {
     public const string SourceSchemaVersion = "cad.program/1.0";
     public const string RegistryVersion = "cad.program/1.0-create-core";
+    public const string Phase8RegistryVersion = "cad.program/1.0-phase8-core";
     public const string PlanSchemaVersion = "cad.execution-plan/1";
     public const string EffectSchemaVersion = "cad.effect-manifest/1";
     public const string CompilerId = "autocad-mcp.gateway.cad-program-v1";
-    public const string CompilerVersion = "1.0.0";
+    public const string CompilerVersion = "1.1.0";
     public const string CompilerDigest =
-        "sha256:877cf651acda71260bad22cb465913b6296dfc0db4a2e0e1fbbe6853dd5fe71f";
+        "sha256:98732381c0674120be01bdae9b6e825a89dd2579a6c6af31e8ec4030bf1c35d9";
     public const string SourceDigestDomain = "cad.program.source/1";
     public const string CompilerDigestDomain = "cad.program.compiler/1";
     public const string ExpansionDigestDomain = "cad.program.expansion/1";
@@ -41,6 +42,16 @@ public static class Phase8Contract
             "create_dimension_linear"
         ],
         StringComparer.Ordinal);
+
+    public static readonly IReadOnlySet<string> TargetKinds = new HashSet<string>(
+        ["copy_entity", "offset_entity", "move_entity"],
+        StringComparer.Ordinal);
+
+    public static bool IsAllowedKind(string kind) =>
+        CreateOnlyKinds.Contains(kind) || TargetKinds.Contains(kind);
+
+    public static bool IsAllowedRegistry(string registry) =>
+        registry is RegistryVersion or Phase8RegistryVersion;
 }
 
 public sealed record Phase8PlanDigests(
@@ -84,7 +95,11 @@ public static class Phase8ContractValidator
             ],
             ["parent_revision"]);
         RequireString(source, "schema_version", Phase8Contract.SourceSchemaVersion);
-        RequireString(source, "registry_version", Phase8Contract.RegistryVersion);
+        var registryVersion = RequireBoundedString(source, "registry_version", 256);
+        if (!Phase8Contract.IsAllowedRegistry(registryVersion))
+        {
+            throw Invalid("Source registry version is not allowlisted.");
+        }
         RequireIdentifier(source, "program_id");
         RequirePositiveInteger(source, "program_revision");
         RequireIdentifier(source, "device_id");
@@ -111,6 +126,13 @@ public static class Phase8ContractValidator
         foreach (var operation in operations.EnumerateArray())
         {
             ValidateSourceOperation(operation, operationIds, ref nodeCount);
+        }
+        if (operations.EnumerateArray().Any(
+                item => Phase8Contract.TargetKinds.Contains(
+                    item.GetProperty("kind").GetString()!)) &&
+            registryVersion != Phase8Contract.Phase8RegistryVersion)
+        {
+            throw Invalid("Target operations require the Phase 8 core registry.");
         }
         if (nodeCount > Phase8Contract.MaxExpressionNodes)
         {
@@ -146,6 +168,7 @@ public static class Phase8ContractValidator
             plan,
             [
                 "schema_version", "plan_id", "source_schema_version",
+                "source_registry_version",
                 "source_program_id", "source_program_revision", "source_digest",
                 "compiler", "device_id", "document_id", "source_snapshot_id",
                 "expected_document_revision", "operations", "expansion_digest",
@@ -158,6 +181,12 @@ public static class Phase8ContractValidator
             ]);
         RequireString(plan, "schema_version", Phase8Contract.PlanSchemaVersion);
         RequireString(plan, "source_schema_version", Phase8Contract.SourceSchemaVersion);
+        var sourceRegistryVersion =
+            RequireBoundedString(plan, "source_registry_version", 256);
+        if (!Phase8Contract.IsAllowedRegistry(sourceRegistryVersion))
+        {
+            throw Invalid("Plan source registry version is not allowlisted.");
+        }
         RequireIdentifier(plan, "plan_id");
         RequireIdentifier(plan, "source_program_id");
         RequirePositiveInteger(plan, "source_program_revision");
@@ -166,10 +195,14 @@ public static class Phase8ContractValidator
         RequireIdentifier(plan, "document_id");
         RequireIdentifier(plan, "source_snapshot_id");
         RequireBoundedString(plan, "expected_document_revision", 256);
-        RequireString(
-            plan,
-            "checkpoint_strategy",
-            "cad.rollback.checkpoint/1-created-entities");
+        var checkpointStrategy =
+            RequireBoundedString(plan, "checkpoint_strategy", 64);
+        if (checkpointStrategy is not (
+            "cad.rollback.checkpoint/1-created-entities" or
+            "cad.rollback.checkpoint/2"))
+        {
+            throw Invalid("Checkpoint strategy is not allowlisted.");
+        }
 
         var compiler = plan.GetProperty("compiler");
         EnsureExact(
@@ -205,7 +238,6 @@ public static class Phase8ContractValidator
         }
 
         var effect = plan.GetProperty("effect_manifest");
-        ValidateEffectManifest(effect, operations);
         var effectDigest = RequireDigest(plan, "effect_manifest_digest");
         var actualEffect = HashDomain(Phase8Contract.EffectDigestDomain, effect);
         if (!StringComparer.Ordinal.Equals(effectDigest, actualEffect))
@@ -219,6 +251,15 @@ public static class Phase8ContractValidator
             0,
             Phase8Contract.MaxExpandedOperations);
         ValidateTargetRefs(targetRefs);
+        ValidateTargetClosure(plan, operations, targetRefs, sourceRegistryVersion);
+        ValidateEffectManifest(effect, operations, targetRefs);
+        if (!StringComparer.Ordinal.Equals(
+                checkpointStrategy,
+                effect.GetProperty("checkpoint_strategy").GetString()))
+        {
+            throw Invalid(
+                "Plan checkpoint strategy does not match effect manifest.");
+        }
         var targetRefsDigest = RequireDigest(plan, "target_refs_digest");
         var actualTargetRefs = HashWrappedArray(
             "target_refs",
@@ -289,6 +330,7 @@ public static class Phase8ContractValidator
             binding,
             [
                 "schema_version", "action", "source_schema_version", "source_program_id",
+                "source_registry_version",
                 "source_program_revision", "source_digest", "compiler_id",
                 "compiler_version", "compiler_digest", "compiler_package_hash",
                 "plan_schema_version", "execution_plan_digest", "expansion_digest",
@@ -316,6 +358,7 @@ public static class Phase8ContractValidator
         }
 
         RequireSame(binding, "source_schema_version", plan, "source_schema_version");
+        RequireSame(binding, "source_registry_version", plan, "source_registry_version");
         RequireSame(binding, "source_program_id", plan, "source_program_id");
         if (binding.GetProperty("source_program_revision").GetInt32() !=
             plan.GetProperty("source_program_revision").GetInt32())
@@ -373,9 +416,9 @@ public static class Phase8ContractValidator
     {
         RequireObject(operation);
         var kind = RequireBoundedString(operation, "kind", 64);
-        if (!Phase8Contract.CreateOnlyKinds.Contains(kind))
+        if (!Phase8Contract.IsAllowedKind(kind))
         {
-            throw Invalid("Operation is outside the create-only registry.");
+            throw Invalid("Operation is outside the allowlisted registry.");
         }
         var operationId = RequireIdentifier(operation, "operation_id");
         if (!operationIds.Add(operationId))
@@ -433,7 +476,7 @@ public static class Phase8ContractValidator
                 ValidateExpression(operation.GetProperty("height"), 1, ref nodeCount);
                 ValidateExpression(operation.GetProperty("rotation"), 1, ref nodeCount);
                 break;
-            default:
+            case "create_dimension_linear":
                 EnsureExact(
                     operation,
                     [
@@ -445,6 +488,26 @@ public static class Phase8ContractValidator
                 ValidatePoint(operation.GetProperty("extension_line1_point"), ref nodeCount);
                 ValidatePoint(operation.GetProperty("extension_line2_point"), ref nodeCount);
                 ValidatePoint(operation.GetProperty("dimension_line_point"), ref nodeCount);
+                break;
+            case "copy_entity":
+            case "move_entity":
+                EnsureExact(
+                    operation,
+                    [.. common, "target_ref_id", "displacement"],
+                    optional);
+                RequireIdentifier(operation, "target_ref_id");
+                ValidatePoint(operation.GetProperty("displacement"), ref nodeCount);
+                break;
+            default:
+                EnsureExact(
+                    operation,
+                    [.. common, "target_ref_id", "signed_distance"],
+                    optional);
+                RequireIdentifier(operation, "target_ref_id");
+                ValidateExpression(
+                    operation.GetProperty("signed_distance"),
+                    1,
+                    ref nodeCount);
                 break;
         }
         if (operation.TryGetProperty("repeat", out var repeat))
@@ -600,9 +663,9 @@ public static class Phase8ContractValidator
         HashSet<string> operationIds)
     {
         var kind = RequireBoundedString(operation, "kind", 64);
-        if (!Phase8Contract.CreateOnlyKinds.Contains(kind))
+        if (!Phase8Contract.IsAllowedKind(kind))
         {
-            throw Invalid("Sealed plan operation is outside the create-only registry.");
+            throw Invalid("Sealed plan operation is outside the allowlisted registry.");
         }
         RequireInteger(operation, "operation_version", 1);
         var id = RequireIdentifier(operation, "operation_id");
@@ -659,7 +722,7 @@ public static class Phase8ContractValidator
                 RequireCanonicalDecimal(operation, "height_mm", positive: true);
                 RequireCanonicalDecimal(operation, "rotation_rad");
                 break;
-            default:
+            case "create_dimension_linear":
                 EnsureExact(
                     operation,
                     [
@@ -672,6 +735,36 @@ public static class Phase8ContractValidator
                 ValidateConcretePoint(operation.GetProperty("extension_line2_point"));
                 ValidateConcretePoint(operation.GetProperty("dimension_line_point"));
                 break;
+            case "copy_entity":
+                EnsureExact(
+                    operation,
+                    [.. common, "target_ref_id", "displacement_mm", "output_id"]);
+                RequireIdentifier(operation, "target_ref_id");
+                ValidateConcreteVector(
+                    operation.GetProperty("displacement_mm"),
+                    nonZero: true);
+                RequireIdentifier(operation, "output_id");
+                break;
+            case "offset_entity":
+                EnsureExact(
+                    operation,
+                    [.. common, "target_ref_id", "signed_distance_mm", "output_id"]);
+                RequireIdentifier(operation, "target_ref_id");
+                if (RequireCanonicalDecimal(operation, "signed_distance_mm") == 0)
+                {
+                    throw Invalid("signed_distance_mm must be non-zero.");
+                }
+                RequireIdentifier(operation, "output_id");
+                break;
+            default:
+                EnsureExact(
+                    operation,
+                    [.. common, "target_ref_id", "displacement_mm"]);
+                RequireIdentifier(operation, "target_ref_id");
+                ValidateConcreteVector(
+                    operation.GetProperty("displacement_mm"),
+                    nonZero: true);
+                break;
         }
     }
 
@@ -681,6 +774,18 @@ public static class Phase8ContractValidator
         RequireCanonicalDecimal(point, "x_mm");
         RequireCanonicalDecimal(point, "y_mm");
         RequireCanonicalDecimal(point, "z_mm");
+    }
+
+    private static void ValidateConcreteVector(JsonElement vector, bool nonZero)
+    {
+        ValidateConcretePoint(vector);
+        if (nonZero &&
+            RequireCanonicalDecimal(vector, "x_mm") == 0 &&
+            RequireCanonicalDecimal(vector, "y_mm") == 0 &&
+            RequireCanonicalDecimal(vector, "z_mm") == 0)
+        {
+            throw Invalid("Concrete displacement must be non-zero.");
+        }
     }
 
     private static decimal RequireCanonicalDecimal(
@@ -702,7 +807,10 @@ public static class Phase8ContractValidator
         return value;
     }
 
-    private static void ValidateEffectManifest(JsonElement effect, JsonElement operations)
+    private static void ValidateEffectManifest(
+        JsonElement effect,
+        JsonElement operations,
+        JsonElement targetRefs)
     {
         EnsureExact(
             effect,
@@ -711,13 +819,7 @@ public static class Phase8ContractValidator
                 "ensures_non_entity", "risk_floor", "checkpoint_strategy"
             ]);
         RequireString(effect, "schema_version", Phase8Contract.EffectSchemaVersion);
-        RequireInteger(effect, "modifies", 0);
         RequireInteger(effect, "erases", 0);
-        RequireString(effect, "risk_floor", "low");
-        RequireString(
-            effect,
-            "checkpoint_strategy",
-            "cad.rollback.checkpoint/1-created-entities");
         var entries = RequireArray(effect, "entries", 1, Phase8Contract.MaxExpandedOperations);
         if (entries.GetArrayLength() != operations.GetArrayLength())
         {
@@ -725,7 +827,12 @@ public static class Phase8ContractValidator
         }
         var entryItems = entries.EnumerateArray().ToArray();
         var operationItems = operations.EnumerateArray().ToArray();
+        var refsById = targetRefs.EnumerateArray().ToDictionary(
+            item => item.GetProperty("ref_id").GetString()!,
+            item => item,
+            StringComparer.Ordinal);
         var createTotal = 0;
+        var modifyTotal = 0;
         var ensureTotal = 0;
         for (var index = 0; index < entryItems.Length; index++)
         {
@@ -739,12 +846,11 @@ public static class Phase8ContractValidator
                 ]);
             RequireIdentifier(entry, "operation_id");
             var kind = RequireBoundedString(entry, "operation_kind", 64);
-            if (!Phase8Contract.CreateOnlyKinds.Contains(kind))
+            if (!Phase8Contract.IsAllowedKind(kind))
             {
                 throw Invalid("Effect operation kind is not allowlisted.");
             }
             RequireInteger(entry, "operation_version", 1);
-            RequireInteger(entry, "modifies", 0);
             RequireInteger(entry, "erases", 0);
             if (!StringComparer.Ordinal.Equals(
                     entry.GetProperty("operation_id").GetString(),
@@ -755,26 +861,57 @@ public static class Phase8ContractValidator
             {
                 throw Invalid("Effect entries do not match ordered operations.");
             }
-            var expectedCreates = kind == "ensure_layer" ? 0 : 1;
+            var expectedCreates = kind is "ensure_layer" or "move_entity" ? 0 : 1;
+            var expectedModifies = kind == "move_entity" ? 1 : 0;
             RequireInteger(entry, "creates", expectedCreates);
+            RequireInteger(entry, "modifies", expectedModifies);
             RequireString(
                 entry,
                 "effect_class",
-                kind == "ensure_layer" ? "ensure_non_entity" : "create_only");
+                kind == "ensure_layer"
+                    ? "ensure_non_entity"
+                    : kind == "move_entity"
+                        ? "modify_in_place"
+                        : "create_only");
+            var expectedEntityType = Phase8Contract.TargetKinds.Contains(kind)
+                ? refsById[operation.GetProperty("target_ref_id").GetString()!]
+                    .GetProperty("entity_type").GetString()!
+                : kind switch
+                {
+                    "ensure_layer" => "LAYER",
+                    "create_line" => "LINE",
+                    "create_circle" => "CIRCLE",
+                    "create_polyline" => "LWPOLYLINE",
+                    "create_rectangle" => "RECTANGLE",
+                    "create_text" => "TEXT",
+                    _ => "DIMENSION_LINEAR"
+                };
+            RequireString(entry, "entity_type", expectedEntityType);
             RequireString(
                 entry,
                 "checkpoint_strategy",
                 kind == "ensure_layer"
                     ? "none"
+                    : kind == "move_entity"
+                        ? "cad.rollback.checkpoint/2"
                     : "cad.rollback.checkpoint/1-created-entities");
             createTotal += expectedCreates;
+            modifyTotal += expectedModifies;
             ensureTotal += kind == "ensure_layer" ? 1 : 0;
         }
         if (RequireNonNegativeInteger(effect, "creates") != createTotal ||
+            RequireNonNegativeInteger(effect, "modifies") != modifyTotal ||
             RequireNonNegativeInteger(effect, "ensures_non_entity") != ensureTotal)
         {
             throw Invalid("Effect totals do not match entries.");
         }
+        RequireString(effect, "risk_floor", modifyTotal > 0 ? "medium" : "low");
+        RequireString(
+            effect,
+            "checkpoint_strategy",
+            modifyTotal > 0
+                ? "cad.rollback.checkpoint/2"
+                : "cad.rollback.checkpoint/1-created-entities");
     }
 
     private static void ValidateExecutionPins(JsonElement binding)
@@ -829,6 +966,106 @@ public static class Phase8ContractValidator
             }
             RequireBoundedString(reference, "document_revision", 256);
             RequireDigest(reference, "fingerprint");
+        }
+    }
+
+    private static void ValidateTargetClosure(
+        JsonElement plan,
+        JsonElement operations,
+        JsonElement refs,
+        string sourceRegistryVersion)
+    {
+        var refItems = refs.EnumerateArray().ToArray();
+        var refIds = refItems
+            .Select(item => item.GetProperty("ref_id").GetString()!)
+            .ToArray();
+        if (!refIds.SequenceEqual(refIds.OrderBy(value => value, StringComparer.Ordinal)))
+        {
+            throw Invalid("Materialized target refs must be sorted by ref_id.");
+        }
+        if (refItems.Select(item => item.GetProperty("owner_id").GetString())
+            .Distinct(StringComparer.Ordinal).Count() > 1)
+        {
+            throw Invalid("Materialized target refs must have one owner.");
+        }
+
+        var targetOperations = operations.EnumerateArray()
+            .Where(item => Phase8Contract.TargetKinds.Contains(
+                item.GetProperty("kind").GetString()!))
+            .ToArray();
+        var usedRefIds = targetOperations
+            .Select(item => item.GetProperty("target_ref_id").GetString()!)
+            .ToHashSet(StringComparer.Ordinal);
+        if (!usedRefIds.SetEquals(refIds))
+        {
+            throw Invalid(
+                "Materialized target refs must exactly match operation targets.");
+        }
+        if (usedRefIds.Count > 0 &&
+            sourceRegistryVersion != Phase8Contract.Phase8RegistryVersion)
+        {
+            throw Invalid("Target operations require the Phase 8 core registry.");
+        }
+
+        var deviceId = plan.GetProperty("device_id").GetString();
+        var documentId = plan.GetProperty("document_id").GetString();
+        var snapshotId = plan.GetProperty("source_snapshot_id").GetString();
+        var revision = plan.GetProperty("expected_document_revision").GetString();
+        foreach (var reference in refItems)
+        {
+            if (!StringComparer.Ordinal.Equals(
+                    reference.GetProperty("device_id").GetString(), deviceId) ||
+                !StringComparer.Ordinal.Equals(
+                    reference.GetProperty("document_id").GetString(), documentId) ||
+                !StringComparer.Ordinal.Equals(
+                    reference.GetProperty("snapshot_id").GetString(), snapshotId) ||
+                !StringComparer.Ordinal.Equals(
+                    reference.GetProperty("document_revision").GetString(), revision))
+            {
+                throw Invalid("Materialized target ref does not match plan context.");
+            }
+        }
+
+        var requiredCapabilities = plan.GetProperty("required_capabilities")
+            .EnumerateArray()
+            .Select(item => item.GetString()!)
+            .ToArray();
+        if (requiredCapabilities.Distinct(StringComparer.Ordinal).Count() !=
+            requiredCapabilities.Length)
+        {
+            throw Invalid("Required plan capabilities must be unique.");
+        }
+        var refsById = refItems.ToDictionary(
+            item => item.GetProperty("ref_id").GetString()!,
+            item => item,
+            StringComparer.Ordinal);
+        foreach (var operation in targetOperations)
+        {
+            var kind = operation.GetProperty("kind").GetString()!;
+            var refId = operation.GetProperty("target_ref_id").GetString()!;
+            var entity = refsById[refId].GetProperty("entity_type")
+                .GetString()!.ToLowerInvariant();
+            var capability =
+                $"cad.op.{kind[..^"_entity".Length]}.{entity}.v1";
+            if (!requiredCapabilities.Contains(capability, StringComparer.Ordinal))
+            {
+                throw Invalid(
+                    "Target operation capability is missing from sealed plan.");
+            }
+        }
+
+        foreach (var group in targetOperations.GroupBy(
+                     item => item.GetProperty("target_ref_id").GetString()!,
+                     StringComparer.Ordinal))
+        {
+            var kinds = group.Select(item => item.GetProperty("kind").GetString()!)
+                .ToArray();
+            if (kinds.Contains("move_entity", StringComparer.Ordinal) &&
+                kinds.Length != 1)
+            {
+                throw Invalid(
+                    "An in-place target cannot be reused by another operation.");
+            }
         }
     }
 

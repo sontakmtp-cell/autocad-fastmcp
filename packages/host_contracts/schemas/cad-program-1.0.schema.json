@@ -1,5 +1,66 @@
 {
   "$defs": {
+    "CopyEntitySource": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repeat": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear": "#/$defs/LinearRepeat",
+                  "polar": "#/$defs/PolarRepeat",
+                  "rectangular": "#/$defs/RectangularRepeat"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/LinearRepeat"
+                },
+                {
+                  "$ref": "#/$defs/RectangularRepeat"
+                },
+                {
+                  "$ref": "#/$defs/PolarRepeat"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat"
+        },
+        "kind": {
+          "const": "copy_entity",
+          "title": "Kind",
+          "type": "string"
+        },
+        "target_ref_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Ref Id",
+          "type": "string"
+        },
+        "displacement": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        }
+      },
+      "required": [
+        "operation_id",
+        "kind",
+        "target_ref_id",
+        "displacement"
+      ],
+      "title": "CopyEntitySource",
+      "type": "object"
+    },
     "CreateCircleSource": {
       "additionalProperties": false,
       "properties": {
@@ -731,6 +792,67 @@
       "title": "LinearRepeat",
       "type": "object"
     },
+    "MoveEntitySource": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repeat": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear": "#/$defs/LinearRepeat",
+                  "polar": "#/$defs/PolarRepeat",
+                  "rectangular": "#/$defs/RectangularRepeat"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/LinearRepeat"
+                },
+                {
+                  "$ref": "#/$defs/RectangularRepeat"
+                },
+                {
+                  "$ref": "#/$defs/PolarRepeat"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat"
+        },
+        "kind": {
+          "const": "move_entity",
+          "title": "Kind",
+          "type": "string"
+        },
+        "target_ref_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Ref Id",
+          "type": "string"
+        },
+        "displacement": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        }
+      },
+      "required": [
+        "operation_id",
+        "kind",
+        "target_ref_id",
+        "displacement"
+      ],
+      "title": "MoveEntitySource",
+      "type": "object"
+    },
     "NumericValue": {
       "additionalProperties": false,
       "properties": {
@@ -782,6 +904,67 @@
         "value"
       ],
       "title": "NumericValue",
+      "type": "object"
+    },
+    "OffsetEntitySource": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repeat": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear": "#/$defs/LinearRepeat",
+                  "polar": "#/$defs/PolarRepeat",
+                  "rectangular": "#/$defs/RectangularRepeat"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/LinearRepeat"
+                },
+                {
+                  "$ref": "#/$defs/RectangularRepeat"
+                },
+                {
+                  "$ref": "#/$defs/PolarRepeat"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat"
+        },
+        "kind": {
+          "const": "offset_entity",
+          "title": "Kind",
+          "type": "string"
+        },
+        "target_ref_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Target Ref Id",
+          "type": "string"
+        },
+        "signed_distance": {
+          "$ref": "#/$defs/Expression"
+        }
+      },
+      "required": [
+        "operation_id",
+        "kind",
+        "target_ref_id",
+        "signed_distance"
+      ],
+      "title": "OffsetEntitySource",
       "type": "object"
     },
     "OpaqueArtifactRef": {
@@ -1013,8 +1196,11 @@
       "type": "string"
     },
     "registry_version": {
-      "const": "cad.program/1.0-create-core",
       "default": "cad.program/1.0-create-core",
+      "enum": [
+        "cad.program/1.0-create-core",
+        "cad.program/1.0-phase8-core"
+      ],
       "title": "Registry Version",
       "type": "string"
     },
@@ -1073,13 +1259,16 @@
       "items": {
         "discriminator": {
           "mapping": {
+            "copy_entity": "#/$defs/CopyEntitySource",
             "create_circle": "#/$defs/CreateCircleSource",
             "create_dimension_linear": "#/$defs/CreateDimensionLinearSource",
             "create_line": "#/$defs/CreateLineSource",
             "create_polyline": "#/$defs/CreatePolylineSource",
             "create_rectangle": "#/$defs/CreateRectangleSource",
             "create_text": "#/$defs/CreateTextSource",
-            "ensure_layer": "#/$defs/EnsureLayerSource"
+            "ensure_layer": "#/$defs/EnsureLayerSource",
+            "move_entity": "#/$defs/MoveEntitySource",
+            "offset_entity": "#/$defs/OffsetEntitySource"
           },
           "propertyName": "kind"
         },
@@ -1104,6 +1293,15 @@
           },
           {
             "$ref": "#/$defs/CreateDimensionLinearSource"
+          },
+          {
+            "$ref": "#/$defs/CopyEntitySource"
+          },
+          {
+            "$ref": "#/$defs/OffsetEntitySource"
+          },
+          {
+            "$ref": "#/$defs/MoveEntitySource"
           }
         ]
       },

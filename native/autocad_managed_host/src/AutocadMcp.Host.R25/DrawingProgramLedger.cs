@@ -20,6 +20,12 @@ internal static class DrawingProgramLedger
         "AUTOCAD_MCP_PHASE8_RESTORE_RECEIPTS";
     private const string Phase8CreatedRollbackReceiptDictionaryKey =
         "AUTOCAD_MCP_PHASE8_CREATED_ROLLBACK_RECEIPTS";
+    private const string Phase8CanonicalReceiptDictionaryKey =
+        "AUTOCAD_MCP_PHASE8_CANONICAL_RECEIPTS";
+    private const string Phase8CanonicalCheckpointDictionaryKey =
+        "AUTOCAD_MCP_PHASE8_CANONICAL_CHECKPOINTS";
+    private const string Phase8CanonicalRollbackReceiptDictionaryKey =
+        "AUTOCAD_MCP_PHASE8_CANONICAL_ROLLBACK_RECEIPTS";
     private const int MaximumReceipts = 4096;
 
     public static DurableProgramReceipt? Find(
@@ -371,6 +377,116 @@ internal static class DrawingProgramLedger
             Phase8ReceiptDictionaryKey,
             record.Receipt.ReceiptId,
             record.Serialize());
+
+    public static Phase8CanonicalCreateReceipt? FindPhase8CanonicalReceipt(
+        Database database,
+        Transaction transaction,
+        string receiptId)
+    {
+        CadRollbackCheckpointV1.RequireId(receiptId, 128);
+        var json = ReadRecord(
+            database,
+            transaction,
+            Phase8CanonicalReceiptDictionaryKey,
+            receiptId);
+        if (json is null)
+        {
+            return null;
+        }
+        var receipt = Phase8CanonicalCreateReceipt.Parse(json);
+        if (receipt.ReceiptId != receiptId)
+        {
+            throw new ProtocolValidationException(
+                "ledger_corrupt",
+                "Canonical Phase 8 receipt key differs from its content.");
+        }
+        return receipt;
+    }
+
+    public static void AddPhase8CanonicalReceipt(
+        Database database,
+        Transaction transaction,
+        Phase8CanonicalCreateReceipt receipt) =>
+        AddRecord(
+            database,
+            transaction,
+            Phase8CanonicalReceiptDictionaryKey,
+            receipt.ReceiptId,
+            receipt.Serialize());
+
+    public static Phase8CanonicalCreatedCheckpoint?
+        FindPhase8CanonicalCheckpoint(
+            Database database,
+            Transaction transaction,
+            string checkpointId)
+    {
+        CadRollbackCheckpointV1.RequireId(checkpointId, 64);
+        var json = ReadRecord(
+            database,
+            transaction,
+            Phase8CanonicalCheckpointDictionaryKey,
+            checkpointId);
+        if (json is null)
+        {
+            return null;
+        }
+        var checkpoint = Phase8CanonicalCreatedCheckpoint.Parse(json);
+        if (checkpoint.CheckpointId != checkpointId)
+        {
+            throw new ProtocolValidationException(
+                "ledger_corrupt",
+                "Canonical Phase 8 checkpoint key differs from its content.");
+        }
+        return checkpoint;
+    }
+
+    public static void AddPhase8CanonicalCheckpoint(
+        Database database,
+        Transaction transaction,
+        Phase8CanonicalCreatedCheckpoint checkpoint) =>
+        AddRecord(
+            database,
+            transaction,
+            Phase8CanonicalCheckpointDictionaryKey,
+            checkpoint.CheckpointId,
+            checkpoint.Serialize());
+
+    public static Phase8CanonicalRollbackReceipt?
+        FindPhase8CanonicalRollbackReceipt(
+            Database database,
+            Transaction transaction,
+            string rollbackReceiptId)
+    {
+        CadRollbackCheckpointV1.RequireId(rollbackReceiptId, 128);
+        var json = ReadRecord(
+            database,
+            transaction,
+            Phase8CanonicalRollbackReceiptDictionaryKey,
+            rollbackReceiptId);
+        if (json is null)
+        {
+            return null;
+        }
+        var receipt = Phase8CanonicalRollbackReceipt.Parse(json);
+        if (receipt.RollbackReceiptId != rollbackReceiptId)
+        {
+            throw new ProtocolValidationException(
+                "ledger_corrupt",
+                "Canonical rollback receipt key differs from its content.");
+        }
+        return receipt;
+    }
+
+    public static void AddPhase8CanonicalRollbackReceipt(
+        Database database,
+        Transaction transaction,
+        Phase8CanonicalRollbackReceipt receipt) =>
+        AddRecord(
+            database,
+            transaction,
+            Phase8CanonicalRollbackReceiptDictionaryKey,
+            receipt.RollbackReceiptId,
+            receipt.Serialize());
 
     public static CadCreatedOutputCheckpointV1? FindPhase8CreatedCheckpoint(
         Database database,

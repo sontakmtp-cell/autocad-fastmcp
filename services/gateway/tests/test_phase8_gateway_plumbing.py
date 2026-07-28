@@ -11,6 +11,10 @@ from hashlib import sha256
 import pytest
 import pytest_asyncio
 
+from autocad_contracts import (
+    canonical_phase8_capability_evidence_digest,
+    canonical_target_refs_digest,
+)
 from autocad_gateway.app import GatewayConfig
 from autocad_gateway.infrastructure.sqlite.database import SqliteDatabase
 from autocad_gateway.infrastructure.sqlite.phase7_repository import Phase7Repository
@@ -237,7 +241,61 @@ async def test_gateway_calls_injected_compiler_without_reinterpreting_source(pha
 @pytest.mark.asyncio
 async def test_revisions_plans_refs_and_conflicts_are_immutable_and_cas_guarded(phase8):
     database, repository = phase8
-    result, plan = await create_root_and_plan(repository)
+    query_digest = digest("query")
+    target_ref = {
+        "ref_id": "ref-1",
+        "owner_id": "owner-a",
+        "device_id": "device-a",
+        "document_id": "document-1",
+        "snapshot_id": "snapshot-1",
+        "document_revision": "revision-before",
+        "entity_id": "entity-1",
+        "entity_type": "LINE",
+        "fingerprint": digest("entity-1"),
+    }
+    materialized_value = {
+        "schema_version": "cad.materialized-ref/1",
+        "target_refs": [target_ref],
+    }
+    target_digest = canonical_target_refs_digest([target_ref])
+    result_digest = repository._domain_digest(
+        "cad.materialized-ref.result/1",
+        {
+            "ref_kind": "query_result",
+            "query_digest": query_digest,
+            **materialized_value,
+        },
+    )
+    fingerprint_digest = repository._domain_digest(
+        "cad.materialized-ref.fingerprints/1",
+        {
+            "fingerprints": [
+                {"ref_id": "ref-1", "fingerprint": target_ref["fingerprint"]}
+            ]
+        },
+    )
+    reference_digest = repository._domain_digest(
+        "cad.materialized-ref.references/1",
+        {
+            "ref_kind": "query_result",
+            "references": [
+                {
+                    "ref_id": "ref-1",
+                    "entity_id": "entity-1",
+                    "fingerprint": target_ref["fingerprint"],
+                }
+            ],
+        },
+    )
+    base = compilation()
+    result = CompiledProgram(
+        **{
+            **base.__dict__,
+            "target_set_digest": target_digest,
+            "reference_digest": reference_digest,
+        }
+    )
+    result, plan = await create_root_and_plan(repository, result=result)
     with pytest.raises(sqlite3.IntegrityError, match="immutable"):
         with database.transaction() as conn:
             conn.execute(
@@ -254,15 +312,25 @@ async def test_revisions_plans_refs_and_conflicts_are_immutable_and_cas_guarded(
         document_id="document-1",
         document_revision="revision-before",
         ref_kind="query_result",
-        query_digest=digest("query"),
-        result_digest=digest("result"),
-        fingerprint_digest=digest("fingerprints"),
+        query_digest=query_digest,
+        result_digest=result_digest,
+        fingerprint_digest=fingerprint_digest,
         target_set_digest=plan["target_set_digest"],
         reference_digest=plan["reference_digest"],
-        materialized={"entity_refs": [{"entity_id": "entity-1", "type": "LINE"}]},
+        materialized=materialized_value,
     )
     assert duplicate is False
-    assert materialized["result_digest"] == digest("result")
+    assert materialized["result_digest"] == result_digest
+    assert (
+        await repository.get_plan("owner-b", plan["plan_id"])
+        is None
+    )
+    assert (
+        await repository.get_materialized_ref(
+            "owner-b", "materialized-ref-1"
+        )
+        is None
+    )
     with pytest.raises(sqlite3.IntegrityError, match="immutable"):
         with database.transaction() as conn:
             conn.execute(
@@ -302,6 +370,10 @@ async def test_revisions_plans_refs_and_conflicts_are_immutable_and_cas_guarded(
         conflict_report_id="conflict-1",
     )
     assert report["state"] == "open"
+    assert (
+        await repository.get_conflict_report("owner-b", "conflict-1")
+        is None
+    )
     with pytest.raises(RepositoryConflict, match="rebase_conflict_open"):
         await repository.seal_plan(
             owner_subject="owner-a",
@@ -411,7 +483,9 @@ async def test_capability_admission_intersects_report_with_trusted_server_eviden
             current_runtime_pins=RUNTIME_PINS,
         )
 
+    issued_at = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
     evidence = {
+            "schema_version": "cad.capability-evidence/1",
             "evidence_id": "evidence-copy-line",
             "evidence_authority": "gateway_server",
             "owner_subject": "owner-a",
@@ -430,16 +504,28 @@ async def test_capability_admission_intersects_report_with_trusted_server_eviden
             "host_evidence_digest": digest("host-evidence"),
             "cohort": "lab",
             "evidence_version": "1",
+            "issued_at": issued_at,
             "valid_until": (
                 datetime.now(timezone.utc) + timedelta(hours=1)
             ).isoformat(),
-            "evidence_digest": digest("trusted-capability-evidence"),
+            "evidence_digest": digest("placeholder"),
         }
+    evidence["evidence_digest"] = canonical_phase8_capability_evidence_digest(
+        {key: value for key, value in evidence.items() if key != "owner_subject"}
+    )
+    untrusted = {**evidence, "evidence_authority": "agent_self_report"}
+    untrusted["evidence_digest"] = canonical_phase8_capability_evidence_digest(
+        {key: value for key, value in untrusted.items() if key != "owner_subject"}
+    )
     with pytest.raises(RepositoryConflict, match="capability_evidence_untrusted"):
-        await repository.record_capability_evidence(
-            {**evidence, "evidence_authority": "agent_self_report"}
-        )
+        await repository.record_capability_evidence(untrusted)
     await repository.record_capability_evidence(evidence)
+    assert (
+        await repository.get_capability_evidence(
+            "owner-b", "evidence-copy-line"
+        )
+        is None
+    )
     admitted = await service.admit(
         owner_subject="owner-a",
         device_id="device-a",
@@ -505,6 +591,18 @@ async def test_phase7_release_requires_exact_phase8_intent_and_consent_binding(p
         owner_subject="owner-a",
         consent_id=consent["consent_id"],
         intent_id=intent["intent_id"],
+    )
+    assert (
+        await repository.get_intent_binding(
+            "owner-b", intent["intent_id"]
+        )
+        is None
+    )
+    assert (
+        await repository.get_consent_binding(
+            "owner-b", consent["consent_id"]
+        )
+        is None
     )
     approved = await phase7.transition_consent(
         owner_subject="owner-a",

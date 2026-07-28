@@ -2,13 +2,18 @@
 
 ## Review decision
 
-**Overall decision: NO-GO for every effect-bearing Phase 8 flag.**
+**Closure decision (2026-07-28): GO for the bounded signed R25 lab profile.**
 
-Slice 8.0 may proceed. Slice 8.1 may proceed only as compile-only work after the
-digest and artifact-reference contracts below are frozen. Slices 8.2 through
-8.5 remain NO-GO until their applicable findings are closed with automated and
-live R25 evidence. Slice 8.6 remains explicitly disabled and is not covered by a
-future-looking design statement alone.
+The findings below were the pre-implementation review criteria. Their Phase 8
+core gates are now closed by strict canonical contracts, exact Gateway/Agent/
+Host admission, registered R25 dispatch, automated fault/recovery tests and
+live signed-lab copy plus move rollback evidence. The retained live artifact is
+`docs/architecture/evidence/phase8-live-r25-e2e-20260728.json`.
+
+This decision does not enable or certify production rollout, LT write,
+delete/topology packs, or mixed create-equivalent plus exact-transform plans.
+Those remain NO-GO. Mixed checkpoint strategies are explicitly rejected until
+a compound atomic rollback contract exists.
 
 This is a design and boundary review, not a claim that the current Phase 0-7
 implementation is exploitable. The reviewed Phase 0-7 code is deliberately

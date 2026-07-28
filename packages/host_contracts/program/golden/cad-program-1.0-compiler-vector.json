@@ -717,24 +717,30 @@
   "source_digest": "sha256:706156555aa0a58e0137de353f7e955817e0c6536e5abd4f56483110680eea4e",
   "compiler_manifest": {
     "compiler_id": "autocad-mcp.gateway.cad-program-v1",
-    "compiler_version": "1.0.0",
+    "compiler_version": "1.1.0",
     "expression_ast": "bounded-v1",
     "numeric_model": "decimal-mm-rad-1e-9-half-even",
     "repeat_model": "linear-rectangular-polar-stable-id-v1",
-    "operation_registry_version": "cad.program/1.0-create-core"
+    "operation_registry_versions": [
+      "cad.program/1.0-create-core",
+      "cad.program/1.0-phase8-core"
+    ],
+    "materialized_ref_model": "gateway-sealed-exact-closure-v1",
+    "target_operation_model": "copy-offset-move-v1"
   },
-  "compiler_digest": "sha256:877cf651acda71260bad22cb465913b6296dfc0db4a2e0e1fbbe6853dd5fe71f",
+  "compiler_digest": "sha256:98732381c0674120be01bdae9b6e825a89dd2579a6c6af31e8ec4030bf1c35d9",
   "plan": {
     "schema_version": "cad.execution-plan/1",
     "plan_id": "phase8-golden.r2",
     "source_schema_version": "cad.program/1.0",
+    "source_registry_version": "cad.program/1.0-create-core",
     "source_program_id": "phase8-golden",
     "source_program_revision": 2,
     "source_digest": "sha256:706156555aa0a58e0137de353f7e955817e0c6536e5abd4f56483110680eea4e",
     "compiler": {
       "compiler_id": "autocad-mcp.gateway.cad-program-v1",
-      "compiler_version": "1.0.0",
-      "compiler_digest": "sha256:877cf651acda71260bad22cb465913b6296dfc0db4a2e0e1fbbe6853dd5fe71f",
+      "compiler_version": "1.1.0",
+      "compiler_digest": "sha256:98732381c0674120be01bdae9b6e825a89dd2579a6c6af31e8ec4030bf1c35d9",
       "compiler_package_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
     },
     "device_id": "device-001",
@@ -1075,7 +1081,7 @@
     "artifact_refs": [],
     "component_refs": [],
     "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities",
-    "execution_plan_digest": "sha256:d9388c0536f8b33ad9634ad7594709dcf343fd639b79814f184a0e253f8788ca"
+    "execution_plan_digest": "sha256:9b1ba850919a2c563acb83608ef97faf00041b38a65c92dbb72cf1ced7fbf41c"
   },
   "expansion_digest": "sha256:3264c42e7d6ed51bb5fd180c641730f646ee0b6305fefbea688ec574cd235d3e",
   "effect_manifest_digest": "sha256:aeacb5ae084ef5ff33f843e8620bb145f55058ba14c357a8ac8235dc47081f59",
@@ -1093,13 +1099,14 @@
     "schema_version": "cad.execution-plan/1",
     "plan_id": "phase8-golden.r2",
     "source_schema_version": "cad.program/1.0",
+    "source_registry_version": "cad.program/1.0-create-core",
     "source_program_id": "phase8-golden",
     "source_program_revision": 2,
     "source_digest": "sha256:706156555aa0a58e0137de353f7e955817e0c6536e5abd4f56483110680eea4e",
     "compiler": {
       "compiler_id": "autocad-mcp.gateway.cad-program-v1",
-      "compiler_version": "1.0.0",
-      "compiler_digest": "sha256:877cf651acda71260bad22cb465913b6296dfc0db4a2e0e1fbbe6853dd5fe71f",
+      "compiler_version": "1.1.0",
+      "compiler_digest": "sha256:98732381c0674120be01bdae9b6e825a89dd2579a6c6af31e8ec4030bf1c35d9",
       "compiler_package_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
     },
     "device_id": "device-001",
@@ -1441,7 +1448,7 @@
     "component_refs": [],
     "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
   },
-  "execution_plan_digest": "sha256:d9388c0536f8b33ad9634ad7594709dcf343fd639b79814f184a0e253f8788ca",
+  "execution_plan_digest": "sha256:9b1ba850919a2c563acb83608ef97faf00041b38a65c92dbb72cf1ced7fbf41c",
   "execution_binding": {
     "runtime_id": "managed_dotnet",
     "runtime_role": "primary",
@@ -1458,15 +1465,16 @@
     "schema_version": "cad.execution-binding/1",
     "action": "compile_only",
     "source_schema_version": "cad.program/1.0",
+    "source_registry_version": "cad.program/1.0-create-core",
     "source_program_id": "phase8-golden",
     "source_program_revision": 2,
     "source_digest": "sha256:706156555aa0a58e0137de353f7e955817e0c6536e5abd4f56483110680eea4e",
     "compiler_id": "autocad-mcp.gateway.cad-program-v1",
-    "compiler_version": "1.0.0",
-    "compiler_digest": "sha256:877cf651acda71260bad22cb465913b6296dfc0db4a2e0e1fbbe6853dd5fe71f",
+    "compiler_version": "1.1.0",
+    "compiler_digest": "sha256:98732381c0674120be01bdae9b6e825a89dd2579a6c6af31e8ec4030bf1c35d9",
     "compiler_package_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
     "plan_schema_version": "cad.execution-plan/1",
-    "execution_plan_digest": "sha256:d9388c0536f8b33ad9634ad7594709dcf343fd639b79814f184a0e253f8788ca",
+    "execution_plan_digest": "sha256:9b1ba850919a2c563acb83608ef97faf00041b38a65c92dbb72cf1ced7fbf41c",
     "expansion_digest": "sha256:3264c42e7d6ed51bb5fd180c641730f646ee0b6305fefbea688ec574cd235d3e",
     "effect_manifest_digest": "sha256:aeacb5ae084ef5ff33f843e8620bb145f55058ba14c357a8ac8235dc47081f59",
     "target_refs_digest": "sha256:629627f4b174ce6878fa9c8ecb1ad5ad1056ddb7266dedc7eea0827b4185a270",
@@ -1477,7 +1485,7 @@
     "document_id": "document-001",
     "source_snapshot_id": "snapshot-001",
     "document_revision": "revision-007",
-    "execution_binding_digest": "sha256:c622b22b4f5bcfcf38ae5dc37f8bfcb1a2487aab5af7ea30b9b11760c28aee25"
+    "execution_binding_digest": "sha256:f9f41c187ffbab97e8868a89a882640fc8aef0b2f661d124ad822388cab0c0de"
   },
   "canonical_execution_binding": {
     "runtime_id": "managed_dotnet",
@@ -1495,15 +1503,16 @@
     "schema_version": "cad.execution-binding/1",
     "action": "compile_only",
     "source_schema_version": "cad.program/1.0",
+    "source_registry_version": "cad.program/1.0-create-core",
     "source_program_id": "phase8-golden",
     "source_program_revision": 2,
     "source_digest": "sha256:706156555aa0a58e0137de353f7e955817e0c6536e5abd4f56483110680eea4e",
     "compiler_id": "autocad-mcp.gateway.cad-program-v1",
-    "compiler_version": "1.0.0",
-    "compiler_digest": "sha256:877cf651acda71260bad22cb465913b6296dfc0db4a2e0e1fbbe6853dd5fe71f",
+    "compiler_version": "1.1.0",
+    "compiler_digest": "sha256:98732381c0674120be01bdae9b6e825a89dd2579a6c6af31e8ec4030bf1c35d9",
     "compiler_package_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
     "plan_schema_version": "cad.execution-plan/1",
-    "execution_plan_digest": "sha256:d9388c0536f8b33ad9634ad7594709dcf343fd639b79814f184a0e253f8788ca",
+    "execution_plan_digest": "sha256:9b1ba850919a2c563acb83608ef97faf00041b38a65c92dbb72cf1ced7fbf41c",
     "expansion_digest": "sha256:3264c42e7d6ed51bb5fd180c641730f646ee0b6305fefbea688ec574cd235d3e",
     "effect_manifest_digest": "sha256:aeacb5ae084ef5ff33f843e8620bb145f55058ba14c357a8ac8235dc47081f59",
     "target_refs_digest": "sha256:629627f4b174ce6878fa9c8ecb1ad5ad1056ddb7266dedc7eea0827b4185a270",
@@ -1515,5 +1524,5 @@
     "source_snapshot_id": "snapshot-001",
     "document_revision": "revision-007"
   },
-  "execution_binding_digest": "sha256:c622b22b4f5bcfcf38ae5dc37f8bfcb1a2487aab5af7ea30b9b11760c28aee25"
+  "execution_binding_digest": "sha256:f9f41c187ffbab97e8868a89a882640fc8aef0b2f661d124ad822388cab0c0de"
 }
