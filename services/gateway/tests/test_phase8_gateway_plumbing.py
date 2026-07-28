@@ -113,7 +113,7 @@ def compilation(
         compiler_hash=digest("compiler"),
         hard_budgets={"max_operations": 8, "max_entities": 8},
         required_capabilities=("cad.op.copy.line.v1",),
-        operation_packs=("create-equivalent-v1",),
+        operation_packs=("create-equivalent/1",),
         validation_profiles=("geometry.basic/1",),
         runtime_pins=RUNTIME_PINS,
         checkpoint_strategy=checkpoint_strategy,
@@ -127,8 +127,16 @@ class FakeCompiler:
     def __init__(self, result: CompiledProgram) -> None:
         self.result = result
 
-    def compile(self, source: dict) -> CompiledProgram:
+    def compile(
+        self,
+        source: dict,
+        *,
+        materialized_target_refs=None,
+        materialized_owner_id=None,
+    ) -> CompiledProgram:
         assert source == self.result.source
+        assert materialized_target_refs is None
+        assert materialized_owner_id is None
         return self.result
 
 
@@ -468,7 +476,7 @@ async def test_capability_admission_intersects_report_with_trusted_server_eviden
     _, repository = phase8
     flags = feature_flags(
         create_pack_enabled=True,
-        operation_pack_allowlist=("create-equivalent-v1",),
+        operation_pack_allowlist=("create-equivalent/1",),
     )
     _, plan = await create_root_and_plan(repository, flags=flags)
     service = Phase8GatewayService(repository, flags)
@@ -491,7 +499,7 @@ async def test_capability_admission_intersects_report_with_trusted_server_eviden
             "owner_subject": "owner-a",
             "device_id": "device-a",
             "capability_key": "cad.op.copy.line.v1",
-            "operation_pack": "create-equivalent-v1",
+            "operation_pack": "create-equivalent/1",
             "runtime_id": "managed_dotnet",
             "host_family": "R25",
             "entity_type": "LINE",
@@ -540,7 +548,7 @@ async def test_capability_admission_intersects_report_with_trusted_server_eviden
         repository,
         feature_flags(
             create_pack_enabled=True,
-            operation_pack_allowlist=("create-equivalent-v1",),
+            operation_pack_allowlist=("create-equivalent/1",),
             rollout_policy_epoch=2,
         ),
     )

@@ -683,6 +683,12 @@ class DurableGatewayServices:
             or program_v1_source.get("program_revision") != 1
         ):
             raise GatewayError("binding_mismatch")
+        materialized_target_refs = self._phase8_materialized_target_refs(
+            owner_subject=principal.subject,
+            snapshot=snapshot,
+            operations=request.operations,
+            document_id=document_id,
+        )
         try:
             prepared = await self.phase8_gateway.prepare_root(
                 owner_subject=principal.subject,
@@ -692,6 +698,7 @@ class DurableGatewayServices:
                 source_snapshot_id=request.source_snapshot_id,
                 expected_document_revision=snapshot["document_revision"],
                 source=program_v1_source,
+                materialized_target_refs=materialized_target_refs,
             )
             sealed = prepared["plan"]
             binding = build_execution_binding_v1(
@@ -726,6 +733,66 @@ class DurableGatewayServices:
             ),
             ready_for_preview=True,
         )
+
+    @staticmethod
+    def _phase8_materialized_target_refs(
+        *,
+        owner_subject: str,
+        snapshot: dict[str, Any],
+        operations: list[dict[str, Any]],
+        document_id: str,
+    ) -> list[dict[str, Any]] | None:
+        target_kinds = {"copy_entity", "offset_entity", "move_entity"}
+        requested_values = [
+            operation.get("target_ref_id")
+            for operation in operations
+            if operation.get("kind") in target_kinds
+        ]
+        if not requested_values:
+            return None
+        if any(
+            not isinstance(ref_id, str) or not ref_id
+            for ref_id in requested_values
+        ):
+            raise GatewayError("invalid_request")
+        requested = list(dict.fromkeys(requested_values))
+        indexed: dict[str, dict[str, Any]] = {}
+        for entity in snapshot.get("entities") or []:
+            if not isinstance(entity, dict):
+                continue
+            for key in ("ref_id", "entity_id", "handle"):
+                value = entity.get(key)
+                if isinstance(value, str) and value:
+                    if value in indexed and indexed[value] != entity:
+                        raise GatewayError("binding_mismatch")
+                    indexed[value] = entity
+        result: list[dict[str, Any]] = []
+        for ref_id in requested:
+            entity = indexed.get(ref_id)
+            if entity is None:
+                raise GatewayError("not_found")
+            entity_id = entity.get("entity_id") or entity.get("handle")
+            entity_type = entity.get("entity_type") or entity.get("type")
+            fingerprint = entity.get("fingerprint")
+            if not all(
+                isinstance(value, str) and value
+                for value in (entity_id, entity_type, fingerprint)
+            ):
+                raise GatewayError("stale_snapshot")
+            result.append(
+                {
+                    "ref_id": ref_id,
+                    "owner_id": owner_subject,
+                    "device_id": snapshot["device_id"],
+                    "document_id": document_id,
+                    "snapshot_id": snapshot["snapshot_id"],
+                    "document_revision": snapshot["document_revision"],
+                    "entity_id": entity_id,
+                    "entity_type": entity_type,
+                    "fingerprint": fingerprint,
+                }
+            )
+        return result
 
     async def preview_program(
         self, request: Any, principal: Principal, correlation_id: str

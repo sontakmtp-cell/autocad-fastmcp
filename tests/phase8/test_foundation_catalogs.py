@@ -102,14 +102,19 @@ def test_rollout_capability_matrix_keeps_effects_and_extensions_closed():
     assert matrix["security_review_commit"].startswith("7da49a1")
     assert len(matrix["default_off_flags"]) == 9
     assert slices["8.0"]["decision"] == "go"
-    assert slices["8.1"]["decision"] == "conditional_go_compile_only"
+    assert slices["8.1"]["decision"] == "go_compile_only"
     assert all(
-        item["decision"].startswith("no_go")
-        for item in (slices["8.2"], slices["8.4"], slices["8.5"], slices["8.6"])
+        slices[slice_id]["decision"] == "go_signed_r25_lab"
+        for slice_id in ("8.2", "8.4", "8.5")
     )
+    assert slices["8.3"]["decision"] == "go_automated"
+    assert slices["8.6"]["decision"] == "no_go_disabled"
+    r25 = matrix["capability_admission"][0]
+    assert r25["phase8_write_state"] == "signed_lab"
+    assert r25["effective_write"] is True
     assert all(
         item["effective_write"] is False
-        for item in matrix["capability_admission"]
+        for item in matrix["capability_admission"][1:]
     )
     assert all(item["enabled"] is False for item in matrix["extension_packs"])
 
@@ -135,10 +140,7 @@ def test_regression_matrix_references_real_repo_paths():
     for suite in suites:
         assert (ROOT / suite["workdir"]).is_dir()
         executable = suite["executable"]
-        if "/" in executable:
-            assert (ROOT / suite["workdir"] / executable).is_file() or (
-                ROOT / executable
-            ).is_file()
+        assert executable in {"uv", "dotnet", "npm"}
         assert suite["evidence_kind"] == "automated"
 
 

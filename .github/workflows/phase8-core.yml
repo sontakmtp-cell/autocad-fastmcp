@@ -19,7 +19,7 @@ jobs:
       - name: Sync isolated Gateway test environment
         run: uv sync --project services/gateway --group test --reinstall-package autocad-contracts
       - name: Run canonical compiler and cross-stack conformance
-        run: uv run --project services/gateway python -m pytest -q tests/phase8 --basetemp=.pytest_cache/phase8-ci
+        run: uv run --project services/gateway python -m pytest -q tests/phase8 --basetemp=phase8-ci-tmp
 
   managed-host-core:
     runs-on: windows-latest

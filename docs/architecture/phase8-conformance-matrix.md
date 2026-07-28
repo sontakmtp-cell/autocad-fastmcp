@@ -25,7 +25,7 @@ packs remain NO-GO.
 | Public MCP surface | Phase 7 snapshot + Phase 8 delta tests | Green | No primitive write/approval tool added |
 | Strict source/compiler | `test_canonical_compiler_conformance.py` | Green | Malicious code/path/URL/command and budget abuse fail closed |
 | Python/C# digest parity | Golden compiler and Host contract tests | Green | Compiler 1.1 golden and Host projection agree |
-| Gateway sealed storage/binding | Cross-stack and real-compiler integration tests | Green | Exact materialized refs, intent/consent and capability evidence are sealed |
+| Gateway sealed storage/binding | Cross-stack and real-compiler integration tests | Green | Public prepare derives trusted snapshot refs; exact materialized refs, intent/consent and pack-specific capability evidence are sealed |
 | `cad.agent/2` serialization | Cross-stack acceptance | Green | Canonical plan/binding/evidence wire artifacts round-trip |
 | Desktop admission | Desktop and cross-stack suites | Green | Runtime/capability/policy mismatch rejects before Host |
 | Owner isolation | Security integration gates | Green | Guessed foreign IDs return not found |
@@ -45,7 +45,7 @@ packs remain NO-GO.
 | `root-phase0-5` | 409 passed, 1 skipped |
 | `contracts-phase6-7` | 113 passed |
 | `host-contracts-phase6-7` | 9 passed |
-| `gateway-phase0-7` | 247 passed |
+| `gateway-phase0-7` | 250 passed |
 | `desktop-agent-phase4-7` | 142 passed |
 | `managed-host-core-phase6-7` | 72 passed |
 | `web-portal-unit-component-phase7` | 35 passed |

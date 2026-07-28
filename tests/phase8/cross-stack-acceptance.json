@@ -3,7 +3,7 @@
   "stages": [
     {
       "id": "canonical-compiler",
-      "status": "failing_fixture_mismatch",
+      "status": "automated_green",
       "evidence": [
         "tests/phase8/test_canonical_compiler_conformance.py",
         "packages/host_contracts/program/golden/cad-program-1.0-compiler-vector.json"
@@ -11,17 +11,17 @@
     },
     {
       "id": "gateway-sealed-storage",
-      "status": "blocked_by_canonical_fixture",
+      "status": "automated_green",
       "evidence": ["tests/phase8/test_cross_stack_acceptance.py"]
     },
     {
       "id": "gateway-binding",
-      "status": "blocked_by_canonical_fixture",
+      "status": "automated_green",
       "evidence": ["tests/phase8/test_cross_stack_acceptance.py"]
     },
     {
       "id": "cad-agent-2-wire",
-      "status": "failing_fixture_mismatch",
+      "status": "automated_green",
       "evidence": ["tests/phase8/test_cross_stack_acceptance.py"]
     },
     {
@@ -42,7 +42,7 @@
     },
     {
       "id": "intent-consent-release",
-      "status": "failing_unbound_release",
+      "status": "automated_green",
       "evidence": ["tests/phase8/test_security_integration_gates.py"]
     },
     {
@@ -52,7 +52,7 @@
     },
     {
       "id": "host-dispatch-registration",
-      "status": "failing_unregistered",
+      "status": "automated_green",
       "evidence": ["tests/phase8/test_host_dispatch_registration.py"]
     },
     {
@@ -66,7 +66,7 @@
     },
     {
       "id": "r25-live",
-      "status": "external_live_blocker",
+      "status": "live_r25_green",
       "evidence": [
         "scripts/build-phase8-r25-host.ps1",
         "docs/architecture/phase8-implementation-evidence.md"

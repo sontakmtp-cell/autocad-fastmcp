@@ -33,7 +33,7 @@ scripts/test-phase8-regression.ps1 -StopOnFailure` passed all 11 suites:
 | Root Phase 0-5 | 409 passed, 1 skipped |
 | Shared contracts | 113 passed |
 | Host contract snapshots | 9 passed |
-| Gateway | 247 passed |
+| Gateway | 250 passed |
 | Desktop Agent | 142 passed |
 | Managed Host Core | 72 passed |
 | Web Portal unit/component | 35 passed |

@@ -5,16 +5,16 @@
       "id": "root-phase0-5",
       "phase_scope": "0-5",
       "workdir": ".",
-      "executable": ".venv/Scripts/python.exe",
-      "arguments": ["-m", "pytest", "-q", "tests", "--ignore=tests/phase8", "--basetemp=.pytest_cache/phase8-regression"],
+      "executable": "uv",
+      "arguments": ["run", "python", "-m", "pytest", "-q", "tests", "--ignore=tests/phase8", "--basetemp=phase8-root-tmp"],
       "evidence_kind": "automated"
     },
     {
       "id": "contracts-phase6-7",
       "phase_scope": "6-7",
       "workdir": ".",
-      "executable": "services/gateway/.venv/Scripts/python.exe",
-      "arguments": ["-m", "pytest", "-q", "packages/contracts/tests", "--basetemp=.pytest_cache/phase8-contracts"],
+      "executable": "uv",
+      "arguments": ["run", "--project", "services/gateway", "python", "-m", "pytest", "-q", "packages/contracts/tests", "--basetemp=phase8-contracts-tmp"],
       "environment": {"PYTHONPATH": "packages/contracts/src"},
       "evidence_kind": "automated"
     },
@@ -22,8 +22,8 @@
       "id": "host-contracts-phase6-7",
       "phase_scope": "6-7",
       "workdir": ".",
-      "executable": "services/gateway/.venv/Scripts/python.exe",
-      "arguments": ["-m", "pytest", "-q", "packages/host_contracts/tests", "--basetemp=.pytest_cache/phase8-host-contracts"],
+      "executable": "uv",
+      "arguments": ["run", "--project", "services/gateway", "python", "-m", "pytest", "-q", "packages/host_contracts/tests", "--basetemp=phase8-host-contracts-tmp"],
       "environment": {"PYTHONPATH": "packages/contracts/src"},
       "evidence_kind": "automated"
     },
@@ -31,16 +31,16 @@
       "id": "gateway-phase0-7",
       "phase_scope": "0-7",
       "workdir": "services/gateway",
-      "executable": ".venv/Scripts/python.exe",
-      "arguments": ["-m", "pytest", "-q", "tests", "--basetemp=.pytest_cache/phase8-regression"],
+      "executable": "uv",
+      "arguments": ["run", "python", "-m", "pytest", "-q", "tests", "--basetemp=phase8-gateway-tmp"],
       "evidence_kind": "automated"
     },
     {
       "id": "desktop-agent-phase4-7",
       "phase_scope": "4-7",
       "workdir": "apps/desktop_agent",
-      "executable": ".venv/Scripts/python.exe",
-      "arguments": ["-m", "pytest", "-q", "tests", "--basetemp=.pytest_cache/phase8-regression"],
+      "executable": "uv",
+      "arguments": ["run", "python", "-m", "pytest", "-q", "tests", "--basetemp=phase8-agent-tmp"],
       "evidence_kind": "automated"
     },
     {
@@ -55,7 +55,7 @@
       "id": "web-portal-unit-component-phase7",
       "phase_scope": "7",
       "workdir": "apps/web_portal",
-      "executable": "npm.cmd",
+      "executable": "npm",
       "arguments": ["test"],
       "evidence_kind": "automated"
     },
@@ -63,7 +63,7 @@
       "id": "web-portal-e2e-phase7",
       "phase_scope": "7",
       "workdir": "apps/web_portal",
-      "executable": "npm.cmd",
+      "executable": "npm",
       "arguments": ["run", "test:e2e"],
       "evidence_kind": "automated"
     },
@@ -71,7 +71,7 @@
       "id": "web-portal-build-phase7",
       "phase_scope": "7",
       "workdir": "apps/web_portal",
-      "executable": "npm.cmd",
+      "executable": "npm",
       "arguments": ["run", "build"],
       "evidence_kind": "automated"
     },
@@ -79,8 +79,8 @@
       "id": "phase8-cross-stack-conformance",
       "phase_scope": "8.0-8.7",
       "workdir": ".",
-      "executable": "services/gateway/.venv/Scripts/python.exe",
-      "arguments": ["-m", "pytest", "-q", "tests/phase8", "--basetemp=.pytest_cache/phase8-conformance"],
+      "executable": "uv",
+      "arguments": ["run", "--project", "services/gateway", "python", "-m", "pytest", "-q", "tests/phase8", "--basetemp=phase8-conformance-tmp"],
       "evidence_kind": "automated"
     },
     {

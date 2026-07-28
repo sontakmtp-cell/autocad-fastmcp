@@ -11,9 +11,12 @@ from autocad_contracts import canonical_json
 from .infrastructure.sqlite.phase8_repository import Phase8Repository
 from .infrastructure.sqlite.repositories import RepositoryConflict
 from .phase8_contract_adapter import (
+    COMPILER_CORE_OPERATION_PACK,
+    CREATE_EQUIVALENT_OPERATION_PACK,
     CompiledProgram,
     Phase8CompilerPort,
     Phase8RevisionPort,
+    TRANSFORM_EXACT_OPERATION_PACK,
 )
 
 
@@ -25,6 +28,14 @@ _DESTRUCTIVE_PACK_MARKERS = (
     "chamfer",
     "topology",
 )
+
+
+def _capability_operation_pack(capability: str) -> str:
+    if capability == "cad.program.v1.compile":
+        return COMPILER_CORE_OPERATION_PACK
+    if capability.startswith("cad.op.move."):
+        return TRANSFORM_EXACT_OPERATION_PACK
+    return CREATE_EQUIVALENT_OPERATION_PACK
 
 
 def phase8_binding_digest(plan: dict[str, Any]) -> str:
@@ -110,9 +121,16 @@ class Phase8GatewayService:
         source_snapshot_id: str,
         expected_document_revision: str,
         source: dict[str, Any],
+        materialized_target_refs: list[dict[str, Any]] | None = None,
         plan_id: str | None = None,
     ) -> dict[str, Any]:
-        compilation = self._compile(source)
+        compilation = self._compile(
+            source,
+            materialized_target_refs=materialized_target_refs,
+            materialized_owner_id=(
+                owner_subject if materialized_target_refs is not None else None
+            ),
+        )
         self._require_source_binding(
             compilation,
             program_id=program_id,
@@ -393,13 +411,14 @@ class Phase8GatewayService:
         )
         evidence: list[dict[str, Any]] = []
         for capability in required:
+            expected_pack = _capability_operation_pack(capability)
             match = None
-            for pack in packs:
+            if expected_pack in packs:
                 match = await self.repository.matching_capability_evidence(
                     owner_subject=owner_subject,
                     device_id=device_id,
                     capability_key=capability,
-                    operation_pack=pack,
+                    operation_pack=expected_pack,
                     runtime_id=current_runtime_pins["runtime_id"],
                     host_family=current_runtime_pins["host_family"],
                     cohort=cohort,
@@ -412,8 +431,6 @@ class Phase8GatewayService:
                     ],
                     minimum_support_states=support_states,
                 )
-                if match is not None:
-                    break
             if match is None:
                 raise RepositoryConflict("capability_missing")
             evidence.append(match)
@@ -432,12 +449,22 @@ class Phase8GatewayService:
             ],
         }
 
-    def _compile(self, source: dict[str, Any]) -> CompiledProgram:
+    def _compile(
+        self,
+        source: dict[str, Any],
+        *,
+        materialized_target_refs: list[dict[str, Any]] | None = None,
+        materialized_owner_id: str | None = None,
+    ) -> CompiledProgram:
         if not self.flags.source_enabled or not self.flags.compiler_enabled:
             raise RepositoryConflict("feature_disabled")
         if self.compiler is None:
             raise RepositoryConflict("compiler_unavailable")
-        result = self.compiler.compile(source)
+        result = self.compiler.compile(
+            source,
+            materialized_target_refs=materialized_target_refs,
+            materialized_owner_id=materialized_owner_id,
+        )
         if not isinstance(result, CompiledProgram):
             raise RepositoryConflict("compiler_result_invalid")
         return result

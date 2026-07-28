@@ -8,7 +8,7 @@
     "cad_prepare_program": {
       "reason": "Add cad.program/1.0 as a discriminated input/output variant while retaining cad.program/0.2.",
       "input_schema_sha256": "f74ba55b44a4d7d61d750aad895b670e8ab431175a01b54982ce32f78437addd",
-      "output_schema_sha256": "13dd4dc05687a79f4cd13e3e2fb2c36ca12e9ebe5657f912a741fb3b9b3079fa"
+      "output_schema_sha256": "60f41bb8e11ec1231e5b694a22b48ead5a339db19fc707c199b2a86087e5d357"
     }
   }
 }

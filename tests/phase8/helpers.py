@@ -46,7 +46,13 @@ def compile_golden():
 class CanonicalCompilerAdapter:
     """Use the production Gateway adapter with the checked-in trusted pins."""
 
-    def compile(self, source: dict[str, Any]):
+    def compile(
+        self,
+        source: dict[str, Any],
+        *,
+        materialized_target_refs=None,
+        materialized_owner_id=None,
+    ):
         fixture = golden()
         pins = fixture["plan"]["execution_pins"]
         compiler = AutocadContractsPhase8Compiler(
@@ -67,4 +73,8 @@ class CanonicalCompilerAdapter:
                 rollout_policy_digest=pins["rollout_policy_digest"],
             )
         )
-        return compiler.compile(deepcopy(source))
+        return compiler.compile(
+            deepcopy(source),
+            materialized_target_refs=materialized_target_refs,
+            materialized_owner_id=materialized_owner_id,
+        )

@@ -30,17 +30,20 @@ def test_cross_stack_matrix_has_executable_evidence_and_explicit_blockers():
         "profile-snapshots",
         "r25-live",
     } == stages.keys()
-    assert stages["canonical-compiler"]["status"] == "failing_fixture_mismatch"
-    assert stages["gateway-sealed-storage"]["status"] == "blocked_by_canonical_fixture"
-    assert stages["gateway-binding"]["status"] == "blocked_by_canonical_fixture"
-    assert stages["cad-agent-2-wire"]["status"] == "failing_fixture_mismatch"
-    assert stages["desktop-admission"]["status"] == "automated_green"
-    assert stages["host-json-contract"]["status"] == "automated_green"
-    assert stages["intent-consent-release"]["status"] == "failing_unbound_release"
-    assert stages["materialized-evidence-digests"]["status"] == "automated_green"
-    assert stages["host-dispatch-registration"]["status"] == "failing_unregistered"
-    assert stages["profile-snapshots"]["status"] == "automated_green"
-    assert stages["r25-live"]["status"] == "external_live_blocker"
+    automated = {
+        "canonical-compiler",
+        "gateway-sealed-storage",
+        "gateway-binding",
+        "cad-agent-2-wire",
+        "desktop-admission",
+        "host-json-contract",
+        "intent-consent-release",
+        "materialized-evidence-digests",
+        "host-dispatch-registration",
+        "profile-snapshots",
+    }
+    assert all(stages[stage]["status"] == "automated_green" for stage in automated)
+    assert stages["r25-live"]["status"] == "live_r25_green"
     for stage in stages.values():
         for path in stage["evidence"]:
             assert (ROOT / path).exists(), path

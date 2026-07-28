@@ -21,7 +21,9 @@ from autocad_contracts import (
 )
 
 
-CREATE_CORE_OPERATION_PACK = "create.core/1"
+COMPILER_CORE_OPERATION_PACK = "compiler.core/1"
+CREATE_EQUIVALENT_OPERATION_PACK = "create-equivalent/1"
+TRANSFORM_EXACT_OPERATION_PACK = "transform.exact/1"
 
 
 @dataclass(frozen=True)
@@ -105,7 +107,13 @@ class RevisionMaterialization:
 class Phase8CompilerPort(Protocol):
     """Compiler-owned behavior used by Gateway without duplicating semantics."""
 
-    def compile(self, source: dict[str, Any]) -> CompiledProgram:
+    def compile(
+        self,
+        source: dict[str, Any],
+        *,
+        materialized_target_refs: list[dict[str, Any]] | None = None,
+        materialized_owner_id: str | None = None,
+    ) -> CompiledProgram:
         ...
 
 
@@ -138,12 +146,20 @@ class AutocadContractsPhase8Compiler:
         # Validate all trusted pins at composition time, before accepting source.
         self.pins = settings.execution_pins()
 
-    def compile(self, source: dict[str, Any]) -> CompiledProgram:
+    def compile(
+        self,
+        source: dict[str, Any],
+        *,
+        materialized_target_refs: list[dict[str, Any]] | None = None,
+        materialized_owner_id: str | None = None,
+    ) -> CompiledProgram:
         sealed = seal_cad_program_v1(source)
         plan = compile_cad_program_v1(
             sealed,
             self.pins,
             compiler_package_hash=self.settings.compiler_package_hash,
+            materialized_target_refs=materialized_target_refs,
+            materialized_owner_id=materialized_owner_id,
         )
         # Parse once more through the public plan parser. This prevents adapter
         # field mapping from persisting an object the canonical verifier rejects.
@@ -151,6 +167,14 @@ class AutocadContractsPhase8Compiler:
         source_value = sealed.model_dump(mode="json", exclude_none=True)
         plan_value = parsed.model_dump(mode="json", exclude_none=True)
         effect_value = parsed.effect_manifest.model_dump(mode="json")
+        operation_packs = [COMPILER_CORE_OPERATION_PACK]
+        effect_classes = {
+            entry.effect_class for entry in parsed.effect_manifest.entries
+        }
+        if effect_classes & {"create_only", "ensure_non_entity"}:
+            operation_packs.append(CREATE_EQUIVALENT_OPERATION_PACK)
+        if "modify_in_place" in effect_classes:
+            operation_packs.append(TRANSFORM_EXACT_OPERATION_PACK)
         ref_material = {
             "artifact_refs": plan_value["artifact_refs"],
             "component_refs": plan_value["component_refs"],
@@ -182,6 +206,17 @@ class AutocadContractsPhase8Compiler:
                     ),
                 }
             )
+        if parsed.effect_manifest.modifies:
+            summary.append(
+                {
+                    "kind": "modify_entities",
+                    "count": parsed.effect_manifest.modifies,
+                    "summary": (
+                        f"Modify {parsed.effect_manifest.modifies} exact "
+                        "allowlisted drawing entities from the sealed CAD Program."
+                    ),
+                }
+            )
         return CompiledProgram(
             source=source_value,
             source_digest=sealed.semantic_digest,
@@ -200,7 +235,7 @@ class AutocadContractsPhase8Compiler:
             compiler_hash=parsed.compiler.compiler_package_hash,
             hard_budgets=canonical_hard_budgets(parsed.budgets),
             required_capabilities=tuple(parsed.required_capabilities),
-            operation_packs=(CREATE_CORE_OPERATION_PACK,),
+            operation_packs=tuple(operation_packs),
             validation_profiles=tuple(parsed.validation_profiles),
             runtime_pins=parsed.execution_pins.model_dump(mode="json"),
             checkpoint_strategy=(

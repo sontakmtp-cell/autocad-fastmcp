@@ -314,7 +314,7 @@ class CadPrepareProgramV1Output(StrictModel):
     effect_manifest_digest: str
     document_id: str
     expected_document_revision: str
-    risk_class: Literal["low"]
+    risk_class: Literal["low", "medium"]
     resource_uri: str
     ready_for_preview: bool
 
