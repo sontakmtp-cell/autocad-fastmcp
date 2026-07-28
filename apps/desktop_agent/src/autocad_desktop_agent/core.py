@@ -59,7 +59,11 @@ from .state import (
     RuntimeState,
     runtime_user_label,
 )
-from .program_executor import ProgramCommandExecutor, RollbackCommandExecutor
+from .program_executor import (
+    DocumentWriteSerializer,
+    ProgramCommandExecutor,
+    RollbackCommandExecutor,
+)
 
 
 class AgentCore:
@@ -80,8 +84,14 @@ class AgentCore:
         self.executor = executor
         self.runtime_broker = runtime_broker
         self.program_executor = program_executor
+        write_serializer = getattr(program_executor, "write_serializer", None)
+        if runtime_broker is not None and write_serializer is None:
+            write_serializer = DocumentWriteSerializer()
         self.rollback_executor = (
-            RollbackCommandExecutor(runtime_broker)
+            RollbackCommandExecutor(
+                runtime_broker,
+                write_serializer=write_serializer,
+            )
             if runtime_broker is not None
             else None
         )

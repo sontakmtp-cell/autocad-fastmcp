@@ -93,6 +93,7 @@ class RuntimeBroker:
         binding: ProgramExecutionBinding,
         *,
         required_capability: str,
+        required_capabilities: Iterable[str] = (),
         write_lock_enabled: bool,
         write_required: bool = True,
     ) -> BrokerSelection:
@@ -147,7 +148,8 @@ class RuntimeBroker:
             or manifest_registry_hash != operation_registry_digest()
         ):
             raise RuntimeSelectionError("registry_mismatch")
-        if required_capability not in product.capabilities:
+        required = {required_capability, *required_capabilities}
+        if not required.issubset(product.capabilities):
             raise RuntimeSelectionError("capability_missing")
         if not hasattr(selection.adapter, "program_command"):
             raise RuntimeSelectionError("capability_missing")
@@ -197,12 +199,19 @@ class RuntimeBroker:
             if product is not None
             else RuntimeEvidence(id=runtime_id, role="headless")
         )
+        capability_states = {}
+        state_provider = getattr(adapter, "phase8_capability_states", None)
+        if callable(state_provider):
+            provided = state_provider()
+            if isinstance(provided, dict):
+                capability_states = dict(provided)
         return (
             BrokerSelection(
                 adapter=adapter,
                 probe=probe,
                 evidence=evidence,
                 manifest=manifest,
+                capability_states=capability_states,
                 requested_runtime=requested_runtime,
             ),
             None,

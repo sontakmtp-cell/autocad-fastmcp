@@ -44,6 +44,17 @@ def _env_device_ids(name: str) -> frozenset[str]:
     return values
 
 
+def _env_operation_packs(name: str) -> frozenset[str]:
+    raw = os.environ.get(name, "")
+    values = frozenset(item.strip() for item in raw.split(",") if item.strip())
+    if any(
+        re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", item) is None
+        for item in values
+    ):
+        raise ValueError(f"{name} contains a malformed operation pack")
+    return values
+
+
 @dataclass(frozen=True)
 class AgentConfig:
     gateway_ws_url: str
@@ -73,6 +84,14 @@ class AgentConfig:
     phase7_c2_enabled: bool = False
     trusted_approval_enabled: bool = False
     device_local_approval_enabled: bool = False
+    program_v1_source_enabled: bool = False
+    program_v1_create_pack_enabled: bool = False
+    program_v1_transform_pack_enabled: bool = False
+    program_v1_topology_pack_enabled: bool = False
+    program_v1_delete_pack_enabled: bool = False
+    checkpoint_v2_enabled: bool = False
+    operation_pack_allowlist: frozenset[str] = frozenset()
+    rollout_policy_epoch: int = 0
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -145,6 +164,36 @@ class AgentConfig:
                 "AUTOCAD_MCP_DEVICE_LOCAL_APPROVAL_ENABLED",
                 False,
             ),
+            program_v1_source_enabled=_env_flag(
+                "AUTOCAD_MCP_PROGRAM_V1_SOURCE_ENABLED",
+                False,
+            ),
+            program_v1_create_pack_enabled=_env_flag(
+                "AUTOCAD_MCP_PROGRAM_V1_CREATE_PACK_ENABLED",
+                False,
+            ),
+            program_v1_transform_pack_enabled=_env_flag(
+                "AUTOCAD_MCP_PROGRAM_V1_TRANSFORM_PACK_ENABLED",
+                False,
+            ),
+            program_v1_topology_pack_enabled=_env_flag(
+                "AUTOCAD_MCP_PROGRAM_V1_TOPOLOGY_PACK_ENABLED",
+                False,
+            ),
+            program_v1_delete_pack_enabled=_env_flag(
+                "AUTOCAD_MCP_PROGRAM_V1_DELETE_PACK_ENABLED",
+                False,
+            ),
+            checkpoint_v2_enabled=_env_flag(
+                "AUTOCAD_MCP_CHECKPOINT_V2_ENABLED",
+                False,
+            ),
+            operation_pack_allowlist=_env_operation_packs(
+                "AUTOCAD_MCP_OPERATION_PACK_ALLOWLIST"
+            ),
+            rollout_policy_epoch=int(
+                os.environ.get("AUTOCAD_MCP_ROLLOUT_POLICY_EPOCH", "0")
+            ),
         )
         return config.validate()
 
@@ -207,11 +256,36 @@ class AgentConfig:
             raise ValueError("autolisp_compat runtime requires AUTOCAD_MCP_LT_RUNTIME_ENABLED=1")
         if self.lt_write_enabled:
             raise ValueError("AutoCAD LT write is unavailable in Phase 6")
+        if self.program_v1_topology_pack_enabled:
+            raise ValueError("Phase 8 topology write packs are not available")
+        if self.program_v1_delete_pack_enabled:
+            raise ValueError("Phase 8 delete write packs are not available")
+        if (
+            self.program_v1_create_pack_enabled
+            or self.program_v1_transform_pack_enabled
+            or self.checkpoint_v2_enabled
+        ) and not self.program_v1_source_enabled:
+            raise ValueError("Phase 8 packs require CAD Program v1 source")
+        if self.program_v1_transform_pack_enabled and not self.checkpoint_v2_enabled:
+            raise ValueError("Phase 8 transform packs require checkpoint v2")
+        if (
+            self.program_v1_create_pack_enabled
+            or self.program_v1_transform_pack_enabled
+        ) and not self.operation_pack_allowlist:
+            raise ValueError("Phase 8 packs require an explicit operation pack allowlist")
+        if not 0 <= self.rollout_policy_epoch <= 9_223_372_036_854_775_807:
+            raise ValueError("Phase 8 rollout policy epoch is invalid")
+        if (
+            self.program_v1_create_pack_enabled
+            or self.program_v1_transform_pack_enabled
+        ) and self.rollout_policy_epoch == 0:
+            raise ValueError("Phase 8 packs require a rollout policy epoch")
         if self.managed_write_enabled and not (
-            self.program_v0_enabled and self.managed_host_enabled
+            (self.program_v0_enabled or self.program_v1_source_enabled)
+            and self.managed_host_enabled
         ):
             raise ValueError(
-                "managed write requires CAD Program v0 and Managed Host"
+                "managed write requires an enabled CAD Program and Managed Host"
             )
         if self.managed_write_enabled and not self.program_policy_version:
             raise ValueError(

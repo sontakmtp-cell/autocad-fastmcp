@@ -20,6 +20,7 @@ from .pairing import (
     PairedCredentialProvider,
     PairingApiClient,
 )
+from .phase8_admission import Phase8AdmissionPolicy, Phase8PlanAdmission
 from .program_executor import ProgramCommandExecutor
 from .runtime.autolisp_file_ipc import AutoLispFileIPCCadReadPort
 from .runtime.broker import RuntimeBroker
@@ -83,7 +84,12 @@ def build_core(config: AgentConfig, *, headless: bool) -> AgentCore:
         ledger,
         executor,
         runtime_broker=runtime_broker,
-        program_executor=ProgramCommandExecutor(runtime_broker),
+        program_executor=ProgramCommandExecutor(
+            runtime_broker,
+            phase8_admission=Phase8PlanAdmission(
+                Phase8AdmissionPolicy.from_config(config)
+            ),
+        ),
         identity_store=identity_store,
     )
 

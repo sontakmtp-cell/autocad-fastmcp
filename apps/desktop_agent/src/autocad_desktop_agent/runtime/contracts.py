@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 from autocad_contracts import CapabilityManifest, RuntimeEvidence
@@ -48,6 +48,7 @@ class BrokerSelection:
     probe: RuntimeProbe
     evidence: RuntimeEvidence
     manifest: CapabilityManifest
+    capability_states: dict[str, str] = field(default_factory=dict)
     degraded: bool = False
     degradation_reason: str | None = None
     requested_runtime: str | None = None

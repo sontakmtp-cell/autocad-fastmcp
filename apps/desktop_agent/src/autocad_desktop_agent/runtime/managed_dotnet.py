@@ -353,7 +353,7 @@ class ManagedDotNetCadReadPort:
         capabilities = [
             capability
             for capability in handshake["capabilities"]
-            if capability in allowed
+            if capability in allowed or self._phase8_capability_allowed(capability)
         ]
         return CapabilityManifest.model_validate(
             {
@@ -381,6 +381,78 @@ class ManagedDotNetCadReadPort:
                 ],
             }
         )
+
+    def phase8_capability_states(self) -> dict[str, str]:
+        if self._handshake is None:
+            return {}
+        states = self._handshake.get("capability_states")
+        if not isinstance(states, dict):
+            return {}
+        allowed_states = {
+            "unsupported",
+            "contract_only",
+            "preview_only",
+            "lab_commit",
+            "certified",
+        }
+        advertised = set(self._handshake.get("capabilities", ()))
+        return {
+            key: state
+            for key, state in states.items()
+            if (
+                isinstance(key, str)
+                and isinstance(state, str)
+                and key in advertised
+                and state in allowed_states
+                and self._phase8_capability_allowed(key)
+            )
+        }
+
+    @staticmethod
+    def _phase8_capability_allowed(capability: str) -> bool:
+        denied = {
+            "delete",
+            "erase",
+            "trim",
+            "extend",
+            "fillet",
+            "chamfer",
+            "join",
+            "explode",
+        }
+        tokens = set(capability.split("."))
+        if denied.intersection(tokens):
+            return False
+        if capability in {
+            "cad.program.v1.preview",
+            "cad.program.v1.commit",
+            "cad.program.v1.validate",
+        }:
+            return True
+        if capability.startswith("cad.op."):
+            return bool(
+                {
+                    "copy",
+                    "pattern",
+                    "offset",
+                    "mirror_copy",
+                    "block_insert",
+                    "annotation",
+                    "move",
+                    "rotate",
+                    "scale",
+                }.intersection(tokens)
+                and {"line", "circle", "lwpolyline"}.intersection(tokens)
+            )
+        if capability.startswith("cad.rollback.checkpoint.v2."):
+            return bool({"line", "circle", "lwpolyline"}.intersection(tokens))
+        return capability in {
+            "cad.validation.geometry.basic.v1",
+            "cad.validation.document.revision.v1",
+            "cad.validation.entity.fingerprint.v1",
+            "cad.validation.transform.result.v1",
+            "cad.validation.rollback.eligibility.v1",
+        }
 
     async def program_command(
         self,
@@ -698,6 +770,11 @@ class ReloadingManagedDotNetCadReadPort:
         if self._adapter is None:
             raise RuntimeError("managed_host_unavailable")
         return self._adapter.manifest(probe)
+
+    def phase8_capability_states(self) -> dict[str, str]:
+        if self._adapter is None:
+            return {}
+        return self._adapter.phase8_capability_states()
 
     async def _call_with_reload(self, operation: str) -> CadPortResult:
         for attempt in range(2):
