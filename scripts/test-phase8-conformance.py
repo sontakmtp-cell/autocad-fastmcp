@@ -32,8 +32,21 @@ def validate_catalogs() -> None:
         raise SystemExit("ezdxf cannot be live DWG authority")
     if any(case["may_reexecute"] for case in faults["cases"]):
         raise SystemExit("recovery matrix cannot authorize write re-execution")
-    if any(item["effective_write"] for item in rollout["capability_admission"]):
-        raise SystemExit("Phase 8 capability matrix cannot enable write yet")
+    effective_write_profiles = [
+        (
+            item["runtime"],
+            item["release_family"],
+            item["phase8_write_state"],
+        )
+        for item in rollout["capability_admission"]
+        if item["effective_write"]
+    ]
+    if effective_write_profiles != [
+        ("managed_dotnet", "R25", "signed_lab")
+    ]:
+        raise SystemExit(
+            "Phase 8 capability matrix may enable only the bounded signed R25 lab profile"
+        )
     if any(item["enabled"] for item in rollout["extension_packs"]):
         raise SystemExit("Phase 8 extension packs must remain disabled")
     if len(surface["tools"]) != 10 or len(surface["resources"]) != 16:
