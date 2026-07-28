@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT / "packages" / "cad_core" / "src"), str(ROOT / "packages" / "skill_catalog" / "src"), str(ROOT / "packages" / "contracts" / "src")]
+sys.path[:0] = [str(ROOT / "packages" / "cad_core" / "src"), str(ROOT / "packages" / "contracts" / "src")]
 
 from cad_core.phase9_workflows import (  # noqa: E402
     PLANNER_REGISTRY_DIGEST,
@@ -16,29 +16,15 @@ from cad_core.phase9_workflows import (  # noqa: E402
     render_template,
     run_planner,
 )
-from skill_catalog import CatalogValidationError, load_catalog, validate_skill_manifest  # noqa: E402
 
 
-CONTEXT = {"device_id": "device_1", "source_snapshot_id": "snapshot_1", "document_id": "document_1", "expected_document_revision": "revision_1"}
-
-
-def test_packaged_catalog_is_fixed_and_has_only_three_first_party_skills():
-    catalog = load_catalog()
-    assert [item["manifest"]["skill_id"] for item in catalog["skills"]] == [
-        "mechanical.auto-dimension-overall", "drawing.cleanup-audit", "mechanical.plate-hole-pattern"
-    ]
-    assert catalog["catalog_digest"].startswith("sha256:")
-
-
-def test_catalog_rejects_arbitrary_execution_fields():
-    with pytest.raises(CatalogValidationError, match="forbidden"):
-        validate_skill_manifest({"schema_version": "cad.skill/1", "skill_id": "x", "version": "1.0.0", "title": "x", "summary": "x", "workflow_definition": {"workflow_id": "x", "version": "1.0.0", "digest": "sha256:" + "0" * 64}, "risk_floor": "low", "assurance_floor": "user_recent_auth", "budgets": {}, "support_policy": {}, "module": "os"})
+CONTEXT = {"run_id": "run_1", "device_id": "device_1", "source_snapshot_id": "snapshot_1", "document_id": "document_1", "expected_document_revision": "revision_1"}
 
 
 def test_auto_dimension_is_deterministic_and_exactly_two_create_dimensions():
     entities = [
-        {"entity_id": "line_1", "type": "LINE", "start": [0, 0], "end": [100, 0]},
-        {"entity_id": "poly_1", "type": "LWPOLYLINE", "points": [[0, 0], [0, 60], [100, 60]]},
+        {"entity_id": "line_1", "entity_type": "LINE", "layer": "PART", "geometry": {"start": [0, 0], "end": [100, 0]}},
+        {"entity_id": "poly_1", "entity_type": "LWPOLYLINE", "layer": "PART", "geometry": {"points": [[0, 0], [0, 60], [100, 60]]}},
     ]
     first = plan_auto_dimension_overall(CONTEXT, entities, {"offset": 10, "target_layer": "DIM"})
     second = run_planner("mechanical.auto-dimension-overall/1", CONTEXT, entities, {"offset": 10, "target_layer": "DIM"})

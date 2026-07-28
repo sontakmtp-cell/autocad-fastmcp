@@ -66,10 +66,13 @@ def _base_program(context: dict[str, Any], program_id: str, operations: list[dic
     for name in ("device_id", "source_snapshot_id", "document_id", "expected_document_revision"):
         if not isinstance(context.get(name), str) or not context[name]:
             raise Phase9PlannerError(f"{name} is required")
+    run_id = context.get("run_id")
+    if not isinstance(run_id, str) or not run_id:
+        raise Phase9PlannerError("run_id is required for a unique program ID")
     return {
         "schema_version": "cad.program/1.0",
         "registry_version": "cad.program/1.0-create-core",
-        "program_id": program_id,
+        "program_id": f"{program_id}.{run_id}",
         "program_revision": 1,
         "device_id": context["device_id"],
         "source_snapshot_id": context["source_snapshot_id"],
@@ -81,7 +84,7 @@ def _base_program(context: dict[str, Any], program_id: str, operations: list[dic
         # contract does not hash omitted defaults as absent fields.
         "budgets": {"max_source_operations": 64, "max_expanded_operations": 256, "max_entities": 256, "max_vertices": 4096, "max_expression_nodes": 1024, "max_coordinate_abs_mm": "1000000000", "max_text_bytes": 65536},
         "required_capabilities": ["cad.program.v1.compile"],
-        "validation_profiles": ["phase9.create_only.v1"],
+        "validation_profiles": ["geometry.basic.1", "document.revision.1"],
         "artifact_refs": [],
         "component_refs": [],
     }
@@ -107,15 +110,16 @@ def plan_auto_dimension_overall(context: dict[str, Any], entities: list[dict[str
     points: list[tuple[float, float]] = []
     ids: set[str] = set()
     for entity in entities:
-        if not isinstance(entity, dict) or entity.get("type") not in {"LINE", "LWPOLYLINE"}:
+        if not isinstance(entity, dict) or entity.get("entity_type", entity.get("type")) not in {"LINE", "LWPOLYLINE"}:
             raise Phase9PlannerError("only explicit LINE and LWPOLYLINE entities are supported")
         entity_id = entity.get("entity_id")
         if not isinstance(entity_id, str) or not entity_id or entity_id in ids:
             raise Phase9PlannerError("explicit entity IDs must be unique")
         ids.add(entity_id)
-        raw_points = entity.get("points")
-        if entity["type"] == "LINE":
-            raw_points = [entity.get("start"), entity.get("end")]
+        geometry = entity.get("geometry") if isinstance(entity.get("geometry"), dict) else entity
+        raw_points = geometry.get("points")
+        if entity.get("entity_type", entity.get("type")) == "LINE":
+            raw_points = [geometry.get("start"), geometry.get("end")]
         if not isinstance(raw_points, list) or len(raw_points) < 2:
             raise Phase9PlannerError("selected geometry is missing bounded points")
         points.extend(_point(point, "entity point") for point in raw_points)
@@ -144,7 +148,7 @@ def audit_cleanup(entities: list[dict[str, Any]], *, max_candidates: int = 64) -
     for entity in entities:
         if not isinstance(entity, dict) or not isinstance(entity.get("entity_id"), str):
             raise Phase9PlannerError("audit entities require stable entity_id")
-        entity_type = entity.get("type")
+        entity_type = entity.get("entity_type", entity.get("type"))
         if entity_type not in {"LINE", "CIRCLE", "LWPOLYLINE", "DIMENSION"}:
             unsupported[str(entity_type)] += 1
         geometry = entity.get("geometry", {})
@@ -159,7 +163,7 @@ def audit_cleanup(entities: list[dict[str, Any]], *, max_candidates: int = 64) -
         groups.setdefault(key, []).append(entity_id)
     duplicates = [sorted(ids) for ids in groups.values() if len(ids) > 1]
     duplicates.sort()
-    report = {"schema_version": "cad.cleanup-audit-report/1", "duplicate_groups": duplicates[:max_candidates], "degenerate_entity_ids": sorted(degenerate)[:max_candidates], "unsupported_entity_summary": dict(sorted(unsupported.items())), "truncated": len(duplicates) > max_candidates or len(degenerate) > max_candidates, "effect": "none"}
+    report = {"schema_version": "cad.cleanup-audit-report/1", "source_snapshot_id": entities[0].get("source_snapshot_id") if entities else None, "document_revision": entities[0].get("document_revision") if entities else None, "duplicate_groups": duplicates[:max_candidates], "degenerate_entity_ids": sorted(degenerate)[:max_candidates], "unsupported_entity_summary": dict(sorted(unsupported.items())), "layer_anomalies": sorted({str(item.get("layer")) for _, _, item in normalized if isinstance(item.get("layer"), str) and (item["layer"].strip() != item["layer"] or not item["layer"])}), "tiny_entity_ids": sorted([entity_id for _, entity_id, item in normalized if isinstance(item.get("geometry"), dict) and item["geometry"].get("tiny") is True])[:max_candidates], "dimension_style_summary": dict(sorted(Counter(str(item.get("dimension_style")) for _, _, item in normalized if item.get("entity_type", item.get("type")) == "DIMENSION" and item.get("dimension_style") is not None).items())), "truncated": len(duplicates) > max_candidates or len(degenerate) > max_candidates, "effect": "none"}
     report["report_digest"] = _canonical_digest("cad.cleanup-audit-report/1", report)
     return report
 
