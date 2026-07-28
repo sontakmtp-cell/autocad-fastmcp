@@ -174,6 +174,7 @@ def _transform_compiled() -> tuple[object, dict]:
                 "fingerprint": f"sha256:{'d' * 64}",
             }
         ],
+        materialized_owner_id="owner-1",
     )
     return plan, rollout
 

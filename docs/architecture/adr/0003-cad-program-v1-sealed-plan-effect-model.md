@@ -76,4 +76,3 @@ describe a different effect from the committed operation.
   LT write stays off, and ezdxf remains non-authoritative for live DWG commit.
 - Phase 8 core cannot be declared complete without live create-equivalent and
   exact-transform evidence, including operation-appropriate rollback.
-
