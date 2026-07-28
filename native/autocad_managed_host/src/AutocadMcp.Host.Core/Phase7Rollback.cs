@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace AutocadMcp.Host.Core;
 
@@ -345,6 +346,7 @@ public sealed record DurableRollbackReceiptV1(
 {
     public string SchemaVersion => Phase7RollbackContract.ReceiptVersion;
 
+    [JsonIgnore]
     public string DictionaryKey =>
         $"AUTOCAD_MCP_ROLLBACK_{HashText(RollbackReceiptId)[..32]}";
 

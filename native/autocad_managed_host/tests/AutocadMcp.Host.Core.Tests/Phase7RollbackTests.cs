@@ -31,6 +31,19 @@ public sealed class Phase7RollbackTests
     }
 
     [Fact]
+    public void RollbackReceipt_RoundTripsWithoutPersistenceKey()
+    {
+        var receipt = RollbackReceipt(Checkpoint());
+        var json = receipt.Serialize();
+
+        var restored = DurableRollbackReceiptV1.Parse(json);
+
+        Assert.Equal(receipt.ReceiptDigest, restored.ReceiptDigest);
+        Assert.Equal(receipt.RemovedEntities, restored.RemovedEntities);
+        Assert.DoesNotContain("dictionary_key", json, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Parser_UsesIdsAndDigestsAndRejectsRawHandles()
     {
         using var valid = JsonDocument.Parse(
