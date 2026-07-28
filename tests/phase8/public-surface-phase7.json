@@ -1,0 +1,152 @@
+{
+  "schema_version": "phase8.public-surface-snapshot/1",
+  "security_control": "S8-010",
+  "profile": "phase7_c2",
+  "phase8_contract_freeze": {
+    "status": "exact_profile_snapshot_blocked_pending_phase8_gateway_profile",
+    "baseline": "phase7_c2",
+    "tool_names_must_remain_exact": true,
+    "resource_templates_must_remain_exact": true,
+    "cad_program_v02_compatibility_required": true
+  },
+  "tools": [
+    {
+      "name": "cad_list_devices",
+      "title": "List CAD devices",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "input_schema_sha256": "3abab0d17b2ccbd46c3c32ff6886105d4cad8e981ea1273570f056308cdc3f9f",
+      "output_schema_sha256": "c44a7c321b7a1c2f39bf878181e922f0ea23b06690e95fc06431cfec74447e72"
+    },
+    {
+      "name": "cad_observe",
+      "title": "Observe a CAD device",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema_sha256": "396c4c9ac16413dbc26af13ed82c8f8db0e1b1c96ff31e731ed701fa8ece00a4",
+      "output_schema_sha256": "81b8d179f8cf099572f0d9ae78b6d8d1796b2b093c251729ed37462b7ae48989"
+    },
+    {
+      "name": "cad_query",
+      "title": "Query a CAD snapshot",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "input_schema_sha256": "26e5f25f4bb5197f068a0bde512136021d4d552002e590aef4f99b1e604af948",
+      "output_schema_sha256": "f2a613bf544025354646a44f3c31abc24e013aad0111d61f26d4890bdff870b9"
+    },
+    {
+      "name": "cad_get_job",
+      "title": "Get a CAD job",
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "input_schema_sha256": "e904d8f9485d00332acf4f75eb238e14a6c31d419dddebe30fa8d7111ca1115a",
+      "output_schema_sha256": "df78ddd7db81fab3a08c08129f25ea140b4480d956b216ffe4b476545bc558e2"
+    },
+    {
+      "name": "cad_prepare_program",
+      "title": "Prepare a CAD Program",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema_sha256": "243fa3b041f10bedd60a9387ee09859e23f3ec47d7692173e29adc0c8cc3ed68",
+      "output_schema_sha256": "07d07ed2f6894c65a733fdaa59773d5095139b28f6593de39b2c7ad42d5a56e0"
+    },
+    {
+      "name": "cad_preview",
+      "title": "Preview a CAD Program",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema_sha256": "1c0ec464679a9579c08be11da9aaa2c8c0ad427a52ef5ee0c6afe0969c21a9b1",
+      "output_schema_sha256": "c429cd2364e60b139933a69809917f878c6b09f4f2881a70004a15e9b8390e38"
+    },
+    {
+      "name": "cad_commit",
+      "title": "Commit a CAD Program",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema_sha256": "15e5d47fc583e1aa6b3f26a2889d3de253f6a614c166c8b1504a6d4ce1339a6a",
+      "output_schema_sha256": "a88c503900cf481508d699b441775bc6937fad1c4c247a18737ac7f659d53878"
+    },
+    {
+      "name": "cad_preview_rollback",
+      "title": "Preview rollback from a Phase 7 checkpoint",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema_sha256": "bb593cf5f833c941d0d3b5465acb41353bbdc3e4afe5b9b85c6cd7a2c84e4356",
+      "output_schema_sha256": "6f89548a0c1c4ded8877497e3950f94d8ef524a307357d4cd04b9f39a0699ba8"
+    },
+    {
+      "name": "cad_commit_rollback",
+      "title": "Commit an approved rollback plan",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema_sha256": "60b7fb6937accf9110eeb2bcbe89c501a1f4eb7f8651ad2eecffb1135de6c9d8",
+      "output_schema_sha256": "56cf48128d41d7b75bbe40107d7e5bfeb60b881644491c318af8c103c19e67be"
+    },
+    {
+      "name": "cad_validate",
+      "title": "Validate a CAD Program receipt",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      },
+      "input_schema_sha256": "9af2d4cb41dddc09d4dba7e5a47e507bbda39ffd83bee666901a11cb9f08577e",
+      "output_schema_sha256": "026da108f1c680f0e55a7a1559db4d87078d0d24760468b384a2dfd7db58812e"
+    }
+  ],
+  "resources": [
+    ["CAD device capabilities", "cad://devices/{device_id}/capabilities", "application/json"],
+    ["CAD snapshot summary", "cad://snapshots/{snapshot_id}/summary", "application/json"],
+    ["CAD snapshot entities", "cad://snapshots/{snapshot_id}/entities{?cursor,limit,types,layers}", "application/json"],
+    ["CAD artifact", "cad://artifacts/{artifact_id}", "image/png"],
+    ["CAD job", "cad://jobs/{job_id}", "application/json"],
+    ["CAD Program revision", "cad://programs/{program_id}/revisions/{revision}", "application/json"],
+    ["CAD Program preview", "cad://previews/{preview_id}", "application/json"],
+    ["CAD Program validation", "cad://validations/{validation_id}", "application/json"],
+    ["CAD Program execution receipt", "cad://receipts/{receipt_id}", "application/json"],
+    ["Phase 7 execution intent", "cad://intents/{intent_id}", "application/json"],
+    ["Phase 7 consent", "cad://consents/{consent_id}", "application/json"],
+    ["Phase 7 execution evidence", "cad://evidence/{job_id}", "application/json"],
+    ["Phase 7 recovery case", "cad://recovery/{case_id}", "application/json"],
+    ["Phase 7 rollback checkpoint", "cad://checkpoints/{checkpoint_id}", "application/json"],
+    ["Phase 7 rollback plan", "cad://rollbacks/{rollback_id}", "application/json"],
+    ["Phase 7 rollback receipt", "cad://rollback-receipts/{receipt_id}", "application/json"]
+  ]
+}

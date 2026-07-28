@@ -1,0 +1,87 @@
+{
+  "schema_version": "phase8.regression-matrix/1",
+  "suites": [
+    {
+      "id": "root-phase0-5",
+      "phase_scope": "0-5",
+      "workdir": ".",
+      "executable": ".venv/Scripts/python.exe",
+      "arguments": ["-m", "pytest", "-q", "tests", "--ignore=tests/phase8", "--basetemp=.pytest_cache/phase8-regression"],
+      "evidence_kind": "automated"
+    },
+    {
+      "id": "contracts-phase6-7",
+      "phase_scope": "6-7",
+      "workdir": ".",
+      "executable": "services/gateway/.venv/Scripts/python.exe",
+      "arguments": ["-m", "pytest", "-q", "packages/contracts/tests", "--basetemp=.pytest_cache/phase8-contracts"],
+      "environment": {"PYTHONPATH": "packages/contracts/src"},
+      "evidence_kind": "automated"
+    },
+    {
+      "id": "host-contracts-phase6-7",
+      "phase_scope": "6-7",
+      "workdir": ".",
+      "executable": "services/gateway/.venv/Scripts/python.exe",
+      "arguments": ["-m", "pytest", "-q", "packages/host_contracts/tests", "--basetemp=.pytest_cache/phase8-host-contracts"],
+      "environment": {"PYTHONPATH": "packages/contracts/src"},
+      "evidence_kind": "automated"
+    },
+    {
+      "id": "gateway-phase0-7",
+      "phase_scope": "0-7",
+      "workdir": "services/gateway",
+      "executable": ".venv/Scripts/python.exe",
+      "arguments": ["-m", "pytest", "-q", "tests", "--basetemp=.pytest_cache/phase8-regression"],
+      "evidence_kind": "automated"
+    },
+    {
+      "id": "desktop-agent-phase4-7",
+      "phase_scope": "4-7",
+      "workdir": "apps/desktop_agent",
+      "executable": ".venv/Scripts/python.exe",
+      "arguments": ["-m", "pytest", "-q", "tests", "--basetemp=.pytest_cache/phase8-regression"],
+      "evidence_kind": "automated"
+    },
+    {
+      "id": "managed-host-core-phase6-7",
+      "phase_scope": "6-7",
+      "workdir": ".",
+      "executable": "dotnet",
+      "arguments": ["test", "native/autocad_managed_host/tests/AutocadMcp.Host.Core.Tests/AutocadMcp.Host.Core.Tests.csproj", "--no-restore", "--configuration", "Release"],
+      "evidence_kind": "automated"
+    },
+    {
+      "id": "web-portal-unit-component-phase7",
+      "phase_scope": "7",
+      "workdir": "apps/web_portal",
+      "executable": "npm.cmd",
+      "arguments": ["test"],
+      "evidence_kind": "automated"
+    },
+    {
+      "id": "web-portal-e2e-phase7",
+      "phase_scope": "7",
+      "workdir": "apps/web_portal",
+      "executable": "npm.cmd",
+      "arguments": ["run", "test:e2e"],
+      "evidence_kind": "automated"
+    },
+    {
+      "id": "web-portal-build-phase7",
+      "phase_scope": "7",
+      "workdir": "apps/web_portal",
+      "executable": "npm.cmd",
+      "arguments": ["run", "build"],
+      "evidence_kind": "automated"
+    },
+    {
+      "id": "phase8-conformance-foundation",
+      "phase_scope": "8.0-8.7",
+      "workdir": ".",
+      "executable": "services/gateway/.venv/Scripts/python.exe",
+      "arguments": ["-m", "pytest", "-q", "tests/phase8", "--basetemp=.pytest_cache/phase8-conformance"],
+      "evidence_kind": "automated"
+    }
+  ]
+}

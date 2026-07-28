@@ -1,0 +1,38 @@
+{
+  "schema_version": "phase8.rollout-capability-matrix/1",
+  "security_review_commit": "7da49a17b71f70932eed9f43d02e9d7d4dcc6269",
+  "default_off_flags": [
+    "AUTOCAD_MCP_PROGRAM_V1_SOURCE_ENABLED",
+    "AUTOCAD_MCP_PROGRAM_V1_COMPILER_ENABLED",
+    "AUTOCAD_MCP_PROGRAM_V1_CREATE_PACK_ENABLED",
+    "AUTOCAD_MCP_PROGRAM_V1_TRANSFORM_PACK_ENABLED",
+    "AUTOCAD_MCP_PROGRAM_V1_TOPOLOGY_PACK_ENABLED",
+    "AUTOCAD_MCP_PROGRAM_V1_DELETE_PACK_ENABLED",
+    "AUTOCAD_MCP_CHECKPOINT_V2_ENABLED",
+    "AUTOCAD_MCP_SCOPED_ROLLBACK_REVALIDATION_ENABLED",
+    "AUTOCAD_MCP_LT_PORTABLE_WRITE_ENABLED"
+  ],
+  "slices": [
+    {"slice": "8.0", "decision": "go", "effect_bearing": false, "required_closures": ["S8-010 baseline freeze"]},
+    {"slice": "8.1", "decision": "conditional_go_compile_only", "effect_bearing": false, "required_closures": ["S8-001", "S8-002"]},
+    {"slice": "8.2", "decision": "no_go", "effect_bearing": true, "required_closures": ["S8-001", "S8-004", "S8-005", "S8-006", "S8-008", "S8-009", "S8-010", "live_r25"]},
+    {"slice": "8.3", "decision": "no_go", "effect_bearing": false, "required_closures": ["S8-002", "S8-004", "S8-007"]},
+    {"slice": "8.4", "decision": "no_go", "effect_bearing": true, "required_closures": ["S8-001", "S8-003", "S8-004", "S8-005", "S8-006", "S8-008"]},
+    {"slice": "8.5", "decision": "no_go", "effect_bearing": true, "required_closures": ["all_critical_high", "live_r25_transform_rollback"]},
+    {"slice": "8.6", "decision": "no_go_disabled", "effect_bearing": true, "required_closures": ["all_findings", "operation_specific_security_review", "extension_gate"]},
+    {"slice": "8.7", "decision": "go_fixtures_and_negative_tests_only", "effect_bearing": false, "required_closures": ["no_portable_claim_without_evidence"]}
+  ],
+  "capability_admission": [
+    {"runtime": "managed_dotnet", "release_family": "R25", "phase8_write_state": "contract_only", "effective_write": false},
+    {"runtime": "managed_dotnet", "release_family": "R18-R24", "phase8_write_state": "unsupported", "effective_write": false},
+    {"runtime": "autolisp_file_ipc", "release_family": "lt", "phase8_write_state": "unsupported", "effective_write": false},
+    {"runtime": "ezdxf_headless", "release_family": "dxf_offline", "phase8_write_state": "headless_only", "effective_write": false}
+  ],
+  "extension_packs": [
+    {"pack": "delete", "enabled": false, "required_checkpoint": "cad.rollback.checkpoint/2"},
+    {"pack": "trim", "enabled": false, "required_checkpoint": "cad.rollback.checkpoint/2"},
+    {"pack": "fillet", "enabled": false, "required_checkpoint": "cad.rollback.checkpoint/2"},
+    {"pack": "chamfer", "enabled": false, "required_checkpoint": "cad.rollback.checkpoint/2"},
+    {"pack": "lt_write", "enabled": false, "required_checkpoint": "operation_specific_certification"}
+  ]
+}

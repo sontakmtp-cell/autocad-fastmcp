@@ -1,0 +1,129 @@
+{
+  "schema_version": "phase8.source-compiler-vectors/1",
+  "adapter_status": "blocked_pending_integration",
+  "adapter_blocker": "No stable cad.program/1.0 validator/compiler interface is present on this baseline.",
+  "vectors": [
+    {
+      "id": "valid-typed-repeat-deterministic",
+      "category": "deterministic_expansion",
+      "input": {
+        "schema_version": "cad.program/1.0",
+        "variables": [{"name": "spacing", "type": "length", "value": 25}],
+        "operations": [{
+          "kind": "repeat",
+          "count": 3,
+          "body": [{"kind": "create_circle", "center": {"x": {"op": "*", "args": [{"var": "spacing"}, {"index": true}]}, "y": 0}, "radius": 2}]
+        }]
+      },
+      "expected": {"outcome": "accept", "stable_across_runs": true}
+    },
+    {
+      "id": "reject-eval",
+      "category": "arbitrary_code",
+      "input": {"schema_version": "cad.program/1.0", "expression": {"eval": "1+1"}},
+      "expected": {"outcome": "reject", "error_category": "forbidden_expression"}
+    },
+    {
+      "id": "reject-command",
+      "category": "arbitrary_command",
+      "input": {"schema_version": "cad.program/1.0", "operations": [{"kind": "command", "name": "_.ERASE", "args": ["ALL"]}]},
+      "expected": {"outcome": "reject", "error_category": "operation_not_allowed"}
+    },
+    {
+      "id": "reject-file-path",
+      "category": "arbitrary_path",
+      "input": {"schema_version": "cad.program/1.0", "component": {"path": "C:\\Users\\operator\\payload.json"}},
+      "expected": {"outcome": "reject", "error_category": "external_access_forbidden"}
+    },
+    {
+      "id": "reject-unc-path",
+      "category": "arbitrary_path",
+      "input": {"schema_version": "cad.program/1.0", "artifact_ref": "\\\\server\\share\\payload.json"},
+      "expected": {"outcome": "reject", "error_category": "external_access_forbidden"}
+    },
+    {
+      "id": "reject-device-path",
+      "category": "arbitrary_path",
+      "input": {"schema_version": "cad.program/1.0", "artifact_ref": "\\\\.\\PIPE\\phase8"},
+      "expected": {"outcome": "reject", "error_category": "external_access_forbidden"}
+    },
+    {
+      "id": "reject-traversal-path",
+      "category": "arbitrary_path",
+      "input": {"schema_version": "cad.program/1.0", "artifact_ref": "..\\..\\payload.json"},
+      "expected": {"outcome": "reject", "error_category": "external_access_forbidden"}
+    },
+    {
+      "id": "reject-network",
+      "category": "network_access",
+      "input": {"schema_version": "cad.program/1.0", "component": {"url": "https://attacker.invalid/program"}},
+      "expected": {"outcome": "reject", "error_category": "external_access_forbidden"}
+    },
+    {
+      "id": "reject-file-url",
+      "category": "network_access",
+      "input": {"schema_version": "cad.program/1.0", "component": {"url": "file:///C:/payload.json"}},
+      "expected": {"outcome": "reject", "error_category": "external_access_forbidden"}
+    },
+    {
+      "id": "reject-load-assembly-command",
+      "category": "arbitrary_command",
+      "input": {"schema_version": "cad.program/1.0", "operations": [{"kind": "load_assembly", "module": "payload.dll"}]},
+      "expected": {"outcome": "reject", "error_category": "operation_not_allowed"}
+    },
+    {
+      "id": "reject-environment",
+      "category": "environment_access",
+      "input": {"schema_version": "cad.program/1.0", "expression": {"env": "USERPROFILE"}},
+      "expected": {"outcome": "reject", "error_category": "forbidden_expression"}
+    },
+    {
+      "id": "reject-time-random",
+      "category": "nondeterminism",
+      "input": {"schema_version": "cad.program/1.0", "expression": {"call": "random", "args": [{"call": "now"}]}},
+      "expected": {"outcome": "reject", "error_category": "forbidden_expression"}
+    },
+    {
+      "id": "reject-recursion",
+      "category": "recursion",
+      "input": {"schema_version": "cad.program/1.0", "components": [{"id": "self", "body": [{"component_ref": "self"}]}]},
+      "expected": {"outcome": "reject", "error_category": "component_cycle"}
+    },
+    {
+      "id": "reject-while",
+      "category": "unbounded_iteration",
+      "input": {"schema_version": "cad.program/1.0", "operations": [{"kind": "while", "condition": true, "body": []}]},
+      "expected": {"outcome": "reject", "error_category": "unbounded_iteration"}
+    },
+    {
+      "id": "reject-repeat-over-budget",
+      "category": "expansion_budget",
+      "input": {"schema_version": "cad.program/1.0", "operations": [{"kind": "repeat", "count": 1000000, "body": [{"kind": "create_line"}]}]},
+      "expected": {"outcome": "reject", "error_category": "budget_exceeded"}
+    },
+    {
+      "id": "reject-divide-zero",
+      "category": "numeric_error",
+      "input": {"schema_version": "cad.program/1.0", "expression": {"op": "/", "args": [1, 0]}},
+      "expected": {"outcome": "reject", "error_category": "numeric_error"}
+    },
+    {
+      "id": "reject-non-finite",
+      "category": "non_finite_number",
+      "input": {"schema_version": "cad.program/1.0", "variables": [{"name": "bad", "type": "number", "value": "NaN"}]},
+      "expected": {"outcome": "reject", "error_category": "non_finite_number"}
+    },
+    {
+      "id": "reject-raw-handle",
+      "category": "untrusted_target_binding",
+      "input": {"schema_version": "cad.program/1.0", "operations": [{"kind": "move", "target": {"handle": "1A"}}]},
+      "expected": {"outcome": "reject", "error_category": "stable_ref_required"}
+    },
+    {
+      "id": "reject-forward-output-ref",
+      "category": "invalid_reference",
+      "input": {"schema_version": "cad.program/1.0", "operations": [{"operation_id": "first", "kind": "create_line", "layer": {"output_ref": "later.layer"}}, {"operation_id": "later", "kind": "ensure_layer"}]},
+      "expected": {"outcome": "reject", "error_category": "forward_reference"}
+    }
+  ]
+}

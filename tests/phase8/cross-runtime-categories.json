@@ -1,0 +1,81 @@
+{
+  "schema_version": "phase8.cross-runtime-categories/1",
+  "claim_key_fields": [
+    "operation",
+    "operation_version",
+    "entity_type",
+    "runtime_family",
+    "release_family",
+    "support_state",
+    "evidence_version"
+  ],
+  "rules": {
+    "lt_write_default": "off",
+    "write_fallback": "forbidden",
+    "ezdxf_live_dwg_authority": false,
+    "unsupported_result": "capability_missing",
+    "checkpoint_v1_allowed_effects": ["create_only", "create_equivalent"],
+    "checkpoint_v1_forbidden_effects": ["modify", "erase", "topology_change"]
+  },
+  "categories": [
+    {
+      "id": "managed-r25-contract",
+      "runtime_family": "managed_dotnet",
+      "release_family": "R25",
+      "tier": "managed_standard",
+      "support_state": "contract_only",
+      "live_dwg_authority": true,
+      "phase8_claim_status": "blocked_pending_operation_pack_evidence"
+    },
+    {
+      "id": "managed-pre-r25-negative",
+      "runtime_family": "managed_dotnet",
+      "release_family": "R18-R24",
+      "tier": "managed_standard",
+      "support_state": "unsupported",
+      "live_dwg_authority": false,
+      "expected_result": "capability_missing"
+    },
+    {
+      "id": "lt-read-regression",
+      "runtime_family": "autolisp_file_ipc",
+      "release_family": "lt",
+      "tier": "lt_compat",
+      "support_state": "certified_read_only",
+      "live_dwg_authority": false,
+      "write_enabled": false
+    },
+    {
+      "id": "lt-write-negative",
+      "runtime_family": "autolisp_file_ipc",
+      "release_family": "lt",
+      "tier": "lt_compat",
+      "support_state": "unsupported",
+      "live_dwg_authority": false,
+      "write_enabled": false,
+      "expected_result": "capability_missing"
+    },
+    {
+      "id": "ezdxf-headless",
+      "runtime_family": "ezdxf_headless",
+      "release_family": "dxf_offline",
+      "tier": "headless_only",
+      "support_state": "contract_only",
+      "live_dwg_authority": false,
+      "may_prove": ["compile_shape", "offline_geometry", "invalid_input_category"],
+      "must_not_prove": ["live_dwg_commit", "live_preview_parity", "live_rollback"]
+    }
+  ],
+  "fixture_categories": [
+    "canonical_numbers_units_angles",
+    "deterministic_expansion_ids_digests",
+    "invalid_input_error_category",
+    "create_equivalent_geometry",
+    "stable_output_mapping",
+    "capability_missing",
+    "no_silent_approximation",
+    "no_write_fallback",
+    "receipt_checkpoint_binding",
+    "rollback_validation_tolerance"
+  ]
+}
