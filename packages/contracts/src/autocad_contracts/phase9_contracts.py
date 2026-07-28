@@ -37,6 +37,25 @@ class OpaqueCatalogRef(Phase9Model):
     digest: str = Field(pattern=_DIGEST)
 
 
+class PersistedOutputRef(Phase9Model):
+    source_step_id: str = Field(pattern=_ID)
+    output_path: str = Field(pattern=r"^[a-zA-Z0-9_.-]{1,128}$")
+
+
+class TypedCondition(Phase9Model):
+    left: PersistedOutputRef
+    operator: Literal["eq", "neq", "in"]
+    value: str | int | bool | list[str | int | bool] = Field(max_length=16)
+
+    @model_validator(mode="after")
+    def _typed_operator(self) -> "TypedCondition":
+        if self.operator == "in" and not isinstance(self.value, list):
+            raise ValueError("in condition requires literal list")
+        if self.operator != "in" and isinstance(self.value, list):
+            raise ValueError("scalar condition requires scalar literal")
+        return self
+
+
 class WorkflowReference(Phase9Model):
     workflow_id: str = Field(pattern=_ID)
     version: str = Field(pattern=_SEMVER)
@@ -116,6 +135,7 @@ class WorkflowStep(Phase9Model):
     kind: Literal["observe", "query", "run_planner", "render_template", "prepare_program", "preview_program", "wait_user_input", "wait_program_revision", "request_commit", "wait_job", "validate_receipt", "branch", "emit_report", "request_rollback", "finish"]
     depends_on: list[str] = Field(default_factory=list, max_length=8)
     input_bindings: dict[str, Any] = Field(default_factory=dict, max_length=32)
+    condition: TypedCondition | None = None
     output_schema: dict[str, Any] = Field(default_factory=dict)
     timeout_seconds: int = Field(ge=1, le=86_400)
     retry_class: Literal["none", "safe", "deterministic", "existing_idempotent"] = "none"
@@ -126,6 +146,17 @@ class WorkflowStep(Phase9Model):
             raise ValueError("step dependencies must be unique and cannot self-reference")
         _bounded_json(self.input_bindings, "step input bindings")
         _reject_executable_keys(self.input_bindings)
+        for name, binding in self.input_bindings.items():
+            if not re.fullmatch(_ID, name) or not isinstance(binding, (str, int, bool, type(None), list, dict)):
+                raise ValueError("workflow binding is invalid")
+            if isinstance(binding, dict):
+                PersistedOutputRef.model_validate(binding)
+            if isinstance(binding, list) and (len(binding) > 16 or not all(isinstance(x, (str, int, bool)) for x in binding)):
+                raise ValueError("workflow literal list is invalid")
+        if self.kind == "branch" and self.condition is None:
+            raise ValueError("branch step requires typed condition")
+        if self.kind != "branch" and self.condition is not None:
+            raise ValueError("condition is only allowed on branch step")
         validate_json_schema_subset(self.output_schema)
         return self
 

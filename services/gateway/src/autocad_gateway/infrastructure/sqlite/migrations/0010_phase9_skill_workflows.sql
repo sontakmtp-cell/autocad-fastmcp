@@ -194,3 +194,11 @@ CREATE INDEX idx_workflow_runs_nonterminal ON workflow_runs(state, updated_at) W
 CREATE INDEX idx_workflow_actions_pending ON workflow_actions(state, lease_expires_at, created_at) WHERE state IN ('pending','claimed');
 CREATE INDEX idx_workflow_waits_expiry ON workflow_waits(resolved_at, expires_at);
 CREATE INDEX idx_workflow_events_run_sequence ON workflow_events(run_id, sequence);
+
+CREATE TRIGGER workflow_events_append_only_update
+BEFORE UPDATE ON workflow_events
+BEGIN SELECT RAISE(ABORT, 'workflow_event_append_only'); END;
+
+CREATE TRIGGER workflow_events_append_only_delete
+BEFORE DELETE ON workflow_events
+BEGIN SELECT RAISE(ABORT, 'workflow_event_append_only'); END;

@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
+import json
+from pathlib import Path
 from typing import Any, Iterable
 
 from autocad_contracts import (
@@ -35,6 +38,36 @@ class SkillCatalog:
 
     def __init__(self, snapshot: CatalogSnapshot) -> None:
         self._snapshot = snapshot
+
+    @classmethod
+    def from_fixed_package_root(cls, package_root: Path) -> "SkillCatalog":
+        """Composition-only loader; callers never supply an asset path per request."""
+        root = package_root.resolve()
+        manifest_path = root / "catalog.json"
+        try:
+            bundle = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            raise CatalogError("trusted catalog bundle is unavailable") from error
+        assets = bundle.get("assets")
+        if not isinstance(assets, dict):
+            raise CatalogError("catalog assets are missing")
+        for relative, expected in assets.items():
+            if not isinstance(relative, str) or not isinstance(expected, str) or "/" not in relative:
+                raise CatalogError("catalog asset declaration is invalid")
+            candidate = (root / relative).resolve()
+            if root not in candidate.parents or not candidate.is_file():
+                raise CatalogError("catalog asset is outside fixed package root")
+            actual = "sha256:" + sha256(candidate.read_bytes()).hexdigest()
+            if actual != expected:
+                raise CatalogError("catalog asset digest mismatch")
+        release = dict(bundle)
+        release.pop("assets", None)
+        expected_release = release.pop("release_digest", None)
+        actual_release = "sha256:" + sha256(json.dumps(release, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        if expected_release != actual_release:
+            raise CatalogError("catalog release digest mismatch")
+        bundle["release_digest"] = expected_release
+        return cls.from_release_bundle(bundle)
 
     @classmethod
     def from_release_bundle(cls, bundle: dict[str, Any]) -> "SkillCatalog":
