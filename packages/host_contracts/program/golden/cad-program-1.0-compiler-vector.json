@@ -1,0 +1,1519 @@
+{
+  "digest_domains": {
+    "source": "cad.program.source/1",
+    "compiler": "cad.program.compiler/1",
+    "expansion": "cad.program.expansion/1",
+    "effect": "cad.effect-manifest/1",
+    "target_refs": "cad.target-refs/1",
+    "validation_profiles": "cad.validation-profiles/1",
+    "checkpoint_strategy": "cad.checkpoint-strategy/1",
+    "hard_budgets": "cad.execution-budgets/1",
+    "plan": "cad.execution-plan/1",
+    "execution_binding": "cad.execution-binding/1"
+  },
+  "source": {
+    "schema_version": "cad.program/1.0",
+    "registry_version": "cad.program/1.0-create-core",
+    "program_id": "phase8-golden",
+    "program_revision": 2,
+    "parent_revision": 1,
+    "device_id": "device-001",
+    "source_snapshot_id": "snapshot-001",
+    "document_id": "document-001",
+    "expected_document_revision": "revision-007",
+    "variables": [
+      {
+        "name": "pitch",
+        "value": {
+          "type": "length",
+          "value": "1",
+          "unit": "in"
+        }
+      },
+      {
+        "name": "radius",
+        "value": {
+          "type": "length",
+          "value": "2.54",
+          "unit": "cm"
+        }
+      },
+      {
+        "name": "quarter",
+        "value": {
+          "type": "angle",
+          "value": "90",
+          "unit": "deg"
+        }
+      }
+    ],
+    "operations": [
+      {
+        "operation_id": "layer-main",
+        "kind": "ensure_layer",
+        "name": "MCP-PHASE8",
+        "color_index": 3
+      },
+      {
+        "operation_id": "line-grid",
+        "repeat": {
+          "kind": "rectangular",
+          "rows": {
+            "op": "literal",
+            "value": {
+              "type": "integer",
+              "value": "2"
+            }
+          },
+          "columns": {
+            "op": "literal",
+            "value": {
+              "type": "integer",
+              "value": "2"
+            }
+          },
+          "row_offset": {
+            "x": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            },
+            "y": {
+              "op": "variable",
+              "name": "pitch"
+            },
+            "z": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            }
+          },
+          "column_offset": {
+            "x": {
+              "op": "variable",
+              "name": "pitch"
+            },
+            "y": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            },
+            "z": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            }
+          }
+        },
+        "kind": "create_line",
+        "layer": {
+          "operation_id": "layer-main",
+          "output": "layer"
+        },
+        "start": {
+          "x": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          },
+          "y": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          },
+          "z": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          }
+        },
+        "end": {
+          "x": {
+            "op": "variable",
+            "name": "pitch"
+          },
+          "y": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          },
+          "z": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          }
+        }
+      },
+      {
+        "operation_id": "circle-polar",
+        "repeat": {
+          "kind": "polar",
+          "count": {
+            "op": "literal",
+            "value": {
+              "type": "integer",
+              "value": "4"
+            }
+          },
+          "center": {
+            "x": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            },
+            "y": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            },
+            "z": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            }
+          },
+          "total_angle": {
+            "op": "mul",
+            "left": {
+              "op": "variable",
+              "name": "quarter"
+            },
+            "right": {
+              "op": "literal",
+              "value": {
+                "type": "integer",
+                "value": "4"
+              }
+            }
+          }
+        },
+        "kind": "create_circle",
+        "layer": {
+          "operation_id": "layer-main",
+          "output": "layer"
+        },
+        "center": {
+          "x": {
+            "op": "variable",
+            "name": "pitch"
+          },
+          "y": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          },
+          "z": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          }
+        },
+        "radius": {
+          "op": "div",
+          "left": {
+            "op": "variable",
+            "name": "radius"
+          },
+          "right": {
+            "op": "literal",
+            "value": {
+              "type": "scalar",
+              "value": "2"
+            }
+          }
+        }
+      },
+      {
+        "operation_id": "text-linear",
+        "repeat": {
+          "kind": "linear",
+          "count": {
+            "op": "literal",
+            "value": {
+              "type": "integer",
+              "value": "2"
+            }
+          },
+          "offset": {
+            "x": {
+              "op": "variable",
+              "name": "pitch"
+            },
+            "y": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            },
+            "z": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            }
+          }
+        },
+        "kind": "create_text",
+        "layer": "MCP-PHASE8",
+        "position": {
+          "x": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          },
+          "y": {
+            "op": "variable",
+            "name": "pitch"
+          },
+          "z": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          }
+        },
+        "text": "Phase 8 — bản vẽ Δ",
+        "height": {
+          "op": "literal",
+          "value": {
+            "type": "length",
+            "value": "0.1",
+            "unit": "in"
+          }
+        },
+        "rotation": {
+          "op": "literal",
+          "value": {
+            "type": "angle",
+            "value": "0",
+            "unit": "rad"
+          }
+        }
+      }
+    ],
+    "budgets": {
+      "max_source_operations": 16,
+      "max_expanded_operations": 32,
+      "max_entities": 16,
+      "max_vertices": 64,
+      "max_expression_nodes": 256,
+      "max_coordinate_abs_mm": "10000",
+      "max_text_bytes": 1024
+    },
+    "required_capabilities": [
+      "cad.program.v1.compile",
+      "cad.program.v1.repeat.polar"
+    ],
+    "validation_profiles": [
+      "geometry.basic.1",
+      "document.revision.1"
+    ],
+    "artifact_refs": [],
+    "component_refs": [],
+    "semantic_digest": "sha256:706156555aa0a58e0137de353f7e955817e0c6536e5abd4f56483110680eea4e"
+  },
+  "canonical_source": {
+    "schema_version": "cad.program/1.0",
+    "registry_version": "cad.program/1.0-create-core",
+    "program_id": "phase8-golden",
+    "program_revision": 2,
+    "parent_revision": 1,
+    "device_id": "device-001",
+    "source_snapshot_id": "snapshot-001",
+    "document_id": "document-001",
+    "expected_document_revision": "revision-007",
+    "variables": [
+      {
+        "name": "pitch",
+        "value": {
+          "type": "length",
+          "value": "1",
+          "unit": "in"
+        }
+      },
+      {
+        "name": "radius",
+        "value": {
+          "type": "length",
+          "value": "2.54",
+          "unit": "cm"
+        }
+      },
+      {
+        "name": "quarter",
+        "value": {
+          "type": "angle",
+          "value": "90",
+          "unit": "deg"
+        }
+      }
+    ],
+    "operations": [
+      {
+        "operation_id": "layer-main",
+        "kind": "ensure_layer",
+        "name": "MCP-PHASE8",
+        "color_index": 3
+      },
+      {
+        "operation_id": "line-grid",
+        "repeat": {
+          "kind": "rectangular",
+          "rows": {
+            "op": "literal",
+            "value": {
+              "type": "integer",
+              "value": "2"
+            }
+          },
+          "columns": {
+            "op": "literal",
+            "value": {
+              "type": "integer",
+              "value": "2"
+            }
+          },
+          "row_offset": {
+            "x": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            },
+            "y": {
+              "op": "variable",
+              "name": "pitch"
+            },
+            "z": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            }
+          },
+          "column_offset": {
+            "x": {
+              "op": "variable",
+              "name": "pitch"
+            },
+            "y": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            },
+            "z": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            }
+          }
+        },
+        "kind": "create_line",
+        "layer": {
+          "operation_id": "layer-main",
+          "output": "layer"
+        },
+        "start": {
+          "x": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          },
+          "y": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          },
+          "z": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          }
+        },
+        "end": {
+          "x": {
+            "op": "variable",
+            "name": "pitch"
+          },
+          "y": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          },
+          "z": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          }
+        }
+      },
+      {
+        "operation_id": "circle-polar",
+        "repeat": {
+          "kind": "polar",
+          "count": {
+            "op": "literal",
+            "value": {
+              "type": "integer",
+              "value": "4"
+            }
+          },
+          "center": {
+            "x": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            },
+            "y": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            },
+            "z": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            }
+          },
+          "total_angle": {
+            "op": "mul",
+            "left": {
+              "op": "variable",
+              "name": "quarter"
+            },
+            "right": {
+              "op": "literal",
+              "value": {
+                "type": "integer",
+                "value": "4"
+              }
+            }
+          }
+        },
+        "kind": "create_circle",
+        "layer": {
+          "operation_id": "layer-main",
+          "output": "layer"
+        },
+        "center": {
+          "x": {
+            "op": "variable",
+            "name": "pitch"
+          },
+          "y": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          },
+          "z": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          }
+        },
+        "radius": {
+          "op": "div",
+          "left": {
+            "op": "variable",
+            "name": "radius"
+          },
+          "right": {
+            "op": "literal",
+            "value": {
+              "type": "scalar",
+              "value": "2"
+            }
+          }
+        }
+      },
+      {
+        "operation_id": "text-linear",
+        "repeat": {
+          "kind": "linear",
+          "count": {
+            "op": "literal",
+            "value": {
+              "type": "integer",
+              "value": "2"
+            }
+          },
+          "offset": {
+            "x": {
+              "op": "variable",
+              "name": "pitch"
+            },
+            "y": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            },
+            "z": {
+              "op": "literal",
+              "value": {
+                "type": "length",
+                "value": "0",
+                "unit": "mm"
+              }
+            }
+          }
+        },
+        "kind": "create_text",
+        "layer": "MCP-PHASE8",
+        "position": {
+          "x": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          },
+          "y": {
+            "op": "variable",
+            "name": "pitch"
+          },
+          "z": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          }
+        },
+        "text": "Phase 8 — bản vẽ Δ",
+        "height": {
+          "op": "literal",
+          "value": {
+            "type": "length",
+            "value": "0.1",
+            "unit": "in"
+          }
+        },
+        "rotation": {
+          "op": "literal",
+          "value": {
+            "type": "angle",
+            "value": "0",
+            "unit": "rad"
+          }
+        }
+      }
+    ],
+    "budgets": {
+      "max_source_operations": 16,
+      "max_expanded_operations": 32,
+      "max_entities": 16,
+      "max_vertices": 64,
+      "max_expression_nodes": 256,
+      "max_coordinate_abs_mm": "10000",
+      "max_text_bytes": 1024
+    },
+    "required_capabilities": [
+      "cad.program.v1.compile",
+      "cad.program.v1.repeat.polar"
+    ],
+    "validation_profiles": [
+      "geometry.basic.1",
+      "document.revision.1"
+    ],
+    "artifact_refs": [],
+    "component_refs": []
+  },
+  "source_digest": "sha256:706156555aa0a58e0137de353f7e955817e0c6536e5abd4f56483110680eea4e",
+  "compiler_manifest": {
+    "compiler_id": "autocad-mcp.gateway.cad-program-v1",
+    "compiler_version": "1.0.0",
+    "expression_ast": "bounded-v1",
+    "numeric_model": "decimal-mm-rad-1e-9-half-even",
+    "repeat_model": "linear-rectangular-polar-stable-id-v1",
+    "operation_registry_version": "cad.program/1.0-create-core"
+  },
+  "compiler_digest": "sha256:877cf651acda71260bad22cb465913b6296dfc0db4a2e0e1fbbe6853dd5fe71f",
+  "plan": {
+    "schema_version": "cad.execution-plan/1",
+    "plan_id": "phase8-golden.r2",
+    "source_schema_version": "cad.program/1.0",
+    "source_program_id": "phase8-golden",
+    "source_program_revision": 2,
+    "source_digest": "sha256:706156555aa0a58e0137de353f7e955817e0c6536e5abd4f56483110680eea4e",
+    "compiler": {
+      "compiler_id": "autocad-mcp.gateway.cad-program-v1",
+      "compiler_version": "1.0.0",
+      "compiler_digest": "sha256:877cf651acda71260bad22cb465913b6296dfc0db4a2e0e1fbbe6853dd5fe71f",
+      "compiler_package_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    },
+    "device_id": "device-001",
+    "document_id": "document-001",
+    "source_snapshot_id": "snapshot-001",
+    "expected_document_revision": "revision-007",
+    "operations": [
+      {
+        "kind": "ensure_layer",
+        "operation_version": 1,
+        "operation_id": "layer-main",
+        "source_operation_id": "layer-main",
+        "name": "MCP-PHASE8",
+        "color_index": 3
+      },
+      {
+        "kind": "create_line",
+        "operation_version": 1,
+        "operation_id": "line-grid.r000c000",
+        "source_operation_id": "line-grid",
+        "layer": "MCP-PHASE8",
+        "start": {
+          "x_mm": "0",
+          "y_mm": "0",
+          "z_mm": "0"
+        },
+        "end": {
+          "x_mm": "25.4",
+          "y_mm": "0",
+          "z_mm": "0"
+        }
+      },
+      {
+        "kind": "create_line",
+        "operation_version": 1,
+        "operation_id": "line-grid.r000c001",
+        "source_operation_id": "line-grid",
+        "layer": "MCP-PHASE8",
+        "start": {
+          "x_mm": "25.4",
+          "y_mm": "0",
+          "z_mm": "0"
+        },
+        "end": {
+          "x_mm": "50.8",
+          "y_mm": "0",
+          "z_mm": "0"
+        }
+      },
+      {
+        "kind": "create_line",
+        "operation_version": 1,
+        "operation_id": "line-grid.r001c000",
+        "source_operation_id": "line-grid",
+        "layer": "MCP-PHASE8",
+        "start": {
+          "x_mm": "0",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        },
+        "end": {
+          "x_mm": "25.4",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        }
+      },
+      {
+        "kind": "create_line",
+        "operation_version": 1,
+        "operation_id": "line-grid.r001c001",
+        "source_operation_id": "line-grid",
+        "layer": "MCP-PHASE8",
+        "start": {
+          "x_mm": "25.4",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        },
+        "end": {
+          "x_mm": "50.8",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        }
+      },
+      {
+        "kind": "create_circle",
+        "operation_version": 1,
+        "operation_id": "circle-polar.p000",
+        "source_operation_id": "circle-polar",
+        "layer": "MCP-PHASE8",
+        "center": {
+          "x_mm": "25.4",
+          "y_mm": "0",
+          "z_mm": "0"
+        },
+        "radius_mm": "12.7"
+      },
+      {
+        "kind": "create_circle",
+        "operation_version": 1,
+        "operation_id": "circle-polar.p001",
+        "source_operation_id": "circle-polar",
+        "layer": "MCP-PHASE8",
+        "center": {
+          "x_mm": "-0.000000005",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        },
+        "radius_mm": "12.7"
+      },
+      {
+        "kind": "create_circle",
+        "operation_version": 1,
+        "operation_id": "circle-polar.p002",
+        "source_operation_id": "circle-polar",
+        "layer": "MCP-PHASE8",
+        "center": {
+          "x_mm": "-25.4",
+          "y_mm": "-0.00000001",
+          "z_mm": "0"
+        },
+        "radius_mm": "12.7"
+      },
+      {
+        "kind": "create_circle",
+        "operation_version": 1,
+        "operation_id": "circle-polar.p003",
+        "source_operation_id": "circle-polar",
+        "layer": "MCP-PHASE8",
+        "center": {
+          "x_mm": "0.000000016",
+          "y_mm": "-25.4",
+          "z_mm": "0"
+        },
+        "radius_mm": "12.7"
+      },
+      {
+        "kind": "create_text",
+        "operation_version": 1,
+        "operation_id": "text-linear.l000",
+        "source_operation_id": "text-linear",
+        "layer": "MCP-PHASE8",
+        "position": {
+          "x_mm": "0",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        },
+        "text": "Phase 8 — bản vẽ Δ",
+        "height_mm": "2.54",
+        "rotation_rad": "0"
+      },
+      {
+        "kind": "create_text",
+        "operation_version": 1,
+        "operation_id": "text-linear.l001",
+        "source_operation_id": "text-linear",
+        "layer": "MCP-PHASE8",
+        "position": {
+          "x_mm": "25.4",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        },
+        "text": "Phase 8 — bản vẽ Δ",
+        "height_mm": "2.54",
+        "rotation_rad": "0"
+      }
+    ],
+    "expansion_digest": "sha256:3264c42e7d6ed51bb5fd180c641730f646ee0b6305fefbea688ec574cd235d3e",
+    "effect_manifest": {
+      "schema_version": "cad.effect-manifest/1",
+      "entries": [
+        {
+          "operation_id": "layer-main",
+          "operation_kind": "ensure_layer",
+          "operation_version": 1,
+          "effect_class": "ensure_non_entity",
+          "entity_type": "LAYER",
+          "creates": 0,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "none"
+        },
+        {
+          "operation_id": "line-grid.r000c000",
+          "operation_kind": "create_line",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "LINE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "line-grid.r000c001",
+          "operation_kind": "create_line",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "LINE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "line-grid.r001c000",
+          "operation_kind": "create_line",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "LINE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "line-grid.r001c001",
+          "operation_kind": "create_line",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "LINE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "circle-polar.p000",
+          "operation_kind": "create_circle",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "CIRCLE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "circle-polar.p001",
+          "operation_kind": "create_circle",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "CIRCLE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "circle-polar.p002",
+          "operation_kind": "create_circle",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "CIRCLE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "circle-polar.p003",
+          "operation_kind": "create_circle",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "CIRCLE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "text-linear.l000",
+          "operation_kind": "create_text",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "TEXT",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "text-linear.l001",
+          "operation_kind": "create_text",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "TEXT",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        }
+      ],
+      "creates": 10,
+      "modifies": 0,
+      "erases": 0,
+      "ensures_non_entity": 1,
+      "risk_floor": "low",
+      "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+    },
+    "effect_manifest_digest": "sha256:aeacb5ae084ef5ff33f843e8620bb145f55058ba14c357a8ac8235dc47081f59",
+    "materialized_target_refs": [],
+    "target_refs_digest": "sha256:629627f4b174ce6878fa9c8ecb1ad5ad1056ddb7266dedc7eea0827b4185a270",
+    "validation_profiles_digest": "sha256:885714c95a07292e4312f2aeeffa88fd1150ae502e5e9717ffc33491c9b55f64",
+    "checkpoint_strategy_digest": "sha256:584977c1e68b61960189afa2b9d685c309861ad4cc43f80e90aad3b03472385d",
+    "hard_budgets_digest": "sha256:dfd77bdfab2cd7a940333448e812c7deda7e23455c65f93272dcbc0e77d7b5e3",
+    "execution_pins": {
+      "runtime_id": "managed_dotnet",
+      "runtime_role": "primary",
+      "host_family": "R25",
+      "host_version": "0.8.0",
+      "package_id": "autocad.managed_host.r25",
+      "package_version": "0.8.0",
+      "package_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "capability_manifest_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "operation_registry_version": "cad.program.1.create.core",
+      "operation_registry_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "policy_version": "phase8.policy.1",
+      "rollout_policy_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    },
+    "budgets": {
+      "estimated_operations": 11,
+      "hard_max_operations": 32,
+      "estimated_entities": 10,
+      "hard_max_entities": 16,
+      "estimated_vertices": 0,
+      "hard_max_vertices": 64,
+      "estimated_text_bytes": 50,
+      "hard_max_text_bytes": 1024
+    },
+    "required_capabilities": [
+      "cad.program.v1.compile",
+      "cad.program.v1.repeat.polar"
+    ],
+    "validation_profiles": [
+      "geometry.basic.1",
+      "document.revision.1"
+    ],
+    "artifact_refs": [],
+    "component_refs": [],
+    "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities",
+    "execution_plan_digest": "sha256:d9388c0536f8b33ad9634ad7594709dcf343fd639b79814f184a0e253f8788ca"
+  },
+  "expansion_digest": "sha256:3264c42e7d6ed51bb5fd180c641730f646ee0b6305fefbea688ec574cd235d3e",
+  "effect_manifest_digest": "sha256:aeacb5ae084ef5ff33f843e8620bb145f55058ba14c357a8ac8235dc47081f59",
+  "target_refs_digest": "sha256:629627f4b174ce6878fa9c8ecb1ad5ad1056ddb7266dedc7eea0827b4185a270",
+  "validation_profiles_digest": "sha256:885714c95a07292e4312f2aeeffa88fd1150ae502e5e9717ffc33491c9b55f64",
+  "checkpoint_strategy_digest": "sha256:584977c1e68b61960189afa2b9d685c309861ad4cc43f80e90aad3b03472385d",
+  "hard_budgets": {
+    "max_operations": 32,
+    "max_entities": 16,
+    "max_vertices": 64,
+    "max_text_bytes": 1024
+  },
+  "hard_budgets_digest": "sha256:dfd77bdfab2cd7a940333448e812c7deda7e23455c65f93272dcbc0e77d7b5e3",
+  "canonical_plan": {
+    "schema_version": "cad.execution-plan/1",
+    "plan_id": "phase8-golden.r2",
+    "source_schema_version": "cad.program/1.0",
+    "source_program_id": "phase8-golden",
+    "source_program_revision": 2,
+    "source_digest": "sha256:706156555aa0a58e0137de353f7e955817e0c6536e5abd4f56483110680eea4e",
+    "compiler": {
+      "compiler_id": "autocad-mcp.gateway.cad-program-v1",
+      "compiler_version": "1.0.0",
+      "compiler_digest": "sha256:877cf651acda71260bad22cb465913b6296dfc0db4a2e0e1fbbe6853dd5fe71f",
+      "compiler_package_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    },
+    "device_id": "device-001",
+    "document_id": "document-001",
+    "source_snapshot_id": "snapshot-001",
+    "expected_document_revision": "revision-007",
+    "operations": [
+      {
+        "kind": "ensure_layer",
+        "operation_version": 1,
+        "operation_id": "layer-main",
+        "source_operation_id": "layer-main",
+        "name": "MCP-PHASE8",
+        "color_index": 3
+      },
+      {
+        "kind": "create_line",
+        "operation_version": 1,
+        "operation_id": "line-grid.r000c000",
+        "source_operation_id": "line-grid",
+        "layer": "MCP-PHASE8",
+        "start": {
+          "x_mm": "0",
+          "y_mm": "0",
+          "z_mm": "0"
+        },
+        "end": {
+          "x_mm": "25.4",
+          "y_mm": "0",
+          "z_mm": "0"
+        }
+      },
+      {
+        "kind": "create_line",
+        "operation_version": 1,
+        "operation_id": "line-grid.r000c001",
+        "source_operation_id": "line-grid",
+        "layer": "MCP-PHASE8",
+        "start": {
+          "x_mm": "25.4",
+          "y_mm": "0",
+          "z_mm": "0"
+        },
+        "end": {
+          "x_mm": "50.8",
+          "y_mm": "0",
+          "z_mm": "0"
+        }
+      },
+      {
+        "kind": "create_line",
+        "operation_version": 1,
+        "operation_id": "line-grid.r001c000",
+        "source_operation_id": "line-grid",
+        "layer": "MCP-PHASE8",
+        "start": {
+          "x_mm": "0",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        },
+        "end": {
+          "x_mm": "25.4",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        }
+      },
+      {
+        "kind": "create_line",
+        "operation_version": 1,
+        "operation_id": "line-grid.r001c001",
+        "source_operation_id": "line-grid",
+        "layer": "MCP-PHASE8",
+        "start": {
+          "x_mm": "25.4",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        },
+        "end": {
+          "x_mm": "50.8",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        }
+      },
+      {
+        "kind": "create_circle",
+        "operation_version": 1,
+        "operation_id": "circle-polar.p000",
+        "source_operation_id": "circle-polar",
+        "layer": "MCP-PHASE8",
+        "center": {
+          "x_mm": "25.4",
+          "y_mm": "0",
+          "z_mm": "0"
+        },
+        "radius_mm": "12.7"
+      },
+      {
+        "kind": "create_circle",
+        "operation_version": 1,
+        "operation_id": "circle-polar.p001",
+        "source_operation_id": "circle-polar",
+        "layer": "MCP-PHASE8",
+        "center": {
+          "x_mm": "-0.000000005",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        },
+        "radius_mm": "12.7"
+      },
+      {
+        "kind": "create_circle",
+        "operation_version": 1,
+        "operation_id": "circle-polar.p002",
+        "source_operation_id": "circle-polar",
+        "layer": "MCP-PHASE8",
+        "center": {
+          "x_mm": "-25.4",
+          "y_mm": "-0.00000001",
+          "z_mm": "0"
+        },
+        "radius_mm": "12.7"
+      },
+      {
+        "kind": "create_circle",
+        "operation_version": 1,
+        "operation_id": "circle-polar.p003",
+        "source_operation_id": "circle-polar",
+        "layer": "MCP-PHASE8",
+        "center": {
+          "x_mm": "0.000000016",
+          "y_mm": "-25.4",
+          "z_mm": "0"
+        },
+        "radius_mm": "12.7"
+      },
+      {
+        "kind": "create_text",
+        "operation_version": 1,
+        "operation_id": "text-linear.l000",
+        "source_operation_id": "text-linear",
+        "layer": "MCP-PHASE8",
+        "position": {
+          "x_mm": "0",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        },
+        "text": "Phase 8 — bản vẽ Δ",
+        "height_mm": "2.54",
+        "rotation_rad": "0"
+      },
+      {
+        "kind": "create_text",
+        "operation_version": 1,
+        "operation_id": "text-linear.l001",
+        "source_operation_id": "text-linear",
+        "layer": "MCP-PHASE8",
+        "position": {
+          "x_mm": "25.4",
+          "y_mm": "25.4",
+          "z_mm": "0"
+        },
+        "text": "Phase 8 — bản vẽ Δ",
+        "height_mm": "2.54",
+        "rotation_rad": "0"
+      }
+    ],
+    "expansion_digest": "sha256:3264c42e7d6ed51bb5fd180c641730f646ee0b6305fefbea688ec574cd235d3e",
+    "effect_manifest": {
+      "schema_version": "cad.effect-manifest/1",
+      "entries": [
+        {
+          "operation_id": "layer-main",
+          "operation_kind": "ensure_layer",
+          "operation_version": 1,
+          "effect_class": "ensure_non_entity",
+          "entity_type": "LAYER",
+          "creates": 0,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "none"
+        },
+        {
+          "operation_id": "line-grid.r000c000",
+          "operation_kind": "create_line",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "LINE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "line-grid.r000c001",
+          "operation_kind": "create_line",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "LINE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "line-grid.r001c000",
+          "operation_kind": "create_line",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "LINE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "line-grid.r001c001",
+          "operation_kind": "create_line",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "LINE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "circle-polar.p000",
+          "operation_kind": "create_circle",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "CIRCLE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "circle-polar.p001",
+          "operation_kind": "create_circle",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "CIRCLE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "circle-polar.p002",
+          "operation_kind": "create_circle",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "CIRCLE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "circle-polar.p003",
+          "operation_kind": "create_circle",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "CIRCLE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "text-linear.l000",
+          "operation_kind": "create_text",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "TEXT",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "text-linear.l001",
+          "operation_kind": "create_text",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "TEXT",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        }
+      ],
+      "creates": 10,
+      "modifies": 0,
+      "erases": 0,
+      "ensures_non_entity": 1,
+      "risk_floor": "low",
+      "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+    },
+    "effect_manifest_digest": "sha256:aeacb5ae084ef5ff33f843e8620bb145f55058ba14c357a8ac8235dc47081f59",
+    "materialized_target_refs": [],
+    "target_refs_digest": "sha256:629627f4b174ce6878fa9c8ecb1ad5ad1056ddb7266dedc7eea0827b4185a270",
+    "validation_profiles_digest": "sha256:885714c95a07292e4312f2aeeffa88fd1150ae502e5e9717ffc33491c9b55f64",
+    "checkpoint_strategy_digest": "sha256:584977c1e68b61960189afa2b9d685c309861ad4cc43f80e90aad3b03472385d",
+    "hard_budgets_digest": "sha256:dfd77bdfab2cd7a940333448e812c7deda7e23455c65f93272dcbc0e77d7b5e3",
+    "execution_pins": {
+      "runtime_id": "managed_dotnet",
+      "runtime_role": "primary",
+      "host_family": "R25",
+      "host_version": "0.8.0",
+      "package_id": "autocad.managed_host.r25",
+      "package_version": "0.8.0",
+      "package_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "capability_manifest_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "operation_registry_version": "cad.program.1.create.core",
+      "operation_registry_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "policy_version": "phase8.policy.1",
+      "rollout_policy_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    },
+    "budgets": {
+      "estimated_operations": 11,
+      "hard_max_operations": 32,
+      "estimated_entities": 10,
+      "hard_max_entities": 16,
+      "estimated_vertices": 0,
+      "hard_max_vertices": 64,
+      "estimated_text_bytes": 50,
+      "hard_max_text_bytes": 1024
+    },
+    "required_capabilities": [
+      "cad.program.v1.compile",
+      "cad.program.v1.repeat.polar"
+    ],
+    "validation_profiles": [
+      "geometry.basic.1",
+      "document.revision.1"
+    ],
+    "artifact_refs": [],
+    "component_refs": [],
+    "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+  },
+  "execution_plan_digest": "sha256:d9388c0536f8b33ad9634ad7594709dcf343fd639b79814f184a0e253f8788ca",
+  "execution_binding": {
+    "runtime_id": "managed_dotnet",
+    "runtime_role": "primary",
+    "host_family": "R25",
+    "host_version": "0.8.0",
+    "package_id": "autocad.managed_host.r25",
+    "package_version": "0.8.0",
+    "package_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "capability_manifest_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "operation_registry_version": "cad.program.1.create.core",
+    "operation_registry_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "policy_version": "phase8.policy.1",
+    "rollout_policy_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "schema_version": "cad.execution-binding/1",
+    "action": "compile_only",
+    "source_schema_version": "cad.program/1.0",
+    "source_program_id": "phase8-golden",
+    "source_program_revision": 2,
+    "source_digest": "sha256:706156555aa0a58e0137de353f7e955817e0c6536e5abd4f56483110680eea4e",
+    "compiler_id": "autocad-mcp.gateway.cad-program-v1",
+    "compiler_version": "1.0.0",
+    "compiler_digest": "sha256:877cf651acda71260bad22cb465913b6296dfc0db4a2e0e1fbbe6853dd5fe71f",
+    "compiler_package_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    "plan_schema_version": "cad.execution-plan/1",
+    "execution_plan_digest": "sha256:d9388c0536f8b33ad9634ad7594709dcf343fd639b79814f184a0e253f8788ca",
+    "expansion_digest": "sha256:3264c42e7d6ed51bb5fd180c641730f646ee0b6305fefbea688ec574cd235d3e",
+    "effect_manifest_digest": "sha256:aeacb5ae084ef5ff33f843e8620bb145f55058ba14c357a8ac8235dc47081f59",
+    "target_refs_digest": "sha256:629627f4b174ce6878fa9c8ecb1ad5ad1056ddb7266dedc7eea0827b4185a270",
+    "validation_profiles_digest": "sha256:885714c95a07292e4312f2aeeffa88fd1150ae502e5e9717ffc33491c9b55f64",
+    "checkpoint_strategy_digest": "sha256:584977c1e68b61960189afa2b9d685c309861ad4cc43f80e90aad3b03472385d",
+    "hard_budgets_digest": "sha256:dfd77bdfab2cd7a940333448e812c7deda7e23455c65f93272dcbc0e77d7b5e3",
+    "device_id": "device-001",
+    "document_id": "document-001",
+    "source_snapshot_id": "snapshot-001",
+    "document_revision": "revision-007",
+    "execution_binding_digest": "sha256:c622b22b4f5bcfcf38ae5dc37f8bfcb1a2487aab5af7ea30b9b11760c28aee25"
+  },
+  "canonical_execution_binding": {
+    "runtime_id": "managed_dotnet",
+    "runtime_role": "primary",
+    "host_family": "R25",
+    "host_version": "0.8.0",
+    "package_id": "autocad.managed_host.r25",
+    "package_version": "0.8.0",
+    "package_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "capability_manifest_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "operation_registry_version": "cad.program.1.create.core",
+    "operation_registry_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "policy_version": "phase8.policy.1",
+    "rollout_policy_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "schema_version": "cad.execution-binding/1",
+    "action": "compile_only",
+    "source_schema_version": "cad.program/1.0",
+    "source_program_id": "phase8-golden",
+    "source_program_revision": 2,
+    "source_digest": "sha256:706156555aa0a58e0137de353f7e955817e0c6536e5abd4f56483110680eea4e",
+    "compiler_id": "autocad-mcp.gateway.cad-program-v1",
+    "compiler_version": "1.0.0",
+    "compiler_digest": "sha256:877cf651acda71260bad22cb465913b6296dfc0db4a2e0e1fbbe6853dd5fe71f",
+    "compiler_package_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    "plan_schema_version": "cad.execution-plan/1",
+    "execution_plan_digest": "sha256:d9388c0536f8b33ad9634ad7594709dcf343fd639b79814f184a0e253f8788ca",
+    "expansion_digest": "sha256:3264c42e7d6ed51bb5fd180c641730f646ee0b6305fefbea688ec574cd235d3e",
+    "effect_manifest_digest": "sha256:aeacb5ae084ef5ff33f843e8620bb145f55058ba14c357a8ac8235dc47081f59",
+    "target_refs_digest": "sha256:629627f4b174ce6878fa9c8ecb1ad5ad1056ddb7266dedc7eea0827b4185a270",
+    "validation_profiles_digest": "sha256:885714c95a07292e4312f2aeeffa88fd1150ae502e5e9717ffc33491c9b55f64",
+    "checkpoint_strategy_digest": "sha256:584977c1e68b61960189afa2b9d685c309861ad4cc43f80e90aad3b03472385d",
+    "hard_budgets_digest": "sha256:dfd77bdfab2cd7a940333448e812c7deda7e23455c65f93272dcbc0e77d7b5e3",
+    "device_id": "device-001",
+    "document_id": "document-001",
+    "source_snapshot_id": "snapshot-001",
+    "document_revision": "revision-007"
+  },
+  "execution_binding_digest": "sha256:c622b22b4f5bcfcf38ae5dc37f8bfcb1a2487aab5af7ea30b9b11760c28aee25"
+}

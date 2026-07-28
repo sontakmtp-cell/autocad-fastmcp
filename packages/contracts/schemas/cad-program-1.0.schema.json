@@ -1,0 +1,1174 @@
+{
+  "$defs": {
+    "CreateCircleSource": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repeat": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear": "#/$defs/LinearRepeat",
+                  "polar": "#/$defs/PolarRepeat",
+                  "rectangular": "#/$defs/RectangularRepeat"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/LinearRepeat"
+                },
+                {
+                  "$ref": "#/$defs/RectangularRepeat"
+                },
+                {
+                  "$ref": "#/$defs/PolarRepeat"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat"
+        },
+        "kind": {
+          "const": "create_circle",
+          "title": "Kind",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]{1,255}$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRefV1"
+            }
+          ],
+          "title": "Layer"
+        },
+        "center": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        },
+        "radius": {
+          "$ref": "#/$defs/Expression"
+        }
+      },
+      "required": [
+        "operation_id",
+        "kind",
+        "layer",
+        "center",
+        "radius"
+      ],
+      "title": "CreateCircleSource",
+      "type": "object"
+    },
+    "CreateDimensionLinearSource": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repeat": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear": "#/$defs/LinearRepeat",
+                  "polar": "#/$defs/PolarRepeat",
+                  "rectangular": "#/$defs/RectangularRepeat"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/LinearRepeat"
+                },
+                {
+                  "$ref": "#/$defs/RectangularRepeat"
+                },
+                {
+                  "$ref": "#/$defs/PolarRepeat"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat"
+        },
+        "kind": {
+          "const": "create_dimension_linear",
+          "title": "Kind",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]{1,255}$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRefV1"
+            }
+          ],
+          "title": "Layer"
+        },
+        "extension_line1_point": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        },
+        "extension_line2_point": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        },
+        "dimension_line_point": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        },
+        "text_override": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text Override"
+        }
+      },
+      "required": [
+        "operation_id",
+        "kind",
+        "layer",
+        "extension_line1_point",
+        "extension_line2_point",
+        "dimension_line_point"
+      ],
+      "title": "CreateDimensionLinearSource",
+      "type": "object"
+    },
+    "CreateLineSource": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repeat": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear": "#/$defs/LinearRepeat",
+                  "polar": "#/$defs/PolarRepeat",
+                  "rectangular": "#/$defs/RectangularRepeat"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/LinearRepeat"
+                },
+                {
+                  "$ref": "#/$defs/RectangularRepeat"
+                },
+                {
+                  "$ref": "#/$defs/PolarRepeat"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat"
+        },
+        "kind": {
+          "const": "create_line",
+          "title": "Kind",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]{1,255}$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRefV1"
+            }
+          ],
+          "title": "Layer"
+        },
+        "start": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        },
+        "end": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        }
+      },
+      "required": [
+        "operation_id",
+        "kind",
+        "layer",
+        "start",
+        "end"
+      ],
+      "title": "CreateLineSource",
+      "type": "object"
+    },
+    "CreatePolylineSource": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repeat": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear": "#/$defs/LinearRepeat",
+                  "polar": "#/$defs/PolarRepeat",
+                  "rectangular": "#/$defs/RectangularRepeat"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/LinearRepeat"
+                },
+                {
+                  "$ref": "#/$defs/RectangularRepeat"
+                },
+                {
+                  "$ref": "#/$defs/PolarRepeat"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat"
+        },
+        "kind": {
+          "const": "create_polyline",
+          "title": "Kind",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]{1,255}$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRefV1"
+            }
+          ],
+          "title": "Layer"
+        },
+        "vertices": {
+          "items": {
+            "$ref": "#/$defs/ExpressionPoint3d"
+          },
+          "maxItems": 4096,
+          "minItems": 2,
+          "title": "Vertices",
+          "type": "array"
+        },
+        "closed": {
+          "default": false,
+          "title": "Closed",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "operation_id",
+        "kind",
+        "layer",
+        "vertices"
+      ],
+      "title": "CreatePolylineSource",
+      "type": "object"
+    },
+    "CreateRectangleSource": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repeat": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear": "#/$defs/LinearRepeat",
+                  "polar": "#/$defs/PolarRepeat",
+                  "rectangular": "#/$defs/RectangularRepeat"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/LinearRepeat"
+                },
+                {
+                  "$ref": "#/$defs/RectangularRepeat"
+                },
+                {
+                  "$ref": "#/$defs/PolarRepeat"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat"
+        },
+        "kind": {
+          "const": "create_rectangle",
+          "title": "Kind",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]{1,255}$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRefV1"
+            }
+          ],
+          "title": "Layer"
+        },
+        "first_corner": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        },
+        "opposite_corner": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        }
+      },
+      "required": [
+        "operation_id",
+        "kind",
+        "layer",
+        "first_corner",
+        "opposite_corner"
+      ],
+      "title": "CreateRectangleSource",
+      "type": "object"
+    },
+    "CreateTextSource": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repeat": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear": "#/$defs/LinearRepeat",
+                  "polar": "#/$defs/PolarRepeat",
+                  "rectangular": "#/$defs/RectangularRepeat"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/LinearRepeat"
+                },
+                {
+                  "$ref": "#/$defs/RectangularRepeat"
+                },
+                {
+                  "$ref": "#/$defs/PolarRepeat"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat"
+        },
+        "kind": {
+          "const": "create_text",
+          "title": "Kind",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]{1,255}$",
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/LayerOutputRefV1"
+            }
+          ],
+          "title": "Layer"
+        },
+        "position": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        },
+        "text": {
+          "maxLength": 65536,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "height": {
+          "$ref": "#/$defs/Expression"
+        },
+        "rotation": {
+          "$ref": "#/$defs/Expression"
+        }
+      },
+      "required": [
+        "operation_id",
+        "kind",
+        "layer",
+        "position",
+        "text",
+        "height",
+        "rotation"
+      ],
+      "title": "CreateTextSource",
+      "type": "object"
+    },
+    "EnsureLayerSource": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repeat": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "linear": "#/$defs/LinearRepeat",
+                  "polar": "#/$defs/PolarRepeat",
+                  "rectangular": "#/$defs/RectangularRepeat"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/LinearRepeat"
+                },
+                {
+                  "$ref": "#/$defs/RectangularRepeat"
+                },
+                {
+                  "$ref": "#/$defs/PolarRepeat"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repeat"
+        },
+        "kind": {
+          "const": "ensure_layer",
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]{1,255}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "color_index": {
+          "anyOf": [
+            {
+              "maximum": 255,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color Index"
+        }
+      },
+      "required": [
+        "operation_id",
+        "kind",
+        "name"
+      ],
+      "title": "EnsureLayerSource",
+      "type": "object"
+    },
+    "Expression": {
+      "additionalProperties": false,
+      "properties": {
+        "op": {
+          "enum": [
+            "literal",
+            "variable",
+            "index",
+            "neg",
+            "abs",
+            "add",
+            "sub",
+            "mul",
+            "div",
+            "min",
+            "max",
+            "convert"
+          ],
+          "title": "Op",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NumericValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "name": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "operand": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Expression"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "left": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Expression"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "right": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Expression"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "arguments": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/Expression"
+              },
+              "maxItems": 8,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Arguments"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "enum": [
+                "mm",
+                "cm",
+                "m",
+                "in",
+                "ft"
+              ],
+              "type": "string"
+            },
+            {
+              "enum": [
+                "rad",
+                "deg"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "title": "Expression",
+      "type": "object"
+    },
+    "ExpressionPoint3d": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "$ref": "#/$defs/Expression"
+        },
+        "y": {
+          "$ref": "#/$defs/Expression"
+        },
+        "z": {
+          "$ref": "#/$defs/Expression"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "title": "ExpressionPoint3d",
+      "type": "object"
+    },
+    "LayerOutputRefV1": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "output": {
+          "const": "layer",
+          "default": "layer",
+          "title": "Output",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id"
+      ],
+      "title": "LayerOutputRefV1",
+      "type": "object"
+    },
+    "LinearRepeat": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "linear",
+          "title": "Kind",
+          "type": "string"
+        },
+        "count": {
+          "$ref": "#/$defs/Expression"
+        },
+        "offset": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        }
+      },
+      "required": [
+        "kind",
+        "count",
+        "offset"
+      ],
+      "title": "LinearRepeat",
+      "type": "object"
+    },
+    "NumericValue": {
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "integer",
+            "scalar",
+            "length",
+            "angle"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 40,
+          "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{1,18})?$",
+          "title": "Value",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "enum": [
+                "mm",
+                "cm",
+                "m",
+                "in",
+                "ft"
+              ],
+              "type": "string"
+            },
+            {
+              "enum": [
+                "rad",
+                "deg"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        }
+      },
+      "required": [
+        "type",
+        "value"
+      ],
+      "title": "NumericValue",
+      "type": "object"
+    },
+    "OpaqueArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "owner_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "content_type": {
+          "const": "application/vnd.autocad-mcp.cad-program+json",
+          "title": "Content Type",
+          "type": "string"
+        },
+        "byte_length": {
+          "maximum": 5242880,
+          "minimum": 1,
+          "title": "Byte Length",
+          "type": "integer"
+        },
+        "artifact_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Artifact Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "owner_id",
+        "content_type",
+        "byte_length",
+        "artifact_digest"
+      ],
+      "title": "OpaqueArtifactRef",
+      "type": "object"
+    },
+    "OpaqueComponentRef": {
+      "additionalProperties": false,
+      "properties": {
+        "component_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Component Id",
+          "type": "string"
+        },
+        "owner_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "component_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Component Version",
+          "type": "string"
+        },
+        "content_type": {
+          "const": "application/vnd.autocad-mcp.component+json",
+          "title": "Content Type",
+          "type": "string"
+        },
+        "byte_length": {
+          "maximum": 5242880,
+          "minimum": 1,
+          "title": "Byte Length",
+          "type": "integer"
+        },
+        "component_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Component Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component_id",
+        "owner_id",
+        "component_version",
+        "content_type",
+        "byte_length",
+        "component_digest"
+      ],
+      "title": "OpaqueComponentRef",
+      "type": "object"
+    },
+    "PolarRepeat": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "polar",
+          "title": "Kind",
+          "type": "string"
+        },
+        "count": {
+          "$ref": "#/$defs/Expression"
+        },
+        "center": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        },
+        "total_angle": {
+          "$ref": "#/$defs/Expression"
+        }
+      },
+      "required": [
+        "kind",
+        "count",
+        "center",
+        "total_angle"
+      ],
+      "title": "PolarRepeat",
+      "type": "object"
+    },
+    "ProgramV1Budgets": {
+      "additionalProperties": false,
+      "properties": {
+        "max_source_operations": {
+          "default": 256,
+          "maximum": 256,
+          "minimum": 1,
+          "title": "Max Source Operations",
+          "type": "integer"
+        },
+        "max_expanded_operations": {
+          "default": 1024,
+          "maximum": 1024,
+          "minimum": 1,
+          "title": "Max Expanded Operations",
+          "type": "integer"
+        },
+        "max_entities": {
+          "default": 1024,
+          "maximum": 1024,
+          "minimum": 1,
+          "title": "Max Entities",
+          "type": "integer"
+        },
+        "max_vertices": {
+          "default": 4096,
+          "maximum": 4096,
+          "minimum": 2,
+          "title": "Max Vertices",
+          "type": "integer"
+        },
+        "max_expression_nodes": {
+          "default": 1024,
+          "maximum": 1024,
+          "minimum": 1,
+          "title": "Max Expression Nodes",
+          "type": "integer"
+        },
+        "max_coordinate_abs_mm": {
+          "default": "1000000000",
+          "maxLength": 40,
+          "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{1,18})?$",
+          "title": "Max Coordinate Abs Mm",
+          "type": "string"
+        },
+        "max_text_bytes": {
+          "default": 65536,
+          "maximum": 65536,
+          "minimum": 1,
+          "title": "Max Text Bytes",
+          "type": "integer"
+        }
+      },
+      "title": "ProgramV1Budgets",
+      "type": "object"
+    },
+    "RectangularRepeat": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "const": "rectangular",
+          "title": "Kind",
+          "type": "string"
+        },
+        "rows": {
+          "$ref": "#/$defs/Expression"
+        },
+        "columns": {
+          "$ref": "#/$defs/Expression"
+        },
+        "row_offset": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        },
+        "column_offset": {
+          "$ref": "#/$defs/ExpressionPoint3d"
+        }
+      },
+      "required": [
+        "kind",
+        "rows",
+        "columns",
+        "row_offset",
+        "column_offset"
+      ],
+      "title": "RectangularRepeat",
+      "type": "object"
+    },
+    "Variable": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "value": {
+          "$ref": "#/$defs/NumericValue"
+        }
+      },
+      "required": [
+        "name",
+        "value"
+      ],
+      "title": "Variable",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "cad.program/1.0",
+      "default": "cad.program/1.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "registry_version": {
+      "const": "cad.program/1.0-create-core",
+      "default": "cad.program/1.0-create-core",
+      "title": "Registry Version",
+      "type": "string"
+    },
+    "program_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Program Id",
+      "type": "string"
+    },
+    "program_revision": {
+      "minimum": 1,
+      "title": "Program Revision",
+      "type": "integer"
+    },
+    "parent_revision": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Revision"
+    },
+    "device_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Device Id",
+      "type": "string"
+    },
+    "source_snapshot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Source Snapshot Id",
+      "type": "string"
+    },
+    "document_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Document Id",
+      "type": "string"
+    },
+    "expected_document_revision": {
+      "pattern": "^\\S{1,256}$",
+      "title": "Expected Document Revision",
+      "type": "string"
+    },
+    "variables": {
+      "items": {
+        "$ref": "#/$defs/Variable"
+      },
+      "maxItems": 64,
+      "title": "Variables",
+      "type": "array"
+    },
+    "operations": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "create_circle": "#/$defs/CreateCircleSource",
+            "create_dimension_linear": "#/$defs/CreateDimensionLinearSource",
+            "create_line": "#/$defs/CreateLineSource",
+            "create_polyline": "#/$defs/CreatePolylineSource",
+            "create_rectangle": "#/$defs/CreateRectangleSource",
+            "create_text": "#/$defs/CreateTextSource",
+            "ensure_layer": "#/$defs/EnsureLayerSource"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/EnsureLayerSource"
+          },
+          {
+            "$ref": "#/$defs/CreateLineSource"
+          },
+          {
+            "$ref": "#/$defs/CreateCircleSource"
+          },
+          {
+            "$ref": "#/$defs/CreatePolylineSource"
+          },
+          {
+            "$ref": "#/$defs/CreateRectangleSource"
+          },
+          {
+            "$ref": "#/$defs/CreateTextSource"
+          },
+          {
+            "$ref": "#/$defs/CreateDimensionLinearSource"
+          }
+        ]
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Operations",
+      "type": "array"
+    },
+    "budgets": {
+      "$ref": "#/$defs/ProgramV1Budgets"
+    },
+    "required_capabilities": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Required Capabilities",
+      "type": "array"
+    },
+    "validation_profiles": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Validation Profiles",
+      "type": "array"
+    },
+    "artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/OpaqueArtifactRef"
+      },
+      "maxItems": 32,
+      "title": "Artifact Refs",
+      "type": "array"
+    },
+    "component_refs": {
+      "items": {
+        "$ref": "#/$defs/OpaqueComponentRef"
+      },
+      "maxItems": 32,
+      "title": "Component Refs",
+      "type": "array"
+    },
+    "semantic_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Semantic Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "program_id",
+    "program_revision",
+    "device_id",
+    "source_snapshot_id",
+    "document_id",
+    "expected_document_revision",
+    "operations",
+    "validation_profiles",
+    "semantic_digest"
+  ],
+  "title": "Immutable CAD Program 1.0 source contract",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kythuatvang.local/cad.program/1.0/schema.json"
+}

@@ -47,6 +47,10 @@ def _canonical_hash(payload: dict) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _domain_hash(domain: str, payload) -> str:
+    return _canonical_hash({"domain": domain, "payload": payload})
+
+
 def test_schemas_are_json_schema_2020_12_and_forbid_extra_envelope_fields():
     envelope = _load(ROOT / "schemas" / "cad-host-envelope.schema.json")
     payloads = _load(ROOT / "schemas" / "cad-host-payloads.schema.json")
@@ -143,6 +147,162 @@ def test_cross_language_digest_vector_is_canonical_and_complete():
     assert {
         operation["kind"] for operation in vector["registry"]["operations"]
     } == REQUIRED_PROGRAM_OPERATIONS
+
+
+def test_phase8_schemas_match_python_snapshots_and_remain_compile_only():
+    source = _load(ROOT / "schemas" / "cad-program-1.0.schema.json")
+    source_python = _load(CONTRACTS_ROOT / "schemas" / "cad-program-1.0.schema.json")
+    plan = _load(ROOT / "schemas" / "cad-execution-plan-1.schema.json")
+    plan_python = _load(CONTRACTS_ROOT / "schemas" / "cad-execution-plan-1.schema.json")
+    binding = _load(ROOT / "schemas" / "cad-execution-binding-1.schema.json")
+    binding_python = _load(
+        CONTRACTS_ROOT / "schemas" / "cad-execution-binding-1.schema.json"
+    )
+
+    assert source == source_python
+    assert plan == plan_python
+    assert binding == binding_python
+    assert source["$schema"].endswith("2020-12/schema")
+    assert plan["$schema"].endswith("2020-12/schema")
+    assert source["additionalProperties"] is False
+    assert plan["additionalProperties"] is False
+    assert set(source["$defs"]["OpaqueArtifactRef"]["properties"]) == {
+        "artifact_id",
+        "owner_id",
+        "content_type",
+        "byte_length",
+        "artifact_digest",
+    }
+    assert set(source["$defs"]["OpaqueComponentRef"]["properties"]) == {
+        "component_id",
+        "owner_id",
+        "component_version",
+        "content_type",
+        "byte_length",
+        "component_digest",
+    }
+    assert set(plan["$defs"]["MaterializedTargetRef"]["properties"]) == {
+        "ref_id",
+        "owner_id",
+        "device_id",
+        "document_id",
+        "snapshot_id",
+        "document_revision",
+        "entity_id",
+        "entity_type",
+        "fingerprint",
+    }
+    execution_binding = binding
+    assert execution_binding["additionalProperties"] is False
+    assert set(execution_binding["required"]) == {
+        "runtime_id",
+        "runtime_role",
+        "host_family",
+        "host_version",
+        "package_id",
+        "package_version",
+        "package_hash",
+        "capability_manifest_hash",
+        "operation_registry_version",
+        "operation_registry_hash",
+        "policy_version",
+        "source_digest",
+        "schema_version",
+        "action",
+        "source_schema_version",
+        "source_program_id",
+        "source_program_revision",
+        "compiler_id",
+        "compiler_version",
+        "compiler_digest",
+        "compiler_package_hash",
+        "plan_schema_version",
+        "execution_plan_digest",
+        "expansion_digest",
+        "effect_manifest_digest",
+        "target_refs_digest",
+        "validation_profiles_digest",
+        "checkpoint_strategy_digest",
+        "hard_budgets_digest",
+        "rollout_policy_digest",
+        "device_id",
+        "source_snapshot_id",
+        "document_id",
+        "document_revision",
+        "execution_binding_digest",
+    }
+
+    encoded = json.dumps({"source": source, "plan": plan}).lower()
+    for forbidden in (
+        "assembly_path",
+        "executable",
+        "raw_lisp",
+        "network_url",
+        "delete",
+        "erase_entity",
+        "trim",
+        "fillet",
+        "chamfer",
+    ):
+        assert forbidden not in encoded
+
+
+def test_phase8_cross_runtime_golden_vector_recomputes_every_digest():
+    vector = _load(
+        ROOT / "program" / "golden" / "cad-program-1.0-compiler-vector.json"
+    )
+    source_without_digest = dict(vector["source"])
+    source_without_digest.pop("semantic_digest")
+    plan_without_digest = dict(vector["plan"])
+    plan_without_digest.pop("execution_plan_digest")
+
+    assert source_without_digest == vector["canonical_source"]
+    assert plan_without_digest == vector["canonical_plan"]
+    domains = vector["digest_domains"]
+    assert len(set(domains.values())) == len(domains)
+    assert vector["source_digest"] == (
+        f"sha256:{_domain_hash(domains['source'], source_without_digest)}"
+    )
+    assert vector["compiler_digest"] == (
+        f"sha256:{_domain_hash(domains['compiler'], vector['compiler_manifest'])}"
+    )
+    assert vector["expansion_digest"] == (
+        f"sha256:{_domain_hash(domains['expansion'], {'operations': vector['plan']['operations']})}"
+    )
+    assert vector["effect_manifest_digest"] == (
+        f"sha256:{_domain_hash(domains['effect'], vector['plan']['effect_manifest'])}"
+    )
+    assert vector["target_refs_digest"] == (
+        f"sha256:{_domain_hash(domains['target_refs'], {'target_refs': vector['plan']['materialized_target_refs']})}"
+    )
+    assert vector["validation_profiles_digest"] == (
+        f"sha256:{_domain_hash(domains['validation_profiles'], {'validation_profiles': vector['plan']['validation_profiles']})}"
+    )
+    assert vector["checkpoint_strategy_digest"] == (
+        f"sha256:{_domain_hash(domains['checkpoint_strategy'], {'checkpoint_strategy': vector['plan']['checkpoint_strategy']})}"
+    )
+    assert vector["hard_budgets_digest"] == (
+        f"sha256:{_domain_hash(domains['hard_budgets'], vector['hard_budgets'])}"
+    )
+    assert vector["execution_plan_digest"] == (
+        f"sha256:{_domain_hash(domains['plan'], plan_without_digest)}"
+    )
+    assert vector["plan"]["source_digest"] == vector["source_digest"]
+    assert vector["plan"]["compiler"]["compiler_digest"] == vector["compiler_digest"]
+    assert vector["plan"]["expansion_digest"] == vector["expansion_digest"]
+    assert (
+        vector["plan"]["effect_manifest_digest"]
+        == vector["effect_manifest_digest"]
+    )
+    assert vector["plan"]["target_refs_digest"] == vector["target_refs_digest"]
+    assert vector["execution_binding_digest"] == (
+        f"sha256:{_domain_hash(domains['execution_binding'], vector['canonical_execution_binding'])}"
+    )
+    assert (
+        vector["execution_binding"]["execution_plan_digest"]
+        == vector["execution_plan_digest"]
+    )
+    assert vector["plan"]["execution_plan_digest"] == vector["execution_plan_digest"]
 
 
 def test_golden_envelopes_have_matching_payload_hashes_and_bounded_identity():
