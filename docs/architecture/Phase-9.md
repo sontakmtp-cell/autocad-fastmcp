@@ -1692,3 +1692,41 @@ Final Codex report must state:
 ## 27. Definition of Done
 
 Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party, pin exact version, tạo một durable workflow run, thu thập input, observe/query, tạo CAD Program bằng planner/template an toàn, preview, chờ user/trusted approval, commit qua existing Phase 7/8 path, survive restart/reconnect, validate và hoàn tất mà không tạo effect lần hai; đồng thời ChatGPT vẫn có thể tự tạo CAD Program ngoài skill, public MCP không nổ thành tool-per-skill, cleanup không bị quảng cáo quá capability thật, và mọi execution authority vẫn nằm trong strict Gateway/Agent/Host contracts.
+
+---
+
+## 28. Implementation evidence (2026-07-29)
+
+### Automated and simulated evidence
+
+- Focused conformance command: `python scripts/test-phase9-conformance.py`.
+  It covers strict contract fields/digests, forbidden execution step kinds,
+  fixed first-party catalog asset digests, support downgrade/revocation, state
+  transitions, CAS/idempotency, event ordering, action lease/reclaim,
+  started-write recovery, waits, runner reconciliation, and the three pure
+  reference workflow fixtures.
+- The focused suite was run on the implementation branch before public facade
+  integration: **35 passed**, with one pre-existing unregistered
+  `pytest.mark.phase3` warning. This is simulated/unit evidence only.
+- Phase 0--8 regression and Phase 8 conformance are maintained as separate
+  release gates. Their recorded baseline results must be rerun after final
+  integration; they are not implied by the focused Phase 9 suite.
+
+### Security and operational evidence
+
+- [`phase9-threat-model.md`](../security/phase9-threat-model.md) records the
+  Gateway, Portal, catalog, workflow, Agent/Host, and AutoCAD trust boundaries.
+- [`phase9-workflow-boundaries-adr.md`](phase9-workflow-boundaries-adr.md)
+  freezes the no-arbitrary-code and Phase 6--8 reuse boundary.
+- [`phase9-workflow-rollback.md`](../operations/phase9-workflow-rollback.md)
+  documents default-off rollout, security revocation, recovery-first handling
+  for unknown writes, and the retained-artifact live checklist.
+
+### Unverified / not an acceptance claim
+
+- This evidence does **not** claim public OAuth/ChatGPT end-to-end operation,
+  Portal UI acceptance, or a live AutoCAD Mechanical 2025 R25 workflow run.
+- Engineering GO remains blocked until final public surface/Portal integration,
+  full regression, a completed Phase 9 security review with no high/critical
+  blocker, and live R25 evidence for both write workflows plus unchanged
+  cleanup audit are recorded.
