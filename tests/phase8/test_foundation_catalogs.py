@@ -18,7 +18,7 @@ def test_source_compiler_vectors_cover_required_malicious_categories():
     ids = [item["id"] for item in vectors]
     categories = {item["category"] for item in vectors}
 
-    assert catalog["adapter_status"] == "blocked_pending_integration"
+    assert catalog["adapter_status"] == "real_canonical_compiler"
     assert len(ids) == len(set(ids))
     assert {
         "arbitrary_code",
@@ -71,7 +71,9 @@ def test_fault_matrix_covers_drop_duplicate_recovery_and_invalidation():
     matrix = _load("fault-recovery-matrix.json")
     cases = {item["id"]: item for item in matrix["cases"]}
 
-    assert matrix["status"] == "scaffold"
+    assert matrix["status"] == "mixed_automated_contract_and_live_pending"
+    assert matrix["live_evidence_status"] == "missing"
+    assert all((ROOT / path).is_file() for path in matrix["automated_evidence"])
     assert {
         "drop-before-release",
         "drop-after-dispatch-before-ack",
@@ -127,7 +129,8 @@ def test_regression_matrix_references_real_repo_paths():
         "web-portal-unit-component-phase7",
         "web-portal-e2e-phase7",
         "web-portal-build-phase7",
-        "phase8-conformance-foundation",
+        "phase8-cross-stack-conformance",
+        "phase8-host-json-checkpoint-v2",
     } <= set(ids)
     for suite in suites:
         assert (ROOT / suite["workdir"]).is_dir()

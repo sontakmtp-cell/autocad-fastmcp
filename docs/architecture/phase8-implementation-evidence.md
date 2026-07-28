@@ -1,8 +1,8 @@
 # Phase 8 implementation and acceptance evidence
 
-> Status: implementation in progress. This record does not claim Phase 8
-> Engineering GO until every core Definition of Done row below has direct
-> automated and live evidence.
+> Status: **NO-GO**. The round-two conformance suite intentionally exits
+> non-zero while the canonical golden, mandatory release binding, and actual
+> R25 dispatcher-registration blockers below remain unresolved.
 
 ## Baseline
 
@@ -41,7 +41,7 @@ code 0. This was an environment cleanup failure, not an assertion failure.
 | Slice | Required evidence | Current status |
 |---|---|---|
 | 8.0 | Phase 0-7 regression, Phase 7 live-evidence backfill, public contract snapshot, checkpoint-v1 freeze, compiler/effect ADR | Regression green; remaining records under review |
-| 8.1 | Strict v1 source, bounded AST/repeat, sealed plan/effect digests, Python/C# golden parity, no write | Pending integration |
+| 8.1 | Strict v1 source, bounded AST/repeat, sealed plan/effect digests, Python/C# golden parity, no write | Runtime compiler is `1.1`; checked-in golden is still `1.0`, so parity gate fails |
 | 8.2 | At least one create-equivalent pack on R25 with preview, approval, receipt, checkpoint-v1 ownership and rollback | Pending integration and live evidence |
 | 8.3 | Immutable snapshot/query refs, prior outputs, patch/rebase lineage and in-flight protection | Pending integration |
 | 8.4 | Host-generated checkpoint/restore v2 POC for allowlisted entities with atomicity and drop matrix | Pending integration |
@@ -51,19 +51,53 @@ code 0. This was an environment cleanup failure, not an assertion failure.
 
 | Requirement | Authoritative proof required | Status |
 |---|---|---|
-| Strict `cad.program/1.0` | Schema/model rejection tests and malicious-input vectors | Not yet proven |
-| Deterministic `cad.execution-plan/1` | Repeatable compiler output plus Python/C# golden digests | Not yet proven |
-| Bounded variables, expressions and repeat | Depth/node/magnitude/expansion limit tests | Not yet proven |
-| Exact source/compiler/plan/effect approval binding | Gateway intent/consent tests and Agent/Host mismatch rejection | Not yet proven |
+| Strict `cad.program/1.0` | Schema/model rejection tests and malicious-input vectors | Automated contract evidence |
+| Deterministic `cad.execution-plan/1` | Repeatable compiler output plus Python/C# golden digests | **Failing:** current compiler output does not match the checked-in canonical golden |
+| Bounded variables, expressions and repeat | Depth/node/magnitude/expansion limit tests | Automated |
+| Exact source/compiler/plan/effect approval binding | Gateway intent/consent tests and Agent/Host mismatch rejection | **Failing:** an otherwise valid Phase 8 release is accepted when mandatory intent and consent binding rows are absent |
 | Live create-equivalent operation pack on R25 | Mechanical 2025 preview/commit/receipt/rollback record | Missing |
-| Immutable refs and patch/rebase | Owner/device/document/revision isolation and in-flight mutation tests | Not yet proven |
+| Immutable refs and patch/rebase | Owner/device/document/revision isolation and in-flight mutation tests | Owner-scoped guessed-ID rejection and canonical materialized/evidence digest recomputation pass; patch/rebase remains incomplete |
 | Transform with checkpoint v2 | Host pre-image/restore evidence, validation, fault matrix and live rollback | Missing |
-| No primitive public tools | Phase 8 tool/resource snapshot comparison | Not yet proven |
-| Unsupported tuple fails `capability_missing` | Gateway, Agent and Host negative tests | Not yet proven |
+| No primitive public tools | Phase 8 tool/resource snapshot comparison | Automated snapshot plus denylist |
+| Unsupported tuple fails `capability_missing` | Gateway, Agent and Host negative tests | Contract and Host Core negatives automated; live R25 dispatch remains unproven |
 | Phase 7 guarantees do not regress | Full automated suites and recovery/drop matrix | Baseline only |
 | `cad.program/0.2` and LT read do not regress | Existing v0.2 suites and LT negative matrix | Baseline only |
-| Arbitrary code/path/command remains impossible | Independent security review and executable rejection tests | Not yet proven |
-| Cross-runtime claims are evidence-scoped | Operation/version/entity/runtime fixture ledger | Not yet proven |
+| Arbitrary code/path/command remains impossible | Independent security review and executable rejection tests | Automated contract evidence |
+| Cross-runtime claims are evidence-scoped | Operation/version/entity/runtime fixture ledger | Automated catalog; live rows remain missing |
+
+## Round-two conformance integration
+
+Command:
+
+```powershell
+python scripts\test-phase8-conformance.py
+```
+
+Current evidence:
+
+- the conformance suite invokes the real canonical compiler, but fails because
+  its `1.1` output and digests do not match the checked-in `1.0` golden fixture;
+- Gateway owner scoping rejects cross-owner guessed IDs, and canonical
+  materialized-reference and capability-evidence digests are recomputed rather
+  than trusted from callers;
+- the mandatory Phase 8 intent-and-consent release gate currently fails:
+  release can proceed when both binding rows are absent;
+- `cad.agent/2` serializes the shared plan, execution binding and capability
+  evidence, and Desktop admission consumes those canonical wire artifacts;
+- the Phase 7 MCP profile remains byte-identical to its frozen snapshot. The
+  Phase 8 profile has only the documented `cad_prepare_program` input/output
+  schema delta and adds no primitive public tool;
+- arbitrary code, command, path, UNC path, URL, environment, script, raw
+  handles, excessive expression depth and repeat expansion fail closed;
+- Managed Host Core JSON/checkpoint-v2 tests pass, but the actual R25 dispatcher
+  does not yet call `Phase8ManagedOperationPack`; the registration gate fails;
+- no `xfail` marker hides these blockers. The aggregate command remains
+  deliberately red until production integration and canonical fixtures agree.
+
+The GitHub Actions gate runs only portable Python and Managed Host Core tests.
+It does not build a standalone Desktop Agent executable and does not require
+Autodesk references. `scripts/build-phase8-r25-host.ps1` is the separate local
+Windows/R25 path and requires installed AutoCAD 2025 references.
 
 ## Safety state
 
@@ -74,4 +108,3 @@ code 0. This was an environment cleanup failure, not an assertion failure.
   rollback guarantee.
 - Existing public MCP tools remain the compatibility boundary; no primitive
   public tool has been added.
-

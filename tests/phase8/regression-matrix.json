@@ -76,11 +76,19 @@
       "evidence_kind": "automated"
     },
     {
-      "id": "phase8-conformance-foundation",
+      "id": "phase8-cross-stack-conformance",
       "phase_scope": "8.0-8.7",
       "workdir": ".",
       "executable": "services/gateway/.venv/Scripts/python.exe",
       "arguments": ["-m", "pytest", "-q", "tests/phase8", "--basetemp=.pytest_cache/phase8-conformance"],
+      "evidence_kind": "automated"
+    },
+    {
+      "id": "phase8-host-json-checkpoint-v2",
+      "phase_scope": "8.2-8.5",
+      "workdir": ".",
+      "executable": "dotnet",
+      "arguments": ["test", "native/autocad_managed_host/tests/AutocadMcp.Host.Core.Tests/AutocadMcp.Host.Core.Tests.csproj", "--configuration", "Release", "--filter", "FullyQualifiedName~Phase8ManagedOperationsTests"],
       "evidence_kind": "automated"
     }
   ]

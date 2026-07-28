@@ -22,6 +22,7 @@ from fastmcp import Client  # noqa: E402
 
 
 SNAPSHOT = Path(__file__).with_name("public-surface-phase7.json")
+PHASE8_DELTA = Path(__file__).with_name("public-surface-phase8-delta.json")
 
 
 class _Phase7Admission:
@@ -48,13 +49,20 @@ class _Phase7Admission:
 
 
 class _Phase7RegistrationOnlyServices:
+    profile = "phase7_c2"
     is_phase3 = True
     is_phase4 = True
     is_phase6 = True
     is_phase7 = True
+    is_phase8 = False
     local_subject = "phase8-conformance"
     program_service = object()
     phase7_admission = _Phase7Admission()
+
+
+class _Phase8RegistrationOnlyServices(_Phase7RegistrationOnlyServices):
+    profile = "phase8_program"
+    is_phase8 = True
 
 
 def _dump(value):
@@ -109,9 +117,38 @@ async def test_phase7_public_tool_and_resource_snapshot_is_unchanged():
 
 
 @pytest.mark.asyncio
+async def test_phase8_profile_has_only_the_documented_prepare_schema_delta():
+    baseline = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
+    delta = json.loads(PHASE8_DELTA.read_text(encoding="utf-8"))
+    server = build_mcp_server(_Phase8RegistrationOnlyServices())
+
+    async with Client(server) as client:
+        tools = await client.list_tools()
+        resources = await client.list_resource_templates()
+
+    actual_tools = {_tool_snapshot(tool)["name"]: _tool_snapshot(tool) for tool in tools}
+    baseline_tools = {item["name"]: item for item in baseline["tools"]}
+    assert actual_tools.keys() == baseline_tools.keys()
+    assert len(actual_tools) == delta["tool_count"]
+    assert delta["new_public_tool_names"] == []
+    for name in actual_tools.keys() - delta["changed_tools"].keys():
+        assert actual_tools[name] == baseline_tools[name]
+    for name, change in delta["changed_tools"].items():
+        actual = actual_tools[name]
+        expected = baseline_tools[name]
+        assert actual["title"] == expected["title"]
+        assert actual["annotations"] == expected["annotations"]
+        assert actual["input_schema_sha256"] == change["input_schema_sha256"]
+        assert actual["output_schema_sha256"] == change["output_schema_sha256"]
+    assert [
+        [item.name, str(item.uriTemplate), item.mimeType] for item in resources
+    ] == baseline["resources"]
+
+
+@pytest.mark.asyncio
 async def test_s8_010_phase7_phase8_surface_and_sensitive_authority_denylist():
     expected = json.loads(SNAPSHOT.read_text(encoding="utf-8"))
-    server = build_mcp_server(_Phase7RegistrationOnlyServices())
+    server = build_mcp_server(_Phase8RegistrationOnlyServices())
 
     async with Client(server) as client:
         tools = await client.list_tools()

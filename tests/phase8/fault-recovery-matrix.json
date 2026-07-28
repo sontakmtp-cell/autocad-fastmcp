@@ -1,6 +1,12 @@
 {
   "schema_version": "phase8.fault-recovery-matrix/1",
-  "status": "scaffold",
+  "status": "mixed_automated_contract_and_live_pending",
+  "automated_evidence": [
+    "services/gateway/tests/test_phase8_gateway_plumbing.py",
+    "native/autocad_managed_host/tests/AutocadMcp.Host.Core.Tests/Phase8ManagedOperationsTests.cs",
+    "tests/phase8/test_cross_stack_acceptance.py"
+  ],
+  "live_evidence_status": "missing",
   "invariants": [
     "no_job_before_trusted_approval",
     "no_model_or_browser_approval",

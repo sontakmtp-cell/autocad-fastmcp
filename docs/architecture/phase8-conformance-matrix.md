@@ -1,6 +1,8 @@
 # Phase 8 conformance and evidence matrix
 
-Status: foundation implemented; production integration and live evidence pending
+Status: NO-GO. Desktop, digest recomputation, profile snapshots and Host Core
+contracts are green; canonical golden parity, mandatory unbound-release
+rejection, actual R25 dispatcher registration and live R25 evidence are red.
 
 ## Evidence rules
 
@@ -21,16 +23,24 @@ Status: foundation implemented; production integration and live evidence pending
 | Area | Artifact/test | Current status | What it proves |
 |---|---|---|---|
 | Phase 0-7 regression | `tests/phase8/regression-matrix.json`, `scripts/test-phase8-regression.ps1` | Ready to run per suite | Commands, environments, and phase ownership are explicit |
-| S8-010 public MCP tools/resources | `public-surface-phase7.json`, `test_public_surface_snapshot.py` | Phase 7 exact; Phase 8 exact profile snapshot blocked pending profile | Exact 10-tool schemas/annotations and 16 resource templates are the Phase 7 and Phase 8 contract-freeze baseline |
+| S8-010 public MCP tools/resources | Phase 7 snapshot + Phase 8 delta + snapshot test | Automated | Phase 7 is byte-identical; Phase 8 changes only the documented `cad_prepare_program` schema hashes |
 | S8-010 sensitive/primitive denylist | `test_public_surface_snapshot.py` | Automated | Recursive input-schema properties expose no owner/risk/runtime/handle/ObjectId/restore/capability/approval/command/path/URL authority; primitive and approval tool aliases are absent |
-| Source/compiler malicious input | `source-compiler-vectors.json` | Blocked pending compiler adapter | Path, UNC/device/traversal, URL/file URL, command/load-assembly and other required reject categories are frozen |
-| Python/C# digest parity | Source/compiler catalog | Blocked pending compiler and C# runner | No digest claim yet |
+| Source/compiler malicious input | `test_canonical_compiler_conformance.py` | Automated | Real strict source/compiler rejects code, command, path, UNC, URL, environment, script, raw handle, depth and expansion abuse |
+| Python/C# digest parity | Canonical compiler test + checked-in golden + Host contract test | Failing | Runtime compiler is 1.1 while the checked-in golden is 1.0; compiler and plan digests differ |
+| Gateway sealed storage/binding | `test_cross_stack_acceptance.py` | Blocked by golden mismatch | Real storage path executes, but cross-stack acceptance requires the same canonical fixture |
+| `cad.agent/2` serialization | `test_cross_stack_acceptance.py` | Failing fixture assertion | Canonical fields exist, but checked-in execution-plan digest is stale |
+| Desktop admission | `test_cross_stack_acceptance.py` | Automated | Shared canonical plan/binding/evidence are verified and only sealed Host arguments are emitted |
+| Mandatory intent + consent binding | `test_security_integration_gates.py` | Failing | Phase 8-shaped release material without Phase 8 binding rows is currently accepted |
+| Cross-owner guessed IDs | `test_security_integration_gates.py` | Automated | Foreign owner receives `not_found`/no plan for guessed plan, intent and consent IDs |
+| Materialized/evidence digest recomputation | `test_security_integration_gates.py` | Automated | Repository recomputes canonical materialized and capability-evidence digests and rejects tampering |
+| Actual R25 dispatcher registration | `test_host_dispatch_registration.py` | Failing | Pack exists but no registered dispatcher invokes it |
 | Cross-runtime fixture categories | `cross-runtime-categories.json` | Automated catalog validation | Claim axes, negative categories, and authority boundaries are explicit |
 | LT write default-off | `test_lt_write_default_off.py` | Automated | Current Gateway and Agent defaults/rejections remain fail-closed |
 | ezdxf non-authoritative | Cross-runtime catalog and tests | Automated policy assertion | No fixture can promote ezdxf to live DWG authority |
-| Fault/drop/recovery | `fault-recovery-matrix.json` | Scaffold | Drop points, expected states, evidence, and no-reexecute invariant are enumerated |
+| Fault/drop/recovery | Matrix + Gateway tests + Host transaction tests | Mixed automated/live pending | Atomic abort, duplicate mismatch and sealed storage are automated; real disconnect points still need live evidence |
 | Rollout/capability gates | `rollout-capability-matrix.json` | Automated catalog validation | Security-review slice decisions, default-off flags, capability states and disabled extension packs are explicit |
-| Checkpoint v1 boundary | Foundation test + cross-runtime rules | Automated | v1 has created-entity evidence, not pre-image/restore-v2 data |
+| Checkpoint v1 boundary | Contract test + cross-runtime rules | Automated | v1 has created-entity evidence, not pre-image/restore-v2 data |
+| Checkpoint v2 / exact transform | Host contract suite + `transform-checkpoint-v2-matrix.json` | Contract automated; live pending | Strict restore JSON, atomic transaction, duplicate safety and capability closure are executable; R25 fidelity remains unproven |
 | Phase 7 live backfill | `phase7-live-acceptance-backfill.md` | Owner-confirmed, incomplete artifacts | Preserves the claim without fabricating missing evidence |
 
 ## Regression suite matrix
@@ -46,7 +56,8 @@ Status: foundation implemented; production integration and live evidence pending
 | `web-portal-unit-component-phase7` | 7 | Node modules | No |
 | `web-portal-e2e-phase7` | 7 | Playwright/browser | No |
 | `web-portal-build-phase7` | 7 | Node modules | No |
-| `phase8-conformance-foundation` | 8.0-8.7 | Gateway `.venv` | No |
+| `phase8-cross-stack-conformance` | 8.0-8.7 | Gateway `.venv` | No |
+| `phase8-host-json-checkpoint-v2` | 8.2-8.5 | .NET SDK/cache | No |
 
 List or run the matrix:
 
@@ -57,18 +68,18 @@ python scripts\test-phase8-conformance.py
 ```
 
 `python scripts/test-phase8-conformance.py` is the canonical single-command
-foundation check. It runs the pytest portion through the isolated Gateway uv
-project and does not add FastMCP to the root dependency graph.
+check. It runs Python through the isolated Gateway environment and Managed Host
+Core through .NET. It does not add FastMCP to the root dependency graph and
+does not require Autodesk assemblies.
 
 ## Integration gates still blocked
 
 The following cannot be green on the current baseline and must not be reported
 as complete:
 
-- exact Phase 8 profile schema snapshot after the profile exists; S8-010 uses
-  the exact Phase 7 snapshot as the contract-freeze baseline until then;
-- execution of `cad.program/1.0` source/compiler vectors;
-- deterministic Python/C# compiler, plan, expansion, and effect digest parity;
+- compiler 1.1/Python/C# golden regeneration and parity;
+- fail-closed recognition of Phase 8 release material before binding rows exist;
+- actual registered Host command routing into the Phase 8 operation pack;
 - create-equivalent R25 geometry/receipt/checkpoint/rollback conformance;
 - checkpoint v2 restore fidelity and atomic fault matrix;
 - exact transform preview/commit/validate/rollback matrix;
@@ -76,6 +87,7 @@ as complete:
 - any LT write certification;
 - any delete/trim/fillet/chamfer extension claim.
 
-When production integration lands, each blocked row must gain an executable
-adapter, golden output, test command, runtime/package hashes, and retained
-evidence location before its status changes.
+Each remaining row must gain an executable adapter, test command,
+runtime/package hashes, and retained evidence location before its status
+changes. There are no expected-failure markers in the conformance suite; these
+gates fail normally until production integration resolves them.

@@ -1,0 +1,76 @@
+{
+  "schema_version": "phase8.cross-stack-acceptance/1",
+  "stages": [
+    {
+      "id": "canonical-compiler",
+      "status": "failing_fixture_mismatch",
+      "evidence": [
+        "tests/phase8/test_canonical_compiler_conformance.py",
+        "packages/host_contracts/program/golden/cad-program-1.0-compiler-vector.json"
+      ]
+    },
+    {
+      "id": "gateway-sealed-storage",
+      "status": "blocked_by_canonical_fixture",
+      "evidence": ["tests/phase8/test_cross_stack_acceptance.py"]
+    },
+    {
+      "id": "gateway-binding",
+      "status": "blocked_by_canonical_fixture",
+      "evidence": ["tests/phase8/test_cross_stack_acceptance.py"]
+    },
+    {
+      "id": "cad-agent-2-wire",
+      "status": "failing_fixture_mismatch",
+      "evidence": ["tests/phase8/test_cross_stack_acceptance.py"]
+    },
+    {
+      "id": "desktop-admission",
+      "status": "automated_green",
+      "evidence": [
+        "tests/phase8/test_cross_stack_acceptance.py",
+        "apps/desktop_agent/src/autocad_desktop_agent/phase8_admission.py"
+      ]
+    },
+    {
+      "id": "host-json-contract",
+      "status": "automated_green",
+      "evidence": [
+        "native/autocad_managed_host/tests/AutocadMcp.Host.Core.Tests/Phase8ManagedOperationsTests.cs",
+        "scripts/test-phase8-conformance.py"
+      ]
+    },
+    {
+      "id": "intent-consent-release",
+      "status": "failing_unbound_release",
+      "evidence": ["tests/phase8/test_security_integration_gates.py"]
+    },
+    {
+      "id": "materialized-evidence-digests",
+      "status": "automated_green",
+      "evidence": ["tests/phase8/test_security_integration_gates.py"]
+    },
+    {
+      "id": "host-dispatch-registration",
+      "status": "failing_unregistered",
+      "evidence": ["tests/phase8/test_host_dispatch_registration.py"]
+    },
+    {
+      "id": "profile-snapshots",
+      "status": "automated_green",
+      "evidence": [
+        "tests/phase8/public-surface-phase7.json",
+        "tests/phase8/public-surface-phase8-delta.json",
+        "tests/phase8/test_public_surface_snapshot.py"
+      ]
+    },
+    {
+      "id": "r25-live",
+      "status": "external_live_blocker",
+      "evidence": [
+        "scripts/build-phase8-r25-host.ps1",
+        "docs/architecture/phase8-implementation-evidence.md"
+      ]
+    }
+  ]
+}

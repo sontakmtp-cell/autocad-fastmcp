@@ -1,0 +1,40 @@
+name: Phase 8 core conformance
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "docs/refresh-phase-8-after-phase-7"
+
+permissions:
+  contents: read
+
+jobs:
+  python-conformance:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Sync isolated Gateway test environment
+        run: uv sync --project services/gateway --group test --reinstall-package autocad-contracts
+      - name: Run canonical compiler and cross-stack conformance
+        run: uv run --project services/gateway python -m pytest -q tests/phase8 --basetemp=.pytest_cache/phase8-ci
+
+  managed-host-core:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Test Host JSON, checkpoint v2, receipt, and atomic recovery contracts
+        run: >-
+          dotnet test
+          native/autocad_managed_host/tests/AutocadMcp.Host.Core.Tests/AutocadMcp.Host.Core.Tests.csproj
+          --configuration Release
+          --filter "FullyQualifiedName~Phase8"
+
+  # Autodesk references are proprietary and are intentionally absent in CI.
+  # Build/install the R25 bundle locally with scripts/build-phase8-r25-host.ps1.
+  # This workflow never builds the standalone Desktop Agent executable.

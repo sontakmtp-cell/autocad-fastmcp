@@ -1,0 +1,17 @@
+{
+  "schema_version": "phase8.transform-checkpoint-v2/1",
+  "checkpoint_v1_allowed_for_modify": false,
+  "cases": [
+    {"id": "move-line-commit-restore", "effect": "modify", "checkpoint_schema": "cad.rollback.checkpoint/2", "expected": "exact_preimage_restored", "delete_allowed": false},
+    {"id": "rotate-circle-commit-restore", "effect": "modify", "checkpoint_schema": "cad.rollback.checkpoint/2", "expected": "exact_preimage_restored", "delete_allowed": false},
+    {"id": "scale-polyline-commit-restore", "effect": "modify", "checkpoint_schema": "cad.rollback.checkpoint/2", "expected": "exact_preimage_restored", "delete_allowed": false},
+    {"id": "drop-before-transform-commit", "effect": "modify", "checkpoint_schema": "cad.rollback.checkpoint/2", "expected": "transaction_aborted", "delete_allowed": false},
+    {"id": "drop-after-effect-response-lost", "effect": "modify", "checkpoint_schema": "cad.rollback.checkpoint/2", "expected": "reconcile_exact_receipt_no_reexecute", "delete_allowed": false},
+    {"id": "checkpoint-payload-tamper", "effect": "modify", "checkpoint_schema": "cad.rollback.checkpoint/2", "expected": "rollback_conflict", "delete_allowed": false},
+    {"id": "dependency-closure-mismatch", "effect": "modify", "checkpoint_schema": "cad.rollback.checkpoint/2", "expected": "rollback_conflict", "delete_allowed": false},
+    {"id": "duplicate-exact-transform", "effect": "modify", "checkpoint_schema": "cad.rollback.checkpoint/2", "expected": "same_receipt_no_second_effect", "delete_allowed": false},
+    {"id": "duplicate-conflicting-transform", "effect": "modify", "checkpoint_schema": "cad.rollback.checkpoint/2", "expected": "duplicate_payload_mismatch", "delete_allowed": false},
+    {"id": "unsupported-custom-entity", "effect": "modify", "checkpoint_schema": "cad.rollback.checkpoint/2", "expected": "capability_missing", "delete_allowed": false},
+    {"id": "lt-transform-negative", "effect": "modify", "checkpoint_schema": "cad.rollback.checkpoint/2", "expected": "capability_missing", "delete_allowed": false}
+  ]
+}

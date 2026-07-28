@@ -1,7 +1,8 @@
 {
   "schema_version": "phase8.source-compiler-vectors/1",
-  "adapter_status": "blocked_pending_integration",
-  "adapter_blocker": "No stable cad.program/1.0 validator/compiler interface is present on this baseline.",
+  "adapter_status": "real_canonical_compiler",
+  "adapter": "autocad_contracts.seal_cad_program_v1 + compile_cad_program_v1",
+  "golden_fixture": "packages/host_contracts/program/golden/cad-program-1.0-compiler-vector.json",
   "vectors": [
     {
       "id": "valid-typed-repeat-deterministic",
