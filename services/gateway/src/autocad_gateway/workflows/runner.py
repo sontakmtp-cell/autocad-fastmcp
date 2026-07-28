@@ -8,6 +8,9 @@ from .state import validate_safe_retry
 class WorkflowPort(Protocol):
     async def dispatch(self, action_kind: str, payload: dict[str, Any], *, idempotency_key: str) -> dict[str, Any]: ...
 
+class WorkflowReconciliationPort(Protocol):
+    async def reconcile(self, action_kind: str, child_ref: dict[str, Any], *, idempotency_key: str) -> dict[str, Any] | None: ...
+
 class WorkflowRunner:
     def __init__(self, repository: Any, port: WorkflowPort, *, worker_id: str) -> None:
         self.repository, self.port, self.worker_id = repository, port, worker_id
@@ -37,5 +40,16 @@ class WorkflowRunner:
         return True
 
     async def reconcile_restart(self) -> int:
-        """Only lease recovery; child identities remain deterministic and durable."""
-        return await self.repository.reclaim_expired_actions()
+        """Reconcile started child identities; writes are never redispatched here."""
+        reclaimed = await self.repository.reclaim_expired_actions()
+        lookup = getattr(self.port, "reconcile", None)
+        if lookup is None:
+            return reclaimed
+        for action in await self.repository.list_actions_for_reconcile():
+            child_ref = action.get("child_ref")
+            if child_ref is None:
+                continue
+            outcome = await lookup(action["action_kind"], child_ref, idempotency_key=action["idempotency_key"])
+            if outcome is not None:
+                await self.repository.record_reconciled_outcome(action["action_id"], outcome)
+        return reclaimed

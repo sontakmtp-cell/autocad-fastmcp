@@ -43,7 +43,8 @@ class Phase9Repository:
             existing = conn.execute("SELECT * FROM workflow_runs WHERE owner_subject=? AND idempotency_key=?", (owner_subject, idempotency_key)).fetchone()
             if existing is not None:
                 value = self._run(existing)
-                if value["pins"] == pins and value["inputs"] == inputs and value["device_id"] == device_id:
+                if (value["pins"] == pins and value["inputs"] == inputs and value["actor_subject"] == actor_subject
+                        and value["device_id"] == device_id and value["initial_snapshot_id"] == initial_snapshot_id):
                     return value, True
                 raise RepositoryConflict("idempotency_conflict")
             try:
@@ -148,7 +149,7 @@ class Phase9Repository:
             if row is None: raise RepositoryConflict("not_found")
             if str(row['state']) in {'completed','failed'}:
                 return self._action(row)
-            if str(row['state']) != 'claimed' or str(row['lease_owner']) != worker_id: raise RepositoryConflict("workflow_lease_lost")
+            if str(row['state']) not in {'claimed', 'started'} or str(row['lease_owner']) != worker_id: raise RepositoryConflict("workflow_lease_lost")
             conn.execute("UPDATE workflow_actions SET state=?,result_json=?,error_code=?,lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE action_id=?",(state,_json(result) if result is not None else None,error_code,utc_now(),action_id))
             self._append_event(conn,str(row['run_id']),"action_"+state,{"action_id":action_id,"error_code":error_code})
             row=conn.execute("SELECT * FROM workflow_actions WHERE action_id=?",(action_id,)).fetchone()
@@ -168,6 +169,10 @@ class Phase9Repository:
             conn.execute("UPDATE workflow_actions SET state='outcome_unknown',child_state='outcome_unknown',error_code=?,lease_owner=NULL,lease_expires_at=NULL,updated_at=? WHERE action_id=?", (error_code, now, action_id))
             run = conn.execute("SELECT state,state_version FROM workflow_runs WHERE run_id=?", (row["run_id"],)).fetchone()
             if run is not None and str(run["state"]) not in TERMINAL_RUN_STATES:
+                try:
+                    validate_run_transition(str(run["state"]), "waiting_for_recovery")
+                except InvalidWorkflowTransition as error:
+                    raise RepositoryConflict("recovery_transition_invalid") from error
                 conn.execute("UPDATE workflow_runs SET state='waiting_for_recovery',state_version=state_version+1,updated_at=? WHERE run_id=?", (now, row["run_id"]))
                 self._append_event(conn, str(row["run_id"]), "waiting_for_recovery", {"action_id": action_id})
             self._append_event(conn, str(row["run_id"]), "action_outcome_unknown", {"action_id": action_id, "error_code": error_code})
@@ -190,6 +195,24 @@ class Phase9Repository:
         with self.database.read_connection() as conn:
             rows = conn.execute("SELECT * FROM workflow_actions WHERE state IN ('started','outcome_unknown') ORDER BY updated_at,action_id").fetchall()
         return [self._action(row) for row in rows]
+
+    async def record_reconciled_outcome(self, action_id: str, outcome: dict[str, Any]) -> dict[str, Any]:
+        """Persist evidence returned by an existing child job/intent/recovery lookup."""
+        state = outcome.get("state")
+        if state not in {"succeeded", "failed", "needs_attention", "outcome_unknown"}:
+            raise RepositoryConflict("reconcile_outcome_invalid")
+        with self.database.transaction() as conn:
+            row = conn.execute("SELECT * FROM workflow_actions WHERE action_id=?", (action_id,)).fetchone()
+            if row is None: raise RepositoryConflict("not_found")
+            if str(row["state"]) not in {"started", "outcome_unknown"}: return self._action(row)
+            now = utc_now()
+            action_state = "completed" if state == "succeeded" else ("outcome_unknown" if state == "outcome_unknown" else "failed")
+            conn.execute("UPDATE workflow_actions SET state=?,child_state=?,result_json=?,updated_at=? WHERE action_id=?", (action_state,state,_json(outcome),now,action_id))
+            if state in {"failed", "needs_attention"}:
+                conn.execute("UPDATE workflow_runs SET state='needs_attention',state_version=state_version+1,updated_at=? WHERE run_id=? AND state NOT IN ('succeeded','failed','cancelled','needs_attention')", (now,row["run_id"]))
+            self._append_event(conn,str(row["run_id"]),"action_reconciled",{"action_id":action_id,"child_state":state})
+            row=conn.execute("SELECT * FROM workflow_actions WHERE action_id=?",(action_id,)).fetchone()
+        return self._action(row)
 
     async def create_wait(self, *, owner_subject: str, run_id: str, step_id: str, wait_kind: str, expected_state_version: int, response_schema: dict[str, Any], expires_at: str | None = None) -> dict[str, Any]:
         with self.database.transaction() as conn:
@@ -220,6 +243,12 @@ class Phase9Repository:
                 raise RepositoryConflict("stale_workflow_state")
             if str(wait["response_schema_digest"]) != response_schema_digest:
                 raise RepositoryConflict("wait_schema_mismatch")
+            schema = json.loads(wait["response_schema_json"])
+            if schema.get("type") == "object" and not isinstance(response, dict):
+                raise RepositoryConflict("wait_response_invalid")
+            required = schema.get("required", [])
+            if not isinstance(required, list) or any(not isinstance(item, str) or item not in response for item in required):
+                raise RepositoryConflict("wait_response_invalid")
             resolution = {"idempotency_key": idempotency_key, "response": response}
             now = utc_now()
             changed = conn.execute("UPDATE workflow_waits SET resolved_at=?,resolution_json=? WHERE wait_id=? AND resolved_at IS NULL", (now, _json(resolution), wait_id))
@@ -262,10 +291,10 @@ class Phase9Repository:
     async def cancel_run(self, *, owner_subject: str, run_id: str, expected_state: str, expected_version: int) -> dict[str, Any]:
         """Cancellation never pretends an already-started write was cancelled."""
         with self.database.transaction() as conn:
-            started = conn.execute("SELECT 1 FROM workflow_actions WHERE run_id=? AND effect_class='write' AND state IN ('started','outcome_unknown')", (run_id,)).fetchone()
-            target = "waiting_for_recovery" if started is not None else "cancelled"
             run = conn.execute("SELECT * FROM workflow_runs WHERE owner_subject=? AND run_id=?", (owner_subject, run_id)).fetchone()
             if run is None: raise RepositoryConflict("not_found")
+            started = conn.execute("SELECT 1 FROM workflow_actions WHERE run_id=? AND effect_class='write' AND state IN ('started','outcome_unknown')", (run_id,)).fetchone()
+            target = "waiting_for_recovery" if started is not None else "cancelled"
             if str(run['state']) != expected_state or int(run['state_version']) != expected_version: raise RepositoryConflict("stale_workflow_state")
             if str(run['state']) in TERMINAL_RUN_STATES: raise RepositoryConflict("terminal_immutable")
             if target == 'cancelled': validate_run_transition(expected_state, target)

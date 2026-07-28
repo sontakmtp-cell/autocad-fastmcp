@@ -59,6 +59,7 @@ async def test_duplicate_start_wait_step_and_action_are_idempotent(repo):
 @pytest.mark.asyncio
 async def test_started_write_is_never_reclaimed_and_unknown_enters_recovery(repo):
     await _run(repo)
+    await repo.transition_run(owner_subject="alice", run_id="run", expected_state="created", expected_version=0, target="running")
     action, _ = await repo.insert_action(owner_subject="alice", run_id="run", step_id="commit", attempt=1, action_kind="commit", payload={}, retry_class="not_started", effect_class="write")
     claimed = await repo.claim_action("one", lease_seconds=1)
     started = await repo.mark_dispatch_started(action["action_id"], "one")
