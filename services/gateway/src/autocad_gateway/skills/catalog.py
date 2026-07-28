@@ -38,6 +38,8 @@ class SkillCatalog:
 
     def __init__(self, snapshot: CatalogSnapshot) -> None:
         self._snapshot = snapshot
+        self._statuses = {key: "published" for key in snapshot.manifests}
+        self._audit: list[dict[str, str]] = []
 
     @classmethod
     def from_fixed_package_root(cls, package_root: Path) -> "SkillCatalog":
@@ -126,6 +128,37 @@ class SkillCatalog:
 
     def list(self) -> Iterable[SkillManifest]:
         return tuple(self._snapshot.manifests[key] for key in sorted(self._snapshot.manifests))
+
+    @property
+    def operator_audit(self) -> tuple[dict[str, str], ...]:
+        return tuple(self._audit)
+
+    def operator_set_status(self, *, operator_subject: str, skill_id: str, version: str, status: str) -> None:
+        if not operator_subject or status not in {"published", "deprecated", "withdrawn", "security_revoked"}:
+            raise CatalogError("operator publication request is invalid")
+        key = (skill_id, version)
+        if key not in self._snapshot.manifests:
+            raise CatalogError("skill_not_found")
+        current = self._statuses[key]
+        if current in {"withdrawn", "security_revoked"} and status == "published":
+            raise CatalogError("withdrawn version is immutable")
+        self._statuses[key] = status
+        self._audit.append({"operator_subject": operator_subject, "skill_id": skill_id, "version": version, "status": status})
+
+    def operator_promote(self, *, operator_subject: str, skill_id: str, version: str, channel: str = "default") -> None:
+        if not operator_subject or channel not in {"default", "preview"}:
+            raise CatalogError("operator channel request is invalid")
+        key = (skill_id, version)
+        if key not in self._snapshot.manifests or self._statuses[key] in {"withdrawn", "security_revoked"}:
+            raise CatalogError("channel target is unavailable")
+        self._snapshot.channels[(skill_id, channel)] = version
+        self._audit.append({"operator_subject": operator_subject, "skill_id": skill_id, "version": version, "status": "promoted"})
+
+    def continuation_decision(self, skill_id: str, version: str, *, before_effect: bool) -> str:
+        status = self._statuses.get((skill_id, version))
+        if status == "security_revoked" and before_effect:
+            return "pause"
+        return "continue"
 
     def support_for(self, manifest: SkillManifest, *, capabilities: set[str], operation_packs: set[str], policy_epoch: int, required_policy_epoch: int, publication_status: str = "published", owner_access: bool = True, device_access: bool = True, runtime_release_verified: bool = True, capability_evidence_verified: bool = True, planner_available: bool = True, templates_available: bool = True, catalog_enabled: bool = True, workflow_enabled: bool = True, preview_enabled: bool = True, write_enabled: bool = False, certified: bool = False) -> SkillSupport:
         """Return a monotonic support level from Gateway-derived trusted inputs."""
