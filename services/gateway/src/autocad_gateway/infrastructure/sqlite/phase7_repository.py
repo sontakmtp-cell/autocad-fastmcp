@@ -316,6 +316,12 @@ class Phase7Repository:
             if kind != expected_kind:
                 raise RepositoryConflict("job_kind_mismatch")
             self._require_job_binding(intent, payload)
+            self._require_phase8_release_binding(
+                conn,
+                intent=intent,
+                consent_id=consent_id,
+                payload=payload,
+            )
             if intent.state == "released":
                 if intent.released_job_id != job_id or intent.consent_id != consent_id:
                     raise RepositoryConflict("intent_release_conflict")
@@ -551,6 +557,24 @@ class Phase7Repository:
                 if existing is not None and self._same_consent_request(existing, record):
                     return _dump(existing), True
                 raise RepositoryConflict("consent_conflict") from error
+            phase8_binding = conn.execute(
+                "SELECT binding_digest FROM phase8_intent_bindings "
+                "WHERE owner_subject = ? AND intent_id = ?",
+                (record.owner_subject, record.intent_id),
+            ).fetchone()
+            if phase8_binding is not None:
+                conn.execute(
+                    "INSERT INTO phase8_consent_bindings("
+                    "consent_id, owner_subject, intent_id, binding_digest, created_at"
+                    ") VALUES (?, ?, ?, ?, ?)",
+                    (
+                        record.consent_id,
+                        record.owner_subject,
+                        record.intent_id,
+                        phase8_binding["binding_digest"],
+                        record.requested_at,
+                    ),
+                )
         return _dump(record), False
 
     async def get_consent(
@@ -1156,6 +1180,58 @@ class Phase7Repository:
         }
         if any(execution.get(key) != value for key, value in expected.items()):
             raise RepositoryConflict("job_binding_mismatch")
+
+    @staticmethod
+    def _require_phase8_release_binding(
+        conn: Any,
+        *,
+        intent: ExecutionIntentRecord,
+        consent_id: str | None,
+        payload: dict[str, Any],
+    ) -> None:
+        binding = conn.execute(
+            "SELECT * FROM phase8_intent_bindings "
+            "WHERE owner_subject = ? AND intent_id = ?",
+            (intent.owner_subject, intent.intent_id),
+        ).fetchone()
+        if binding is None:
+            return
+        execution = payload.get("execution")
+        expected = {
+            "source_digest": binding["source_digest"],
+            "semantic_digest": binding["semantic_digest"],
+            "plan_digest": binding["plan_digest"],
+            "expansion_digest": binding["expansion_digest"],
+            "effect_digest": binding["effect_digest"],
+            "target_set_digest": binding["target_set_digest"],
+            "reference_digest": binding["reference_digest"],
+            "compiler_hash": binding["compiler_hash"],
+            "risk_class": binding["risk_class"],
+            "trusted_effect_summary": _load(
+                binding["trusted_effect_summary_json"]
+            ),
+            "rollout_policy_digest": binding["rollout_policy_digest"],
+            "rollout_policy_epoch": binding["rollout_policy_epoch"],
+            "phase8_binding_digest": binding["binding_digest"],
+        }
+        if not isinstance(execution, dict) or any(
+            execution.get(key) != value for key, value in expected.items()
+        ):
+            raise RepositoryConflict("job_binding_mismatch")
+        if intent.required_assurance == "none":
+            if consent_id is not None:
+                raise RepositoryConflict("consent_binding_mismatch")
+            return
+        consent_binding = conn.execute(
+            "SELECT * FROM phase8_consent_bindings "
+            "WHERE owner_subject = ? AND consent_id = ? AND intent_id = ?",
+            (intent.owner_subject, consent_id, intent.intent_id),
+        ).fetchone()
+        if (
+            consent_binding is None
+            or consent_binding["binding_digest"] != binding["binding_digest"]
+        ):
+            raise RepositoryConflict("consent_binding_mismatch")
 
     @staticmethod
     def _same_job_material(

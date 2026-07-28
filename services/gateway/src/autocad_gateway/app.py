@@ -156,6 +156,18 @@ class GatewayConfig:
     public_rollback_enabled: bool = False
     recovery_cases_enabled: bool = False
     phase6_direct_commit_lab_enabled: bool = False
+    program_v1_source_enabled: bool = False
+    program_v1_compiler_enabled: bool = False
+    program_v1_create_pack_enabled: bool = False
+    program_v1_transform_pack_enabled: bool = False
+    program_v1_topology_pack_enabled: bool = False
+    program_v1_delete_pack_enabled: bool = False
+    checkpoint_v2_enabled: bool = False
+    scoped_rollback_revalidation_enabled: bool = False
+    lt_portable_write_enabled: bool = False
+    operation_pack_allowlist: tuple[str, ...] = ()
+    phase8_rollout_policy_digest: str | None = None
+    phase8_rollout_policy_epoch: int = 0
 
     @classmethod
     def from_env(cls) -> "GatewayConfig":
@@ -354,6 +366,47 @@ class GatewayConfig:
             phase6_direct_commit_lab_enabled=os.environ.get(
                 "AUTOCAD_MCP_PHASE6_DIRECT_COMMIT_LAB_ENABLED", "0"
             ).strip().lower() in {"1", "true", "yes", "on"},
+            program_v1_source_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V1_SOURCE_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            program_v1_compiler_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V1_COMPILER_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            program_v1_create_pack_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V1_CREATE_PACK_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            program_v1_transform_pack_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V1_TRANSFORM_PACK_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            program_v1_topology_pack_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V1_TOPOLOGY_PACK_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            program_v1_delete_pack_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V1_DELETE_PACK_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            checkpoint_v2_enabled=os.environ.get(
+                "AUTOCAD_MCP_CHECKPOINT_V2_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            scoped_rollback_revalidation_enabled=os.environ.get(
+                "AUTOCAD_MCP_SCOPED_ROLLBACK_REVALIDATION_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            lt_portable_write_enabled=os.environ.get(
+                "AUTOCAD_MCP_LT_PORTABLE_WRITE_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            operation_pack_allowlist=tuple(
+                item.strip()
+                for item in os.environ.get(
+                    "AUTOCAD_MCP_OPERATION_PACK_ALLOWLIST", ""
+                ).split(",")
+                if item.strip()
+            ),
+            phase8_rollout_policy_digest=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_ROLLOUT_POLICY_DIGEST", ""
+            ).strip()
+            or None,
+            phase8_rollout_policy_epoch=int(
+                os.environ.get("AUTOCAD_MCP_PHASE8_ROLLOUT_POLICY_EPOCH", "0")
+            ),
         )
         return config.validate()
 
@@ -521,6 +574,47 @@ class GatewayConfig:
             or len(self.phase6_policy_version.encode("utf-8")) > 64
         ):
             raise ValueError("phase6 policy version is invalid")
+        if self.program_v1_compiler_enabled and not self.program_v1_source_enabled:
+            raise ValueError("Program v1 compiler requires the source feature")
+        if (
+            self.program_v1_create_pack_enabled
+            or self.program_v1_transform_pack_enabled
+            or self.program_v1_topology_pack_enabled
+            or self.program_v1_delete_pack_enabled
+        ) and not self.program_v1_compiler_enabled:
+            raise ValueError("Program v1 operation packs require the compiler feature")
+        if self.program_v1_transform_pack_enabled and not self.checkpoint_v2_enabled:
+            raise ValueError("Program v1 transform pack requires checkpoint v2")
+        if self.program_v1_topology_pack_enabled or self.program_v1_delete_pack_enabled:
+            raise ValueError("Phase 8 destructive extension gate is not available")
+        if self.lt_portable_write_enabled:
+            raise ValueError("Phase 8 LT write certification gate is not available")
+        if (
+            self.scoped_rollback_revalidation_enabled
+            and not self.checkpoint_v2_enabled
+        ):
+            raise ValueError("scoped rollback revalidation requires checkpoint v2")
+        if len(set(self.operation_pack_allowlist)) != len(
+            self.operation_pack_allowlist
+        ) or any(
+            not item
+            or len(item.encode("utf-8")) > 128
+            or any(character.isspace() for character in item)
+            for item in self.operation_pack_allowlist
+        ):
+            raise ValueError("Phase 8 operation pack allowlist is invalid")
+        if self.program_v1_compiler_enabled and self.phase8_rollout_policy_epoch < 1:
+            raise ValueError("Phase 8 compiler requires a rollout policy epoch")
+        if self.phase8_rollout_policy_digest is not None:
+            digest = self.phase8_rollout_policy_digest
+            if (
+                len(digest) != 71
+                or not digest.startswith("sha256:")
+                or any(character not in "0123456789abcdef" for character in digest[7:])
+            ):
+                raise ValueError("Phase 8 rollout policy digest is invalid")
+        elif self.phase8_rollout_policy_epoch < 0:
+            raise ValueError("Phase 8 rollout policy epoch is invalid")
         return self
 
     @property

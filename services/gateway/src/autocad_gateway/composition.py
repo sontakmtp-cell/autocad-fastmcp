@@ -18,6 +18,7 @@ from .infrastructure.agent_transport.connection_registry import ConnectionRegist
 from .infrastructure.sqlite.database import SqliteDatabase
 from .services import GatewayServices
 from .identity import Phase5IdentityService
+from .phase8_gateway import Phase8FeatureFlags
 
 
 def fixture_token_map(config: GatewayConfig) -> dict[str, str]:
@@ -65,6 +66,22 @@ def build_services(config: GatewayConfig) -> Any:
             recovery_cases_enabled=config.recovery_cases_enabled,
             phase6_direct_commit_lab_enabled=(
                 config.phase6_direct_commit_lab_enabled
+            ),
+            phase8_feature_flags=Phase8FeatureFlags(
+                source_enabled=config.program_v1_source_enabled,
+                compiler_enabled=config.program_v1_compiler_enabled,
+                create_pack_enabled=config.program_v1_create_pack_enabled,
+                transform_pack_enabled=config.program_v1_transform_pack_enabled,
+                topology_pack_enabled=config.program_v1_topology_pack_enabled,
+                delete_pack_enabled=config.program_v1_delete_pack_enabled,
+                checkpoint_v2_enabled=config.checkpoint_v2_enabled,
+                scoped_rollback_revalidation_enabled=(
+                    config.scoped_rollback_revalidation_enabled
+                ),
+                lt_portable_write_enabled=config.lt_portable_write_enabled,
+                operation_pack_allowlist=config.operation_pack_allowlist,
+                rollout_policy_digest=config.phase8_rollout_policy_digest,
+                rollout_policy_epoch=config.phase8_rollout_policy_epoch,
             ),
         )
         if config.profile in {"phase5_identity", "phase6_program", "phase7_c2"}:

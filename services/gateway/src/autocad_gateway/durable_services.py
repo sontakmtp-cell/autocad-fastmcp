@@ -49,6 +49,8 @@ from .program_services import ProgramGatewayPolicy, ProgramGatewayService
 from .phase7_admission import Phase7AdmissionPolicy, Phase7AdmissionService
 from .phase7_recovery import Phase7RecoveryService
 from .infrastructure.sqlite.phase7_repository import Phase7Repository
+from .infrastructure.sqlite.phase8_repository import Phase8Repository
+from .phase8_gateway import Phase8FeatureFlags, Phase8GatewayService
 
 
 PHASE3_OWNER = "phase3-fixture-user"
@@ -118,6 +120,7 @@ class DurableGatewayServices:
         public_rollback_enabled: bool = False,
         recovery_cases_enabled: bool = False,
         phase6_direct_commit_lab_enabled: bool = False,
+        phase8_feature_flags: Phase8FeatureFlags | None = None,
     ) -> None:
         self.database = database
         self.registry = registry
@@ -126,6 +129,15 @@ class DurableGatewayServices:
         self.is_phase6 = profile in {"phase6_program", "phase7_c2"}
         self.program_repository = ProgramRepository(database) if self.is_phase6 else None
         self.phase7_repository = Phase7Repository(database) if self.is_phase7 else None
+        self.phase8_repository = Phase8Repository(database) if self.is_phase6 else None
+        self.phase8_gateway = (
+            Phase8GatewayService(
+                self.phase8_repository,
+                phase8_feature_flags or Phase8FeatureFlags(),
+            )
+            if self.phase8_repository is not None
+            else None
+        )
         self.phase7_recovery = (
             Phase7RecoveryService(
                 self.repository,
