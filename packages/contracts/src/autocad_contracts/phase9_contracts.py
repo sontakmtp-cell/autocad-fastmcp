@@ -24,6 +24,7 @@ _ID = r"^[a-z0-9][a-z0-9._-]{0,127}$"
 _SEMVER = r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 _DIGEST = r"^sha256:[0-9a-f]{64}$"
 _MAX_JSON_BYTES = 65_536
+_FORBIDDEN_EXECUTION_KEYS = {"path", "url", "uri", "module", "class", "function", "command", "plugin", "http", "code", "script", "sql", "eval"}
 
 
 class Phase9Model(BaseModel):
@@ -52,6 +53,15 @@ def _bounded_json(value: Any, label: str) -> Any:
     return value
 
 
+def _reject_executable_keys(value: Any) -> None:
+    if isinstance(value, dict):
+        if any(str(key).lower() in _FORBIDDEN_EXECUTION_KEYS for key in value):
+            raise ValueError("execution payload contains forbidden field")
+        for item in value.values(): _reject_executable_keys(item)
+    elif isinstance(value, list):
+        for item in value: _reject_executable_keys(item)
+
+
 _SCHEMA_KEYS = {
     "$schema", "$id", "title", "description", "type", "properties", "required",
     "additionalProperties", "items", "enum", "const", "oneOf", "anyOf", "allOf",
@@ -64,6 +74,7 @@ _FORBIDDEN_SCHEMA_KEYS = {"$ref", "$dynamicRef", "contentMediaType", "contentEnc
 def validate_json_schema_subset(schema: dict[str, Any]) -> dict[str, Any]:
     """Validate the intentionally small, non-executable JSON Schema subset."""
     _bounded_json(schema, "JSON schema")
+    _reject_executable_keys(schema)
 
     def visit(node: Any, depth: int = 0) -> None:
         if depth > 16:
@@ -114,6 +125,7 @@ class WorkflowStep(Phase9Model):
         if self.step_id in self.depends_on or len(set(self.depends_on)) != len(self.depends_on):
             raise ValueError("step dependencies must be unique and cannot self-reference")
         _bounded_json(self.input_bindings, "step input bindings")
+        _reject_executable_keys(self.input_bindings)
         validate_json_schema_subset(self.output_schema)
         return self
 
@@ -199,24 +211,47 @@ class SkillManifest(Phase9Model):
         validate_json_schema_subset(self.output_schema)
         _bounded_json(self.budgets, "skill budgets")
         _bounded_json(self.support_policy, "skill support policy")
+        _reject_executable_keys(self.budgets)
+        _reject_executable_keys(self.support_policy)
         return self
 
 
 class WorkflowRun(Phase9Model):
     schema_version: Literal[CAD_WORKFLOW_RUN_SCHEMA_VERSION] = CAD_WORKFLOW_RUN_SCHEMA_VERSION
     run_id: str = Field(pattern=_ID)
-    owner_subject: str = Field(pattern=_ID)
-    actor_issuer: str = Field(pattern=_ID)
-    actor_subject: str = Field(pattern=_ID)
+    owner_subject: str = Field(min_length=1, max_length=512)
+    actor_issuer: str = Field(min_length=1, max_length=2048)
+    actor_subject: str = Field(min_length=1, max_length=512)
     skill: OpaqueCatalogRef
     workflow: WorkflowReference
     catalog_epoch: int = Field(ge=0)
     policy_epoch: int = Field(ge=0)
     planner_registry_hash: str = Field(pattern=_DIGEST)
+    planner_registry_version: str = Field(pattern=_ID)
+    template_digests: list[str] = Field(default_factory=list, max_length=16)
+    component_digests: list[str] = Field(default_factory=list, max_length=16)
     input_digest: str = Field(pattern=_DIGEST)
+    device_id: str = Field(pattern=_ID)
+    device_identity_generation: int = Field(ge=1)
+    initial_snapshot_id: str | None = Field(default=None, pattern=_ID)
+    initial_document_id: str | None = Field(default=None, pattern=_ID)
+    initial_document_revision: str | None = Field(default=None, max_length=512)
     state: Literal["created", "running", "waiting_for_user", "waiting_for_program_revision", "waiting_for_trusted_approval", "waiting_for_job", "waiting_for_recovery", "paused", "succeeded", "failed", "cancelled", "needs_attention"]
     state_version: int = Field(ge=0)
     current_step_id: str | None = Field(default=None, pattern=_ID)
+    child_program_id: str | None = Field(default=None, pattern=_ID)
+    child_program_revision: int | None = Field(default=None, ge=1)
+    child_preview_id: str | None = Field(default=None, pattern=_ID)
+    child_intent_id: str | None = Field(default=None, pattern=_ID)
+    child_job_id: str | None = Field(default=None, pattern=_ID)
+    child_receipt_id: str | None = Field(default=None, pattern=_ID)
+    child_recovery_id: str | None = Field(default=None, pattern=_ID)
+    created_at: str = Field(min_length=20, max_length=64)
+    updated_at: str = Field(min_length=20, max_length=64)
+    expires_at: str | None = Field(default=None, min_length=20, max_length=64)
+    result: dict[str, Any] | None = None
+    error: dict[str, Any] | None = None
+    audit_correlation_id: str | None = Field(default=None, pattern=_ID)
 
 
 class WorkflowEvent(Phase9Model):
