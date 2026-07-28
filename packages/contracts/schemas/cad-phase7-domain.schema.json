@@ -1,0 +1,1838 @@
+{
+  "$defs": {
+    "ActorPrincipal": {
+      "additionalProperties": false,
+      "properties": {
+        "issuer": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Issuer",
+          "type": "string"
+        },
+        "subject": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Subject",
+          "type": "string"
+        }
+      },
+      "required": [
+        "issuer",
+        "subject"
+      ],
+      "title": "ActorPrincipal",
+      "type": "object"
+    },
+    "CheckpointEntity": {
+      "additionalProperties": false,
+      "properties": {
+        "handle": {
+          "pattern": "^[0-9A-F]{1,32}$",
+          "title": "Handle",
+          "type": "string"
+        },
+        "entity_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "layer": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Layer",
+          "type": "string"
+        },
+        "canonical_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Canonical Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "handle",
+        "entity_type",
+        "layer",
+        "canonical_fingerprint"
+      ],
+      "title": "CheckpointEntity",
+      "type": "object"
+    },
+    "ConsentRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "cad.consent/1",
+          "default": "cad.consent/1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "consent_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Consent Id",
+          "type": "string"
+        },
+        "consent_version": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "title": "Consent Version",
+          "type": "integer"
+        },
+        "owner_subject": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Owner Subject",
+          "type": "string"
+        },
+        "intent_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Intent Id",
+          "type": "string"
+        },
+        "intent_version": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "title": "Intent Version",
+          "type": "integer"
+        },
+        "intent_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Intent Digest",
+          "type": "string"
+        },
+        "required_assurance": {
+          "enum": [
+            "none",
+            "device_local_confirmation",
+            "user_recent_auth",
+            "user_recent_auth_plus_device_local"
+          ],
+          "title": "Required Assurance",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "requested",
+            "approved",
+            "denied",
+            "expired",
+            "invalidated",
+            "consumed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "state_version": {
+          "maximum": 2147483647,
+          "minimum": 0,
+          "title": "State Version",
+          "type": "integer"
+        },
+        "challenge_nonce_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Challenge Nonce Hash",
+          "type": "string"
+        },
+        "requested_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Requested At",
+          "type": "string"
+        },
+        "expires_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "decided_at": {
+          "anyOf": [
+            {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Decided At"
+        },
+        "decision_source": {
+          "anyOf": [
+            {
+              "enum": [
+                "device_local",
+                "portal_recent_auth"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Decision Source"
+        },
+        "decision_principal": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ActorPrincipal"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "decision_device_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Decision Device Id"
+        },
+        "decision_device_identity_generation": {
+          "anyOf": [
+            {
+              "maximum": 2147483647,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Decision Device Identity Generation"
+        },
+        "consumed_at": {
+          "anyOf": [
+            {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consumed At"
+        }
+      },
+      "required": [
+        "consent_id",
+        "consent_version",
+        "owner_subject",
+        "intent_id",
+        "intent_version",
+        "intent_digest",
+        "required_assurance",
+        "state",
+        "state_version",
+        "challenge_nonce_hash",
+        "requested_at",
+        "expires_at"
+      ],
+      "title": "ConsentRecord",
+      "type": "object"
+    },
+    "EffectSummaryItem": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "create_entities",
+            "erase_entities",
+            "ensure_layers",
+            "document_change"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "count": {
+          "maximum": 256,
+          "minimum": 0,
+          "title": "Count",
+          "type": "integer"
+        },
+        "summary": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "count",
+        "summary"
+      ],
+      "title": "EffectSummaryItem",
+      "type": "object"
+    },
+    "EvidenceDetail": {
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "maxLength": 64,
+          "minLength": 1,
+          "pattern": "^[a-z][a-z0-9_]{0,63}$",
+          "title": "Key",
+          "type": "string"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Value"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "title": "EvidenceDetail",
+      "type": "object"
+    },
+    "EvidencePayload": {
+      "additionalProperties": false,
+      "properties": {
+        "milestone": {
+          "enum": [
+            "host_admitted",
+            "transaction_opened",
+            "transaction_aborted",
+            "effect_and_receipt_committed",
+            "result_serialized",
+            "received",
+            "accepted",
+            "host_dispatch_started",
+            "host_result_received",
+            "terminal_persisted",
+            "gateway_result_acknowledged",
+            "reconcile_query",
+            "evidence_conflict"
+          ],
+          "title": "Milestone",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "observed",
+            "not_started",
+            "committed",
+            "aborted",
+            "rolled_back",
+            "conflict",
+            "inconclusive"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "details": {
+          "items": {
+            "$ref": "#/$defs/EvidenceDetail"
+          },
+          "maxItems": 32,
+          "title": "Details",
+          "type": "array"
+        }
+      },
+      "required": [
+        "milestone",
+        "outcome",
+        "summary"
+      ],
+      "title": "EvidencePayload",
+      "type": "object"
+    },
+    "ExecutionEvidenceEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "cad.execution-evidence/1",
+          "default": "cad.execution-evidence/1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "event_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Event Id",
+          "type": "string"
+        },
+        "owner_subject": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Owner Subject",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "gateway",
+            "agent",
+            "host"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "source_sequence": {
+          "maximum": 9223372036854775807,
+          "minimum": 0,
+          "title": "Source Sequence",
+          "type": "integer"
+        },
+        "job_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "command_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Command Id"
+        },
+        "intent_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Intent Id"
+        },
+        "payload_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Payload Digest"
+        },
+        "execution_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Digest"
+        },
+        "receipt_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Receipt Digest"
+        },
+        "payload": {
+          "$ref": "#/$defs/EvidencePayload"
+        },
+        "source_timestamp": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Source Timestamp",
+          "type": "string"
+        },
+        "gateway_received_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Gateway Received At",
+          "type": "string"
+        },
+        "event_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Event Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event_id",
+        "owner_subject",
+        "source",
+        "source_sequence",
+        "job_id",
+        "payload",
+        "source_timestamp",
+        "gateway_received_at",
+        "event_digest"
+      ],
+      "title": "ExecutionEvidenceEvent",
+      "type": "object"
+    },
+    "ExecutionIntentRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "cad.execution-intent/1",
+          "default": "cad.execution-intent/1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "intent_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Intent Id",
+          "type": "string"
+        },
+        "intent_version": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "title": "Intent Version",
+          "type": "integer"
+        },
+        "owner_subject": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Owner Subject",
+          "type": "string"
+        },
+        "actor_principal": {
+          "$ref": "#/$defs/ActorPrincipal"
+        },
+        "action": {
+          "enum": [
+            "program_commit",
+            "rollback_commit"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "awaiting_approval",
+            "ready",
+            "released",
+            "denied",
+            "expired",
+            "invalidated",
+            "cancelled"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "state_version": {
+          "maximum": 2147483647,
+          "minimum": 0,
+          "title": "State Version",
+          "type": "integer"
+        },
+        "device_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Device Id",
+          "type": "string"
+        },
+        "device_identity_generation": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "title": "Device Identity Generation",
+          "type": "integer"
+        },
+        "device_key_thumbprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Device Key Thumbprint",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "expected_document_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S{1,256}$",
+          "title": "Expected Document Revision",
+          "type": "string"
+        },
+        "program_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Program Id",
+          "type": "string"
+        },
+        "program_revision": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "title": "Program Revision",
+          "type": "integer"
+        },
+        "program_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Program Digest",
+          "type": "string"
+        },
+        "preview_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Preview Id",
+          "type": "string"
+        },
+        "preview_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Preview Digest",
+          "type": "string"
+        },
+        "preview_execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Preview Execution Digest",
+          "type": "string"
+        },
+        "preview_expires_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Preview Expires At",
+          "type": "string"
+        },
+        "deterministic_receipt_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Deterministic Receipt Id",
+          "type": "string"
+        },
+        "commit_execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Commit Execution Digest",
+          "type": "string"
+        },
+        "runtime_pins": {
+          "$ref": "#/$defs/RuntimePins"
+        },
+        "policy_pins": {
+          "$ref": "#/$defs/PolicyPins"
+        },
+        "risk_class": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "destructive"
+          ],
+          "title": "Risk Class",
+          "type": "string"
+        },
+        "required_assurance": {
+          "enum": [
+            "none",
+            "device_local_confirmation",
+            "user_recent_auth",
+            "user_recent_auth_plus_device_local"
+          ],
+          "title": "Required Assurance",
+          "type": "string"
+        },
+        "trusted_effect_summary": {
+          "items": {
+            "$ref": "#/$defs/EffectSummaryItem"
+          },
+          "maxItems": 32,
+          "minItems": 1,
+          "title": "Trusted Effect Summary",
+          "type": "array"
+        },
+        "idempotency_key": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "request_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Request Hash",
+          "type": "string"
+        },
+        "intent_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Intent Digest",
+          "type": "string"
+        },
+        "created_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "expires_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "consent_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consent Id"
+        },
+        "released_job_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Released Job Id"
+        }
+      },
+      "required": [
+        "intent_id",
+        "intent_version",
+        "owner_subject",
+        "actor_principal",
+        "action",
+        "state",
+        "state_version",
+        "device_id",
+        "device_identity_generation",
+        "device_key_thumbprint",
+        "document_id",
+        "expected_document_revision",
+        "program_id",
+        "program_revision",
+        "program_digest",
+        "preview_id",
+        "preview_digest",
+        "preview_execution_digest",
+        "preview_expires_at",
+        "deterministic_receipt_id",
+        "commit_execution_digest",
+        "runtime_pins",
+        "policy_pins",
+        "risk_class",
+        "required_assurance",
+        "trusted_effect_summary",
+        "idempotency_key",
+        "request_hash",
+        "intent_digest",
+        "created_at",
+        "expires_at"
+      ],
+      "title": "ExecutionIntentRecord",
+      "type": "object"
+    },
+    "OperatorNote": {
+      "additionalProperties": false,
+      "properties": {
+        "note_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Note Id",
+          "type": "string"
+        },
+        "actor": {
+          "$ref": "#/$defs/ActorPrincipal"
+        },
+        "text": {
+          "maxLength": 2048,
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        },
+        "created_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "note_id",
+        "actor",
+        "text",
+        "created_at"
+      ],
+      "title": "OperatorNote",
+      "type": "object"
+    },
+    "PolicyPins": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_manifest_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Manifest Hash",
+          "type": "string"
+        },
+        "operation_registry_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Registry Hash",
+          "type": "string"
+        },
+        "registry_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Registry Version",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "capability_manifest_hash",
+        "operation_registry_hash",
+        "registry_version",
+        "policy_version"
+      ],
+      "title": "PolicyPins",
+      "type": "object"
+    },
+    "RecoveryCaseRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "cad.recovery-case/1",
+          "default": "cad.recovery-case/1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "case_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Case Id",
+          "type": "string"
+        },
+        "owner_subject": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Owner Subject",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "investigating",
+            "resolved",
+            "needs_support"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "resolution_version": {
+          "maximum": 2147483647,
+          "minimum": 0,
+          "title": "Resolution Version",
+          "type": "integer"
+        },
+        "execution_binding_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Execution Binding Digest",
+          "type": "string"
+        },
+        "intent_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Intent Id",
+          "type": "string"
+        },
+        "consent_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Consent Id"
+        },
+        "job_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Job Id",
+          "type": "string"
+        },
+        "receipt_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Receipt Id"
+        },
+        "evidence_event_ids": {
+          "items": {
+            "maxLength": 256,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Evidence Event Ids",
+          "type": "array"
+        },
+        "missing_evidence": {
+          "items": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Missing Evidence",
+          "type": "array"
+        },
+        "latest_query_result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RecoveryQueryResult"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "current_state": {
+          "$ref": "#/$defs/RecoveryRuntimeState"
+        },
+        "safe_actions": {
+          "items": {
+            "enum": [
+              "retry_exact_evidence_query",
+              "reopen_exact_document",
+              "collect_redacted_diagnostics",
+              "materialize_from_exact_host_receipt",
+              "mark_unresolved",
+              "needs_support"
+            ],
+            "type": "string"
+          },
+          "maxItems": 16,
+          "minItems": 1,
+          "title": "Safe Actions",
+          "type": "array"
+        },
+        "resolution": {
+          "anyOf": [
+            {
+              "enum": [
+                "exact_receipt_materialized",
+                "proven_no_effect",
+                "rolled_back",
+                "unresolved",
+                "support_required"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolution"
+        },
+        "operator_notes": {
+          "items": {
+            "$ref": "#/$defs/OperatorNote"
+          },
+          "maxItems": 64,
+          "title": "Operator Notes",
+          "type": "array"
+        },
+        "created_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "updated_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Updated At",
+          "type": "string"
+        },
+        "resolved_at": {
+          "anyOf": [
+            {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resolved At"
+        }
+      },
+      "required": [
+        "case_id",
+        "owner_subject",
+        "state",
+        "resolution_version",
+        "execution_binding_digest",
+        "intent_id",
+        "job_id",
+        "current_state",
+        "safe_actions",
+        "created_at",
+        "updated_at"
+      ],
+      "title": "RecoveryCaseRecord",
+      "type": "object"
+    },
+    "RecoveryQueryResult": {
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "enum": [
+            "not_found",
+            "committed",
+            "rolled_back",
+            "conflict",
+            "aborted",
+            "inconclusive",
+            "unavailable",
+            "malformed_ledger"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "source": {
+          "enum": [
+            "gateway",
+            "agent",
+            "host"
+          ],
+          "title": "Source",
+          "type": "string"
+        },
+        "summary": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "queried_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Queried At",
+          "type": "string"
+        },
+        "receipt_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Receipt Digest"
+        }
+      },
+      "required": [
+        "outcome",
+        "source",
+        "summary",
+        "queried_at"
+      ],
+      "title": "RecoveryQueryResult",
+      "type": "object"
+    },
+    "RecoveryRuntimeState": {
+      "additionalProperties": false,
+      "properties": {
+        "device_status": {
+          "enum": [
+            "online",
+            "offline",
+            "revoked",
+            "replaced",
+            "unknown"
+          ],
+          "title": "Device Status",
+          "type": "string"
+        },
+        "document_status": {
+          "enum": [
+            "open",
+            "closed",
+            "unavailable",
+            "identity_mismatch",
+            "unknown"
+          ],
+          "title": "Document Status",
+          "type": "string"
+        },
+        "document_revision": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^\\S{1,256}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Document Revision"
+        },
+        "runtime_id": {
+          "anyOf": [
+            {
+              "maxLength": 256,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Runtime Id"
+        },
+        "agent_package_hash": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Agent Package Hash"
+        },
+        "host_package_hash": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Host Package Hash"
+        }
+      },
+      "required": [
+        "device_status",
+        "document_status"
+      ],
+      "title": "RecoveryRuntimeState",
+      "type": "object"
+    },
+    "RemovedEntityEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "handle": {
+          "pattern": "^[0-9A-F]{1,32}$",
+          "title": "Handle",
+          "type": "string"
+        },
+        "entity_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "prior_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Prior Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "handle",
+        "entity_type",
+        "prior_fingerprint"
+      ],
+      "title": "RemovedEntityEvidence",
+      "type": "object"
+    },
+    "RollbackCheckpointRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "cad.rollback.checkpoint/1",
+          "default": "cad.rollback.checkpoint/1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "checkpoint_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "owner_subject": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Owner Subject",
+          "type": "string"
+        },
+        "original_receipt_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Original Receipt Id",
+          "type": "string"
+        },
+        "original_receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Original Receipt Digest",
+          "type": "string"
+        },
+        "program_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Program Id",
+          "type": "string"
+        },
+        "program_revision": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "title": "Program Revision",
+          "type": "integer"
+        },
+        "program_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Program Digest",
+          "type": "string"
+        },
+        "preview_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Preview Id",
+          "type": "string"
+        },
+        "preview_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Preview Digest",
+          "type": "string"
+        },
+        "execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Execution Digest",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_revision_before": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S{1,256}$",
+          "title": "Document Revision Before",
+          "type": "string"
+        },
+        "document_revision_after": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S{1,256}$",
+          "title": "Document Revision After",
+          "type": "string"
+        },
+        "created_entities": {
+          "items": {
+            "$ref": "#/$defs/CheckpointEntity"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Created Entities",
+          "type": "array"
+        },
+        "non_entity_object_created": {
+          "title": "Non Entity Object Created",
+          "type": "boolean"
+        },
+        "runtime_pins": {
+          "$ref": "#/$defs/RuntimePins"
+        },
+        "policy_pins": {
+          "$ref": "#/$defs/PolicyPins"
+        },
+        "checkpoint_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Checkpoint Digest",
+          "type": "string"
+        },
+        "created_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "owner_subject",
+        "original_receipt_id",
+        "original_receipt_digest",
+        "program_id",
+        "program_revision",
+        "program_digest",
+        "preview_id",
+        "preview_digest",
+        "execution_digest",
+        "document_id",
+        "document_revision_before",
+        "document_revision_after",
+        "created_entities",
+        "non_entity_object_created",
+        "runtime_pins",
+        "policy_pins",
+        "checkpoint_digest",
+        "created_at"
+      ],
+      "title": "RollbackCheckpointRecord",
+      "type": "object"
+    },
+    "RollbackConflict": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "checkpoint_missing",
+            "document_identity_mismatch",
+            "document_revision_mismatch",
+            "entity_missing",
+            "entity_type_changed",
+            "entity_layer_changed",
+            "entity_fingerprint_changed",
+            "dependency_unproven",
+            "runtime_pin_mismatch",
+            "plan_expired",
+            "evidence_mismatch"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "handle": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9A-F]{1,32}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Handle"
+        },
+        "summary": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "summary"
+      ],
+      "title": "RollbackConflict",
+      "type": "object"
+    },
+    "RollbackPlanRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "cad.rollback.plan/1",
+          "default": "cad.rollback.plan/1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "plan_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Plan Id",
+          "type": "string"
+        },
+        "owner_subject": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Owner Subject",
+          "type": "string"
+        },
+        "checkpoint_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Checkpoint Digest",
+          "type": "string"
+        },
+        "original_receipt_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Original Receipt Id",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "current_document_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S{1,256}$",
+          "title": "Current Document Revision",
+          "type": "string"
+        },
+        "rollback_execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Rollback Execution Digest",
+          "type": "string"
+        },
+        "entity_handles": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Entity Handles",
+          "type": "array"
+        },
+        "conflicts": {
+          "items": {
+            "$ref": "#/$defs/RollbackConflict"
+          },
+          "maxItems": 256,
+          "title": "Conflicts",
+          "type": "array"
+        },
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        },
+        "runtime_pins": {
+          "$ref": "#/$defs/RuntimePins"
+        },
+        "policy_pins": {
+          "$ref": "#/$defs/PolicyPins"
+        },
+        "plan_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Plan Digest",
+          "type": "string"
+        },
+        "created_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Created At",
+          "type": "string"
+        },
+        "expires_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "plan_id",
+        "owner_subject",
+        "checkpoint_id",
+        "checkpoint_digest",
+        "original_receipt_id",
+        "document_id",
+        "current_document_revision",
+        "rollback_execution_digest",
+        "entity_handles",
+        "eligible",
+        "runtime_pins",
+        "policy_pins",
+        "plan_digest",
+        "created_at",
+        "expires_at"
+      ],
+      "title": "RollbackPlanRecord",
+      "type": "object"
+    },
+    "RollbackReceiptRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "cad.rollback.receipt/1",
+          "default": "cad.rollback.receipt/1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "rollback_receipt_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Rollback Receipt Id",
+          "type": "string"
+        },
+        "owner_subject": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Owner Subject",
+          "type": "string"
+        },
+        "original_receipt_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Original Receipt Id",
+          "type": "string"
+        },
+        "original_receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Original Receipt Digest",
+          "type": "string"
+        },
+        "program_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Program Digest",
+          "type": "string"
+        },
+        "original_execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Original Execution Digest",
+          "type": "string"
+        },
+        "original_document_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S{1,256}$",
+          "title": "Original Document Revision",
+          "type": "string"
+        },
+        "checkpoint_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Checkpoint Digest",
+          "type": "string"
+        },
+        "rollback_plan_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Rollback Plan Id",
+          "type": "string"
+        },
+        "rollback_plan_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Rollback Plan Digest",
+          "type": "string"
+        },
+        "rollback_job_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Rollback Job Id",
+          "type": "string"
+        },
+        "rollback_execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Rollback Execution Digest",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_revision_before": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S{1,256}$",
+          "title": "Document Revision Before",
+          "type": "string"
+        },
+        "document_revision_after": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S{1,256}$",
+          "title": "Document Revision After",
+          "type": "string"
+        },
+        "removed_entities": {
+          "items": {
+            "$ref": "#/$defs/RemovedEntityEvidence"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Removed Entities",
+          "type": "array"
+        },
+        "runtime_pins": {
+          "$ref": "#/$defs/RuntimePins"
+        },
+        "policy_pins": {
+          "$ref": "#/$defs/PolicyPins"
+        },
+        "receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Receipt Digest",
+          "type": "string"
+        },
+        "created_at": {
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,7})?(?:Z|[+-]\\d{2}:\\d{2})$",
+          "title": "Created At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rollback_receipt_id",
+        "owner_subject",
+        "original_receipt_id",
+        "original_receipt_digest",
+        "program_digest",
+        "original_execution_digest",
+        "original_document_revision",
+        "checkpoint_id",
+        "checkpoint_digest",
+        "rollback_plan_id",
+        "rollback_plan_digest",
+        "rollback_job_id",
+        "rollback_execution_digest",
+        "document_id",
+        "document_revision_before",
+        "document_revision_after",
+        "removed_entities",
+        "runtime_pins",
+        "policy_pins",
+        "receipt_digest",
+        "created_at"
+      ],
+      "title": "RollbackReceiptRecord",
+      "type": "object"
+    },
+    "RuntimePins": {
+      "additionalProperties": false,
+      "properties": {
+        "runtime_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Runtime Id",
+          "type": "string"
+        },
+        "runtime_role": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Runtime Role",
+          "type": "string"
+        },
+        "host_family": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Host Family",
+          "type": "string"
+        },
+        "host_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Host Version",
+          "type": "string"
+        },
+        "agent_package_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Agent Package Id",
+          "type": "string"
+        },
+        "agent_package_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Agent Package Version",
+          "type": "string"
+        },
+        "agent_package_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Agent Package Hash",
+          "type": "string"
+        },
+        "host_package_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Host Package Id",
+          "type": "string"
+        },
+        "host_package_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Host Package Version",
+          "type": "string"
+        },
+        "host_package_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Host Package Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime_id",
+        "runtime_role",
+        "host_family",
+        "host_version",
+        "agent_package_id",
+        "agent_package_version",
+        "agent_package_hash",
+        "host_package_id",
+        "host_package_version",
+        "host_package_hash"
+      ],
+      "title": "RuntimePins",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "cad.consent/1": "#/$defs/ConsentRecord",
+      "cad.execution-evidence/1": "#/$defs/ExecutionEvidenceEvent",
+      "cad.execution-intent/1": "#/$defs/ExecutionIntentRecord",
+      "cad.recovery-case/1": "#/$defs/RecoveryCaseRecord",
+      "cad.rollback.checkpoint/1": "#/$defs/RollbackCheckpointRecord",
+      "cad.rollback.plan/1": "#/$defs/RollbackPlanRecord",
+      "cad.rollback.receipt/1": "#/$defs/RollbackReceiptRecord"
+    },
+    "propertyName": "schema_version"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ExecutionIntentRecord"
+    },
+    {
+      "$ref": "#/$defs/ConsentRecord"
+    },
+    {
+      "$ref": "#/$defs/ExecutionEvidenceEvent"
+    },
+    {
+      "$ref": "#/$defs/RecoveryCaseRecord"
+    },
+    {
+      "$ref": "#/$defs/RollbackCheckpointRecord"
+    },
+    {
+      "$ref": "#/$defs/RollbackPlanRecord"
+    },
+    {
+      "$ref": "#/$defs/RollbackReceiptRecord"
+    }
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kythuatvang.local/cad-phase7-domain.schema.json",
+  "title": "AutoCAD MCP Phase 7 bounded domain records"
+}

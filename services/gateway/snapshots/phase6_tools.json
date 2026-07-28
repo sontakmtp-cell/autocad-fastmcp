@@ -74,7 +74,7 @@
       "openWorldHint": false
     },
     "input_schema_sha256": "15e5d47fc583e1aa6b3f26a2889d3de253f6a614c166c8b1504a6d4ce1339a6a",
-    "output_schema_sha256": "d34171e77b2f8c893fc14e8ebc00d15ad3b8a97ed1706223b11157bb06e74486"
+    "output_schema_sha256": "a88c503900cf481508d699b441775bc6937fad1c4c247a18737ac7f659d53878"
   },
   {
     "name": "cad_validate",

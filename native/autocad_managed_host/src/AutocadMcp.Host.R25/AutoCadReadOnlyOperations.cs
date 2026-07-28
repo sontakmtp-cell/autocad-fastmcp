@@ -41,6 +41,11 @@ internal sealed class AutoCadReadOnlyOperations(
                 "cad.program.preview",
                 "cad.program.commit",
                 "cad.program.validate",
+                "cad.recovery.receipt_query",
+                "cad.rollback.checkpoint.lookup",
+                "cad.rollback.preview",
+                "cad.rollback.commit",
+                "cad.rollback.validate",
                 "preview.database_abort.v1",
                 "durable.receipt.v2"
             }

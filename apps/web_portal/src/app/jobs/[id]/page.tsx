@@ -15,12 +15,25 @@ export default async function JobPage({ params }: { params: Promise<{ id: string
   } catch (error) {
     phase6NotFound(error);
   }
+  const stateCopy = {
+    queued: "Đã phát hành, đang chờ thực thi",
+    dispatched: "Đã phát hành tới Desktop Agent",
+    acknowledged: "Desktop Agent đã nhận",
+    running: "Đang thực thi",
+    reconnect_pending: "Mất kết nối, đang chờ bằng chứng",
+    cancel_requested: "Đã yêu cầu dừng an toàn",
+    outcome_unknown: "Chưa rõ kết quả; hệ thống không tự chạy lại",
+    succeeded: "Đã commit và có kết quả bền vững",
+    failed: "Thực thi thất bại",
+    cancelled: "Đã hủy trước khi có tác động",
+    needs_attention: "Cần kiểm tra evidence hoặc recovery",
+  }[job.state];
   return (
     <section className="space-y-5">
       <div>
         <p className="eyebrow">Activity · durable job</p>
         <h1 className="text-3xl font-bold">Job {job.job_id}</h1>
-        <p className="mt-2 text-slate-600">{job.kind} · {job.effect_class} · {job.state}</p>
+        <p className="mt-2 text-slate-600">{job.kind} · {job.effect_class} · {stateCopy}</p>
       </div>
       <Phase6Status state={state} />
       {job.error_code && <Phase6Warning code={job.error_code} />}

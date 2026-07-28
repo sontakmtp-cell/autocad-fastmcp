@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { phase6UiState } from "@/lib/env";
+import { phase6UiState, phase7UiState } from "@/lib/env";
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -31,5 +31,21 @@ describe("Phase 6 UI feature flags", () => {
     expect(phase6UiState(gatewayState).managedWriteEnabled).toBe(false);
     vi.stubEnv("PORTAL_MANAGED_WRITE_KILL_SWITCH", "false");
     expect(phase6UiState(gatewayState).managedWriteEnabled).toBe(true);
+  });
+});
+
+describe("Phase 7 UI feature flags", () => {
+  it("requires both presentation and recent-auth approval flags", () => {
+    vi.stubEnv("PORTAL_PHASE7_UI_ENABLED", "false");
+    vi.stubEnv("PORTAL_RECENT_AUTH_APPROVAL_ENABLED", "true");
+    expect(phase7UiState()).toEqual({
+      phase7Enabled: false,
+      recentAuthApprovalEnabled: false,
+    });
+    vi.stubEnv("PORTAL_PHASE7_UI_ENABLED", "true");
+    expect(phase7UiState()).toEqual({
+      phase7Enabled: true,
+      recentAuthApprovalEnabled: true,
+    });
   });
 });

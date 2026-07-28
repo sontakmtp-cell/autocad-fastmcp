@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from hashlib import sha256
-from typing import Any
+from typing import Any, Callable
 
 from autocad_contracts import (
     canonical_package_manifest_hash,
@@ -827,6 +827,7 @@ class SqliteRepository:
         expected_version: int | None = None,
         agent_sequence: int | None = None,
         evidence: bool = False,
+        terminal_hook: Callable[[Any, Any], None] | None = None,
     ) -> dict[str, Any] | None:
         """Atomically persist an Agent terminal result and its optional snapshot."""
 
@@ -870,6 +871,8 @@ class SqliteRepository:
                     and row["error_code"] == error_code
                     and row["error_summary"] == error_summary
                 ):
+                    if terminal_hook is not None:
+                        terminal_hook(conn, row)
                     duplicate = self._job(row)
                     duplicate["duplicate_terminal"] = True
                     return duplicate
@@ -898,6 +901,8 @@ class SqliteRepository:
 
             if snapshot is not None:
                 self._insert_snapshot(conn, row, snapshot)
+            if terminal_hook is not None:
+                terminal_hook(conn, row)
 
             now = utc_now()
             result_json = _json(result) if result is not None else None

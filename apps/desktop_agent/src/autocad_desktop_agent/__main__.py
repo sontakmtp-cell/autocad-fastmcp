@@ -28,6 +28,7 @@ from .telemetry import TelemetryClient, TelemetryDrawingInfoExecutor
 
 
 def build_core(config: AgentConfig, *, headless: bool) -> AgentCore:
+    identity_store = None
     if config.identity_mode == IdentityMode.BROWSER_PAIRING:
         identity_store = DeviceIdentityStore(
             config.ledger_path.with_name("identity")
@@ -83,6 +84,7 @@ def build_core(config: AgentConfig, *, headless: bool) -> AgentCore:
         executor,
         runtime_broker=runtime_broker,
         program_executor=ProgramCommandExecutor(runtime_broker),
+        identity_store=identity_store,
     )
 
 

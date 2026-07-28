@@ -1,5 +1,167 @@
 {
   "$defs": {
+    "HostCheckpointEntity": {
+      "additionalProperties": false,
+      "properties": {
+        "handle": {
+          "pattern": "^[0-9A-F]{1,32}$",
+          "title": "Handle",
+          "type": "string"
+        },
+        "entity_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "layer": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Layer",
+          "type": "string"
+        },
+        "canonical_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Canonical Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "handle",
+        "entity_type",
+        "layer",
+        "canonical_fingerprint"
+      ],
+      "title": "HostCheckpointEntity",
+      "type": "object"
+    },
+    "HostRollbackCheckpoint": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "cad.rollback.checkpoint/1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "checkpoint_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "original_receipt_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Original Receipt Id",
+          "type": "string"
+        },
+        "original_receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Original Receipt Digest",
+          "type": "string"
+        },
+        "program_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Program Id",
+          "type": "string"
+        },
+        "program_revision": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "title": "Program Revision",
+          "type": "integer"
+        },
+        "program_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Program Digest",
+          "type": "string"
+        },
+        "preview_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Preview Id",
+          "type": "string"
+        },
+        "preview_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Preview Digest",
+          "type": "string"
+        },
+        "execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Execution Digest",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_revision_before": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Document Revision Before",
+          "type": "string"
+        },
+        "document_revision_after": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Document Revision After",
+          "type": "string"
+        },
+        "created_entities": {
+          "items": {
+            "$ref": "#/$defs/HostCheckpointEntity"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Created Entities",
+          "type": "array"
+        },
+        "non_entity_object_created": {
+          "title": "Non Entity Object Created",
+          "type": "boolean"
+        },
+        "runtime_and_policy_pins": {
+          "$ref": "#/$defs/ProgramExecutionBinding"
+        },
+        "created_at": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Created At",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Checkpoint Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "checkpoint_id",
+        "original_receipt_id",
+        "original_receipt_digest",
+        "program_id",
+        "program_revision",
+        "program_digest",
+        "preview_id",
+        "preview_digest",
+        "execution_digest",
+        "document_id",
+        "document_revision_before",
+        "document_revision_after",
+        "created_entities",
+        "non_entity_object_created",
+        "runtime_and_policy_pins",
+        "created_at",
+        "checkpoint_digest"
+      ],
+      "title": "HostRollbackCheckpoint",
+      "type": "object"
+    },
     "ProgramCommitResult": {
       "additionalProperties": false,
       "properties": {
@@ -33,6 +195,62 @@
           "minimum": 0,
           "title": "Created Entity Count",
           "type": "integer"
+        },
+        "rollback_eligible": {
+          "default": false,
+          "title": "Rollback Eligible",
+          "type": "boolean"
+        },
+        "checkpoint_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Checkpoint Id"
+        },
+        "checkpoint_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Checkpoint Digest"
+        },
+        "checkpoint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/HostRollbackCheckpoint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "milestone": {
+          "anyOf": [
+            {
+              "const": "effect_and_receipt_committed",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Milestone"
         },
         "duplicate": {
           "default": false,

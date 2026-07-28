@@ -1,13 +1,13 @@
 import "server-only";
-import { timingSafeEqual } from "node:crypto";
+import { createHash, timingSafeEqual } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { portalEnv } from "./env";
 import type { PortalSession } from "./session";
 
 function equal(left: string, right: string): boolean {
-  const a = Buffer.from(left);
-  const b = Buffer.from(right);
-  return a.length === b.length && timingSafeEqual(a, b);
+  const a = createHash("sha256").update(left, "utf8").digest();
+  const b = createHash("sha256").update(right, "utf8").digest();
+  return timingSafeEqual(a, b);
 }
 
 export async function requireSafeMutation(
@@ -21,8 +21,8 @@ export async function requireSafeMutation(
   }
 
   const contentType = request.headers.get("content-type") ?? "";
-  if (!contentType.startsWith("application/x-www-form-urlencoded")
-    && !contentType.startsWith("multipart/form-data")) {
+  const mediaType = contentType.split(";", 1)[0]?.trim().toLowerCase();
+  if (mediaType !== "application/x-www-form-urlencoded") {
     throw new Error("CONTENT_TYPE_REJECTED");
   }
 
@@ -32,4 +32,27 @@ export async function requireSafeMutation(
     throw new Error("CSRF_REJECTED");
   }
   return form;
+}
+
+export type RecentAuthState = "valid" | "missing" | "stale" | "future";
+
+export function recentAuthState(
+  session: PortalSession,
+  now = Math.floor(Date.now() / 1000),
+): RecentAuthState {
+  if (session.authenticatedAt === undefined) {
+    return "missing";
+  }
+  if (session.authenticatedAt > now + 60) {
+    return "future";
+  }
+  return now - session.authenticatedAt <= portalEnv().PORTAL_RECENT_AUTH_MAX_AGE_SECONDS
+    ? "valid"
+    : "stale";
+}
+
+export function requireRecentAuth(session: PortalSession): void {
+  if (recentAuthState(session) !== "valid") {
+    throw new Error("RECENT_AUTH_REQUIRED");
+  }
 }

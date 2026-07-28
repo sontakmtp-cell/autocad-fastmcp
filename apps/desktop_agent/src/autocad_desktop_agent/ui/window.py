@@ -12,6 +12,7 @@ from PySide6.QtGui import QAction, QCloseEvent, QFont
 from PySide6.QtWidgets import (
     QApplication,
     QGridLayout,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -32,6 +33,8 @@ class CoreFacade(Protocol):
     def view_state(self) -> AgentViewState: ...
     def subscribe(self, callback: Any) -> None: ...
     def handle_intent(self, intent: AgentIntent, diagnostics_target: Path | None = None) -> None: ...
+    def approve_approval(self, approval_request_id: str) -> Any: ...
+    def deny_approval(self, approval_request_id: str) -> Any: ...
     async def run_forever(self) -> None: ...
 
 
@@ -58,7 +61,7 @@ class AgentWindow(QMainWindow):
         self._last_state = core.view_state
         self.setWindowTitle("Kỹ Thuật Vàng AutoCAD Agent")
         self.setFont(QFont("Segoe UI", 10))
-        self.setMinimumSize(520, 360)
+        self.setMinimumSize(620, 650)
 
         root = QWidget(self)
         layout = QVBoxLayout(root)
@@ -88,6 +91,7 @@ class AgentWindow(QMainWindow):
                 ("active_job", "Job đang chạy"),
                 ("mismatch", "Sai lệch binding"),
                 ("outcome", "Kết quả chưa rõ"),
+                ("pending_approval", "Xác nhận đang chờ"),
                 ("task", "Tác vụ"),
                 ("version", "Phiên bản"),
                 ("support", "Mã hỗ trợ"),
@@ -99,6 +103,22 @@ class AgentWindow(QMainWindow):
             grid.addWidget(value, row, 1)
             self.values[key] = value
         layout.addLayout(grid)
+
+        approval_group = QGroupBox("Xác nhận tin cậy trên thiết bị")
+        approval_layout = QVBoxLayout(approval_group)
+        self.approval_status = QLabel("Không có yêu cầu đang chờ.")
+        self.approval_status.setWordWrap(True)
+        self.approval_status.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        approval_layout.addWidget(self.approval_status)
+        approval_actions = QHBoxLayout()
+        self.approve_button = QPushButton("&Đồng ý đúng yêu cầu này")
+        self.deny_button = QPushButton("&Từ chối")
+        self.approve_button.setAccessibleName("Đồng ý yêu cầu xác nhận đang hiển thị")
+        self.deny_button.setAccessibleName("Từ chối yêu cầu xác nhận đang hiển thị")
+        approval_actions.addWidget(self.approve_button)
+        approval_actions.addWidget(self.deny_button)
+        approval_layout.addLayout(approval_actions)
+        layout.addWidget(approval_group)
 
         actions = QHBoxLayout()
         self.retry_button = QPushButton("Thử lại")
@@ -119,6 +139,8 @@ class AgentWindow(QMainWindow):
         self.pause_button.clicked.connect(self._toggle_pause)
         self.diagnostics_button.clicked.connect(self._diagnostics)
         self.help_button.clicked.connect(self._help)
+        self.approve_button.clicked.connect(self._approve_current)
+        self.deny_button.clicked.connect(self._deny_current)
 
         agent_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
         self.setWindowIcon(agent_icon)
@@ -165,6 +187,7 @@ class AgentWindow(QMainWindow):
         self.values["outcome"].setText(
             "Cần kiểm tra bản vẽ" if state.outcome_unknown else "Bình thường"
         )
+        self.values["pending_approval"].setText(str(state.pending_approval_count))
         self.values["task"].setText(state.current_task or "Không có")
         self.values["version"].setText(self._version_text(state))
         self.values["support"].setText(
@@ -177,6 +200,7 @@ class AgentWindow(QMainWindow):
         self.tray.setToolTip(
             f"AutoCAD Agent · {state.runtime_label}"
         )
+        self._render_approval(state)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt API
         event.ignore()
@@ -210,6 +234,48 @@ class AgentWindow(QMainWindow):
         self.show()
         self.raise_()
         self.activateWindow()
+
+    def _render_approval(self, state: AgentViewState) -> None:
+        if not state.pending_approvals:
+            self.approval_status.setText("Không có yêu cầu đang chờ.")
+            self.approve_button.setEnabled(False)
+            self.deny_button.setEnabled(False)
+            return
+        approval = state.pending_approvals[0]
+        warnings = (
+            "\nCảnh báo: " + "; ".join(approval.warnings)
+            if approval.warnings
+            else ""
+        )
+        self.approval_status.setText(
+            f"{approval.status_text}\n"
+            f"Tóm tắt: {approval.operation_summary}\n"
+            f"Bản vẽ: {approval.document_name}\n"
+            f"Số thao tác / đối tượng: {approval.operation_count} / "
+            f"{approval.entity_count}\n"
+            f"Runtime: {approval.runtime_label}\n"
+            f"Gói / registry: {approval.package_label} / "
+            f"{approval.registry_version}\n"
+            f"Rủi ro / mức xác nhận: {approval.risk_class} / "
+            f"{approval.assurance}\n"
+            f"Preview: {approval.preview_created_at}\n"
+            f"Hết hạn: {approval.expires_at}\n"
+            f"Intent / Consent: {approval.intent_id} / {approval.consent_id}\n"
+            f"Mã hỗ trợ: {approval.support_id}"
+            f"{warnings}"
+        )
+        self.approve_button.setEnabled(approval.actionable)
+        self.deny_button.setEnabled(approval.actionable)
+
+    def _approve_current(self) -> None:
+        approvals = self._last_state.pending_approvals
+        if approvals and approvals[0].actionable:
+            self.core.approve_approval(approvals[0].approval_request_id)
+
+    def _deny_current(self) -> None:
+        approvals = self._last_state.pending_approvals
+        if approvals and approvals[0].actionable:
+            self.core.deny_approval(approvals[0].approval_request_id)
 
     @staticmethod
     def _product_text(state: AgentViewState) -> str:

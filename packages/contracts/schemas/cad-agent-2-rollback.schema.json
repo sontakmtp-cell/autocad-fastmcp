@@ -1,0 +1,977 @@
+{
+  "$defs": {
+    "CheckpointLookupArguments": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Checkpoint Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkpoint_id"
+      ],
+      "title": "CheckpointLookupArguments",
+      "type": "object"
+    },
+    "HostRemovedEntityEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "handle": {
+          "pattern": "^[0-9A-F]{1,32}$",
+          "title": "Handle",
+          "type": "string"
+        },
+        "entity_type": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "prior_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Prior Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "handle",
+        "entity_type",
+        "prior_fingerprint"
+      ],
+      "title": "HostRemovedEntityEvidence",
+      "type": "object"
+    },
+    "HostRollbackReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "cad.rollback.receipt/1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "rollback_receipt_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rollback Receipt Id",
+          "type": "string"
+        },
+        "original_receipt_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Original Receipt Id",
+          "type": "string"
+        },
+        "original_receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Original Receipt Digest",
+          "type": "string"
+        },
+        "checkpoint_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Checkpoint Digest",
+          "type": "string"
+        },
+        "rollback_plan_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rollback Plan Id",
+          "type": "string"
+        },
+        "rollback_plan_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Rollback Plan Digest",
+          "type": "string"
+        },
+        "rollback_execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Rollback Execution Digest",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_revision_before": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Document Revision Before",
+          "type": "string"
+        },
+        "document_revision_after": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Document Revision After",
+          "type": "string"
+        },
+        "removed_entities": {
+          "items": {
+            "$ref": "#/$defs/HostRemovedEntityEvidence"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Removed Entities",
+          "type": "array"
+        },
+        "runtime_and_policy_pins": {
+          "$ref": "#/$defs/ProgramExecutionBinding"
+        },
+        "created_at": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Created At",
+          "type": "string"
+        },
+        "receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Receipt Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "rollback_receipt_id",
+        "original_receipt_id",
+        "original_receipt_digest",
+        "checkpoint_id",
+        "checkpoint_digest",
+        "rollback_plan_id",
+        "rollback_plan_digest",
+        "rollback_execution_digest",
+        "document_id",
+        "document_revision_before",
+        "document_revision_after",
+        "removed_entities",
+        "runtime_and_policy_pins",
+        "created_at",
+        "receipt_digest"
+      ],
+      "title": "HostRollbackReceipt",
+      "type": "object"
+    },
+    "ProgramExecutionBinding": {
+      "additionalProperties": false,
+      "description": "Server-selected binding. It is intentionally outside CAD Program.",
+      "properties": {
+        "program_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Program Digest",
+          "type": "string"
+        },
+        "execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Execution Digest",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Document Id",
+          "type": "string"
+        },
+        "document_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S+$",
+          "title": "Document Revision",
+          "type": "string"
+        },
+        "runtime_id": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Runtime Id",
+          "type": "string"
+        },
+        "runtime_role": {
+          "const": "primary",
+          "title": "Runtime Role",
+          "type": "string"
+        },
+        "host_family": {
+          "maxLength": 32,
+          "minLength": 1,
+          "title": "Host Family",
+          "type": "string"
+        },
+        "host_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Host Version",
+          "type": "string"
+        },
+        "package_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Package Id",
+          "type": "string"
+        },
+        "package_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Package Version",
+          "type": "string"
+        },
+        "package_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Hash",
+          "type": "string"
+        },
+        "capability_manifest_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Manifest Hash",
+          "type": "string"
+        },
+        "operation_registry_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Operation Registry Version",
+          "type": "string"
+        },
+        "operation_registry_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Registry Hash",
+          "type": "string"
+        },
+        "policy_version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "program_digest",
+        "execution_digest",
+        "document_id",
+        "document_revision",
+        "runtime_id",
+        "runtime_role",
+        "host_family",
+        "host_version",
+        "package_id",
+        "package_version",
+        "package_hash",
+        "capability_manifest_hash",
+        "operation_registry_version",
+        "operation_registry_hash",
+        "policy_version"
+      ],
+      "title": "ProgramExecutionBinding",
+      "type": "object"
+    },
+    "ReceiptLookupArguments": {
+      "additionalProperties": false,
+      "properties": {
+        "receipt_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Receipt Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "receipt_id"
+      ],
+      "title": "ReceiptLookupArguments",
+      "type": "object"
+    },
+    "RollbackCommandMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": "cad.agent/2",
+          "default": "cad.agent/2",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "message_type": {
+          "const": "command",
+          "default": "command",
+          "title": "Message Type",
+          "type": "string"
+        },
+        "message_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Message Id",
+          "type": "string"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "session_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "device_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Device Id",
+          "type": "string"
+        },
+        "job_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Job Id",
+          "type": "string"
+        },
+        "command_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Command Id",
+          "type": "string"
+        },
+        "sequence": {
+          "default": 0,
+          "maximum": 1000000000,
+          "minimum": 0,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "issued_at": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Issued At",
+          "type": "string"
+        },
+        "deadline_at": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline At"
+        },
+        "idempotency_key": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Idempotency Key",
+          "type": "string"
+        },
+        "payload_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Payload Hash",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "receipt_lookup",
+            "checkpoint_lookup",
+            "rollback_preview",
+            "rollback_commit",
+            "rollback_validate"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "effect_class": {
+          "enum": [
+            "read",
+            "write"
+          ],
+          "title": "Effect Class",
+          "type": "string"
+        },
+        "binding": {
+          "$ref": "#/$defs/ProgramExecutionBinding"
+        },
+        "arguments": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReceiptLookupArguments"
+            },
+            {
+              "$ref": "#/$defs/CheckpointLookupArguments"
+            },
+            {
+              "$ref": "#/$defs/RollbackPreviewArguments"
+            },
+            {
+              "$ref": "#/$defs/RollbackCommitArguments"
+            },
+            {
+              "$ref": "#/$defs/RollbackValidateArguments"
+            }
+          ],
+          "title": "Arguments"
+        },
+        "intent_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Intent Id"
+        },
+        "intent_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Intent Digest"
+        }
+      },
+      "required": [
+        "session_id",
+        "device_id",
+        "job_id",
+        "command_id",
+        "idempotency_key",
+        "payload_hash",
+        "kind",
+        "effect_class",
+        "binding",
+        "arguments"
+      ],
+      "title": "RollbackCommandMessage",
+      "type": "object"
+    },
+    "RollbackCommitArguments": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Checkpoint Digest",
+          "type": "string"
+        },
+        "rollback_plan_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rollback Plan Id",
+          "type": "string"
+        },
+        "rollback_execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Rollback Execution Digest",
+          "type": "string"
+        },
+        "expires_at": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Expires At",
+          "type": "string"
+        },
+        "rollback_plan_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Rollback Plan Digest",
+          "type": "string"
+        },
+        "rollback_receipt_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rollback Receipt Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "checkpoint_digest",
+        "rollback_plan_id",
+        "rollback_execution_digest",
+        "expires_at",
+        "rollback_plan_digest",
+        "rollback_receipt_id"
+      ],
+      "title": "RollbackCommitArguments",
+      "type": "object"
+    },
+    "RollbackCommitResult": {
+      "additionalProperties": false,
+      "properties": {
+        "rollback_receipt_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rollback Receipt Id",
+          "type": "string"
+        },
+        "receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Receipt Digest",
+          "type": "string"
+        },
+        "original_receipt_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Original Receipt Id",
+          "type": "string"
+        },
+        "checkpoint_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Checkpoint Digest",
+          "type": "string"
+        },
+        "rollback_plan_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rollback Plan Id",
+          "type": "string"
+        },
+        "rollback_plan_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Rollback Plan Digest",
+          "type": "string"
+        },
+        "rollback_execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Rollback Execution Digest",
+          "type": "string"
+        },
+        "document_revision_before": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Document Revision Before",
+          "type": "string"
+        },
+        "document_revision_after": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Document Revision After",
+          "type": "string"
+        },
+        "removed_entity_count": {
+          "maximum": 256,
+          "minimum": 1,
+          "title": "Removed Entity Count",
+          "type": "integer"
+        },
+        "receipt": {
+          "$ref": "#/$defs/HostRollbackReceipt"
+        },
+        "milestone": {
+          "const": "effect_and_receipt_committed",
+          "title": "Milestone",
+          "type": "string"
+        },
+        "duplicate": {
+          "default": false,
+          "title": "Duplicate",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "rollback_receipt_id",
+        "receipt_digest",
+        "original_receipt_id",
+        "checkpoint_id",
+        "checkpoint_digest",
+        "rollback_plan_id",
+        "rollback_plan_digest",
+        "rollback_execution_digest",
+        "document_revision_before",
+        "document_revision_after",
+        "removed_entity_count",
+        "receipt",
+        "milestone"
+      ],
+      "title": "RollbackCommitResult",
+      "type": "object"
+    },
+    "RollbackPreviewArguments": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Checkpoint Digest",
+          "type": "string"
+        },
+        "rollback_plan_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rollback Plan Id",
+          "type": "string"
+        },
+        "rollback_execution_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Rollback Execution Digest",
+          "type": "string"
+        },
+        "expires_at": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Expires At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "checkpoint_digest",
+        "rollback_plan_id",
+        "rollback_execution_digest",
+        "expires_at"
+      ],
+      "title": "RollbackPreviewArguments",
+      "type": "object"
+    },
+    "RollbackPreviewResult": {
+      "additionalProperties": false,
+      "properties": {
+        "checkpoint_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Checkpoint Id",
+          "type": "string"
+        },
+        "checkpoint_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Checkpoint Digest",
+          "type": "string"
+        },
+        "current_document_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Current Document Revision",
+          "type": "string"
+        },
+        "eligible": {
+          "title": "Eligible",
+          "type": "boolean"
+        },
+        "conflicts": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "maxItems": 256,
+          "title": "Conflicts",
+          "type": "array"
+        },
+        "milestone": {
+          "const": "transaction_aborted",
+          "title": "Milestone",
+          "type": "string"
+        },
+        "runtime_pins": {
+          "additionalProperties": true,
+          "title": "Runtime Pins",
+          "type": "object"
+        },
+        "policy_pins": {
+          "additionalProperties": true,
+          "title": "Policy Pins",
+          "type": "object"
+        }
+      },
+      "required": [
+        "checkpoint_id",
+        "checkpoint_digest",
+        "current_document_revision",
+        "eligible",
+        "milestone",
+        "runtime_pins",
+        "policy_pins"
+      ],
+      "title": "RollbackPreviewResult",
+      "type": "object"
+    },
+    "RollbackResultMessage": {
+      "additionalProperties": false,
+      "properties": {
+        "protocol_version": {
+          "const": "cad.agent/2",
+          "default": "cad.agent/2",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "message_type": {
+          "const": "result",
+          "default": "result",
+          "title": "Message Type",
+          "type": "string"
+        },
+        "message_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Message Id",
+          "type": "string"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "session_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "device_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Device Id",
+          "type": "string"
+        },
+        "job_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Job Id",
+          "type": "string"
+        },
+        "command_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Command Id",
+          "type": "string"
+        },
+        "sequence": {
+          "maximum": 1000000000,
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "issued_at": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Issued At",
+          "type": "string"
+        },
+        "deadline_at": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline At"
+        },
+        "kind": {
+          "enum": [
+            "receipt_lookup",
+            "checkpoint_lookup",
+            "rollback_preview",
+            "rollback_commit",
+            "rollback_validate"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "succeeded",
+            "failed",
+            "cancelled",
+            "outcome_unknown"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "payload_hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Payload Hash",
+          "type": "string"
+        },
+        "binding": {
+          "$ref": "#/$defs/ProgramExecutionBinding"
+        },
+        "result": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RollbackPreviewResult"
+            },
+            {
+              "$ref": "#/$defs/RollbackCommitResult"
+            },
+            {
+              "$ref": "#/$defs/RollbackValidateResult"
+            },
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "maxLength": 2048,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Message"
+        }
+      },
+      "required": [
+        "session_id",
+        "device_id",
+        "job_id",
+        "command_id",
+        "sequence",
+        "kind",
+        "status",
+        "payload_hash",
+        "binding"
+      ],
+      "title": "RollbackResultMessage",
+      "type": "object"
+    },
+    "RollbackValidateArguments": {
+      "additionalProperties": false,
+      "properties": {
+        "rollback_receipt_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rollback Receipt Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rollback_receipt_id"
+      ],
+      "title": "RollbackValidateArguments",
+      "type": "object"
+    },
+    "RollbackValidateResult": {
+      "additionalProperties": false,
+      "properties": {
+        "rollback_receipt_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Rollback Receipt Id",
+          "type": "string"
+        },
+        "valid": {
+          "title": "Valid",
+          "type": "boolean"
+        },
+        "document_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "Document Revision",
+          "type": "string"
+        },
+        "checks": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Checks",
+          "type": "array"
+        },
+        "failures": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Failures",
+          "type": "array"
+        }
+      },
+      "required": [
+        "rollback_receipt_id",
+        "valid",
+        "document_revision"
+      ],
+      "title": "RollbackValidateResult",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "command": "#/$defs/RollbackCommandMessage",
+      "result": "#/$defs/RollbackResultMessage"
+    },
+    "propertyName": "message_type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/RollbackCommandMessage"
+    },
+    {
+      "$ref": "#/$defs/RollbackResultMessage"
+    }
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kythuatvang.local/cad-agent-2-rollback.schema.json",
+  "title": "cad.agent/2 typed rollback command and result messages"
+}

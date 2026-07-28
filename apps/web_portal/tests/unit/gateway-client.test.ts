@@ -51,6 +51,43 @@ describe("GatewayClient owner boundary", () => {
       .rejects.toMatchObject({ status: 404 });
   });
 
+  it("keeps recent_auth_required distinguishable without exposing other forbidden records", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ code: "recent_auth_required" }),
+      { status: 403, headers: { "content-type": "application/json" } },
+    )));
+    await expect(new GatewayClient(session).getConsent("consent-a-0001"))
+      .rejects.toMatchObject({ status: 403, code: "recent_auth_required" });
+  });
+
+  it("submits exactly digest, version, nonce and decision for approval", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      status: "approved",
+      consent_id: "consent-a-0001",
+      consent_version: 2,
+      intent_id: "intent-a-0001",
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const body = {
+      intent_digest: `sha256:${"a".repeat(64)}`,
+      consent_version: 1,
+      challenge_nonce: "nonce-at-least-sixteen-characters",
+      decision: "approve" as const,
+    };
+
+    await new GatewayClient(session).decideConsent("consent-a-0001", "approve", body);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "http://127.0.0.1:4321/api/portal/v1/consents/consent-a-0001/approve",
+    );
+    expect(JSON.parse(String(init.body))).toEqual(body);
+    expect(String(init.body)).not.toMatch(/owner|risk|assurance|effect/i);
+    expect(init.headers).toMatchObject({
+      origin: "http://127.0.0.1:3210",
+      "x-csrf-token": body.challenge_nonce,
+    });
+  });
+
   it("reads Phase 6 resources through owner-scoped server routes", async () => {
     const digest = `sha256:${"a".repeat(64)}`;
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({

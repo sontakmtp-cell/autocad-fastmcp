@@ -60,6 +60,11 @@ class DeviceIdentity:
     device_id: str
     public_key: str
     key_fingerprint: str
+    generation: int
+
+    @property
+    def key_thumbprint(self) -> str:
+        return f"sha256:{self.key_fingerprint}"
 
 
 class DeviceIdentityStore:
@@ -109,9 +114,10 @@ class DeviceIdentityStore:
                 "device_id": device_id,
                 "public_key": public_key,
                 "key_fingerprint": fingerprint,
+                "generation": 1,
             }
         )
-        return DeviceIdentity(device_id, public_key, fingerprint)
+        return DeviceIdentity(device_id, public_key, fingerprint, 1)
 
     def load_identity(self) -> DeviceIdentity:
         try:
@@ -124,11 +130,15 @@ class DeviceIdentityStore:
             device_id=str(metadata.get("device_id", "")),
             public_key=str(metadata.get("public_key", "")),
             key_fingerprint=str(metadata.get("key_fingerprint", "")),
+            generation=metadata.get("generation", 1),
         )
         if (
             not identity.device_id.startswith("device-")
             or len(identity.public_key) != 43
             or len(identity.key_fingerprint) != 64
+            or not isinstance(identity.generation, int)
+            or isinstance(identity.generation, bool)
+            or not 1 <= identity.generation <= 2_147_483_647
         ):
             raise RuntimeError("paired device identity is invalid")
         private_key = self._private_key()

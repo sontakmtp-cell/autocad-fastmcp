@@ -10,6 +10,8 @@ namespace AutocadMcp.Host.R25;
 internal static class DrawingProgramLedger
 {
     private const string LedgerDictionaryKey = "AUTOCAD_MCP_PROGRAM_RECEIPTS";
+    private const string CheckpointDictionaryKey = "AUTOCAD_MCP_ROLLBACK_CHECKPOINTS";
+    private const string RollbackReceiptDictionaryKey = "AUTOCAD_MCP_ROLLBACK_RECEIPTS";
     private const int MaximumReceipts = 4096;
 
     public static DurableProgramReceipt? Find(
@@ -222,6 +224,206 @@ internal static class DrawingProgramLedger
         }
     }
 
+    public static CadRollbackCheckpointV1? FindCheckpoint(
+        Database database,
+        Transaction transaction,
+        string checkpointId)
+    {
+        CadRollbackCheckpointV1.RequireId(checkpointId, 64);
+        var json = ReadRecord(
+            database,
+            transaction,
+            CheckpointDictionaryKey,
+            checkpointId);
+        if (json is null)
+        {
+            return null;
+        }
+        var checkpoint = CadRollbackCheckpointV1.Parse(json);
+        if (checkpoint.CheckpointId != checkpointId)
+        {
+            throw new ProtocolValidationException(
+                "ledger_corrupt",
+                "Checkpoint key does not match its durable content.");
+        }
+        return checkpoint;
+    }
+
+    public static void AddCheckpoint(
+        Database database,
+        Transaction transaction,
+        CadRollbackCheckpointV1 checkpoint) =>
+        AddRecord(
+            database,
+            transaction,
+            CheckpointDictionaryKey,
+            checkpoint.CheckpointId,
+            checkpoint.Serialize());
+
+    public static DurableRollbackReceiptV1? FindRollbackReceipt(
+        Database database,
+        Transaction transaction,
+        string rollbackReceiptId)
+    {
+        CadRollbackCheckpointV1.RequireId(rollbackReceiptId, 128);
+        var lookup = new DurableRollbackReceiptV1(
+            rollbackReceiptId,
+            "lookup",
+            $"sha256:{new string('0', 64)}",
+            "lookup",
+            $"sha256:{new string('0', 64)}",
+            "lookup",
+            $"sha256:{new string('0', 64)}",
+            $"sha256:{new string('0', 64)}",
+            "lookup",
+            "1",
+            "1",
+            [],
+            new CadExecutionBinding(
+                $"sha256:{new string('0', 64)}",
+                $"sha256:{new string('0', 64)}",
+                "lookup",
+                "1",
+                "managed_dotnet",
+                "primary",
+                "R25",
+                "lookup",
+                "lookup",
+                "lookup",
+                $"sha256:{new string('0', 64)}",
+                $"sha256:{new string('0', 64)}",
+                "lookup",
+                $"sha256:{new string('0', 64)}",
+                "lookup"),
+            DateTimeOffset.UnixEpoch.ToString("O"),
+            $"sha256:{new string('0', 64)}");
+        var json = ReadRecord(
+            database,
+            transaction,
+            RollbackReceiptDictionaryKey,
+            lookup.DictionaryKey);
+        if (json is null)
+        {
+            return null;
+        }
+        var receipt = DurableRollbackReceiptV1.Parse(json);
+        if (receipt.RollbackReceiptId != rollbackReceiptId ||
+            receipt.DictionaryKey != lookup.DictionaryKey)
+        {
+            throw new ProtocolValidationException(
+                "ledger_corrupt",
+                "Rollback receipt key does not match its durable content.");
+        }
+        return receipt;
+    }
+
+    public static void AddRollbackReceipt(
+        Database database,
+        Transaction transaction,
+        DurableRollbackReceiptV1 receipt) =>
+        AddRecord(
+            database,
+            transaction,
+            RollbackReceiptDictionaryKey,
+            receipt.DictionaryKey,
+            receipt.Serialize());
+
+    private static string? ReadRecord(
+        Database database,
+        Transaction transaction,
+        string dictionaryKey,
+        string recordKey)
+    {
+        try
+        {
+            var dictionary = GetNamedDictionary(
+                database,
+                transaction,
+                dictionaryKey,
+                create: false);
+            if (dictionary is null || !dictionary.Contains(recordKey))
+            {
+                return null;
+            }
+            var record = (Xrecord)transaction.GetObject(
+                dictionary.GetAt(recordKey),
+                OpenMode.ForRead);
+            var values = record.Data?.AsArray();
+            if (values is null ||
+                values.Length is < 1 or > 64 ||
+                values.Any(value =>
+                    value.TypeCode != (int)DxfCode.Text ||
+                    value.Value is not string))
+            {
+                throw new ProtocolValidationException(
+                    "ledger_corrupt",
+                    "Drawing contains a malformed Phase 7 ledger record.");
+            }
+            return string.Concat(values.Select(value => (string)value.Value));
+        }
+        catch (ProtocolValidationException)
+        {
+            throw;
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception exception)
+        {
+            throw new ProtocolValidationException(
+                "ledger_read_failed",
+                $"Drawing ledger read failed with AutoCAD status {exception.ErrorStatus}.");
+        }
+    }
+
+    private static void AddRecord(
+        Database database,
+        Transaction transaction,
+        string dictionaryKey,
+        string recordKey,
+        string serialized)
+    {
+        try
+        {
+            var dictionary = GetNamedDictionary(
+                database,
+                transaction,
+                dictionaryKey,
+                create: true)
+                ?? throw new InvalidOperationException("Phase 7 ledger was not created.");
+            if (dictionary.Contains(recordKey))
+            {
+                throw new ProtocolValidationException(
+                    "duplicate_payload_mismatch",
+                    "Phase 7 durable key already exists.");
+            }
+            if (dictionary.Count >= MaximumReceipts)
+            {
+                throw new ProtocolValidationException(
+                    "ledger_full",
+                    "Phase 7 drawing ledger reached its bounded capacity.");
+            }
+            dictionary.UpgradeOpen();
+            var chunks = Enumerable.Range(0, (serialized.Length + 1999) / 2000)
+                .Select(index => new TypedValue(
+                    (int)DxfCode.Text,
+                    serialized.Substring(
+                        index * 2000,
+                        Math.Min(2000, serialized.Length - (index * 2000)))))
+                .ToArray();
+            var record = new Xrecord { Data = new ResultBuffer(chunks) };
+            dictionary.SetAt(recordKey, record);
+            transaction.AddNewlyCreatedDBObject(record, true);
+        }
+        catch (ProtocolValidationException)
+        {
+            throw;
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception exception)
+        {
+            throw new ProtocolValidationException(
+                "ledger_write_failed",
+                $"Drawing ledger write failed with AutoCAD status {exception.ErrorStatus}.");
+        }
+    }
+
     private static void AddCore(
         Database database,
         Transaction transaction,
@@ -256,13 +458,26 @@ internal static class DrawingProgramLedger
         Transaction transaction,
         bool create)
     {
+        return GetNamedDictionary(
+            database,
+            transaction,
+            LedgerDictionaryKey,
+            create);
+    }
+
+    private static DBDictionary? GetNamedDictionary(
+        Database database,
+        Transaction transaction,
+        string dictionaryKey,
+        bool create)
+    {
         var namedObjects = (DBDictionary)transaction.GetObject(
             database.NamedObjectsDictionaryId,
             OpenMode.ForRead);
-        if (namedObjects.Contains(LedgerDictionaryKey))
+        if (namedObjects.Contains(dictionaryKey))
         {
             return (DBDictionary)transaction.GetObject(
-                namedObjects.GetAt(LedgerDictionaryKey),
+                namedObjects.GetAt(dictionaryKey),
                 OpenMode.ForRead);
         }
         if (!create)
@@ -272,7 +487,7 @@ internal static class DrawingProgramLedger
 
         namedObjects.UpgradeOpen();
         var ledger = new DBDictionary();
-        namedObjects.SetAt(LedgerDictionaryKey, ledger);
+        namedObjects.SetAt(dictionaryKey, ledger);
         transaction.AddNewlyCreatedDBObject(ledger, true);
         return ledger;
     }

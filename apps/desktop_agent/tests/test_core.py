@@ -233,6 +233,13 @@ async def test_program_terminal_persists_and_exact_duplicate_returns_evidence(tm
 
     assert program_executor.calls == 1
     assert core.ledger.get(command.command_id).state == "succeeded"
+    evidence = core.ledger.list_evidence(command.command_id)
+    assert [item.milestone for item in evidence] == [
+        "received",
+        "accepted",
+        "host_dispatch_started",
+        "host_result_received",
+    ]
     results = [
         message
         for message in socket.messages
@@ -282,6 +289,57 @@ async def test_started_commit_transport_loss_is_outcome_unknown_and_not_retried(
     assert reply.result_status == "failed"
     assert reply.error_code == "outcome_unknown"
     assert reply.kind == "program_commit"
+    assert reply.binding == command.binding
+
+
+@pytest.mark.asyncio
+async def test_rollback_terminal_reconcile_carries_exact_kind_and_binding(tmp_path):
+    core, _ = make_core(tmp_path, program_executor=ProgramExecutor())
+    command = make_program_command()
+    binding = command.binding.model_dump(mode="json")
+    package = {
+        "package_id": command.binding.package_id,
+        "version": command.binding.package_version,
+        "sha256": command.binding.package_hash.removeprefix("sha256:"),
+    }
+    core.ledger.record_received(
+        command_id="rollback-command",
+        job_id="rollback-job",
+        idempotency_key="rollback-idempotency",
+        payload_hash="a" * 64,
+        package=package,
+        session_id="session-1",
+        device_id="device-1",
+        kind="rollback_commit",
+        binding=binding,
+    )
+    core.ledger.transition("rollback-command", "accepted")
+    core.ledger.transition("rollback-command", "started")
+    core.ledger.transition(
+        "rollback-command",
+        "succeeded",
+        result={"rollback_receipt_id": "rollback-receipt-1"},
+    )
+    socket = Socket()
+
+    await core._handle_reconcile(
+        socket,
+        ReconcileMessage(
+            session_id="session-1",
+            device_id="device-1",
+            commands=[
+                ReconcileCommandDescriptor(
+                    job_id="rollback-job",
+                    command_id="rollback-command",
+                    payload_hash="a" * 64,
+                )
+            ],
+        ),
+    )
+
+    reply = socket.messages[0]
+    assert isinstance(reply, ReconcileResultMessage)
+    assert reply.kind == "rollback_commit"
     assert reply.binding == command.binding
 
 

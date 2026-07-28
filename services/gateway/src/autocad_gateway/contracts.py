@@ -12,6 +12,7 @@ CONTRACT_VERSION = "cad.mcp/1.0"
 PHASE3_CONTRACT_VERSION = "cad.mcp/1.1"
 PHASE4_CONTRACT_VERSION = "cad.mcp/1.2"
 PHASE6_CONTRACT_VERSION = "cad.mcp/1.3"
+PHASE7_CONTRACT_VERSION = "cad.mcp/1.4"
 MAX_ENTITY_TYPE_LENGTH = 64
 MAX_LAYER_NAME_LENGTH = 255
 MAX_FILTER_BYTES = 4096
@@ -357,7 +358,7 @@ class CadCommitOutput(StrictModel):
     program_revision: int = Field(ge=1)
     preview_id: str
     receipt_id: str | None = None
-    job_id: str
+    job_id: str | None = None
     state: str
     program_digest: str
     execution_digest: str
@@ -366,8 +367,94 @@ class CadCommitOutput(StrictModel):
     document_revision_after: str | None = None
     effect_summary: dict[str, Any] | None = None
     duplicate: bool = False
-    job_uri: str
+    job_uri: str | None = None
     resource_uri: str | None = None
+    admission_status: Literal[
+        "approval_required", "released", "current_job", "receipt"
+    ] | None = None
+    intent_id: str | None = None
+    consent_id: str | None = None
+    required_assurance: Literal[
+        "none",
+        "device_local_confirmation",
+        "user_recent_auth",
+        "user_recent_auth_plus_device_local",
+    ] | None = None
+    intent_uri: str | None = None
+    consent_uri: str | None = None
+
+
+class CadPreviewRollbackInput(StrictModel):
+    receipt_id: str | None = Field(default=None, min_length=1, max_length=128)
+    checkpoint_id: str | None = Field(default=None, min_length=1, max_length=128)
+    idempotency_key: str = Field(min_length=1, max_length=128)
+
+    @field_validator("receipt_id", "checkpoint_id")
+    @classmethod
+    def validate_rollback_source(cls, value: str | None) -> str | None:
+        return _bounded_public_id(value, "rollback_source") if value is not None else None
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def validate_rollback_preview_key(cls, value: str) -> str:
+        return _idempotency_key(value) or ""
+
+    @model_validator(mode="after")
+    def exactly_one_source(self) -> "CadPreviewRollbackInput":
+        if (self.receipt_id is None) == (self.checkpoint_id is None):
+            raise ValueError("exactly one receipt_id or checkpoint_id is required")
+        return self
+
+
+class CadPreviewRollbackOutput(StrictModel):
+    contract_version: str = PHASE7_CONTRACT_VERSION
+    rollback_plan_id: str
+    checkpoint_id: str
+    original_receipt_id: str
+    eligible: bool
+    conflicts: list[dict[str, Any]] = Field(default_factory=list, max_length=256)
+    current_document_revision: str
+    expires_at: str
+    duplicate: bool = False
+    resource_uri: str
+
+
+class CadCommitRollbackInput(StrictModel):
+    rollback_plan_id: str = Field(min_length=1, max_length=128)
+    idempotency_key: str = Field(min_length=1, max_length=128)
+
+    @field_validator("rollback_plan_id")
+    @classmethod
+    def validate_rollback_plan_id(cls, value: str) -> str:
+        return _bounded_public_id(value, "rollback_plan_id")
+
+    @field_validator("idempotency_key")
+    @classmethod
+    def validate_rollback_commit_key(cls, value: str) -> str:
+        return _idempotency_key(value) or ""
+
+
+class CadCommitRollbackOutput(StrictModel):
+    contract_version: str = PHASE7_CONTRACT_VERSION
+    rollback_plan_id: str
+    checkpoint_id: str
+    state: str
+    duplicate: bool = False
+    intent_id: str | None = None
+    consent_id: str | None = None
+    job_id: str | None = None
+    rollback_receipt_id: str | None = None
+    intent_uri: str | None = None
+    consent_uri: str | None = None
+    job_uri: str | None = None
+    resource_uri: str
+
+
+class Phase7ConsentDecisionInput(StrictModel):
+    intent_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    consent_version: int = Field(ge=1, le=2_147_483_647)
+    challenge_nonce: str = Field(min_length=32, max_length=256)
+    decision: Literal["approve", "deny"]
 
 
 class CadValidateInput(StrictModel):

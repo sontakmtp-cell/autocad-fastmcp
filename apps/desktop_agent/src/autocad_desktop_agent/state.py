@@ -40,6 +40,29 @@ class AgentIntent(StrEnum):
 
 
 @dataclass(frozen=True)
+class PendingApprovalView:
+    approval_request_id: str
+    intent_id: str
+    consent_id: str
+    operation: str
+    operation_summary: str
+    document_name: str
+    operation_count: int
+    entity_count: int
+    runtime_label: str
+    package_label: str
+    registry_version: str
+    risk_class: str
+    assurance: str
+    preview_created_at: str
+    expires_at: str
+    warnings: tuple[str, ...]
+    support_id: str
+    actionable: bool
+    status_text: str
+
+
+@dataclass(frozen=True)
 class AgentViewState:
     device_name: str
     runtime_state: RuntimeState = RuntimeState.OFFLINE
@@ -77,6 +100,8 @@ class AgentViewState:
     registry_version: str | None = None
     managed_host_enabled: bool = False
     full_compat_fallback_enabled: bool = False
+    pending_approval_count: int = 0
+    pending_approvals: tuple[PendingApprovalView, ...] = ()
 
 
 STATE_COPY: dict[RuntimeState, tuple[str, str]] = {

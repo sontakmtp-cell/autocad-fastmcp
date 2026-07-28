@@ -5,7 +5,13 @@ import { oauthCookieName, sealOAuthTransaction } from "@/lib/session";
 import { portalEnv } from "@/lib/env";
 
 export async function GET(request: NextRequest) {
-  const transaction = createOAuthTransaction(request.nextUrl.searchParams.get("returnTo") ?? "/devices");
+  const purpose = request.nextUrl.searchParams.get("recent") === "1"
+    ? "recent_auth"
+    : "login";
+  const transaction = createOAuthTransaction(
+    request.nextUrl.searchParams.get("returnTo") ?? "/devices",
+    purpose,
+  );
   (await cookies()).set(oauthCookieName(), await sealOAuthTransaction(transaction), {
     httpOnly: true,
     secure: portalEnv().PORTAL_PUBLIC_ORIGIN.startsWith("https://"),

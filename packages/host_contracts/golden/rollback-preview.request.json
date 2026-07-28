@@ -1,0 +1,21 @@
+{
+  "protocol_version": "cad.host/1",
+  "message_type": "command",
+  "session_id": "session-phase7-001",
+  "command_id": "rollback-preview-001",
+  "sequence": 7,
+  "deadline_at": "2026-07-28T01:01:00+00:00",
+  "payload_hash": "4f0d0f29c3b2f3f38e782c0a8c496c0d20ab399c48a404d224682d79c423b9d9",
+  "payload": {
+    "operation_id": "cad.rollback.preview",
+    "operation_version": 1,
+    "document_id": "document-001",
+    "arguments": {
+      "checkpoint_id": "AUTOCAD_MCP_CHECKPOINT_0123456789abcdef0123456789abcdef",
+      "checkpoint_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "rollback_plan_id": "rollback-plan-001",
+      "rollback_execution_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "expires_at": "2026-07-28T01:05:00+00:00"
+    }
+  }
+}

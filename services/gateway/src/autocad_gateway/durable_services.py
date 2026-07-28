@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import asyncio
+import hashlib
 import json
 import logging
 import sqlite3
@@ -45,6 +46,9 @@ from .infrastructure.sqlite.database import DatabaseError, SqliteDatabase
 from .infrastructure.sqlite.repositories import RepositoryConflict, SqliteRepository
 from .infrastructure.sqlite.program_repository import ProgramRepository
 from .program_services import ProgramGatewayPolicy, ProgramGatewayService
+from .phase7_admission import Phase7AdmissionPolicy, Phase7AdmissionService
+from .phase7_recovery import Phase7RecoveryService
+from .infrastructure.sqlite.phase7_repository import Phase7Repository
 
 
 PHASE3_OWNER = "phase3-fixture-user"
@@ -107,12 +111,30 @@ class DurableGatewayServices:
         managed_write_enabled: bool = False,
         allowed_write_device_ids: tuple[str, ...] = (),
         program_policy_version: str = "phase6-policy/1",
+        phase7_c2_enabled: bool = False,
+        trusted_approval_enabled: bool = False,
+        device_local_approval_enabled: bool = False,
+        portal_recent_auth_approval_enabled: bool = False,
+        public_rollback_enabled: bool = False,
+        recovery_cases_enabled: bool = False,
+        phase6_direct_commit_lab_enabled: bool = False,
     ) -> None:
         self.database = database
         self.registry = registry
         self.repository = SqliteRepository(database)
-        self.is_phase6 = profile == "phase6_program"
+        self.is_phase7 = profile == "phase7_c2"
+        self.is_phase6 = profile in {"phase6_program", "phase7_c2"}
         self.program_repository = ProgramRepository(database) if self.is_phase6 else None
+        self.phase7_repository = Phase7Repository(database) if self.is_phase7 else None
+        self.phase7_recovery = (
+            Phase7RecoveryService(
+                self.repository,
+                self.phase7_repository,
+                cases_enabled=recovery_cases_enabled,
+            )
+            if self.phase7_repository is not None
+            else None
+        )
         self.job_service = DurableJobService(
             self.repository,
             registry,
@@ -124,18 +146,29 @@ class DurableGatewayServices:
             ),
             managed_write_enabled=managed_write_enabled,
             allowed_write_device_ids=allowed_write_device_ids,
+            phase7_recovery_service=self.phase7_recovery,
         )
         self.device_tokens = dict(device_tokens)
         self.agent_authenticator = agent_authenticator
         if self.agent_authenticator is None and profile not in {
             "phase5_identity",
             "phase6_program",
+            "phase7_c2",
         }:
             self.agent_authenticator = FixtureDeviceAuthenticator(self.device_tokens)
         self.owner_subject = owner_subject
         self.profile = profile
-        self.is_phase4 = profile in {"phase4_c1", "phase5_identity", "phase6_program"}
-        self.is_phase5_identity = profile in {"phase5_identity", "phase6_program"}
+        self.is_phase4 = profile in {
+            "phase4_c1",
+            "phase5_identity",
+            "phase6_program",
+            "phase7_c2",
+        }
+        self.is_phase5_identity = profile in {
+            "phase5_identity",
+            "phase6_program",
+            "phase7_c2",
+        }
         self.required_package = dict(required_package or {})
         self.display_name = display_name
         self.job_deadline_seconds = max(1.0, min(float(job_deadline_seconds), 86_400.0))
@@ -160,6 +193,125 @@ class DurableGatewayServices:
             if self.program_repository is not None
             else None
         )
+        self.phase7_admission = (
+            Phase7AdmissionService(
+                self.program_service,
+                self.phase7_repository,
+                Phase7AdmissionPolicy(
+                    phase7_c2_enabled=phase7_c2_enabled,
+                    trusted_approval_enabled=trusted_approval_enabled,
+                    device_local_approval_enabled=device_local_approval_enabled,
+                    portal_recent_auth_approval_enabled=(
+                        portal_recent_auth_approval_enabled
+                    ),
+                    public_rollback_enabled=public_rollback_enabled,
+                    recovery_cases_enabled=recovery_cases_enabled,
+                    phase6_direct_commit_lab_enabled=phase6_direct_commit_lab_enabled,
+                    profile=profile,
+                    policy_version=program_policy_version,
+                    job_deadline_seconds=self.job_deadline_seconds,
+                ),
+            )
+            if self.phase7_repository is not None and self.program_service is not None
+            else None
+        )
+        if self.phase7_admission is not None:
+            self.phase7_admission.rollback_preview_provider = (
+                self._phase7_rollback_preview_provider
+            )
+        self.phase6_direct_commit_lab_enabled = phase6_direct_commit_lab_enabled
+
+    async def _phase7_rollback_preview_provider(
+        self,
+        checkpoint: dict[str, Any],
+        request: dict[str, Any],
+    ) -> dict[str, Any]:
+        if (
+            self.program_repository is None
+            or self.phase7_admission is None
+            or not self.phase7_admission.policy.public_rollback_enabled
+        ):
+            raise GatewayError("feature_disabled")
+        program = await self.program_repository.get_program_revision(
+            checkpoint["owner_subject"],
+            checkpoint["program_id"],
+            checkpoint["program_revision"],
+        )
+        if program is None:
+            raise GatewayError("not_found")
+        plan_view = {
+            "rollback_execution_digest": request["rollback_execution_digest"],
+            "current_document_revision": checkpoint["document_revision_after"],
+            "runtime_pins": checkpoint["runtime_pins"],
+            "policy_pins": checkpoint["policy_pins"],
+        }
+        payload = {
+            "kind": "rollback_preview",
+            "effect_class": "read",
+            "binding": self.phase7_admission._rollback_binding(
+                checkpoint, plan_view
+            ),
+            "arguments": {
+                "checkpoint_id": checkpoint["checkpoint_id"],
+                "checkpoint_digest": checkpoint["checkpoint_digest"],
+                "rollback_plan_id": request["plan_id"],
+                "rollback_execution_digest": request[
+                    "rollback_execution_digest"
+                ],
+                "expires_at": request["expires_at"],
+            },
+        }
+        idempotency_key = (
+            "phase7-preview-"
+            + hashlib.sha256(
+                (
+                    request["plan_id"]
+                    + "\0"
+                    + request["attempt_id"]
+                ).encode("utf-8")
+            ).hexdigest()[:48]
+        )
+        try:
+            job = await self.repository.create_job(
+                owner_subject=checkpoint["owner_subject"],
+                device_id=program["device_id"],
+                kind="rollback_preview",
+                effect_class="read",
+                payload=payload,
+                idempotency_key=idempotency_key,
+                deadline_at=request["expires_at"],
+            )
+            completed = await self.job_service.wait_for_existing_job(
+                job,
+                owner_subject=checkpoint["owner_subject"],
+                correlation_id=request["plan_id"],
+            )
+        except (RepositoryConflict, DurableJobError) as error:
+            raise GatewayError(getattr(error, "code", "backend_error")) from None
+        if completed["state"] != "succeeded" or not isinstance(
+            completed.get("result"), dict
+        ):
+            raise GatewayError(completed.get("error_code") or "invalid_response")
+        result = dict(completed["result"])
+        expected_host_runtime = {
+            "runtime_id": checkpoint["runtime_pins"]["runtime_id"],
+            "runtime_role": checkpoint["runtime_pins"]["runtime_role"],
+            "host_family": checkpoint["runtime_pins"]["host_family"],
+            "host_version": checkpoint["runtime_pins"]["host_version"],
+            "host_package_id": checkpoint["runtime_pins"]["host_package_id"],
+            "host_package_version": checkpoint["runtime_pins"][
+                "host_package_version"
+            ],
+            "host_package_hash": checkpoint["runtime_pins"]["host_package_hash"],
+        }
+        if (
+            result.get("runtime_pins") != expected_host_runtime
+            or result.get("policy_pins") != checkpoint["policy_pins"]
+        ):
+            raise GatewayError("binding_mismatch")
+        result["runtime_pins"] = checkpoint["runtime_pins"]
+        result["policy_pins"] = checkpoint["policy_pins"]
+        return result
 
     async def initialize(self) -> None:
         if self._initialized:
@@ -192,6 +344,39 @@ class DurableGatewayServices:
         self._maintenance_error = None
         self._maintenance_task = asyncio.create_task(self._maintenance_loop())
         self._maintenance_task.add_done_callback(self._maintenance_done)
+
+    async def commit_program(
+        self, request: Any, principal: Principal, correlation_id: str
+    ) -> Any:
+        if self.phase7_admission is not None:
+            return await self.phase7_admission.commit(
+                request, principal, correlation_id
+            )
+        if not self.phase6_direct_commit_lab_enabled:
+            raise GatewayError("feature_disabled")
+        return await self.program_service.commit(request, principal, correlation_id)
+
+    async def decide_phase7_local_approval(
+        self, decision: dict[str, Any]
+    ) -> dict[str, Any]:
+        if self.phase7_admission is None:
+            raise GatewayError("feature_disabled")
+        return await self.phase7_admission.local_decide(decision)
+
+    async def on_agent_message(self, connection: Any, message: Any) -> None:
+        if getattr(message, "message_type", None) == "approval_decision":
+            await self.decide_phase7_local_approval(message)
+            return
+        await self.job_service.handle_message(connection, message)
+
+    async def validate_agent_message(self, connection: Any, message: Any) -> bool:
+        if getattr(message, "message_type", None) == "approval_decision":
+            return bool(
+                self.phase7_admission is not None
+                and getattr(message, "device_id", None) == connection.device_id
+                and getattr(message, "session_id", None) == connection.session_id
+            )
+        return await self.job_service.validate_message(connection, message)
 
     async def shutdown(self) -> None:
         if self._maintenance_task:

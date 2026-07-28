@@ -6,9 +6,10 @@ import copy
 import json
 from datetime import datetime, timezone
 from hashlib import sha256
-from typing import Any
+from typing import Any, Callable
 
 from autocad_contracts import (
+    RollbackCheckpointRecord,
     canonical_json,
     canonical_preview_digest,
     validate_bounded_json,
@@ -331,6 +332,7 @@ class ProgramRepository:
         error_summary: str | None,
         session_id: str | None,
         agent_sequence: int | None,
+        terminal_hook: Callable[[Any, Any], None] | None = None,
     ) -> dict[str, Any] | None:
         with self.database.transaction() as conn:
             row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
@@ -359,6 +361,8 @@ class ProgramRepository:
                     and row["error_code"] == error_code
                     and row["error_summary"] == error_summary
                 ):
+                    if terminal_hook is not None:
+                        terminal_hook(conn, row)
                     duplicate = self._job(row)
                     duplicate["duplicate_terminal"] = True
                     return duplicate
@@ -376,6 +380,8 @@ class ProgramRepository:
                 if len(canonical_json(result).encode("utf-8")) > MAX_RESULT_BYTES:
                     raise RepositoryConflict("program_result_invalid")
                 self._materialize(conn, row, result)
+            if terminal_hook is not None:
+                terminal_hook(conn, row)
             now = utc_now()
             last_sequence = int(row["last_agent_sequence"])
             sequence = agent_sequence if agent_sequence is not None else last_sequence
@@ -670,6 +676,7 @@ class ProgramRepository:
                 "document_revision_after",
                 "effect_summary",
                 "durable_receipt",
+                "checkpoint",
             }
             if not isinstance(value, dict) or set(value) != required:
                 raise RepositoryConflict("program_result_invalid")
@@ -728,6 +735,13 @@ class ProgramRepository:
                     now,
                 ),
             )
+            if value["checkpoint"] is not None:
+                ProgramRepository._insert_phase7_checkpoint(
+                    conn,
+                    job=job,
+                    execution=execution,
+                    checkpoint=value["checkpoint"],
+                )
             return
         if kind == "program_validate":
             value = result.get("validation", result)
@@ -774,6 +788,94 @@ class ProgramRepository:
             )
             return
         raise RepositoryConflict("program_result_invalid")
+
+    @staticmethod
+    def _insert_phase7_checkpoint(
+        conn: Any,
+        *,
+        job: Any,
+        execution: dict[str, Any],
+        checkpoint: dict[str, Any],
+    ) -> None:
+        intent = conn.execute(
+            "SELECT runtime_pins_json, policy_pins_json "
+            "FROM execution_intents WHERE owner_subject = ? "
+            "AND released_job_id = ? AND state = 'released'",
+            (str(job["owner_subject"]), str(job["job_id"])),
+        ).fetchone()
+        if intent is None:
+            # Explicit Phase 6 lab compatibility has no Phase 7 intent and is
+            # therefore not publicly rollback-eligible.
+            return
+        runtime_pins = json.loads(intent["runtime_pins_json"])
+        policy_pins = json.loads(intent["policy_pins_json"])
+        host_pins = checkpoint.get("runtime_and_policy_pins")
+        expected_host_pins = {
+            "program_digest": execution["program_digest"],
+            "execution_digest": execution["execution_digest"],
+            "document_id": execution["document_id"],
+            "document_revision": execution["expected_document_revision"],
+            "runtime_id": runtime_pins["runtime_id"],
+            "runtime_role": runtime_pins["runtime_role"],
+            "host_family": runtime_pins["host_family"],
+            "host_version": runtime_pins["host_version"],
+            "package_id": runtime_pins["host_package_id"],
+            "package_version": runtime_pins["host_package_version"],
+            "package_hash": runtime_pins["host_package_hash"],
+            "capability_manifest_hash": policy_pins["capability_manifest_hash"],
+            "operation_registry_version": policy_pins["registry_version"],
+            "operation_registry_hash": policy_pins["operation_registry_hash"],
+            "policy_version": policy_pins["policy_version"],
+        }
+        if host_pins != expected_host_pins:
+            raise RepositoryConflict("binding_mismatch")
+        record = RollbackCheckpointRecord.model_validate(
+            {
+                **{
+                    key: value
+                    for key, value in checkpoint.items()
+                    if key != "runtime_and_policy_pins"
+                },
+                "owner_subject": str(job["owner_subject"]),
+                "runtime_pins": runtime_pins,
+                "policy_pins": policy_pins,
+            }
+        )
+        conn.execute(
+            """
+            INSERT INTO rollback_checkpoints(
+                checkpoint_id, owner_subject, original_receipt_id,
+                original_receipt_digest, program_id, program_revision,
+                program_digest, preview_id, preview_digest, execution_digest,
+                document_id, document_revision_before, document_revision_after,
+                created_entities_json, non_entity_object_created,
+                runtime_pins_json, policy_pins_json, checkpoint_digest, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                record.checkpoint_id,
+                record.owner_subject,
+                record.original_receipt_id,
+                record.original_receipt_digest,
+                record.program_id,
+                record.program_revision,
+                record.program_digest,
+                record.preview_id,
+                record.preview_digest,
+                record.execution_digest,
+                record.document_id,
+                record.document_revision_before,
+                record.document_revision_after,
+                _json(
+                    [item.model_dump(mode="json") for item in record.created_entities]
+                ),
+                int(record.non_entity_object_created),
+                _json(record.runtime_pins.model_dump(mode="json")),
+                _json(record.policy_pins.model_dump(mode="json")),
+                record.checkpoint_digest,
+                record.created_at,
+            ),
+        )
 
     @staticmethod
     def _append_event(

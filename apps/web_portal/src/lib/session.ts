@@ -19,16 +19,27 @@ export function oauthCookieName(): string {
 
 const sessionSchema = z.object({
   subject: z.string().min(1),
+  ownerKey: z.string().regex(/^user-[0-9a-f]{64}$/).optional(),
   displayName: z.string().min(1),
   accessToken: z.string().min(1),
   csrfToken: z.string().min(32),
   expiresAt: z.number().int().positive(),
+  authenticatedAt: z.number().int().positive().optional(),
+}).superRefine((value, context) => {
+  if ((value.authenticatedAt === undefined) !== (value.ownerKey === undefined)) {
+    context.addIssue({
+      code: "custom",
+      message: "authenticatedAt and ownerKey must be present together",
+    });
+  }
 });
 
 const oauthTransactionSchema = z.object({
   state: z.string().min(16),
   verifier: z.string().min(32),
+  nonce: z.string().min(16),
   returnTo: z.string().startsWith("/"),
+  purpose: z.enum(["login", "recent_auth"]),
 });
 
 export type PortalSession = z.infer<typeof sessionSchema>;

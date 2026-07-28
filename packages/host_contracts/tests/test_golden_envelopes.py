@@ -24,6 +24,11 @@ ALLOWED_OPERATIONS = {
     "cad.program.preview",
     "cad.program.commit",
     "cad.program.validate",
+    "cad.recovery.receipt_query",
+    "cad.rollback.checkpoint.lookup",
+    "cad.rollback.preview",
+    "cad.rollback.commit",
+    "cad.rollback.validate",
 }
 
 
@@ -161,3 +166,15 @@ def test_command_golden_messages_only_use_explicit_read_registry():
     serialized = json.dumps(commands).lower()
     for forbidden in ("script", "assembly_path", "executable", "raw_lisp", "network_url"):
         assert forbidden not in serialized
+
+
+def test_phase7_rollback_schema_is_strict_and_has_no_raw_handle_input():
+    schema = _load(ROOT / "schemas" / "cad-phase7-rollback.schema.json")
+    assert schema["$schema"].endswith("2020-12/schema")
+    assert schema["$defs"]["checkpoint"]["additionalProperties"] is False
+    assert schema["$defs"]["rollback_preview_request"]["additionalProperties"] is False
+    assert schema["$defs"]["rollback_commit_request"]["additionalProperties"] is False
+    encoded_preview = json.dumps(schema["$defs"]["rollback_preview_request"])
+    encoded_commit = json.dumps(schema["$defs"]["rollback_commit_request"])
+    assert "entity_handles" not in encoded_preview
+    assert "entity_handles" not in encoded_commit
