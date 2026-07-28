@@ -42,6 +42,20 @@ CREATE TABLE skill_channels (
     FOREIGN KEY (skill_id, default_version) REFERENCES skill_versions(skill_id, version)
 );
 
+CREATE TABLE skill_publication_events (
+    event_id TEXT PRIMARY KEY,
+    skill_id TEXT NOT NULL,
+    version TEXT NOT NULL,
+    previous_status TEXT,
+    status TEXT NOT NULL CHECK (status IN ('published','deprecated','withdrawn','security_revoked','promoted')),
+    channel TEXT,
+    channel_epoch INTEGER,
+    operator_subject TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY (skill_id, version) REFERENCES skill_versions(skill_id, version)
+);
+CREATE INDEX idx_skill_publication_events_skill ON skill_publication_events(skill_id, version, created_at);
+
 CREATE TABLE workflow_definitions (
     workflow_id TEXT NOT NULL,
     version TEXT NOT NULL,
