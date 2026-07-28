@@ -1,0 +1,1 @@
+{"schema_version":"cad.workflow-definition/1","workflow_id":"drawing.cleanup-audit","version":"1.0.0","steps":[{"step_id":"query","kind":"query","depends_on":[]},{"step_id":"audit","kind":"run_planner","depends_on":["query"]},{"step_id":"report","kind":"emit_report","depends_on":["audit"]},{"step_id":"finish","kind":"finish","depends_on":["report"]}]}
