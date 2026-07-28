@@ -6,7 +6,7 @@ from autocad_contracts.phase9_contracts import canonical_skill_manifest_digest, 
 ROOT = Path(__file__).resolve().parents[1]
 SKILLS = [("mechanical.auto-dimension-overall", "mechanical", "autocad.write", "run_planner"), ("drawing.cleanup-audit", "drawing", "autocad.read", "run_planner"), ("mechanical.plate-hole-pattern", "mechanical", "autocad.write", "render_template")]
 def dump(p, x): p.write_text(json.dumps(x, sort_keys=True, separators=(",",":"), ensure_ascii=False)+"\n", encoding="utf-8")
-def sha(b): return "sha256:"+hashlib.sha256(b).hexdigest()
+def sha(b): return "sha256:"+hashlib.sha256(b.replace(b"\r\n", b"\n")).hexdigest()
 def schema(properties): return {"type":"object","properties":properties,"required":list(properties),"additionalProperties":False}
 def ref(step_id): return {"kind":"step_output","source_step_id":step_id,"output_path":"result"}
 def run_input(name): return {"kind":"run_input","input_path":name}

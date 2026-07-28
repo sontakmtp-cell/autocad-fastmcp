@@ -21,6 +21,7 @@ CAD_WORKFLOW_WAIT_SCHEMA_VERSION = "cad.workflow-wait/1"
 CAD_SKILL_PUBLICATION_SCHEMA_VERSION = "cad.skill-publication/1"
 
 _ID = r"^[a-z0-9][a-z0-9._-]{0,127}$"
+_CATALOG_REF_ID = r"^[a-z0-9][a-z0-9._-]{0,119}/[1-9][0-9]*$"
 _SEMVER = r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 _DIGEST = r"^sha256:[0-9a-f]{64}$"
 _MAX_JSON_BYTES = 65_536
@@ -32,7 +33,7 @@ class Phase9Model(BaseModel):
 
 
 class OpaqueCatalogRef(Phase9Model):
-    ref_id: str = Field(pattern=_ID)
+    ref_id: str = Field(pattern=_CATALOG_REF_ID)
     version: str = Field(pattern=_SEMVER)
     digest: str = Field(pattern=_DIGEST)
 
@@ -149,13 +150,22 @@ class WorkflowStep(Phase9Model):
     def _validate_step(self) -> "WorkflowStep":
         if self.step_id in self.depends_on or len(set(self.depends_on)) != len(self.depends_on):
             raise ValueError("step dependencies must be unique and cannot self-reference")
-        _bounded_json(self.input_bindings, "step input bindings")
-        _reject_executable_keys(self.input_bindings)
+        serialized_bindings = {
+            name: (
+                binding.model_dump(mode="json")
+                if isinstance(binding, BaseModel)
+                else binding
+            )
+            for name, binding in self.input_bindings.items()
+        }
+        _bounded_json(serialized_bindings, "step input bindings")
+        _reject_executable_keys(serialized_bindings)
         for name, binding in self.input_bindings.items():
-            if not re.fullmatch(_ID, name) or not isinstance(binding, (str, int, bool, type(None), list, dict)):
+            if not re.fullmatch(_ID, name) or not isinstance(
+                binding,
+                (RunInputRef, StepOutputRef, str, int, bool, list),
+            ):
                 raise ValueError("workflow binding is invalid")
-            if isinstance(binding, dict):
-                raise ValueError("workflow binding must use a strict discriminated ref")
             if isinstance(binding, list) and (len(binding) > 16 or not all(isinstance(x, (str, int, bool)) for x in binding)):
                 raise ValueError("workflow literal list is invalid")
         if self.kind == "branch" and self.condition is None:

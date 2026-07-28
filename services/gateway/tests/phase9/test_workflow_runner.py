@@ -24,6 +24,13 @@ class Port:
 async def test_runner_completes_pure_and_write_actions(repo):
     await _run(repo)
     for step, effect in (("plan", "read"), ("commit", "write")):
+        await repo.create_step(
+            owner_subject="alice",
+            run_id="run",
+            step_id=step,
+            attempt=1,
+            kind="run_planner" if effect == "read" else "request_commit",
+        )
         await repo.insert_action(owner_subject="alice", run_id="run", step_id=step, attempt=1,
                                  action_kind="plan" if effect == "read" else "commit", payload={},
                                  retry_class="pure" if effect == "read" else "not_started", effect_class=effect)
@@ -36,9 +43,23 @@ async def test_runner_completes_pure_and_write_actions(repo):
 @pytest.mark.asyncio
 async def test_runner_read_error_fails_but_write_error_is_recovery(repo):
     await _run(repo)
+    await repo.create_step(
+        owner_subject="alice",
+        run_id="run",
+        step_id="read",
+        attempt=1,
+        kind="query",
+    )
     await repo.insert_action(owner_subject="alice", run_id="run", step_id="read", attempt=1, action_kind="query", payload={}, retry_class="read")
     assert await WorkflowRunner(repo, Port(error=RuntimeError("read")), worker_id="read").run_once()
     await repo.transition_run(owner_subject="alice", run_id="run", expected_state="created", expected_version=0, target="running")
+    await repo.create_step(
+        owner_subject="alice",
+        run_id="run",
+        step_id="write",
+        attempt=1,
+        kind="request_commit",
+    )
     await repo.insert_action(owner_subject="alice", run_id="run", step_id="write", attempt=1, action_kind="commit", payload={}, retry_class="not_started", effect_class="write")
     assert await WorkflowRunner(repo, Port(error=RuntimeError("write")), worker_id="write").run_once()
     assert (await repo.get_run("alice", "run"))["state"] == "waiting_for_recovery"
@@ -47,6 +68,13 @@ async def test_runner_read_error_fails_but_write_error_is_recovery(repo):
 @pytest.mark.asyncio
 async def test_restart_reconciles_started_write_without_redispatch(repo):
     await _run(repo)
+    await repo.create_step(
+        owner_subject="alice",
+        run_id="run",
+        step_id="write",
+        attempt=1,
+        kind="request_commit",
+    )
     action, _ = await repo.insert_action(owner_subject="alice", run_id="run", step_id="write", attempt=1, action_kind="commit", payload={}, retry_class="not_started", effect_class="write")
     await repo.claim_action("old")
     await repo.mark_dispatch_started(action["action_id"], "old")

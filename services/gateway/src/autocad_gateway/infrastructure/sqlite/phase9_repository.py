@@ -32,25 +32,135 @@ class Phase9Repository:
     def __init__(self, database: SqliteDatabase) -> None:
         self.database = database
 
-    async def create_run(self, *, owner_subject: str, actor_subject: str, run_id: str,
-                         idempotency_key: str, pins: dict[str, Any], inputs: dict[str, Any],
-                         device_id: str | None = None, initial_snapshot_id: str | None = None) -> tuple[dict[str, Any], bool]:
-        if not owner_subject or not actor_subject or not run_id or not idempotency_key:
+    async def create_run(
+        self,
+        *,
+        owner_subject: str,
+        actor_issuer: str,
+        actor_subject: str,
+        run_id: str,
+        idempotency_key: str,
+        pins: dict[str, Any],
+        inputs: dict[str, Any],
+        device_id: str,
+        device_identity_generation: int,
+        initial_snapshot_id: str | None = None,
+        initial_document_id: str | None = None,
+        initial_document_revision: str | None = None,
+        expires_at: str | None = None,
+    ) -> tuple[dict[str, Any], bool]:
+        if (
+            not owner_subject
+            or not actor_issuer
+            or not actor_subject
+            or not run_id
+            or not idempotency_key
+            or not device_id
+            or device_identity_generation < 1
+        ):
             raise RepositoryConflict("workflow_identity_invalid")
-        encoded_pins, encoded_inputs = _json(pins), _json(inputs)
+        required_pins = {
+            "skill_id",
+            "skill_version",
+            "skill_digest",
+            "workflow_id",
+            "workflow_version",
+            "workflow_digest",
+            "catalog_epoch",
+            "policy_epoch",
+            "planner_registry_version",
+            "planner_registry_hash",
+        }
+        if not required_pins <= set(pins):
+            raise RepositoryConflict("workflow_pins_invalid")
+        encoded_pins = _json(pins)
+        encoded_inputs = _json(inputs)
+        request = {
+            "actor_issuer": actor_issuer,
+            "actor_subject": actor_subject,
+            "pins": pins,
+            "inputs": inputs,
+            "device_id": device_id,
+            "device_identity_generation": device_identity_generation,
+            "initial_snapshot_id": initial_snapshot_id,
+            "initial_document_id": initial_document_id,
+            "initial_document_revision": initial_document_revision,
+        }
+        request_hash = _digest(request)
         now = utc_now()
         with self.database.transaction() as conn:
-            existing = conn.execute("SELECT * FROM workflow_runs WHERE owner_subject=? AND idempotency_key=?", (owner_subject, idempotency_key)).fetchone()
+            existing = conn.execute(
+                "SELECT * FROM workflow_runs "
+                "WHERE owner_subject=? AND idempotency_key=?",
+                (owner_subject, idempotency_key),
+            ).fetchone()
             if existing is not None:
                 value = self._run(existing)
-                if (value["pins"] == pins and value["inputs"] == inputs and value["actor_subject"] == actor_subject
-                        and value["device_id"] == device_id and value["initial_snapshot_id"] == initial_snapshot_id):
+                if value["request_hash"] == request_hash:
                     return value, True
                 raise RepositoryConflict("idempotency_conflict")
             try:
-                conn.execute("""INSERT INTO workflow_runs(run_id,owner_subject,actor_subject,idempotency_key,pins_json,pins_digest,inputs_json,inputs_digest,device_id,initial_snapshot_id,state,state_version,current_step_id,created_at,updated_at)
-                    VALUES (?,?,?,?,?,?,?,?,?,?, 'created',0,NULL,?,?)""",
-                    (run_id,owner_subject,actor_subject,idempotency_key,encoded_pins,_digest(pins),encoded_inputs,_digest(inputs),device_id,initial_snapshot_id,now,now))
+                conn.execute(
+                    """
+                    INSERT INTO workflow_runs(
+                        run_id, owner_subject, actor_issuer, actor_subject,
+                        skill_id, skill_version, skill_digest,
+                        workflow_id, workflow_version, workflow_digest,
+                        catalog_epoch, policy_epoch,
+                        planner_registry_version, planner_registry_hash,
+                        pins_json, pins_digest, inputs_json, inputs_digest,
+                        device_id, device_identity_generation,
+                        initial_snapshot_id, initial_document_id,
+                        initial_document_revision,
+                        state, state_version, current_step_id,
+                        idempotency_key, request_hash,
+                        created_at, updated_at, expires_at
+                    )
+                    VALUES (
+                        ?, ?, ?, ?,
+                        ?, ?, ?,
+                        ?, ?, ?,
+                        ?, ?,
+                        ?, ?,
+                        ?, ?, ?, ?,
+                        ?, ?,
+                        ?, ?, ?,
+                        'created', 0, NULL,
+                        ?, ?,
+                        ?, ?, ?
+                    )
+                    """,
+                    (
+                        run_id,
+                        owner_subject,
+                        actor_issuer,
+                        actor_subject,
+                        pins["skill_id"],
+                        pins["skill_version"],
+                        pins["skill_digest"],
+                        pins["workflow_id"],
+                        pins["workflow_version"],
+                        pins["workflow_digest"],
+                        pins["catalog_epoch"],
+                        pins["policy_epoch"],
+                        pins["planner_registry_version"],
+                        pins["planner_registry_hash"],
+                        encoded_pins,
+                        _digest(pins),
+                        encoded_inputs,
+                        _digest(inputs),
+                        device_id,
+                        device_identity_generation,
+                        initial_snapshot_id,
+                        initial_document_id,
+                        initial_document_revision,
+                        idempotency_key,
+                        request_hash,
+                        now,
+                        now,
+                        expires_at,
+                    ),
+                )
             except Exception as error:
                 raise RepositoryConflict("workflow_run_create_failed") from error
             self._append_event(conn, run_id, "created", {"state": "created"})

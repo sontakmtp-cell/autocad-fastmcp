@@ -5,13 +5,18 @@ from autocad_gateway.infrastructure.sqlite.phase9_repository import Phase9Reposi
 from autocad_gateway.infrastructure.sqlite.repositories import RepositoryConflict
 
 
-SCHEMA = """
-CREATE TABLE workflow_runs(run_id TEXT PRIMARY KEY,owner_subject TEXT,actor_subject TEXT,idempotency_key TEXT,pins_json TEXT,pins_digest TEXT,inputs_json TEXT,inputs_digest TEXT,device_id TEXT,initial_snapshot_id TEXT,state TEXT,state_version INTEGER,current_step_id TEXT,created_at TEXT,updated_at TEXT,UNIQUE(owner_subject,idempotency_key));
-CREATE TABLE workflow_steps(run_id TEXT,step_id TEXT,attempt INTEGER,kind TEXT,state TEXT,state_version INTEGER,input_ref_json TEXT,output_ref_json TEXT,error_code TEXT,created_at TEXT,updated_at TEXT,PRIMARY KEY(run_id,step_id,attempt));
-CREATE TABLE workflow_actions(action_id TEXT PRIMARY KEY,run_id TEXT,step_id TEXT,attempt INTEGER,action_kind TEXT,payload_json TEXT,payload_digest TEXT,idempotency_key TEXT,retry_class TEXT,effect_class TEXT,state TEXT,lease_owner TEXT,lease_expires_at TEXT,dispatch_started_at TEXT,child_state TEXT,child_ref_json TEXT,result_json TEXT,error_code TEXT,created_at TEXT,updated_at TEXT);
-CREATE TABLE workflow_waits(wait_id TEXT PRIMARY KEY,run_id TEXT,step_id TEXT,wait_kind TEXT,expected_state_version INTEGER,response_schema_json TEXT,response_schema_digest TEXT,expires_at TEXT,resolved_at TEXT,resolution_json TEXT,created_at TEXT);
-CREATE TABLE workflow_events(event_id TEXT PRIMARY KEY,run_id TEXT,sequence INTEGER,event_type TEXT,payload_json TEXT,created_at TEXT,UNIQUE(run_id,sequence));
-"""
+PINS = {
+    "skill_id": "test.workflow",
+    "skill_version": "1.0.0",
+    "skill_digest": "sha256:" + "1" * 64,
+    "workflow_id": "test.workflow",
+    "workflow_version": "1.0.0",
+    "workflow_digest": "sha256:" + "2" * 64,
+    "catalog_epoch": 1,
+    "policy_epoch": 1,
+    "planner_registry_version": "phase9-test/1",
+    "planner_registry_hash": "sha256:" + "3" * 64,
+}
 
 
 @pytest.fixture
@@ -19,13 +24,64 @@ async def repo(tmp_path):
     database = SqliteDatabase(tmp_path / "workflow.sqlite")
     await database.open()
     with database.transaction() as connection:
-        connection.executescript(SCHEMA)
+        connection.execute(
+            """
+            INSERT INTO workflow_definitions(
+                workflow_id, version, definition_json, definition_digest,
+                step_count, planner_refs_json, template_refs_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                PINS["workflow_id"],
+                PINS["workflow_version"],
+                "{}",
+                PINS["workflow_digest"],
+                1,
+                "[]",
+                "[]",
+                "2026-07-28T00:00:00+00:00",
+            ),
+        )
+        connection.execute(
+            """
+            INSERT INTO skill_versions(
+                skill_id, version, status, manifest_json, manifest_digest,
+                workflow_id, workflow_version, workflow_digest, guide_digest,
+                catalog_release_digest, published_at, created_at
+            ) VALUES (?, ?, 'published', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                PINS["skill_id"],
+                PINS["skill_version"],
+                "{}",
+                PINS["skill_digest"],
+                PINS["workflow_id"],
+                PINS["workflow_version"],
+                PINS["workflow_digest"],
+                "sha256:" + "4" * 64,
+                "sha256:" + "5" * 64,
+                "2026-07-28T00:00:00+00:00",
+                "2026-07-28T00:00:00+00:00",
+            ),
+        )
     yield Phase9Repository(database)
     await database.close()
 
 
 async def _run(repo, owner="alice"):
-    return (await repo.create_run(owner_subject=owner, actor_subject=owner, run_id="run", idempotency_key="start", pins={"skill": "v1"}, inputs={}))[0]
+    return (
+        await repo.create_run(
+            owner_subject=owner,
+            actor_issuer="https://issuer.example/",
+            actor_subject=owner,
+            run_id="run",
+            idempotency_key="start",
+            pins=PINS,
+            inputs={},
+            device_id="device-1",
+            device_identity_generation=1,
+        )
+    )[0]
 
 
 @pytest.mark.asyncio
@@ -46,7 +102,17 @@ async def test_owner_cas_terminal_and_event_ordering(repo):
 @pytest.mark.asyncio
 async def test_duplicate_start_wait_step_and_action_are_idempotent(repo):
     run = await _run(repo)
-    duplicate, replayed = await repo.create_run(owner_subject="alice", actor_subject="alice", run_id="other", idempotency_key="start", pins={"skill": "v1"}, inputs={})
+    duplicate, replayed = await repo.create_run(
+        owner_subject="alice",
+        actor_issuer="https://issuer.example/",
+        actor_subject="alice",
+        run_id="other",
+        idempotency_key="start",
+        pins=PINS,
+        inputs={},
+        device_id="device-1",
+        device_identity_generation=1,
+    )
     assert replayed and duplicate["run_id"] == run["run_id"]
     step, replayed = await repo.create_step(owner_subject="alice", run_id="run", step_id="s", attempt=1, kind="plan")
     assert not replayed
@@ -60,6 +126,13 @@ async def test_duplicate_start_wait_step_and_action_are_idempotent(repo):
 async def test_started_write_is_never_reclaimed_and_unknown_enters_recovery(repo):
     await _run(repo)
     await repo.transition_run(owner_subject="alice", run_id="run", expected_state="created", expected_version=0, target="running")
+    await repo.create_step(
+        owner_subject="alice",
+        run_id="run",
+        step_id="commit",
+        attempt=1,
+        kind="request_commit",
+    )
     action, _ = await repo.insert_action(owner_subject="alice", run_id="run", step_id="commit", attempt=1, action_kind="commit", payload={}, retry_class="not_started", effect_class="write")
     claimed = await repo.claim_action("one", lease_seconds=1)
     started = await repo.mark_dispatch_started(action["action_id"], "one")
