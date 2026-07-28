@@ -18,11 +18,14 @@ const schema = z.object({
   PORTAL_OIDC_CLIENT_SECRET: z.string().optional(),
   PORTAL_OIDC_AUDIENCE: z.string().min(1),
   PORTAL_OIDC_SCOPES: z.string().default(
-    "openid profile email autocad.read autocad.device.manage",
+    "openid profile email autocad.read autocad.write autocad.device.manage",
   ),
   PORTAL_PHASE6_UI_ENABLED: z.enum(["true", "false"]).default("false"),
   PORTAL_MANAGED_WRITE_UI_ENABLED: z.enum(["true", "false"]).default("false"),
   PORTAL_MANAGED_WRITE_KILL_SWITCH: z.enum(["true", "false"]).default("true"),
+  PORTAL_PHASE7_UI_ENABLED: z.enum(["true", "false"]).default("false"),
+  PORTAL_RECENT_AUTH_APPROVAL_ENABLED: z.enum(["true", "false"]).default("false"),
+  PORTAL_RECENT_AUTH_MAX_AGE_SECONDS: z.coerce.number().int().min(60).max(3600).default(300),
 });
 
 export type PortalEnv = z.infer<typeof schema>;
@@ -57,5 +60,20 @@ export function phase6UiState(
     managedWriteEnabled: phase6Enabled
       && env.PORTAL_MANAGED_WRITE_UI_ENABLED === "true"
       && !killSwitchActive,
+  };
+}
+
+export type Phase7UiState = {
+  phase7Enabled: boolean;
+  recentAuthApprovalEnabled: boolean;
+};
+
+export function phase7UiState(): Phase7UiState {
+  const env = portalEnv();
+  const phase7Enabled = env.PORTAL_PHASE7_UI_ENABLED === "true";
+  return {
+    phase7Enabled,
+    recentAuthApprovalEnabled: phase7Enabled
+      && env.PORTAL_RECENT_AUTH_APPROVAL_ENABLED === "true",
   };
 }

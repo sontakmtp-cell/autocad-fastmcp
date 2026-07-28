@@ -41,6 +41,9 @@ export default async function ReceiptPage({ params }: { params: Promise<{ id: st
       </section>
       <RecordSummary title="Kết quả effect" value={receipt.effect_summary} />
       <RecordSummary title="Durable receipt" value={receipt.durable_receipt} />
+      <p className="warning-panel">
+        Rollback unavailable: no Phase-7 checkpoint
+      </p>
     </section>
   );
 }

@@ -7,7 +7,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from pathlib import PureWindowsPath
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from autocad_contracts import (
     AckMessage,
@@ -16,12 +16,15 @@ from autocad_contracts import (
     ProgressMessage,
     ProgramCommandMessage,
     ProgramResultMessage,
+    RollbackCommandMessage,
+    RollbackResultMessage,
     ReconcileCommandDescriptor,
     ReconcileMessage,
     ReconcileResultMessage,
     ResultMessage,
     RuntimeEvidence,
     program_command_payload_hash,
+    rollback_command_payload_hash,
 )
 
 from ..domain.jobs import InvalidJobTransition, is_terminal
@@ -31,6 +34,9 @@ from ..program_contract_adapter import program_command_fields
 
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from ..phase7_recovery import Phase7RecoveryService
 
 
 class DurableJobError(RuntimeError):
@@ -60,6 +66,7 @@ class DurableJobService:
         program_policy_version: str | None = None,
         managed_write_enabled: bool = False,
         allowed_write_device_ids: tuple[str, ...] = (),
+        phase7_recovery_service: Phase7RecoveryService | None = None,
     ) -> None:
         self.repository = repository
         self.registry = registry
@@ -75,6 +82,7 @@ class DurableJobService:
         self.program_policy_version = program_policy_version
         self.managed_write_enabled = managed_write_enabled
         self.allowed_write_device_ids = frozenset(allowed_write_device_ids)
+        self.phase7_recovery_service = phase7_recovery_service
 
     async def wait_for_existing_job(
         self,
@@ -226,6 +234,33 @@ class DurableJobService:
                         job_id=job_id,
                         job_state=updated["state"] if updated else raw["state"],
                     )
+            elif raw["kind"] in {
+                "receipt_lookup",
+                "checkpoint_lookup",
+                "rollback_preview",
+                "rollback_commit",
+                "rollback_validate",
+            }:
+                rollback_values = {
+                    key: value
+                    for key, value in command_values.items()
+                    if key not in {"payload", "kind", "effect_class"}
+                }
+                rollback_values.update(raw["payload"])
+                command = RollbackCommandMessage(**rollback_values)
+                if rollback_command_payload_hash(command) != raw["payload_hash"]:
+                    updated = await self.repository.transition_job(
+                        job_id,
+                        "failed",
+                        error_code="payload_mismatch",
+                        error_summary="Typed rollback command hash did not match durable job",
+                    )
+                    self._resolve(updated)
+                    raise DurableJobError(
+                        "payload_mismatch",
+                        job_id=job_id,
+                        job_state=updated["state"] if updated else raw["state"],
+                    )
             else:
                 command = CommandMessage(**command_values)
             try:
@@ -255,6 +290,18 @@ class DurableJobService:
                     job["kind"] == "program_commit"
                     and job["state"] == "outcome_unknown"
                 ):
+                    if self.phase7_recovery_service is not None:
+                        await self.phase7_recovery_service.ensure_recovery_case(
+                            owner_subject=job["owner_subject"],
+                            job=job,
+                            cause="deadline_outcome_unknown",
+                            latest_query_result={
+                                "outcome": "inconclusive",
+                                "source": "gateway",
+                                "summary": "Commit deadline passed without exact receipt proof",
+                                "queried_at": now.isoformat(),
+                            },
+                        )
                     logger.warning(
                         "Expired Program commit remains recoverable pending receipt reconciliation",
                         extra={"job_id": job["job_id"], "state": job["state"]},
@@ -300,7 +347,9 @@ class DurableJobService:
             await self._handle_ack(connection, job, message)
         elif isinstance(message, ProgressMessage):
             await self._handle_progress(job, message)
-        elif isinstance(message, (ResultMessage, ProgramResultMessage)):
+        elif isinstance(
+            message, (ResultMessage, ProgramResultMessage, RollbackResultMessage)
+        ):
             await self._handle_result(job, message)
         elif isinstance(message, ReconcileResultMessage):
             await self.handle_reconcile_result(connection, message, job=job)
@@ -328,6 +377,16 @@ class DurableJobService:
             try:
                 updated = await self.repository.transition_job(job["job_id"], target)
                 self._resolve(updated)
+                if (
+                    target == "outcome_unknown"
+                    and updated is not None
+                    and self.phase7_recovery_service is not None
+                ):
+                    await self.phase7_recovery_service.ensure_recovery_case(
+                        owner_subject=updated["owner_subject"],
+                        job=updated,
+                        cause="commit_outcome_unknown",
+                    )
             except (InvalidJobTransition, RepositoryConflict):
                 logger.info(
                     "Disconnect recovery lost a state race",
@@ -402,6 +461,15 @@ class DurableJobService:
                     "Agent reconciliation still reports an unknown Program commit outcome",
                     extra={"job_id": job["job_id"], "state": job["state"]},
                 )
+                if self.phase7_recovery_service is not None:
+                    await self.phase7_recovery_service.record_reconcile_outcome(
+                        owner_subject=job["owner_subject"],
+                        job_id=job["job_id"],
+                        outcome="inconclusive",
+                        source="agent",
+                        summary="Agent ledger cannot prove the exact commit outcome",
+                        attempt=_attempt + 1,
+                    )
                 return
             if job["kind"] in {
                 "program_preview",
@@ -417,6 +485,15 @@ class DurableJobService:
                     "Program reconciliation did not prove its durable execution binding",
                     extra={"job_id": job["job_id"], "state": job["state"]},
                 )
+                if self.phase7_recovery_service is not None:
+                    await self.phase7_recovery_service.record_reconcile_outcome(
+                        owner_subject=job["owner_subject"],
+                        job_id=job["job_id"],
+                        outcome="conflict",
+                        source="agent",
+                        summary="Agent reconciliation binding conflicts with the durable job",
+                        attempt=_attempt + 1,
+                    )
                 return
             message_type = (
                 ProgramResultMessage
@@ -466,6 +543,15 @@ class DurableJobService:
                         "cancel_requested": bool(job.get("cancel_requested_at")),
                     },
                 )
+                if self.phase7_recovery_service is not None:
+                    await self.phase7_recovery_service.record_reconcile_outcome(
+                        owner_subject=job["owner_subject"],
+                        job_id=job["job_id"],
+                        outcome="inconclusive",
+                        source="agent",
+                        summary="Agent reports started without exact terminal evidence",
+                        attempt=_attempt + 1,
+                    )
                 return
             if message.status == "not_started" and job.get("cancel_requested_at"):
                 try:
@@ -481,6 +567,12 @@ class DurableJobService:
                         )
                     raise
                 self._resolve(updated)
+                if updated is not None and self.phase7_recovery_service is not None:
+                    await self.phase7_recovery_service.ensure_recovery_case(
+                        owner_subject=updated["owner_subject"],
+                        job=updated,
+                        cause="bounded_inconclusive",
+                    )
                 logger.info(
                     "Unknown write-like outcome with prior cancel intent was not retried",
                     extra={"job_id": job["job_id"], "state": "needs_attention"},
@@ -494,6 +586,12 @@ class DurableJobService:
                     evidence=True,
                 )
                 self._resolve(updated)
+                if updated is not None and self.phase7_recovery_service is not None:
+                    await self.phase7_recovery_service.ensure_recovery_case(
+                        owner_subject=updated["owner_subject"],
+                        job=updated,
+                        cause="bounded_inconclusive",
+                    )
             except RepositoryConflict as error:
                 if error.code == "cas_conflict" and _attempt < 2:
                     return await self.handle_reconcile_result(
@@ -509,6 +607,7 @@ class DurableJobService:
                     extra={"job_id": job["job_id"]},
                 )
             return
+
         if message.status == "not_started" and job["state"] == "reconnect_pending":
             if job.get("cancel_requested_at"):
                 try:
@@ -578,10 +677,30 @@ class DurableJobService:
                 "Reconnected command is already started and was not redispatched",
                 extra={"job_id": job["job_id"], "state": target},
             )
+            if (
+                target == "outcome_unknown"
+                and updated is not None
+                and self.phase7_recovery_service is not None
+            ):
+                await self.phase7_recovery_service.record_reconcile_outcome(
+                    owner_subject=updated["owner_subject"],
+                    job_id=updated["job_id"],
+                    outcome="inconclusive",
+                    source="agent",
+                    summary="Agent reports the write started without terminal evidence",
+                    attempt=_attempt + 1,
+                )
             return
         raise DurableJobError(
             "invalid_message", job_id=job["job_id"], job_state=job["state"]
         )
+
+    async def record_phase7_evidence(
+        self, value: dict[str, Any]
+    ) -> tuple[dict[str, Any], bool]:
+        if self.phase7_recovery_service is None:
+            raise DurableJobError("phase7_recovery_disabled")
+        return await self.phase7_recovery_service.append_evidence(value)
 
     async def cancel(self, job_id: str, *, owner_subject: str, reason: str) -> dict[str, Any]:
         job = await self.repository.get_job(owner_subject, job_id)
@@ -744,7 +863,9 @@ class DurableJobService:
             self._resolve(updated)
 
     async def _handle_result(
-        self, job: dict[str, Any], message: ResultMessage | ProgramResultMessage
+        self,
+        job: dict[str, Any],
+        message: ResultMessage | ProgramResultMessage | RollbackResultMessage,
     ) -> None:
         if message.payload_hash != job["payload_hash"]:
             await self._fail_payload(job)
@@ -768,8 +889,43 @@ class DurableJobService:
                         job_state=job["state"],
                     ) from error
                 self._resolve(updated)
+                if updated is not None and self.phase7_recovery_service is not None:
+                    await self.phase7_recovery_service.ensure_recovery_case(
+                        owner_subject=updated["owner_subject"],
+                        job=updated,
+                        cause="commit_outcome_unknown",
+                    )
                 return
             result = self._normalize_program_result(job, message)
+        elif isinstance(message, RollbackResultMessage):
+            self._validate_rollback_result_binding(job, message)
+            if target == "outcome_unknown":
+                try:
+                    updated = await self.repository.transition_job(
+                        job["job_id"],
+                        "outcome_unknown",
+                        error_code="outcome_unknown",
+                        error_summary="Agent reported an unknown rollback outcome",
+                    )
+                except (InvalidJobTransition, RepositoryConflict) as error:
+                    raise DurableJobError(
+                        "outcome_unknown",
+                        job_id=job["job_id"],
+                        job_state=job["state"],
+                    ) from error
+                self._resolve(updated)
+                if updated is not None and self.phase7_recovery_service is not None:
+                    await self.phase7_recovery_service.ensure_recovery_case(
+                        owner_subject=updated["owner_subject"],
+                        job=updated,
+                        cause="commit_outcome_unknown",
+                    )
+                return
+            result = (
+                message.result.model_dump(mode="json")
+                if hasattr(message.result, "model_dump")
+                else message.result
+            )
         error_code: str | None = None
         error_summary: str | None = None
         snapshot: dict[str, Any] | None = None
@@ -810,6 +966,21 @@ class DurableJobService:
                     "backend_error", job_id=job["job_id"], job_state=job["state"]
                 )
             try:
+                terminal_hook = None
+                if self.phase7_recovery_service is not None:
+                    terminal_evidence = (
+                        await self.phase7_recovery_service.prepare_terminal_evidence(
+                            job=job,
+                            target=target,
+                            result=result if isinstance(result, dict) else None,
+                        )
+                    )
+
+                    def terminal_hook(conn, _row):
+                        self.phase7_recovery_service.phase7.insert_evidence(
+                            conn, terminal_evidence
+                        )
+
                 updated = await self.program_repository.finalize_program_job(
                     job_id=job["job_id"],
                     device_id=job["device_id"],
@@ -821,6 +992,7 @@ class DurableJobService:
                     error_summary=error_summary,
                     session_id=message.session_id,
                     agent_sequence=message.sequence,
+                    terminal_hook=terminal_hook,
                 )
             except RepositoryConflict as error:
                 if error.code not in {
@@ -857,6 +1029,19 @@ class DurableJobService:
                             extra={"job_id": job["job_id"]},
                         )
                     release_write_lock = False
+                    if (
+                        updated is not None
+                        and self.phase7_recovery_service is not None
+                    ):
+                        await self.phase7_recovery_service.record_reconcile_outcome(
+                            owner_subject=updated["owner_subject"],
+                            job_id=updated["job_id"],
+                            outcome="conflict",
+                            source="agent",
+                            summary=(
+                                "Program result conflicts with the exact execution binding"
+                            ),
+                        )
                 else:
                     updated = await self.repository.transition_job(
                         job["job_id"],
@@ -866,6 +1051,69 @@ class DurableJobService:
                     )
                 if release_write_lock:
                     await self.program_repository.release_write_lock(job["job_id"])
+            if updated:
+                self._resolve(updated)
+            return
+        if job["kind"] in {
+            "receipt_lookup",
+            "checkpoint_lookup",
+            "rollback_preview",
+            "rollback_commit",
+            "rollback_validate",
+        }:
+            try:
+                terminal_hook = None
+                terminal_evidence = None
+                if self.phase7_recovery_service is not None:
+                    terminal_evidence = (
+                        await self.phase7_recovery_service.prepare_terminal_evidence(
+                            job=job,
+                            target=target,
+                            result=result if isinstance(result, dict) else None,
+                        )
+                    )
+                receipt = None
+                if (
+                    target == "succeeded"
+                    and job["kind"] == "rollback_commit"
+                    and self.phase7_recovery_service is not None
+                    and isinstance(result, dict)
+                ):
+                    receipt = (
+                        await self.phase7_recovery_service.prepare_rollback_receipt(
+                            owner_subject=job["owner_subject"],
+                            job=job,
+                            result=result,
+                        )
+                    )
+                if terminal_evidence is not None:
+
+                    def terminal_hook(conn, _row):
+                        self.phase7_recovery_service.phase7.insert_evidence(
+                            conn, terminal_evidence
+                        )
+                        if receipt is not None:
+                            self.phase7_recovery_service.phase7.insert_rollback_receipt(
+                                conn, receipt
+                            )
+                updated = await self.repository.finalize_job_result(
+                    job_id=job["job_id"],
+                    device_id=job["device_id"],
+                    command_id=job["command_id"],
+                    payload_hash=job["payload_hash"],
+                    target=target,
+                    result=result,
+                    error_code=error_code,
+                    error_summary=error_summary,
+                    session_id=message.session_id,
+                    agent_sequence=message.sequence,
+                    evidence=True,
+                    terminal_hook=terminal_hook,
+                )
+            except RepositoryConflict as error:
+                raise DurableJobError(
+                    error.code, job_id=job["job_id"], job_state=job["state"]
+                ) from None
             if updated:
                 self._resolve(updated)
             return
@@ -942,6 +1190,22 @@ class DurableJobService:
             )
 
     @staticmethod
+    def _validate_rollback_result_binding(
+        job: dict[str, Any], message: RollbackResultMessage
+    ) -> None:
+        payload = job.get("payload")
+        if (
+            not isinstance(payload, dict)
+            or message.kind != job["kind"]
+            or message.binding.model_dump(mode="json") != payload.get("binding")
+        ):
+            raise DurableJobError(
+                "binding_mismatch",
+                job_id=job["job_id"],
+                job_state=job["state"],
+            )
+
+    @staticmethod
     def _normalize_program_result(
         job: dict[str, Any], message: ProgramResultMessage
     ) -> dict[str, Any] | None:
@@ -984,6 +1248,7 @@ class DurableJobService:
                     "duplicate": value["duplicate"],
                 },
                 "durable_receipt": value,
+                "checkpoint": value.get("checkpoint"),
             }
         return {
             "validation_id": value["validation_id"],
@@ -1179,6 +1444,16 @@ class DurableJobService:
             failure_code, failure_summary = self._program_dispatch_failure(
                 job, connection
             )
+        elif job["kind"] in {
+            "receipt_lookup",
+            "checkpoint_lookup",
+            "rollback_preview",
+            "rollback_commit",
+            "rollback_validate",
+        }:
+            failure_code, failure_summary = self._rollback_dispatch_failure(
+                job, connection
+            )
         else:
             required_package = dict(
                 job.get("payload", {}).get("package") or self.required_package
@@ -1296,6 +1571,84 @@ class DurableJobService:
         ]
         if len(matching) != 1:
             return "runtime_mismatch", "Managed R25 runtime evidence changed"
+        return None, ""
+
+    def _rollback_dispatch_failure(
+        self,
+        job: dict[str, Any],
+        connection: AgentConnection | None,
+    ) -> tuple[str | None, str]:
+        if connection is None:
+            return "device_offline", "Agent is not connected"
+        payload = job.get("payload")
+        binding = payload.get("binding") if isinstance(payload, dict) else None
+        if not isinstance(binding, dict):
+            return "binding_mismatch", "Rollback execution binding is missing"
+        if (
+            self.program_policy_version is None
+            or binding.get("policy_version") != self.program_policy_version
+        ):
+            return "policy_mismatch", "Gateway policy changed after rollback preview"
+        if (
+            binding.get("runtime_id") != "managed_dotnet"
+            or binding.get("runtime_role") != "primary"
+            or binding.get("host_family") != "R25"
+        ):
+            return "runtime_mismatch", "Rollback requires exact Managed .NET R25"
+        if job["kind"] == "rollback_commit" and (
+            not self.managed_write_enabled
+            or connection.device_id not in self.allowed_write_device_ids
+        ):
+            return "feature_disabled", "Managed rollback is not enabled for this device"
+        if connection.hard_pause or connection.paused:
+            return "paused_by_user", "Agent hard pause is active"
+        if job["kind"] == "rollback_commit" and not connection.write_lock_enabled:
+            return "write_lock_disabled", "Agent write lock is disabled"
+        if (
+            connection.active_document_id != binding.get("document_id")
+            or connection.active_document_revision != binding.get("document_revision")
+        ):
+            return "stale_revision", "Active document changed after rollback preview"
+        capability_hash = str(connection.capability_manifest_hash or "")
+        registry_hash = str(connection.operation_registry_hash or "")
+        capability_hash = (
+            capability_hash
+            if capability_hash.startswith("sha256:")
+            else "sha256:" + capability_hash
+        )
+        registry_hash = (
+            registry_hash
+            if registry_hash.startswith("sha256:")
+            else "sha256:" + registry_hash
+        )
+        if (
+            capability_hash != binding.get("capability_manifest_hash")
+            or registry_hash != binding.get("operation_registry_hash")
+            or connection.registry_version
+            != binding.get("operation_registry_version")
+        ):
+            return "binding_mismatch", "Rollback capability or registry evidence changed"
+        package = {
+            "package_id": binding.get("package_id"),
+            "version": binding.get("package_version"),
+            "sha256": str(binding.get("package_hash", "")).removeprefix("sha256:"),
+        }
+        if package not in list(connection.packages):
+            return "package_mismatch", "Rollback Managed Host package evidence changed"
+        products = (connection.capability_manifest or {}).get("cad_products", [])
+        matching = [
+            item
+            for item in products
+            if isinstance(item, dict)
+            and isinstance(item.get("runtime"), dict)
+            and item["runtime"].get("id") == binding.get("runtime_id")
+            and item["runtime"].get("role") == binding.get("runtime_role")
+            and item["runtime"].get("host_family") == binding.get("host_family")
+            and item["runtime"].get("host_version") == binding.get("host_version")
+            and item.get("edition") == "full"
+        ]
+        if len(matching) != 1:
+            return "runtime_mismatch", "Rollback Managed R25 runtime evidence changed"
         return None, ""
 
     @staticmethod

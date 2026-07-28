@@ -82,7 +82,7 @@ async def _running_job(repository: SqliteRepository, key: str):
 
 @pytest.mark.asyncio
 async def test_migrations_are_current_and_owner_filters_fail_closed(repository):
-    assert repository.database.migration_checksums.keys() == {1, 2, 3, 4, 5}
+    assert repository.database.migration_checksums.keys() == {1, 2, 3, 4, 5, 6}
     assert repository.database.migrations_valid is True
     assert repository.database.verify_migration_state() is True
     assert [item["device_id"] for item in await repository.list_devices("owner")] == [
@@ -333,6 +333,44 @@ async def test_atomic_finalize_and_identical_duplicate_are_idempotent(repository
             agent_sequence=2,
         )
     assert await repository.get_snapshot("owner", "snapshot-changed") is None
+
+
+@pytest.mark.asyncio
+async def test_terminal_hook_and_job_result_share_one_transaction(repository):
+    job = await _job(
+        repository,
+        "terminal-hook",
+        kind="rollback_commit",
+        effect_class="write",
+    )
+    job = await repository.claim_job(job["job_id"])
+    job = await repository.transition_job(job["job_id"], "acknowledged")
+    job = await repository.transition_job(job["job_id"], "running")
+
+    def failing_hook(conn, _row):
+        conn.execute(
+            "UPDATE devices SET display_name = ? WHERE device_id = ?",
+            ("must-roll-back", "device-a"),
+        )
+        raise RepositoryConflict("receipt_insert_failed")
+
+    with pytest.raises(RepositoryConflict, match="receipt_insert_failed"):
+        await repository.finalize_job_result(
+            job_id=job["job_id"],
+            device_id="device-a",
+            command_id=job["command_id"],
+            payload_hash=job["payload_hash"],
+            target="succeeded",
+            result={"receipt": {"receipt_id": "receipt-1"}},
+            agent_sequence=1,
+            evidence=True,
+            terminal_hook=failing_hook,
+        )
+
+    current = await repository.get_job("owner", job["job_id"])
+    device = await repository.get_device("owner", "device-a")
+    assert current["state"] == "running"
+    assert device["display_name"] == "Device A"
 
 
 @pytest.mark.asyncio

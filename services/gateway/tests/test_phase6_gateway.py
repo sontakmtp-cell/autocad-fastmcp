@@ -328,7 +328,7 @@ async def test_phase6_migration_is_additive_and_has_owner_scoped_records(phase6)
         "cad_execution_receipts",
         "program_idempotency",
     } <= tables
-    assert service.database.migration_checksums.keys() == {1, 2, 3, 4, 5}
+    assert service.database.migration_checksums.keys() == {1, 2, 3, 4, 5, 6}
 
 
 async def test_prepare_requires_scope_never_dispatches_and_is_owner_scoped(phase6):

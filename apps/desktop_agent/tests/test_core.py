@@ -233,6 +233,13 @@ async def test_program_terminal_persists_and_exact_duplicate_returns_evidence(tm
 
     assert program_executor.calls == 1
     assert core.ledger.get(command.command_id).state == "succeeded"
+    evidence = core.ledger.list_evidence(command.command_id)
+    assert [item.milestone for item in evidence] == [
+        "received",
+        "accepted",
+        "host_dispatch_started",
+        "host_result_received",
+    ]
     results = [
         message
         for message in socket.messages

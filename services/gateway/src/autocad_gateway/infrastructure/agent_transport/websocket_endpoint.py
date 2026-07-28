@@ -12,12 +12,14 @@ from typing import Any, Awaitable, Callable
 
 from autocad_contracts import (
     AckMessage,
+    ApprovalDecisionMessage,
     ErrorMessage,
     HeartbeatMessage,
     HelloMessage,
     MAX_WEBSOCKET_MESSAGE_BYTES,
     ProgressMessage,
     ProgramResultMessage,
+    RollbackResultMessage,
     PROTOCOL_VERSION,
     ReconcileResultMessage,
     ResultMessage,
@@ -48,7 +50,9 @@ _RUNTIME_AGENT_MESSAGES = (
     ResultMessage,
     ReconcileResultMessage,
     ProgramResultMessage,
+    RollbackResultMessage,
 )
+_CONTROL_AGENT_MESSAGES = (ApprovalDecisionMessage,)
 
 
 def _bearer_token(websocket: Any) -> str | None:
@@ -251,7 +255,10 @@ async def serve_agent_websocket(
         while True:
             raw = await _receive_text(websocket)
             message = parse_agent_message(raw)
-            if not isinstance(message, (HeartbeatMessage, *_RUNTIME_AGENT_MESSAGES)):
+            if not isinstance(
+                message,
+                (HeartbeatMessage, *_RUNTIME_AGENT_MESSAGES, *_CONTROL_AGENT_MESSAGES),
+            ):
                 await _send_error(websocket, "invalid_message", "message is not valid from Agent")
                 continue
             if not await registry.is_current(connection):
@@ -266,7 +273,10 @@ async def serve_agent_websocket(
                 )
                 await _safe_close(websocket, code=4403, reason="message binding mismatch")
                 return
-            if isinstance(message, _RUNTIME_AGENT_MESSAGES) and validate_message is not None:
+            if (
+                isinstance(message, (*_RUNTIME_AGENT_MESSAGES, *_CONTROL_AGENT_MESSAGES))
+                and validate_message is not None
+            ):
                 if not await validate_message(connection, message):
                     await _send_error(
                         websocket,

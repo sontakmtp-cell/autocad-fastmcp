@@ -1,0 +1,28 @@
+{
+  "protocol_version": "cad.host/1",
+  "message_type": "result",
+  "session_id": "session-phase7-001",
+  "command_id": "rollback-preview-001",
+  "sequence": 7,
+  "deadline_at": "2026-07-28T01:01:00+00:00",
+  "payload_hash": "ae436ba6ec82ca0786eb31f98f31947e55467627128ff71b26ff60c8142752c5",
+  "payload": {
+    "status": "succeeded",
+    "operation_id": "cad.rollback.preview",
+    "result": {
+      "checkpoint_id": "AUTOCAD_MCP_CHECKPOINT_0123456789abcdef0123456789abcdef",
+      "checkpoint_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "current_document_revision": "42",
+      "eligible": true,
+      "conflicts": [],
+      "milestone": "transaction_aborted"
+    },
+    "runtime_evidence": {
+      "runtime_id": "managed_dotnet",
+      "runtime_role": "primary",
+      "host_family": "R25",
+      "host_version": "0.2.0",
+      "package_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    }
+  }
+}

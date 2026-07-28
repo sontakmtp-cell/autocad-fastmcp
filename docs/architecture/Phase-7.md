@@ -9,12 +9,12 @@
 >
 > Tài liệu nguồn:
 >
-> - [fastmcp-multi-user-autocad-plan.md](./fastmcp-multi-user-autocad-plan.md)
-> - [Phase-6-plus.md](./Phase-6-plus.md)
-> - [Phase-6.md](./Phase-6.md)
-> - [phase6-public-cad-program-evidence.md](./phase6-public-cad-program-evidence.md)
-> - [appendix-user-interface.md](./appendix-user-interface.md)
-> - [Phase-3.1.md](./Phase-3.1.md)
+> - fastmcp-multi-user-autocad-plan.md
+> - Phase-6-plus.md
+> - Phase-6.md
+> - phase6-public-cad-program-evidence.md
+> - appendix-user-interface.md
+> - Phase-3.1.md
 
 ## 1. Executive summary
 

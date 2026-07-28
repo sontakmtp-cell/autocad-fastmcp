@@ -14,7 +14,8 @@ internal sealed class CadProgramHostOperations(
         observations.GetHandshakeEvidenceAsync(cancellationToken);
 
     public Task<object> ExecuteAsync(CommandRequest command, CancellationToken cancellationToken) =>
-        CadProgramV02Contract.OperationIds.Contains(command.OperationId)
+        CadProgramV02Contract.OperationIds.Contains(command.OperationId) ||
+        Phase7RollbackContract.OperationIds.Contains(command.OperationId)
             ? programs.ExecuteAsync(command, cancellationToken)
             : observations.ExecuteAsync(command, cancellationToken);
 }

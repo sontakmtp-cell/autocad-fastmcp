@@ -10,8 +10,9 @@ import json
 import uuid
 from collections.abc import Callable
 from contextlib import suppress
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from autocad_contracts import (
     AckMessage,
@@ -22,6 +23,8 @@ from autocad_contracts import (
     HelloMessage,
     ProgramCommandMessage,
     ProgramResultMessage,
+    RollbackCommandMessage,
+    RollbackResultMessage,
     ReconcileMessage,
     ReconcileResultMessage,
     ResultMessage,
@@ -34,16 +37,29 @@ from autocad_contracts import (
     message_dict,
     parse_agent_message,
 )
+from autocad_contracts.agent_protocol import (
+    ApprovalDecisionMessage,
+    ApprovalRequestMessage,
+    approval_decision_proof_payload,
+)
 
 from . import __version__
+from .approval import ApprovalConflict, ApprovalStore
 from .config import AgentConfig
 from .credentials import CredentialProvider
 from .diagnostics import export_diagnostics
 from .executor import AgentExecutionError, DrawingInfoExecutor
 from .ledger import CommandLedger, LedgerConflict, TERMINAL
 from .manifest import PackageMismatch, verify_package
-from .state import AgentIntent, AgentViewState, RuntimeState, runtime_user_label
-from .program_executor import ProgramCommandExecutor
+from .pairing import DeviceIdentityStore
+from .state import (
+    AgentIntent,
+    AgentViewState,
+    PendingApprovalView,
+    RuntimeState,
+    runtime_user_label,
+)
+from .program_executor import ProgramCommandExecutor, RollbackCommandExecutor
 
 
 class AgentCore:
@@ -55,6 +71,8 @@ class AgentCore:
         executor: DrawingInfoExecutor,
         runtime_broker: Any | None = None,
         program_executor: ProgramCommandExecutor | None = None,
+        identity_store: DeviceIdentityStore | None = None,
+        approval_store: ApprovalStore | None = None,
     ) -> None:
         self.config = config.validate()
         self.credentials = credentials
@@ -62,6 +80,13 @@ class AgentCore:
         self.executor = executor
         self.runtime_broker = runtime_broker
         self.program_executor = program_executor
+        self.rollback_executor = (
+            RollbackCommandExecutor(runtime_broker)
+            if runtime_broker is not None
+            else None
+        )
+        self.identity_store = identity_store
+        self.approval_store = approval_store or ApprovalStore(config.ledger_path)
         if runtime_broker is not None and hasattr(
             self.executor,
             "set_runtime_broker",
@@ -79,6 +104,7 @@ class AgentCore:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._observers: list[Callable[[AgentViewState], None]] = []
         self._session_id: str | None = None
+        self._current_websocket: Any | None = None
         self._protocol_version = str(
             getattr(credentials, "protocol_version", "cad.agent/1")
         )
@@ -105,6 +131,7 @@ class AgentCore:
             managed_host_enabled=config.managed_host_enabled,
             full_compat_fallback_enabled=config.allow_full_compat_fallback,
         )
+        self._publish_approvals()
 
     @property
     def view_state(self) -> AgentViewState:
@@ -178,11 +205,14 @@ class AgentCore:
     def set_paused(self, paused: bool) -> None:
         self.paused = paused
         self.ledger.set_paused(paused)
+        if paused:
+            self.approval_store.invalidate_pending()
         self._publish(
             runtime_state=RuntimeState.PAUSED if paused else RuntimeState.CONNECTING,
             paused=paused,
             hard_pause=paused,
         )
+        self._publish_approvals()
         if not paused:
             self._set_event(self._retry)
 
@@ -190,6 +220,102 @@ class AgentCore:
         self.write_lock_enabled = enabled
         self.ledger.set_write_lock(enabled)
         self._publish(write_lock_enabled=enabled)
+
+    def approve_approval(self, approval_request_id: str) -> Any:
+        return self._schedule_approval_decision(approval_request_id, "approve")
+
+    def deny_approval(self, approval_request_id: str) -> Any:
+        return self._schedule_approval_decision(approval_request_id, "deny")
+
+    def _schedule_approval_decision(
+        self,
+        approval_request_id: str,
+        decision: str,
+    ) -> Any:
+        if decision not in {"approve", "deny"}:
+            raise ValueError("approval decision must be approve or deny")
+        loop = self._loop
+        if loop is None or not loop.is_running():
+            raise RuntimeError("Agent session is not running")
+        return asyncio.run_coroutine_threadsafe(
+            self.submit_approval_decision(approval_request_id, decision),
+            loop,
+        )
+
+    async def submit_approval_decision(
+        self,
+        approval_request_id: str,
+        decision: str,
+    ) -> ApprovalDecisionMessage:
+        if decision not in {"approve", "deny"}:
+            raise ValueError("approval decision must be approve or deny")
+        if not self.config.local_approval_enabled or self.identity_store is None:
+            raise RuntimeError("device_local_approval_disabled")
+        if self.paused:
+            raise RuntimeError("paused_by_user")
+        websocket = self._current_websocket
+        session_id = self._session_id
+        if websocket is None or session_id is None:
+            raise RuntimeError("approval_session_unavailable")
+        stored = self.approval_store.get(approval_request_id)
+        if stored is None or stored.status != "pending":
+            raise RuntimeError("approval_not_pending")
+        request = stored.request
+        identity = self.identity_store.load_identity()
+        if (
+            request.session_id != session_id
+            or request.device_id != self.config.device_id
+            or request.device_id != identity.device_id
+            or request.device_identity_generation != identity.generation
+            or request.device_key_thumbprint != identity.key_thumbprint
+        ):
+            self.approval_store.invalidate_pending()
+            self._publish_approvals()
+            raise RuntimeError("approval_binding_mismatch")
+        now = datetime.now(timezone.utc)
+        if datetime.fromisoformat(request.expires_at) <= now:
+            self.approval_store.expire()
+            self._publish_approvals()
+            raise RuntimeError("approval_expired")
+        decided_at = now.isoformat()
+        proof_payload = approval_decision_proof_payload(
+            approval_request_id=request.approval_request_id,
+            approval_request_digest=request.approval_request_digest,
+            session_id=session_id,
+            device_id=request.device_id,
+            device_identity_generation=request.device_identity_generation,
+            device_key_thumbprint=request.device_key_thumbprint,
+            consent_id=request.consent_id,
+            intent_id=request.intent_id,
+            intent_digest=request.intent_digest,
+            challenge_nonce=request.challenge_nonce,
+            decision=decision,
+            decided_at=decided_at,
+        )
+        message = ApprovalDecisionMessage(
+            session_id=session_id,
+            device_id=request.device_id,
+            correlation_id=request.correlation_id,
+            sequence=self.ledger.next_sequence(),
+            issued_at=decided_at,
+            approval_request_id=request.approval_request_id,
+            approval_request_digest=request.approval_request_digest,
+            intent_id=request.intent_id,
+            consent_id=request.consent_id,
+            intent_digest=request.intent_digest,
+            challenge_nonce=request.challenge_nonce,
+            decision=decision,
+            decided_at=decided_at,
+            device_identity_generation=request.device_identity_generation,
+            device_key_thumbprint=request.device_key_thumbprint,
+            device_session_proof=self.identity_store.sign(proof_payload),
+        )
+        _, duplicate = self.approval_store.record_decision(message)
+        if duplicate:
+            raise RuntimeError("approval_decision_replayed")
+        await self._send(websocket, message)
+        self._publish_approvals()
+        return message
 
     async def run_forever(self) -> None:
         import websockets
@@ -249,6 +375,7 @@ class AgentCore:
                     close_code = frame.code if frame is not None else None
                 if close_code == 4403:
                     self._last_ids["safe_error_code"] = "credential_revoked"
+                    self.approval_store.invalidate_pending()
                 support_codes = {
                     "credential": "C1-AUTH-001",
                     "connect": "C1-NET-001",
@@ -263,6 +390,10 @@ class AgentCore:
                             diagnostic_stage, "C1-NET-002"
                         ),
                     )
+            finally:
+                self._current_websocket = None
+                self._session_id = None
+                self._publish_approvals()
             if self._stop.is_set():
                 break
             await self._wait_for_retry(backoff)
@@ -302,6 +433,21 @@ class AgentCore:
             ).hexdigest()
             fixture_proof = "phase4-c1"
         capabilities = ["observe"]
+        approval_identity = None
+        if (
+            protocol_version == "cad.agent/2"
+            and self.config.local_approval_enabled
+            and self.identity_store is not None
+        ):
+            try:
+                approval_identity = self.identity_store.load_identity()
+            except RuntimeError:
+                approval_identity = None
+            if (
+                approval_identity is not None
+                and approval_identity.device_id == self.config.device_id
+            ):
+                capabilities.append("cad.approval.device_local/1")
         capability_manifest = None
         packages = [self.package]
         if self.runtime_broker is not None and self.config.program_v0_enabled:
@@ -321,6 +467,11 @@ class AgentCore:
                         "cad.program.preview": "program_preview",
                         "cad.program.commit": "program_commit",
                         "cad.program.validate": "program_validate",
+                        "cad.recovery.receipt_query": "receipt_lookup",
+                        "cad.rollback.checkpoint.lookup": "checkpoint_lookup",
+                        "cad.rollback.preview": "rollback_preview",
+                        "cad.rollback.commit": "rollback_commit",
+                        "cad.rollback.validate": "rollback_validate",
                     }
                     capabilities.extend(
                         mapping[item]
@@ -378,12 +529,16 @@ class AgentCore:
         if not isinstance(welcome, WelcomeMessage):
             raise RuntimeError("Gateway did not send welcome")
         self._session_id = welcome.session_id
+        self._current_websocket = websocket
+        self._publish_approvals()
         self._last_ids["connection_stage"] = "presence"
         await self._refresh_presence(server_connected=True)
         self._last_ids["connection_stage"] = "online"
         self._last_ids.pop("safe_error_code", None)
         self._last_ids.pop("safe_error_type", None)
-        queue: asyncio.Queue[CommandMessage | ProgramCommandMessage] = asyncio.Queue(
+        queue: asyncio.Queue[
+            CommandMessage | ProgramCommandMessage | RollbackCommandMessage
+        ] = asyncio.Queue(
             maxsize=self.config.queue_size
         )
         receiver = asyncio.create_task(self._receive_loop(websocket, queue))
@@ -406,11 +561,19 @@ class AgentCore:
     async def _receive_loop(
         self,
         websocket: Any,
-        queue: asyncio.Queue[CommandMessage | ProgramCommandMessage],
+        queue: asyncio.Queue[
+            CommandMessage | ProgramCommandMessage | RollbackCommandMessage
+        ],
     ) -> None:
         async for raw in websocket:
             message = parse_agent_message(raw)
-            if isinstance(message, (CommandMessage, ProgramCommandMessage)):
+            if isinstance(message, ApprovalRequestMessage):
+                await self._handle_approval_request(websocket, message)
+            elif isinstance(message, ApprovalDecisionMessage):
+                raise RuntimeError("Gateway must not send approval decisions")
+            elif isinstance(
+                message, (CommandMessage, ProgramCommandMessage, RollbackCommandMessage)
+            ):
                 if message.session_id != self._session_id or message.device_id != self.config.device_id:
                     raise RuntimeError("command binding mismatch")
                 try:
@@ -430,15 +593,53 @@ class AgentCore:
                     )
                 raise RuntimeError("Gateway rejected Agent compatibility")
 
+    async def _handle_approval_request(
+        self,
+        websocket: Any,
+        request: ApprovalRequestMessage,
+    ) -> None:
+        if (
+            not self.config.local_approval_enabled
+            or self.identity_store is None
+            or websocket is not self._current_websocket
+        ):
+            raise RuntimeError("unexpected approval request")
+        identity = self.identity_store.load_identity()
+        if (
+            request.session_id != self._session_id
+            or request.device_id != self.config.device_id
+            or request.device_id != identity.device_id
+            or request.device_identity_generation != identity.generation
+            or request.device_key_thumbprint != identity.key_thumbprint
+        ):
+            self.approval_store.invalidate_pending()
+            self._publish_approvals()
+            raise RuntimeError("approval request binding mismatch")
+        try:
+            stored, duplicate = self.approval_store.record_request(request)
+        except ApprovalConflict as error:
+            raise RuntimeError("approval request conflict") from error
+        if self.paused:
+            self.approval_store.invalidate_pending()
+        elif duplicate and stored.decision is not None:
+            if stored.decision.session_id != self._session_id:
+                raise RuntimeError("approval decision belongs to replaced session")
+            await self._send(websocket, stored.decision)
+        self._publish_approvals()
+
     async def _worker(
         self,
         websocket: Any,
-        queue: asyncio.Queue[CommandMessage | ProgramCommandMessage],
+        queue: asyncio.Queue[
+            CommandMessage | ProgramCommandMessage | RollbackCommandMessage
+        ],
     ) -> None:
         while True:
             command = await queue.get()
             try:
-                if isinstance(command, ProgramCommandMessage):
+                if isinstance(command, RollbackCommandMessage):
+                    await self._handle_rollback_command(websocket, command)
+                elif isinstance(command, ProgramCommandMessage):
                     await self._handle_program_command(websocket, command)
                 else:
                     await self._handle_command(websocket, command)
@@ -566,6 +767,15 @@ class AgentCore:
             self._publish_program_rejection(command, code)
             await self._reject(websocket, command, code)
             return
+        if created:
+            self._append_phase7_evidence(
+                command,
+                "agent",
+                1,
+                "received",
+                "observed",
+                "Agent durably recorded the command",
+            )
         if not created:
             if entry.state in TERMINAL:
                 await self._ack(websocket, command, "already_terminal")
@@ -609,8 +819,24 @@ class AgentCore:
 
         if entry.state == "received":
             entry = self.ledger.transition(command.command_id, "accepted")
+            self._append_phase7_evidence(
+                command,
+                "agent",
+                2,
+                "accepted",
+                "observed",
+                "Agent accepted the exact command binding",
+            )
         await self._ack(websocket, command, "accepted")
         self.ledger.transition(command.command_id, "started")
+        self._append_phase7_evidence(
+            command,
+            "agent",
+            3,
+            "host_dispatch_started",
+            "observed",
+            "Agent started the bounded Managed Host dispatch",
+        )
         self._current_command_id = command.command_id
         support_id = f"P6-{command.command_id[-12:]}"
         self._last_ids.update(
@@ -669,6 +895,15 @@ class AgentCore:
                 terminal_state = self._program_error_state(error.code)
                 self._publish(mismatch_reason=error.code)
             self._last_ids["safe_error_code"] = error.code
+            self._append_phase7_evidence(
+                command,
+                "agent",
+                4,
+                "host_result_received",
+                "inconclusive" if uncertain else "aborted",
+                "Agent recorded the bounded Host execution failure",
+                {"error_code": error.code},
+            )
         except Exception:
             if command.kind == "program_commit":
                 entry = self.ledger.transition(
@@ -688,7 +923,38 @@ class AgentCore:
                     error_code="backend_error",
                 )
                 terminal_state = RuntimeState.INCOMPATIBLE
+            self._append_phase7_evidence(
+                command,
+                "agent",
+                4,
+                "host_result_received",
+                "inconclusive",
+                "Agent could not prove the exact Host outcome",
+                {"error_code": "backend_error"},
+            )
         else:
+            self._append_phase7_evidence(
+                command,
+                "agent",
+                4,
+                "host_result_received",
+                "observed",
+                "Agent received a bounded typed Host result",
+            )
+            milestone = result.get("milestone")
+            if isinstance(milestone, str):
+                self._append_phase7_evidence(
+                    command,
+                    "host",
+                    1,
+                    milestone,
+                    (
+                        "committed"
+                        if milestone == "effect_and_receipt_committed"
+                        else "aborted"
+                    ),
+                    "Managed Host returned an authoritative transaction milestone",
+                )
             entry = self.ledger.transition(
                 command.command_id,
                 "succeeded",
@@ -717,6 +983,208 @@ class AgentCore:
                 active_job_id=None,
             )
         await self._send_program_terminal(websocket, command, entry)
+
+    async def _handle_rollback_command(
+        self,
+        websocket: Any,
+        command: RollbackCommandMessage,
+    ) -> None:
+        if self.rollback_executor is None:
+            await self._reject(websocket, command, "capability_missing")
+            return
+        binding = command.binding.model_dump(mode="json")
+        package = {
+            "package_id": command.binding.package_id,
+            "version": command.binding.package_version,
+            "sha256": command.binding.package_hash.removeprefix("sha256:"),
+        }
+        try:
+            entry, created = self.ledger.record_received(
+                command_id=command.command_id,
+                job_id=command.job_id,
+                idempotency_key=command.idempotency_key,
+                payload_hash=command.payload_hash,
+                package=package,
+                session_id=command.session_id,
+                device_id=command.device_id,
+                kind=command.kind,
+                binding=binding,
+            )
+        except LedgerConflict as error:
+            code = (
+                "idempotency_conflict"
+                if str(error) == "idempotency_conflict"
+                else "payload_mismatch"
+            )
+            await self._reject(websocket, command, code)
+            return
+        if created:
+            self._append_phase7_evidence(
+                command,
+                "agent",
+                1,
+                "received",
+                "observed",
+                "Agent durably recorded the rollback command",
+            )
+        if not created:
+            if entry.state in TERMINAL:
+                await self._ack(websocket, command, "already_terminal")
+                await self._send_rollback_terminal(websocket, command, entry)
+                return
+            if entry.state == "started":
+                await self._ack(websocket, command, "duplicate")
+                return
+        if self.paused:
+            entry = self.ledger.transition(
+                command.command_id, "failed", error_code="paused_by_user"
+            )
+            await self._reject(websocket, command, "paused_by_user")
+            await self._send_rollback_terminal(websocket, command, entry)
+            return
+        if command.effect_class == "write" and not self.write_lock_enabled:
+            entry = self.ledger.transition(
+                command.command_id, "failed", error_code="write_lock_disabled"
+            )
+            await self._reject(websocket, command, "write_lock_disabled")
+            await self._send_rollback_terminal(websocket, command, entry)
+            return
+        try:
+            self.rollback_executor.validate_command(command)
+        except AgentExecutionError as error:
+            entry = self.ledger.transition(
+                command.command_id, "failed", error_code=error.code
+            )
+            await self._reject(websocket, command, error.code)
+            await self._send_rollback_terminal(websocket, command, entry)
+            return
+        if entry.state == "received":
+            self.ledger.transition(command.command_id, "accepted")
+            self._append_phase7_evidence(
+                command,
+                "agent",
+                2,
+                "accepted",
+                "observed",
+                "Agent accepted the exact rollback binding",
+            )
+        await self._ack(websocket, command, "accepted")
+        self.ledger.transition(command.command_id, "started")
+        self._append_phase7_evidence(
+            command,
+            "agent",
+            3,
+            "host_dispatch_started",
+            "observed",
+            "Agent started the bounded rollback Host dispatch",
+        )
+        self._current_command_id = command.command_id
+        self._publish(
+            runtime_state=RuntimeState.BUSY_REMOTE,
+            current_task={
+                "receipt_lookup": "Đang đọc biên nhận",
+                "checkpoint_lookup": "Đang đọc checkpoint",
+                "rollback_preview": "Đang kiểm tra khả năng hoàn tác",
+                "rollback_commit": "Đang hoàn tác các đối tượng đã tạo",
+                "rollback_validate": "Đang kiểm tra kết quả hoàn tác",
+            }[command.kind],
+            active_job_id=command.job_id,
+            support_id=f"P7-{command.command_id[-12:]}",
+        )
+        terminal_state = RuntimeState.READY
+        try:
+            result = await self.rollback_executor.execute(
+                command, write_lock_enabled=self.write_lock_enabled
+            )
+        except AgentExecutionError as error:
+            uncertain = command.kind == "rollback_commit" and error.code in {
+                "managed_host_unavailable",
+                "session_rejected",
+                "deadline_expired",
+                "outcome_unknown",
+            }
+            entry = self.ledger.transition(
+                command.command_id,
+                "outcome_unknown" if uncertain else "failed",
+                error_code="outcome_unknown" if uncertain else error.code,
+            )
+            terminal_state = (
+                RuntimeState.OUTCOME_UNKNOWN
+                if uncertain
+                else self._program_error_state(error.code)
+            )
+            self._append_phase7_evidence(
+                command,
+                "agent",
+                4,
+                "host_result_received",
+                "inconclusive" if uncertain else "aborted",
+                "Agent recorded the bounded rollback Host failure",
+                {"error_code": error.code},
+            )
+        except Exception:
+            uncertain = command.kind == "rollback_commit"
+            entry = self.ledger.transition(
+                command.command_id,
+                "outcome_unknown" if uncertain else "failed",
+                error_code="outcome_unknown" if uncertain else "backend_error",
+            )
+            terminal_state = (
+                RuntimeState.OUTCOME_UNKNOWN
+                if uncertain
+                else RuntimeState.INCOMPATIBLE
+            )
+            self._append_phase7_evidence(
+                command,
+                "agent",
+                4,
+                "host_result_received",
+                "inconclusive",
+                "Agent could not prove the exact rollback Host outcome",
+                {"error_code": "backend_error"},
+            )
+        else:
+            self._append_phase7_evidence(
+                command,
+                "agent",
+                4,
+                "host_result_received",
+                "observed",
+                "Agent received a bounded typed rollback Host result",
+            )
+            milestone = result.get("milestone")
+            if isinstance(milestone, str):
+                self._append_phase7_evidence(
+                    command,
+                    "host",
+                    1,
+                    milestone,
+                    (
+                        "rolled_back"
+                        if milestone == "effect_and_receipt_committed"
+                        else "aborted"
+                    ),
+                    "Managed Host returned an authoritative rollback milestone",
+                )
+            entry = self.ledger.transition(
+                command.command_id, "succeeded", result=result
+            )
+            revision = result.get(
+                "document_revision_after",
+                result.get("current_document_revision", command.binding.document_revision),
+            )
+            self._publish(
+                active_document_id=command.binding.document_id,
+                active_document_revision=str(revision),
+            )
+        finally:
+            self._current_command_id = None
+            self._publish(
+                runtime_state=RuntimeState.PAUSED if self.paused else terminal_state,
+                current_task=None,
+                active_job_id=None,
+            )
+        await self._send_rollback_terminal(websocket, command, entry)
 
     async def _handle_reconcile(self, websocket: Any, message: ReconcileMessage) -> None:
         if message.session_id != self._session_id or message.device_id != self.config.device_id:
@@ -1008,6 +1476,124 @@ class AgentCore:
         for callback in tuple(self._observers):
             with suppress(Exception):
                 callback(self._state)
+
+    def _publish_approvals(self) -> None:
+        views: list[PendingApprovalView] = []
+        identity = None
+        if self.identity_store is not None:
+            with suppress(RuntimeError):
+                identity = self.identity_store.load_identity()
+        pending = self.approval_store.pending()
+        if self.identity_store is not None and (
+            identity is None
+            or any(
+                stored.request.device_id != identity.device_id
+                or stored.request.device_identity_generation != identity.generation
+                or stored.request.device_key_thumbprint != identity.key_thumbprint
+                for stored in pending
+            )
+        ):
+            self.approval_store.invalidate_pending()
+            pending = ()
+        for stored in pending:
+            request = stored.request
+            summary = request.trusted_summary
+            binding_current = (
+                self.config.local_approval_enabled
+                and not self.paused
+                and self._current_websocket is not None
+                and request.session_id == self._session_id
+                and identity is not None
+                and request.device_id == identity.device_id
+                and request.device_identity_generation == identity.generation
+                and request.device_key_thumbprint == identity.key_thumbprint
+            )
+            views.append(
+                PendingApprovalView(
+                    approval_request_id=request.approval_request_id,
+                    intent_id=request.intent_id,
+                    consent_id=request.consent_id,
+                    operation=summary.operation,
+                    operation_summary=summary.operation_summary,
+                    document_name=summary.document_name,
+                    operation_count=summary.operation_count,
+                    entity_count=summary.entity_count,
+                    runtime_label=summary.runtime_label,
+                    package_label=f"{summary.package_id} {summary.package_version}",
+                    registry_version=summary.registry_version,
+                    risk_class=summary.risk_class,
+                    assurance=request.required_assurance,
+                    preview_created_at=summary.preview_created_at,
+                    expires_at=request.expires_at,
+                    warnings=tuple(summary.warnings),
+                    support_id=summary.support_id,
+                    actionable=binding_current,
+                    status_text=(
+                        "Đang chờ xác nhận trên thiết bị này"
+                        if binding_current
+                        else "Đang chờ Gateway gửi lại trên phiên hiện tại"
+                    ),
+                )
+            )
+        self._publish(
+            pending_approval_count=len(views),
+            pending_approvals=tuple(views),
+        )
+
+    async def _send_rollback_terminal(
+        self,
+        websocket: Any,
+        command: RollbackCommandMessage,
+        entry: Any,
+    ) -> None:
+        kwargs: dict[str, Any] = {}
+        if entry.state == "succeeded":
+            kwargs["result"] = entry.result
+        elif entry.state == "failed":
+            kwargs["error_code"] = entry.error_code or "backend_error"
+            kwargs["error_message"] = "Agent rollback command failed"
+        elif entry.state == "outcome_unknown":
+            kwargs["error_code"] = "outcome_unknown"
+            kwargs["error_message"] = (
+                "Rollback may have started; query the exact receipt before any action"
+            )
+        await self._send(
+            websocket,
+            RollbackResultMessage(
+                protocol_version="cad.agent/2",
+                session_id=self._session_id,
+                device_id=self.config.device_id,
+                job_id=command.job_id,
+                command_id=command.command_id,
+                sequence=self.ledger.next_sequence(),
+                kind=command.kind,
+                status=entry.state,
+                payload_hash=entry.payload_hash,
+                binding=command.binding,
+                **kwargs,
+            ),
+        )
+
+    def _append_phase7_evidence(
+        self,
+        command: ProgramCommandMessage | RollbackCommandMessage,
+        source: Literal["agent", "host"],
+        source_sequence: int,
+        milestone: str,
+        outcome: str,
+        summary: str,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        self.ledger.append_evidence(
+            event_id=f"{command.command_id}:{source}:{source_sequence}",
+            command_id=command.command_id,
+            source=source,
+            source_sequence=source_sequence,
+            milestone=milestone,
+            outcome=outcome,
+            summary=summary,
+            details=details,
+        )
 
     def _phase6_presence_fields(
         self,

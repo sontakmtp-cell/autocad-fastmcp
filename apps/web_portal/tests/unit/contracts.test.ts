@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   deviceSchema,
+  consentSchema,
+  executionIntentSchema,
   pairingSchema,
+  parsePhase7Id,
   parseOpaqueId,
   previewSchema,
   programRevisionSchema,
@@ -28,6 +31,7 @@ describe("Portal contracts", () => {
   it("rejects path injection in opaque IDs", () => {
     expect(() => parseOpaqueId("../device-b-0001")).toThrow();
     expect(() => parseOpaqueId("device/b")).toThrow();
+    expect(() => parsePhase7Id("C:\\private\\drawing33.dwg")).toThrow();
   });
 
   it("accepts Gateway UTC timestamps with an explicit offset", () => {
@@ -40,6 +44,46 @@ describe("Portal contracts", () => {
     });
 
     expect(pairing.status).toBe("pending");
+  });
+});
+
+describe("Phase 7 Portal projections", () => {
+  const digest = (value: string) => `sha256:${value.repeat(64)}`;
+
+  it("accepts only bounded trusted intent and consent fields", () => {
+    const intent = executionIntentSchema.parse({
+      schema_version: "cad.execution-intent/1",
+      intent_id: "intent-a-0001",
+      intent_version: 1,
+      owner_subject: "owner-a",
+      action: "program_commit",
+      state: "awaiting_approval",
+      state_version: 0,
+      device_id: "device-a-0001",
+      document_id: "drawing33-document",
+      expected_document_revision: "revision-001",
+      program_id: "program-a-0001",
+      program_revision: 1,
+      preview_id: "preview-a-0001",
+      risk_class: "medium",
+      required_assurance: "user_recent_auth",
+      trusted_effect_summary: [{
+        kind: "create_entities",
+        count: 2,
+        summary: "Tạo hai đối tượng",
+      }],
+      intent_digest: digest("a"),
+      created_at: "2026-07-27T08:00:00.000Z",
+      expires_at: "2026-07-27T08:10:00.000Z",
+      consent_id: "consent-a-0001",
+      released_job_id: null,
+    });
+    expect(intent).not.toHaveProperty("model_narrative");
+
+    expect(() => consentSchema.parse({
+      consent_id: "consent-a-0001",
+      owner_override: "owner-b",
+    })).toThrow();
   });
 });
 

@@ -1,23 +1,29 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
-import { requireSafeMutation } from "@/lib/security";
+import { recentAuthState, requireRecentAuth, requireSafeMutation } from "@/lib/security";
 import { createOAuthTransaction } from "@/lib/oauth";
 import type { PortalSession } from "@/lib/session";
 
 const session: PortalSession = {
   subject: "owner-a",
+  ownerKey: `user-${"a".repeat(64)}`,
   displayName: "Owner A",
   accessToken: "server-only-token",
   csrfToken: "csrf-token-at-least-thirty-two-characters",
   expiresAt: 4102444800,
+  authenticatedAt: 2_000,
 };
 
-function request(origin: string, csrf: string) {
+function request(
+  origin: string,
+  csrf: string,
+  contentType = "application/x-www-form-urlencoded",
+) {
   return new NextRequest("http://127.0.0.1:3210/api/bff/devices/device-a-0001/revoke", {
     method: "POST",
     headers: {
       origin,
-      "content-type": "application/x-www-form-urlencoded",
+      "content-type": contentType,
     },
     body: new URLSearchParams({ csrf }),
   });
@@ -41,6 +47,20 @@ describe("Portal mutations", () => {
       request("http://127.0.0.1:3210", "wrong"),
       session,
     )).rejects.toThrow("CSRF_REJECTED");
+    await expect(requireSafeMutation(
+      request("http://127.0.0.1:3210", session.csrfToken, "application/json"),
+      session,
+    )).rejects.toThrow("CONTENT_TYPE_REJECTED");
+  });
+});
+
+describe("recent authentication", () => {
+  it("fails closed for missing and stale auth_time, and accepts a bounded fresh value", () => {
+    expect(recentAuthState({ ...session, authenticatedAt: undefined }, 2_100)).toBe("missing");
+    expect(recentAuthState({ ...session, authenticatedAt: 1_000 }, 2_100)).toBe("stale");
+    expect(recentAuthState({ ...session, authenticatedAt: 2_000 }, 2_100)).toBe("valid");
+    expect(() => requireRecentAuth({ ...session, authenticatedAt: undefined }))
+      .toThrow("RECENT_AUTH_REQUIRED");
   });
 });
 

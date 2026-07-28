@@ -34,6 +34,17 @@ Phase 6 bổ sung các endpoint đọc owner-scoped:
 - `GET /api/portal/v1/receipts/{receipt_id}`
 - `GET /api/portal/v1/validations/{validation_id}`
 
+Phase 7 bổ sung approval owner-scoped:
+
+- `GET /api/portal/v1/intents/{intent_id}`
+- `GET /api/portal/v1/consents/{consent_id}`
+- `POST /api/portal/v1/consents/{consent_id}/approve`
+- `POST /api/portal/v1/consents/{consent_id}/deny`
+
+Hai mutation chỉ nhận JSON do BFF dựng lại từ record Gateway:
+`intent_digest`, `consent_version`, `challenge_nonce`, `decision`. Browser không
+được cung cấp owner, risk, assurance hoặc effect summary.
+
 ## Feature flags Phase 6
 
 Các flag mặc định fail-closed:
@@ -46,6 +57,16 @@ Các flag mặc định fail-closed:
 enforce allowlist, write lock, hard pause và Managed Write. Phase 6 không có
 approval button, trusted confirmation, `confirm=true` hoặc nút retry write khi
 `outcome_unknown`.
+
+## Feature flags Phase 7
+
+- `PORTAL_PHASE7_UI_ENABLED=false`
+- `PORTAL_RECENT_AUTH_APPROVAL_ENABLED=false`
+- `PORTAL_RECENT_AUTH_MAX_AGE_SECONDS=300`
+
+Hai flag phải cùng bật mới có form và route approval. `authenticatedAt` trong
+cookie mã hóa chỉ được tạo từ claim `auth_time` của ID token đã kiểm chữ ký,
+issuer, audience và nonce tại OAuth callback.
 
 ## Kiểm thử
 

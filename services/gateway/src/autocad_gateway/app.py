@@ -50,8 +50,13 @@ from .contracts import (
     CadPreviewOutput,
     CadCommitInput,
     CadCommitOutput,
+    CadCommitRollbackInput,
+    CadCommitRollbackOutput,
+    CadPreviewRollbackInput,
+    CadPreviewRollbackOutput,
     CadValidateInput,
     CadValidateOutput,
+    Phase7ConsentDecisionInput,
     Principal,
 )
 from .services import (
@@ -119,6 +124,7 @@ class GatewayConfig:
         "phase4_c1",
         "phase5_identity",
         "phase6_program",
+        "phase7_c2",
     ] = "local"
     db_path: str | None = None
     fixture_tokens: tuple[tuple[str, str], ...] = ()
@@ -143,6 +149,13 @@ class GatewayConfig:
     high_risk_enabled: bool = False
     phase6_allowed_device_ids: tuple[str, ...] = ()
     phase6_policy_version: str = "phase6-policy/1"
+    phase7_c2_enabled: bool = False
+    trusted_approval_enabled: bool = False
+    device_local_approval_enabled: bool = False
+    portal_recent_auth_approval_enabled: bool = False
+    public_rollback_enabled: bool = False
+    recovery_cases_enabled: bool = False
+    phase6_direct_commit_lab_enabled: bool = False
 
     @classmethod
     def from_env(cls) -> "GatewayConfig":
@@ -232,13 +245,20 @@ class GatewayConfig:
             profile=profile,
             db_path=(
                 os.environ.get(
-                    "AUTOCAD_MCP_PHASE6_DB_PATH",
+                    (
+                        "AUTOCAD_MCP_PHASE7_DB_PATH"
+                        if profile == "phase7_c2"
+                        else "AUTOCAD_MCP_PHASE6_DB_PATH"
+                    ),
                     os.environ.get(
+                        "AUTOCAD_MCP_PHASE6_DB_PATH",
+                        os.environ.get(
                         "AUTOCAD_MCP_PHASE5_DB_PATH",
                         os.environ.get("AUTOCAD_MCP_PHASE4_DB_PATH", ""),
+                        ),
                     ),
                 ).strip()
-                if profile == "phase6_program"
+                if profile in {"phase6_program", "phase7_c2"}
                 else (
                     os.environ.get(
                         "AUTOCAD_MCP_PHASE5_DB_PATH",
@@ -313,6 +333,27 @@ class GatewayConfig:
             phase6_policy_version=os.environ.get(
                 "AUTOCAD_MCP_PHASE6_POLICY_VERSION", "phase6-policy/1"
             ).strip(),
+            phase7_c2_enabled=os.environ.get(
+                "AUTOCAD_MCP_PHASE7_C2_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            trusted_approval_enabled=os.environ.get(
+                "AUTOCAD_MCP_TRUSTED_APPROVAL_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            device_local_approval_enabled=os.environ.get(
+                "AUTOCAD_MCP_DEVICE_LOCAL_APPROVAL_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            portal_recent_auth_approval_enabled=os.environ.get(
+                "AUTOCAD_MCP_PORTAL_RECENT_AUTH_APPROVAL_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            public_rollback_enabled=os.environ.get(
+                "AUTOCAD_MCP_PUBLIC_ROLLBACK_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            recovery_cases_enabled=os.environ.get(
+                "AUTOCAD_MCP_RECOVERY_CASES_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            phase6_direct_commit_lab_enabled=os.environ.get(
+                "AUTOCAD_MCP_PHASE6_DIRECT_COMMIT_LAB_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
         )
         return config.validate()
 
@@ -359,9 +400,11 @@ class GatewayConfig:
             "phase4_c1",
             "phase5_identity",
             "phase6_program",
+            "phase7_c2",
         }:
             raise ValueError(
-                "profile must be local, phase3_poc, phase4_c1, phase5_identity or phase6_program"
+                "profile must be local, phase3_poc, phase4_c1, phase5_identity, "
+                "phase6_program or phase7_c2"
             )
         if not 1 <= self.stale_after_seconds <= 3600:
             raise ValueError("stale_after_seconds must be between 1 and 3600")
@@ -409,7 +452,7 @@ class GatewayConfig:
                     raise ValueError(f"phase4_c1 {name} must be a canonical HTTPS URL")
             if urlsplit(self.public_origin or "").path not in {"", "/"}:
                 raise ValueError("phase4_c1 public origin must not contain a path")
-        if self.profile in {"phase5_identity", "phase6_program"}:
+        if self.profile in {"phase5_identity", "phase6_program", "phase7_c2"}:
             required = {
                 "db_path": self.db_path,
                 "OAuth issuer": self.oauth_issuer,
@@ -451,6 +494,28 @@ class GatewayConfig:
             raise ValueError("managed_write requires program_v0")
         if self.managed_write_enabled and not self.phase6_allowed_device_ids:
             raise ValueError("managed_write requires an explicit Phase 6 device allowlist")
+        if self.phase6_direct_commit_lab_enabled:
+            if self.profile != "phase6_program":
+                raise ValueError(
+                    "Phase 6 direct commit lab mode is forbidden outside phase6_program"
+                )
+            if not self.managed_write_enabled or not self.phase6_allowed_device_ids:
+                raise ValueError(
+                    "Phase 6 direct commit lab mode requires managed write and allowlist"
+                )
+        if self.profile == "phase7_c2" and self.phase6_direct_commit_lab_enabled:
+            raise ValueError("Phase 6 direct commit lab mode is forbidden in C2")
+        if (
+            self.device_local_approval_enabled
+            or self.portal_recent_auth_approval_enabled
+        ) and not self.trusted_approval_enabled:
+            raise ValueError("approval presenter requires trusted approval")
+        if (
+            self.trusted_approval_enabled
+            or self.public_rollback_enabled
+            or self.recovery_cases_enabled
+        ) and not self.phase7_c2_enabled:
+            raise ValueError("Phase 7 feature requires the Phase 7 C2 master flag")
         if (
             not self.phase6_policy_version
             or len(self.phase6_policy_version.encode("utf-8")) > 64
@@ -721,6 +786,7 @@ def _principal(
     if getattr(services, "profile", None) in {
         "phase5_identity",
         "phase6_program",
+        "phase7_c2",
     }:
         issuer = token.claims.get("iss")
         if not isinstance(issuer, str) or not issuer:
@@ -772,6 +838,22 @@ def _safe_error(error: GatewayError, correlation_id: str) -> ToolError:
         "write_lock_disabled": "the Desktop Agent write lock is disabled",
         "policy_mismatch": "the Gateway write policy changed",
         "runtime_mismatch": "the pinned Managed R25 runtime changed",
+        "rollback_unavailable": "the receipt has no eligible Phase 7 checkpoint",
+        "rollback_conflict": "the rollback plan contains conflicts",
+        "rollback_plan_expired": "the rollback plan has expired",
+        "rollback_plan_stale": "the rollback plan binding changed",
+        "intent_denied": "the execution intent was denied",
+        "intent_expired": "the execution intent expired",
+        "intent_invalidated": "the execution intent binding was invalidated",
+        "intent_cancelled": "the execution intent was cancelled",
+        "consent_expired": "the trusted consent expired",
+        "consent_not_approved": "trusted consent has not been approved",
+        "approval_replay": "the trusted approval was already decided",
+        "approval_binding_mismatch": "the trusted approval binding does not match",
+        "approval_session_replaced": "the trusted device session was replaced",
+        "approval_proof_invalid": "the trusted device proof is invalid",
+        "device_identity_invalid": "the stable paired device identity is unavailable",
+        "version_conflict": "the approval state changed; reload before retrying",
     }
     public_code = error.code if error.code in messages else "internal_error"
     details: list[str] = []
@@ -823,10 +905,13 @@ def build_mcp_server(
     phase3 = bool(getattr(services, "is_phase3", False))
     phase4 = bool(getattr(services, "is_phase4", False))
     phase6 = bool(getattr(services, "is_phase6", False))
+    phase7 = bool(getattr(services, "is_phase7", False))
     write_auth_check = require_scopes("autocad.write") if auth is not None else None
     mcp = FastMCP(
         name=(
-            "AutoCAD Gateway public v1.3"
+            "AutoCAD Gateway public v1.4"
+            if phase7
+            else "AutoCAD Gateway public v1.3"
             if phase6
             else "AutoCAD Gateway public v1.2"
             if phase4
@@ -835,7 +920,9 @@ def build_mcp_server(
             else "AutoCAD Gateway public v1"
         ),
         version=(
-            "0.6.0"
+            "0.7.0"
+            if phase7
+            else "0.6.0"
             if phase6
             else "0.4.0"
             if phase4
@@ -1160,7 +1247,7 @@ def build_mcp_server(
             del ctx
             correlation_id = current_correlation_id(make_correlation_id)
             result = await _run(
-                lambda: program_service.commit(
+                lambda: services.commit_program(
                     CadCommitInput(
                         preview_id=preview_id,
                         idempotency_key=idempotency_key,
@@ -1171,6 +1258,85 @@ def build_mcp_server(
                 correlation_id,
             )
             return result.model_dump(mode="json")
+
+        if phase7:
+            phase7_admission = services.phase7_admission
+            if phase7_admission is None:
+                raise RuntimeError("Phase 7 profile requires admission service")
+
+            @mcp.tool(
+                name="cad_preview_rollback",
+                title="Preview rollback from a Phase 7 checkpoint",
+                description=(
+                    "Create a bounded rollback plan from one owner-scoped Phase 7 "
+                    "receipt or checkpoint. Raw entity handles are never accepted."
+                ),
+                output_schema=CadPreviewRollbackOutput.model_json_schema(),
+                annotations=_tool_annotations(
+                    idempotent=False, read_only=False, destructive=False
+                ),
+                auth=write_auth_check,
+            )
+            async def cad_preview_rollback(
+                idempotency_key: Annotated[
+                    str, Field(min_length=1, max_length=128)
+                ],
+                receipt_id: str | None = None,
+                checkpoint_id: str | None = None,
+                *,
+                ctx: Context,
+            ) -> dict[str, Any]:
+                del ctx
+                correlation_id = current_correlation_id(make_correlation_id)
+                result = await _run(
+                    lambda: phase7_admission.preview_rollback(
+                        CadPreviewRollbackInput(
+                            receipt_id=receipt_id,
+                            checkpoint_id=checkpoint_id,
+                            idempotency_key=idempotency_key,
+                        ),
+                        _principal(auth, services, correlation_id),
+                        correlation_id,
+                    ),
+                    correlation_id,
+                )
+                return result.model_dump(mode="json")
+
+            @mcp.tool(
+                name="cad_commit_rollback",
+                title="Commit an approved rollback plan",
+                description=(
+                    "Request execution of one exact eligible rollback plan. "
+                    "Trusted approval is always enforced by the Gateway."
+                ),
+                output_schema=CadCommitRollbackOutput.model_json_schema(),
+                annotations=_tool_annotations(
+                    idempotent=False, read_only=False, destructive=True
+                ),
+                auth=write_auth_check,
+            )
+            async def cad_commit_rollback(
+                rollback_plan_id: str,
+                idempotency_key: Annotated[
+                    str, Field(min_length=1, max_length=128)
+                ],
+                *,
+                ctx: Context,
+            ) -> dict[str, Any]:
+                del ctx
+                correlation_id = current_correlation_id(make_correlation_id)
+                result = await _run(
+                    lambda: phase7_admission.commit_rollback(
+                        CadCommitRollbackInput(
+                            rollback_plan_id=rollback_plan_id,
+                            idempotency_key=idempotency_key,
+                        ),
+                        _principal(auth, services, correlation_id),
+                        correlation_id,
+                    ),
+                    correlation_id,
+                )
+                return result.model_dump(mode="json")
 
         @mcp.tool(
             name="cad_validate",
@@ -1391,6 +1557,97 @@ def build_mcp_server(
                 [ResourceContent(content=value, mime_type="application/json")]
             )
 
+    if phase7:
+        phase7_admission = services.phase7_admission
+
+        async def _phase7_resource(
+            reader: Callable[[str, str], Any], record_id: str
+        ) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(
+                lambda: reader(principal.subject, record_id), correlation_id
+            )
+            return ResourceResult(
+                [ResourceContent(content=value, mime_type="application/json")]
+            )
+
+        @mcp.resource(
+            "cad://intents/{intent_id}",
+            name="Phase 7 execution intent",
+            description="Read one bounded owner-scoped execution intent.",
+            mime_type="application/json",
+            auth=auth_check,
+        )
+        async def intent_resource(intent_id: str) -> ResourceResult:
+            return await _phase7_resource(phase7_admission.read_intent, intent_id)
+
+        @mcp.resource(
+            "cad://consents/{consent_id}",
+            name="Phase 7 consent",
+            description="Read one bounded owner-scoped consent.",
+            mime_type="application/json",
+            auth=auth_check,
+        )
+        async def consent_resource(consent_id: str) -> ResourceResult:
+            return await _phase7_resource(phase7_admission.read_consent, consent_id)
+
+        @mcp.resource(
+            "cad://evidence/{job_id}",
+            name="Phase 7 execution evidence",
+            description="Read bounded append-only evidence for one owner job.",
+            mime_type="application/json",
+            auth=auth_check,
+        )
+        async def evidence_resource(job_id: str) -> ResourceResult:
+            return await _phase7_resource(phase7_admission.read_evidence, job_id)
+
+        @mcp.resource(
+            "cad://recovery/{case_id}",
+            name="Phase 7 recovery case",
+            description="Read one bounded owner-scoped recovery case.",
+            mime_type="application/json",
+            auth=auth_check,
+        )
+        async def recovery_resource(case_id: str) -> ResourceResult:
+            return await _phase7_resource(phase7_admission.read_recovery, case_id)
+
+        @mcp.resource(
+            "cad://checkpoints/{checkpoint_id}",
+            name="Phase 7 rollback checkpoint",
+            description="Read one bounded owner-scoped rollback checkpoint.",
+            mime_type="application/json",
+            auth=auth_check,
+        )
+        async def checkpoint_resource(checkpoint_id: str) -> ResourceResult:
+            return await _phase7_resource(
+                phase7_admission.read_checkpoint, checkpoint_id
+            )
+
+        @mcp.resource(
+            "cad://rollbacks/{rollback_id}",
+            name="Phase 7 rollback plan",
+            description="Read one bounded owner-scoped rollback plan.",
+            mime_type="application/json",
+            auth=auth_check,
+        )
+        async def rollback_resource(rollback_id: str) -> ResourceResult:
+            return await _phase7_resource(
+                phase7_admission.read_rollback, rollback_id
+            )
+
+        @mcp.resource(
+            "cad://rollback-receipts/{receipt_id}",
+            name="Phase 7 rollback receipt",
+            description="Read one bounded owner-scoped rollback receipt.",
+            mime_type="application/json",
+            auth=auth_check,
+        )
+        async def rollback_receipt_resource(receipt_id: str) -> ResourceResult:
+            return await _phase7_resource(
+                phase7_admission.read_rollback_receipt, receipt_id
+            )
+
     @mcp.prompt(
         name="plan_cad_change",
         title="Plan a CAD change",
@@ -1453,6 +1710,7 @@ def create_app(
         "phase4_c1",
         "phase5_identity",
         "phase6_program",
+        "phase7_c2",
     } and auth is None:
         raise ValueError(f"{config.profile} requires OAuth authentication")
     if stateless_http is not None:
@@ -1505,8 +1763,10 @@ def create_app(
             websocket,
             authenticator=authenticator,
             registry=registry,
-            on_message=transport.handle_message,
-            validate_message=getattr(transport, "validate_message", None),
+            on_message=getattr(services, "on_agent_message", transport.handle_message),
+            validate_message=getattr(
+                services, "validate_agent_message", transport.validate_message
+            ),
             on_connected=getattr(services, "on_agent_connected", transport.handle_connected),
             on_heartbeat=getattr(services, "on_agent_heartbeat", None),
             on_disconnected=getattr(
@@ -1858,6 +2118,7 @@ def create_app(
                     "pins",
                     "created_at",
                 )
+
             }
         return phase6_portal_response(value)
 
@@ -1928,6 +2189,141 @@ def create_app(
             }
         return phase6_portal_response(job)
 
+    async def phase7_portal_context(
+        request: Request, *, required_scope: str
+    ) -> tuple[str, str, str, dict[str, Any]] | JSONResponse:
+        authorization = request.headers.get("authorization", "")
+        if not authorization.lower().startswith("bearer ") or auth is None:
+            return JSONResponse({"error": "invalid_token"}, status_code=401)
+        token = await auth.verify_token(authorization[7:].strip())
+        if token is None:
+            return JSONResponse({"error": "invalid_token"}, status_code=401)
+        issuer = token.claims.get("iss")
+        subject = token.claims.get("sub")
+        if (
+            not isinstance(issuer, str)
+            or not issuer
+            or not isinstance(subject, str)
+            or not subject
+        ):
+            return JSONResponse({"error": "invalid_token"}, status_code=401)
+        if required_scope not in token.scopes:
+            return JSONResponse({"error": "insufficient_scope"}, status_code=403)
+        from .identity import owner_key
+
+        return owner_key(issuer, subject), issuer, subject, dict(token.claims)
+
+    def phase7_http_error(error: GatewayError) -> JSONResponse:
+        status = (
+            404
+            if error.code == "not_found"
+            else 401
+            if error.code == "recent_auth_required"
+            else 409
+            if error.code
+            in {
+                "approval_replay",
+                "approval_binding_mismatch",
+                "version_conflict",
+                "consent_expired",
+                "intent_expired",
+            }
+            else 403
+            if error.code == "feature_disabled"
+            else 400
+        )
+        return JSONResponse({"error": error.code}, status_code=status)
+
+    async def portal_phase7_intent(request: Request) -> JSONResponse:
+        context = await phase7_portal_context(
+            request, required_scope="autocad.read"
+        )
+        if isinstance(context, JSONResponse):
+            return context
+        owner, _, _, _ = context
+        try:
+            value = await services.phase7_admission.portal_intent(
+                owner, request.path_params["intent_id"]
+            )
+        except GatewayError as error:
+            return phase7_http_error(error)
+        return phase6_portal_response(value)
+
+    async def portal_phase7_consent(request: Request) -> JSONResponse:
+        context = await phase7_portal_context(
+            request, required_scope="autocad.read"
+        )
+        if isinstance(context, JSONResponse):
+            return context
+        owner, _, _, _ = context
+        try:
+            value = await services.phase7_admission.portal_consent(
+                owner, request.path_params["consent_id"]
+            )
+        except GatewayError as error:
+            return phase7_http_error(error)
+        return phase6_portal_response(value)
+
+    async def portal_phase7_decide(
+        request: Request, decision: Literal["approved", "denied"]
+    ) -> JSONResponse:
+        context = await phase7_portal_context(
+            request, required_scope="autocad.write"
+        )
+        if isinstance(context, JSONResponse):
+            return context
+        owner, issuer, subject, claims = context
+        origin = request.headers.get("origin")
+        if (
+            not origin
+            or not config.public_origin
+            or not _origin_matches(origin, config.public_origin)
+        ):
+            return JSONResponse({"error": "origin_forbidden"}, status_code=403)
+        try:
+            body = await identity_payload(request, Phase7ConsentDecisionInput)
+        except (ValueError, ValidationError):
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        expected_decision = "approve" if decision == "approved" else "deny"
+        if body.decision != expected_decision:
+            return JSONResponse(
+                {"error": "approval_binding_mismatch"}, status_code=409
+            )
+        if request.headers.get("x-csrf-token") != body.challenge_nonce:
+            return JSONResponse({"error": "csrf_failed"}, status_code=403)
+        try:
+            value = await services.phase7_admission.portal_decide(
+                owner_subject=owner,
+                consent_id=request.path_params["consent_id"],
+                decision=decision,
+                intent_digest=body.intent_digest,
+                consent_version=body.consent_version,
+                nonce=body.challenge_nonce,
+                actor_issuer=issuer,
+                actor_subject=subject,
+                auth_time=claims.get("auth_time"),
+            )
+        except GatewayError as error:
+            return phase7_http_error(error)
+        consent = value.get("consent")
+        intent = value.get("intent")
+        if not isinstance(consent, dict) or not isinstance(intent, dict):
+            return JSONResponse({"error": "invalid_response"}, status_code=502)
+        return phase6_portal_response(
+            {
+                "status": decision,
+                "consent_id": consent["consent_id"],
+                "consent_version": consent["consent_version"],
+                "intent_id": intent["intent_id"],
+            }
+        )
+
+    async def portal_phase7_approve(request: Request) -> JSONResponse:
+        return await portal_phase7_decide(request, "approved")
+
+    async def portal_phase7_deny(request: Request) -> JSONResponse:
+        return await portal_phase7_decide(request, "denied")
+
     @asynccontextmanager
     async def lifespan(app: Starlette):
         await services.initialize()
@@ -1944,7 +2340,7 @@ def create_app(
             Route("/readyz", readyz, methods=["GET"]),
             WebSocketRoute("/agent/ws", agent_ws),
     ]
-    if config.profile in {"phase5_identity", "phase6_program"}:
+    if config.profile in {"phase5_identity", "phase6_program", "phase7_c2"}:
         routes.extend(
             [
                 Route("/api/agent/v1/enrollments", pairing_start, methods=["POST"]),
@@ -2008,7 +2404,7 @@ def create_app(
                 Route("/identity/device/revoke", device_revoke, methods=["POST"]),
             ]
         )
-    if config.profile == "phase6_program":
+    if config.profile in {"phase6_program", "phase7_c2"}:
         routes.extend(
             [
                 Route(
@@ -2040,6 +2436,31 @@ def create_app(
                     "/api/portal/v1/jobs/{job_id:str}",
                     portal_phase6_job,
                     methods=["GET"],
+                ),
+            ]
+        )
+    if config.profile == "phase7_c2":
+        routes.extend(
+            [
+                Route(
+                    "/api/portal/v1/intents/{intent_id:str}",
+                    portal_phase7_intent,
+                    methods=["GET"],
+                ),
+                Route(
+                    "/api/portal/v1/consents/{consent_id:str}",
+                    portal_phase7_consent,
+                    methods=["GET"],
+                ),
+                Route(
+                    "/api/portal/v1/consents/{consent_id:str}/approve",
+                    portal_phase7_approve,
+                    methods=["POST"],
+                ),
+                Route(
+                    "/api/portal/v1/consents/{consent_id:str}/deny",
+                    portal_phase7_deny,
+                    methods=["POST"],
                 ),
             ]
         )

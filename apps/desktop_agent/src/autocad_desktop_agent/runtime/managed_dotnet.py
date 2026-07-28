@@ -344,6 +344,11 @@ class ManagedDotNetCadReadPort:
             "cad.program.preview",
             "cad.program.commit",
             "cad.program.validate",
+            "cad.recovery.receipt_query",
+            "cad.rollback.checkpoint.lookup",
+            "cad.rollback.preview",
+            "cad.rollback.commit",
+            "cad.rollback.validate",
         }
         capabilities = [
             capability
@@ -388,15 +393,33 @@ class ManagedDotNetCadReadPort:
             "program_preview": "cad.program.preview",
             "program_commit": "cad.program.commit",
             "program_validate": "cad.program.validate",
+            "receipt_lookup": "cad.recovery.receipt_query",
+            "checkpoint_lookup": "cad.rollback.checkpoint.lookup",
+            "rollback_preview": "cad.rollback.preview",
+            "rollback_commit": "cad.rollback.commit",
+            "rollback_validate": "cad.rollback.validate",
         }.get(kind)
         if operation_id is None:
             return CadPortResult(False, error_code="capability_missing")
         try:
             await self._ensure_handshake()
+            host_arguments = dict(arguments)
+            execution_binding = host_arguments.get("execution_binding")
+            if kind not in {
+                "program_preview",
+                "program_commit",
+                "program_validate",
+            }:
+                host_arguments.pop("execution_binding", None)
+            document_id = (
+                execution_binding.get("document_id")
+                if isinstance(execution_binding, dict)
+                else None
+            )
             result = await self._command(
                 operation_id,
-                arguments=arguments,
-                document_id=arguments["execution_binding"]["document_id"],
+                arguments=host_arguments,
+                document_id=document_id,
                 deadline_at=deadline_at,
             )
         except Exception as error:

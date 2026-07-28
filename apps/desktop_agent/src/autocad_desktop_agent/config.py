@@ -70,6 +70,9 @@ class AgentConfig:
     identity_mode: IdentityMode = IdentityMode.LAB_CREDENTIAL
     gateway_http_url: str = ""
     portal_url: str = ""
+    phase7_c2_enabled: bool = False
+    trusted_approval_enabled: bool = False
+    device_local_approval_enabled: bool = False
 
     @classmethod
     def from_env(cls) -> "AgentConfig":
@@ -130,6 +133,18 @@ class AgentConfig:
                 "AUTOCAD_AGENT_PORTAL_URL",
                 "",
             ).strip(),
+            phase7_c2_enabled=_env_flag(
+                "AUTOCAD_MCP_PHASE7_C2_ENABLED",
+                False,
+            ),
+            trusted_approval_enabled=_env_flag(
+                "AUTOCAD_MCP_TRUSTED_APPROVAL_ENABLED",
+                False,
+            ),
+            device_local_approval_enabled=_env_flag(
+                "AUTOCAD_MCP_DEVICE_LOCAL_APPROVAL_ENABLED",
+                False,
+            ),
         )
         return config.validate()
 
@@ -203,6 +218,15 @@ class AgentConfig:
                 "managed write requires AUTOCAD_MCP_PROGRAM_POLICY_VERSION"
             )
         return self
+
+    @property
+    def local_approval_enabled(self) -> bool:
+        return (
+            self.phase7_c2_enabled
+            and self.trusted_approval_enabled
+            and self.device_local_approval_enabled
+            and self.identity_mode == IdentityMode.BROWSER_PAIRING
+        )
 
     @property
     def package(self) -> dict[str, str]:

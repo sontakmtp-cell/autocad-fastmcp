@@ -30,6 +30,7 @@ def build_services(config: GatewayConfig) -> Any:
         "phase4_c1",
         "phase5_identity",
         "phase6_program",
+        "phase7_c2",
     }:
         tokens = fixture_token_map(config)
         phase4 = config.profile == "phase4_c1"
@@ -37,6 +38,7 @@ def build_services(config: GatewayConfig) -> Any:
             "phase4_c1",
             "phase5_identity",
             "phase6_program",
+            "phase7_c2",
         }
         services = DurableGatewayServices(
             SqliteDatabase(Path(config.db_path or "")),
@@ -53,8 +55,19 @@ def build_services(config: GatewayConfig) -> Any:
             managed_write_enabled=config.managed_write_enabled,
             allowed_write_device_ids=config.phase6_allowed_device_ids,
             program_policy_version=config.phase6_policy_version,
+            phase7_c2_enabled=config.phase7_c2_enabled,
+            trusted_approval_enabled=config.trusted_approval_enabled,
+            device_local_approval_enabled=config.device_local_approval_enabled,
+            portal_recent_auth_approval_enabled=(
+                config.portal_recent_auth_approval_enabled
+            ),
+            public_rollback_enabled=config.public_rollback_enabled,
+            recovery_cases_enabled=config.recovery_cases_enabled,
+            phase6_direct_commit_lab_enabled=(
+                config.phase6_direct_commit_lab_enabled
+            ),
         )
-        if config.profile in {"phase5_identity", "phase6_program"}:
+        if config.profile in {"phase5_identity", "phase6_program", "phase7_c2"}:
             services.identity = Phase5IdentityService(services.database, services.registry)
             services.agent_authenticator = PairedDeviceAuthenticator(services.identity)
         return services
@@ -80,13 +93,22 @@ def build_agent_authenticator(config: GatewayConfig) -> FixtureDeviceAuthenticat
 
 
 def build_human_auth(config: GatewayConfig) -> Any | None:
-    if config.profile not in {"phase4_c1", "phase5_identity", "phase6_program"}:
+    if config.profile not in {
+        "phase4_c1",
+        "phase5_identity",
+        "phase6_program",
+        "phase7_c2",
+    }:
         return None
     return build_phase4_auth(
         issuer=config.oauth_issuer or "",
         audience=config.oauth_audience or "",
         jwks_uri=config.oauth_jwks_uri or "",
         public_origin=config.public_origin or "",
-        include_device_manage=config.profile in {"phase5_identity", "phase6_program"},
-        include_write=config.profile == "phase6_program",
+        include_device_manage=config.profile in {
+            "phase5_identity",
+            "phase6_program",
+            "phase7_c2",
+        },
+        include_write=config.profile in {"phase6_program", "phase7_c2"},
     )

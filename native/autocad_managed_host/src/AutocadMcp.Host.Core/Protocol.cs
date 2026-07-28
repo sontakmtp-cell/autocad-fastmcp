@@ -287,6 +287,11 @@ public static class EnvelopeValidator
 
     private static void ValidateArguments(string operationId, JsonElement arguments)
     {
+        if (Phase7RollbackContract.OperationIds.Contains(operationId))
+        {
+            _ = Phase7RollbackParser.Parse(operationId, arguments);
+            return;
+        }
         if (CadProgramV02Contract.OperationIds.Contains(operationId))
         {
             _ = CadProgramV02Parser.ParseRequest(operationId, arguments);
@@ -452,7 +457,12 @@ public sealed class OperationRegistry
         "document.events.summary",
         "cad.program.preview",
         "cad.program.commit",
-        "cad.program.validate"
+        "cad.program.validate",
+        "cad.recovery.receipt_query",
+        "cad.rollback.checkpoint.lookup",
+        "cad.rollback.preview",
+        "cad.rollback.commit",
+        "cad.rollback.validate"
     ];
     public IReadOnlyCollection<string> OperationIds => Allowed;
 

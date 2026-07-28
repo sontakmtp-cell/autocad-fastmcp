@@ -11,6 +11,7 @@ from autocad_contracts import (
     ProgramResultMessage,
     agent_program_command_json_schema,
     agent_program_result_json_schema,
+    agent_rollback_json_schema,
     canonical_payload_hash,
     canonical_preview_digest,
     canonical_program_digest,
@@ -273,11 +274,15 @@ def test_only_commit_can_report_outcome_unknown():
     [
         ("cad-agent-2-program-command.schema.json", agent_program_command_json_schema),
         ("cad-agent-2-program-result.schema.json", agent_program_result_json_schema),
+        ("cad-agent-2-rollback.schema.json", agent_rollback_json_schema),
     ],
 )
 def test_agent_program_schema_snapshots_are_current(filename, generated):
     snapshot = json.loads((ROOT / "schemas" / filename).read_text(encoding="utf-8"))
     assert snapshot == generated()
-    assert snapshot["additionalProperties"] is False
     assert snapshot["$schema"].endswith("2020-12/schema")
-    assert snapshot["allOf"]
+    if filename == "cad-agent-2-rollback.schema.json":
+        assert snapshot["oneOf"]
+    else:
+        assert snapshot["additionalProperties"] is False
+        assert snapshot["allOf"]

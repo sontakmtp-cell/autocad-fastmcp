@@ -37,10 +37,17 @@ MAX_JSON_STRING_BYTES = 65_536
 MAX_JSON_KEY_BYTES = 256
 MAX_SEQUENCE = 1_000_000_000
 MAX_PACKAGES = 32
+MAX_APPROVAL_MESSAGE_BYTES = 65_536
+MAX_APPROVAL_WARNINGS = 16
 
-_CAPABILITY_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
+_PACKAGE_ID_PATTERN = re.compile(r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$")
+_CAPABILITY_PATTERN = re.compile(
+    r"^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*(?:/[1-9][0-9]*)?$"
+)
 _SHA256_PATTERN = r"^[0-9a-f]{64}$"
 _PREFIXED_SHA256_PATTERN = r"^sha256:[0-9a-f]{64}$"
+_BOUND_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$"
+_NONCE_PATTERN = r"^[A-Za-z0-9_-]{32,128}$"
 _PHASE6_STATE_FIELDS = {
     "write_lock_enabled",
     "hard_pause",
@@ -171,7 +178,7 @@ class PackageManifestEntry(BaseModel):
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    package_id: str = Field(min_length=1, max_length=128, pattern=_CAPABILITY_PATTERN.pattern)
+    package_id: str = Field(min_length=1, max_length=128, pattern=_PACKAGE_ID_PATTERN.pattern)
     version: str = Field(min_length=1, max_length=64)
     sha256: str = Field(pattern=_SHA256_PATTERN)
 
@@ -421,6 +428,179 @@ class WelcomeMessage(AgentEnvelope):
     @classmethod
     def _validate_server_time(cls, value: str) -> str:
         return _timezone_timestamp(value)
+
+
+class ApprovalTrustedSummary(AgentModel):
+    """Server-derived fields that the local operator may trust."""
+
+    operation: Literal["program_commit", "rollback_commit"]
+    operation_summary: str = Field(min_length=1, max_length=512)
+    document_name: str = Field(
+        min_length=1,
+        max_length=255,
+        pattern=r"^[^/\\:\x00-\x1f]+$",
+    )
+    document_id: str = Field(min_length=1, max_length=256, pattern=_BOUND_ID_PATTERN)
+    operation_count: int = Field(ge=1, le=256)
+    entity_count: int = Field(ge=0, le=256)
+    runtime_label: str = Field(min_length=1, max_length=128)
+    runtime_id: str = Field(min_length=1, max_length=128, pattern=_BOUND_ID_PATTERN)
+    package_id: str = Field(min_length=1, max_length=128, pattern=_BOUND_ID_PATTERN)
+    package_version: str = Field(min_length=1, max_length=128)
+    registry_version: str = Field(min_length=1, max_length=128)
+    risk_class: Literal["low", "medium", "high", "destructive"]
+    preview_created_at: str = Field(min_length=1, max_length=64)
+    warnings: list[str] = Field(default_factory=list, max_length=MAX_APPROVAL_WARNINGS)
+    support_id: str = Field(min_length=1, max_length=128, pattern=_BOUND_ID_PATTERN)
+
+    @field_validator("preview_created_at")
+    @classmethod
+    def _validate_preview_timestamp(cls, value: str) -> str:
+        return _timezone_timestamp(value)
+
+    @field_validator("warnings")
+    @classmethod
+    def _validate_warnings(cls, values: list[str]) -> list[str]:
+        if any(not value or len(value) > 512 for value in values):
+            raise ValueError("approval warnings must be non-empty and bounded")
+        return values
+
+
+def approval_request_digest(value: "ApprovalRequestMessage | dict[str, Any]") -> str:
+    payload = (
+        value.model_dump(mode="json", exclude_none=True)
+        if isinstance(value, BaseModel)
+        else copy.deepcopy(value)
+    )
+    payload.pop("approval_request_digest", None)
+    payload.setdefault("protocol_version", PHASE5_PROTOCOL_VERSION)
+    payload.setdefault("message_type", "approval_request")
+    return f"sha256:{sha256(canonical_json(payload).encode('utf-8')).hexdigest()}"
+
+
+class ApprovalRequestMessage(AgentEnvelope):
+    """Exact-device trusted local confirmation request; never a CAD command."""
+
+    protocol_version: Literal["cad.agent/2"] = PHASE5_PROTOCOL_VERSION
+    message_type: Literal["approval_request"] = "approval_request"
+    message_id: str = Field(min_length=1, max_length=128)
+    session_id: str = Field(min_length=1, max_length=128)
+    device_id: str = Field(min_length=1, max_length=128, pattern=_BOUND_ID_PATTERN)
+    job_id: None = None
+    command_id: None = None
+    sequence: int = Field(ge=0, le=MAX_SEQUENCE)
+    issued_at: str = Field(min_length=1, max_length=64)
+    approval_request_id: str = Field(
+        min_length=1, max_length=256, pattern=_BOUND_ID_PATTERN
+    )
+    intent_id: str = Field(min_length=1, max_length=256, pattern=_BOUND_ID_PATTERN)
+    consent_id: str = Field(min_length=1, max_length=256, pattern=_BOUND_ID_PATTERN)
+    intent_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    challenge_nonce: str = Field(pattern=_NONCE_PATTERN)
+    expires_at: str = Field(min_length=1, max_length=64)
+    required_assurance: Literal["device_local_confirmation"]
+    device_identity_generation: int = Field(ge=1, le=2_147_483_647)
+    device_key_thumbprint: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    trusted_summary: ApprovalTrustedSummary
+    approval_request_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+
+    @field_validator("expires_at")
+    @classmethod
+    def _validate_expiry(cls, value: str) -> str:
+        return _timezone_timestamp(value)
+
+    @model_validator(mode="after")
+    def _validate_request(self) -> "ApprovalRequestMessage":
+        if datetime.fromisoformat(self.expires_at) <= datetime.now(timezone.utc):
+            raise ValueError("approval request has expired")
+        if datetime.fromisoformat(self.expires_at) <= datetime.fromisoformat(self.issued_at):
+            raise ValueError("approval expiry must follow issue time")
+        if (
+            self.deadline_at is not None
+            and datetime.fromisoformat(self.deadline_at)
+            != datetime.fromisoformat(self.expires_at)
+        ):
+            raise ValueError("approval deadline must equal approval expiry")
+        if self.approval_request_digest != approval_request_digest(self):
+            raise ValueError("approval request digest does not match exact request")
+        encoded = canonical_json(self.model_dump(mode="json", exclude_none=True)).encode("utf-8")
+        if len(encoded) > MAX_APPROVAL_MESSAGE_BYTES:
+            raise ValueError("approval request exceeds the byte limit")
+        return self
+
+
+def approval_decision_proof_payload(
+    *,
+    approval_request_id: str,
+    approval_request_digest: str,
+    session_id: str,
+    device_id: str,
+    device_identity_generation: int,
+    device_key_thumbprint: str,
+    consent_id: str,
+    intent_id: str,
+    intent_digest: str,
+    challenge_nonce: str,
+    decision: Literal["approve", "deny"],
+    decided_at: str,
+) -> str:
+    """Canonical bytes-as-text signed by the paired Ed25519 device key."""
+
+    payload = {
+        "approval_request_id": approval_request_id,
+        "approval_request_digest": approval_request_digest,
+        "challenge_nonce": challenge_nonce,
+        "consent_id": consent_id,
+        "decided_at": _timezone_timestamp(decided_at),
+        "decision": decision,
+        "device_id": device_id,
+        "device_identity_generation": device_identity_generation,
+        "device_key_thumbprint": device_key_thumbprint,
+        "intent_digest": intent_digest,
+        "intent_id": intent_id,
+        "session_id": session_id,
+    }
+    return f"cad.agent.approval-decision/1\n{canonical_json(payload)}"
+
+
+class ApprovalDecisionMessage(AgentEnvelope):
+    """One device-signed response to one exact approval request."""
+
+    protocol_version: Literal["cad.agent/2"] = PHASE5_PROTOCOL_VERSION
+    message_type: Literal["approval_decision"] = "approval_decision"
+    session_id: str = Field(min_length=1, max_length=128)
+    device_id: str = Field(min_length=1, max_length=128, pattern=_BOUND_ID_PATTERN)
+    job_id: None = None
+    command_id: None = None
+    approval_request_id: str = Field(
+        min_length=1, max_length=256, pattern=_BOUND_ID_PATTERN
+    )
+    approval_request_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    intent_id: str = Field(min_length=1, max_length=256, pattern=_BOUND_ID_PATTERN)
+    consent_id: str = Field(min_length=1, max_length=256, pattern=_BOUND_ID_PATTERN)
+    intent_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    challenge_nonce: str = Field(pattern=_NONCE_PATTERN)
+    decision: Literal["approve", "deny"]
+    decided_at: str = Field(min_length=1, max_length=64)
+    device_identity_generation: int = Field(ge=1, le=2_147_483_647)
+    device_key_thumbprint: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    device_session_proof: str = Field(
+        min_length=80,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+
+    @field_validator("decided_at")
+    @classmethod
+    def _validate_decision_timestamp(cls, value: str) -> str:
+        return _timezone_timestamp(value)
+
+    @model_validator(mode="after")
+    def _bounded_decision(self) -> "ApprovalDecisionMessage":
+        encoded = canonical_json(self.model_dump(mode="json", exclude_none=True)).encode("utf-8")
+        if len(encoded) > MAX_APPROVAL_MESSAGE_BYTES:
+            raise ValueError("approval decision exceeds the byte limit")
+        return self
 
 
 class HeartbeatMessage(AgentEnvelope):
@@ -695,13 +875,307 @@ class ProgramPreviewResult(AgentModel):
     drawing_unchanged: Literal[True]
 
 
+class HostCheckpointEntity(AgentModel):
+    handle: str = Field(pattern=r"^[0-9A-F]{1,32}$")
+    entity_type: str = Field(min_length=1, max_length=128)
+    layer: str = Field(min_length=1, max_length=255)
+    canonical_fingerprint: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+
+
+class HostRollbackCheckpoint(AgentModel):
+    schema_version: Literal["cad.rollback.checkpoint/1"]
+    checkpoint_id: str = Field(min_length=1, max_length=128)
+    original_receipt_id: str = Field(min_length=1, max_length=128)
+    original_receipt_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    program_id: str = Field(min_length=1, max_length=128)
+    program_revision: int = Field(ge=1, le=2_147_483_647)
+    program_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    preview_id: str = Field(min_length=1, max_length=128)
+    preview_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    execution_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    document_id: str = Field(min_length=1, max_length=128)
+    document_revision_before: str = Field(min_length=1, max_length=256)
+    document_revision_after: str = Field(min_length=1, max_length=256)
+    created_entities: list[HostCheckpointEntity] = Field(min_length=1, max_length=256)
+    non_entity_object_created: bool
+    runtime_and_policy_pins: ProgramExecutionBinding
+    created_at: str = Field(min_length=1, max_length=64)
+    checkpoint_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+
+    @field_validator("created_at")
+    @classmethod
+    def _created_at_is_timezone_aware(cls, value: str) -> str:
+        return _timezone_timestamp(value)
+
+
 class ProgramCommitResult(AgentModel):
     receipt_id: str = Field(min_length=1, max_length=128)
     receipt_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     document_revision_before: str = Field(min_length=1, max_length=256, pattern=r"^\S+$")
     document_revision_after: str = Field(min_length=1, max_length=256, pattern=r"^\S+$")
     created_entity_count: int = Field(ge=0, le=256)
+    rollback_eligible: bool = False
+    checkpoint_id: str | None = Field(default=None, min_length=1, max_length=128)
+    checkpoint_digest: str | None = Field(
+        default=None, pattern=_PREFIXED_SHA256_PATTERN
+    )
+    checkpoint: HostRollbackCheckpoint | None = None
+    milestone: Literal["effect_and_receipt_committed"] | None = None
     duplicate: bool = False
+
+    @model_validator(mode="after")
+    def _checkpoint_fields_are_consistent(self) -> "ProgramCommitResult":
+        present = (
+            self.checkpoint_id is not None,
+            self.checkpoint_digest is not None,
+            self.checkpoint is not None,
+        )
+        if self.rollback_eligible != all(present):
+            raise ValueError("rollback eligibility requires the exact checkpoint")
+        if self.checkpoint is not None and (
+            self.checkpoint.checkpoint_id != self.checkpoint_id
+            or self.checkpoint.checkpoint_digest != self.checkpoint_digest
+            or self.checkpoint.original_receipt_id != self.receipt_id
+            or self.checkpoint.original_receipt_digest != self.receipt_digest
+        ):
+            raise ValueError("checkpoint does not bind the exact commit receipt")
+        if self.rollback_eligible and self.milestone != "effect_and_receipt_committed":
+            raise ValueError("rollback-safe commit requires terminal Host milestone")
+        return self
+
+
+class ReceiptLookupArguments(AgentModel):
+    receipt_id: str = Field(min_length=1, max_length=128)
+
+
+class CheckpointLookupArguments(AgentModel):
+    checkpoint_id: str = Field(min_length=1, max_length=128)
+
+
+class RollbackPreviewArguments(AgentModel):
+    checkpoint_id: str = Field(min_length=1, max_length=128)
+    checkpoint_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    rollback_plan_id: str = Field(min_length=1, max_length=128)
+    rollback_execution_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    expires_at: str = Field(min_length=1, max_length=64)
+
+    @field_validator("expires_at")
+    @classmethod
+    def _expiry_is_timezone_aware(cls, value: str) -> str:
+        return _timezone_timestamp(value)
+
+
+class RollbackCommitArguments(RollbackPreviewArguments):
+    rollback_plan_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    rollback_receipt_id: str = Field(min_length=1, max_length=128)
+
+
+class RollbackValidateArguments(AgentModel):
+    rollback_receipt_id: str = Field(min_length=1, max_length=128)
+
+
+RollbackArguments: TypeAlias = Annotated[
+    Union[
+        ReceiptLookupArguments,
+        CheckpointLookupArguments,
+        RollbackPreviewArguments,
+        RollbackCommitArguments,
+        RollbackValidateArguments,
+    ],
+    Field(union_mode="left_to_right"),
+]
+
+
+class RollbackCommandMessage(AgentEnvelope):
+    protocol_version: Literal["cad.agent/2"] = PHASE5_PROTOCOL_VERSION
+    message_type: Literal["command"] = "command"
+    session_id: str = Field(min_length=1, max_length=128)
+    device_id: str = Field(min_length=1, max_length=128)
+    job_id: str = Field(min_length=1, max_length=128)
+    command_id: str = Field(min_length=1, max_length=128)
+    idempotency_key: str = Field(min_length=1, max_length=128)
+    payload_hash: str = Field(pattern=_SHA256_PATTERN)
+    kind: Literal[
+        "receipt_lookup",
+        "checkpoint_lookup",
+        "rollback_preview",
+        "rollback_commit",
+        "rollback_validate",
+    ]
+    effect_class: Literal["read", "write"]
+    binding: ProgramExecutionBinding
+    arguments: RollbackArguments
+    intent_id: str | None = Field(default=None, min_length=1, max_length=128)
+    intent_digest: str | None = Field(default=None, pattern=_PREFIXED_SHA256_PATTERN)
+
+    @model_validator(mode="after")
+    def _rollback_fields_match_kind(self) -> "RollbackCommandMessage":
+        expected = {
+            "receipt_lookup": ReceiptLookupArguments,
+            "checkpoint_lookup": CheckpointLookupArguments,
+            "rollback_preview": RollbackPreviewArguments,
+            "rollback_commit": RollbackCommitArguments,
+            "rollback_validate": RollbackValidateArguments,
+        }[self.kind]
+        if not isinstance(self.arguments, expected):
+            raise ValueError("rollback arguments do not match command kind")
+        if self.effect_class != ("write" if self.kind == "rollback_commit" else "read"):
+            raise ValueError("rollback effect class does not match command kind")
+        if self.kind == "rollback_commit":
+            if self.intent_id is None or self.intent_digest is None:
+                raise ValueError("rollback commit requires released intent binding")
+        elif self.intent_id is not None or self.intent_digest is not None:
+            raise ValueError("read-only rollback commands cannot carry approval binding")
+        return self
+
+
+def rollback_command_payload(
+    command: RollbackCommandMessage | dict[str, Any],
+) -> dict[str, Any]:
+    parsed = (
+        command
+        if isinstance(command, RollbackCommandMessage)
+        else RollbackCommandMessage.model_validate(
+            {**command, "payload_hash": "0" * 64}
+        )
+    )
+    value: dict[str, Any] = {
+        "kind": parsed.kind,
+        "effect_class": parsed.effect_class,
+        "binding": parsed.binding.model_dump(mode="json"),
+        "arguments": parsed.arguments.model_dump(mode="json"),
+    }
+    if parsed.intent_id is not None:
+        value["intent_id"] = parsed.intent_id
+        value["intent_digest"] = parsed.intent_digest
+    return value
+
+
+def rollback_command_payload_hash(
+    command: RollbackCommandMessage | dict[str, Any],
+) -> str:
+    return canonical_payload_hash(rollback_command_payload(command))
+
+
+class HostRemovedEntityEvidence(AgentModel):
+    handle: str = Field(pattern=r"^[0-9A-F]{1,32}$")
+    entity_type: str = Field(min_length=1, max_length=128)
+    prior_fingerprint: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+
+
+class HostRollbackReceipt(AgentModel):
+    schema_version: Literal["cad.rollback.receipt/1"]
+    rollback_receipt_id: str = Field(min_length=1, max_length=128)
+    original_receipt_id: str = Field(min_length=1, max_length=128)
+    original_receipt_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    checkpoint_id: str = Field(min_length=1, max_length=128)
+    checkpoint_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    rollback_plan_id: str = Field(min_length=1, max_length=128)
+    rollback_plan_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    rollback_execution_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    document_id: str = Field(min_length=1, max_length=128)
+    document_revision_before: str = Field(min_length=1, max_length=256)
+    document_revision_after: str = Field(min_length=1, max_length=256)
+    removed_entities: list[HostRemovedEntityEvidence] = Field(
+        min_length=1, max_length=256
+    )
+    runtime_and_policy_pins: ProgramExecutionBinding
+    created_at: str = Field(min_length=1, max_length=64)
+    receipt_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+
+    @field_validator("created_at")
+    @classmethod
+    def _receipt_created_at_is_timezone_aware(cls, value: str) -> str:
+        return _timezone_timestamp(value)
+
+
+class RollbackPreviewResult(AgentModel):
+    checkpoint_id: str = Field(min_length=1, max_length=128)
+    checkpoint_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    current_document_revision: str = Field(min_length=1, max_length=256)
+    eligible: bool
+    conflicts: list[dict[str, Any]] = Field(default_factory=list, max_length=256)
+    milestone: Literal["transaction_aborted"]
+    runtime_pins: dict[str, Any]
+    policy_pins: dict[str, Any]
+
+
+class RollbackCommitResult(AgentModel):
+    rollback_receipt_id: str = Field(min_length=1, max_length=128)
+    receipt_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    original_receipt_id: str = Field(min_length=1, max_length=128)
+    checkpoint_id: str = Field(min_length=1, max_length=128)
+    checkpoint_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    rollback_plan_id: str = Field(min_length=1, max_length=128)
+    rollback_plan_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    rollback_execution_digest: str = Field(pattern=_PREFIXED_SHA256_PATTERN)
+    document_revision_before: str = Field(min_length=1, max_length=256)
+    document_revision_after: str = Field(min_length=1, max_length=256)
+    removed_entity_count: int = Field(ge=1, le=256)
+    receipt: HostRollbackReceipt
+    milestone: Literal["effect_and_receipt_committed"]
+    duplicate: bool = False
+
+
+class RollbackValidateResult(AgentModel):
+    rollback_receipt_id: str = Field(min_length=1, max_length=128)
+    valid: bool
+    document_revision: str = Field(min_length=1, max_length=256)
+    checks: list[str] = Field(default_factory=list, max_length=64)
+    failures: list[str] = Field(default_factory=list, max_length=64)
+
+
+RollbackResultPayload: TypeAlias = Annotated[
+    Union[RollbackPreviewResult, RollbackCommitResult, RollbackValidateResult, dict[str, Any]],
+    Field(union_mode="left_to_right"),
+]
+
+
+class RollbackResultMessage(AgentEnvelope):
+    protocol_version: Literal["cad.agent/2"] = PHASE5_PROTOCOL_VERSION
+    message_type: Literal["result"] = "result"
+    session_id: str = Field(min_length=1, max_length=128)
+    device_id: str = Field(min_length=1, max_length=128)
+    job_id: str = Field(min_length=1, max_length=128)
+    command_id: str = Field(min_length=1, max_length=128)
+    sequence: int = Field(ge=1, le=MAX_SEQUENCE)
+    kind: Literal[
+        "receipt_lookup",
+        "checkpoint_lookup",
+        "rollback_preview",
+        "rollback_commit",
+        "rollback_validate",
+    ]
+    status: Literal["succeeded", "failed", "cancelled", "outcome_unknown"]
+    payload_hash: str = Field(pattern=_SHA256_PATTERN)
+    binding: ProgramExecutionBinding
+    result: RollbackResultPayload | None = None
+    error_code: str | None = Field(default=None, max_length=64)
+    error_message: str | None = Field(default=None, max_length=MAX_MESSAGE_TEXT)
+
+    @model_validator(mode="after")
+    def _rollback_terminal_fields_match(self) -> "RollbackResultMessage":
+        if self.status == "succeeded":
+            expected = {
+                "rollback_preview": RollbackPreviewResult,
+                "rollback_commit": RollbackCommitResult,
+                "rollback_validate": RollbackValidateResult,
+            }.get(self.kind, dict)
+            if expected is dict:
+                if not isinstance(self.result, dict):
+                    raise ValueError("lookup result must be a bounded object")
+            elif not isinstance(self.result, expected):
+                raise ValueError("rollback result payload does not match kind")
+            if self.error_code is not None or self.error_message is not None:
+                raise ValueError("successful rollback result cannot include errors")
+        elif self.result is not None:
+            raise ValueError("non-successful rollback result cannot include payload")
+        elif self.status == "failed" and self.error_code is None:
+            raise ValueError("failed rollback result requires error_code")
+        elif self.status == "outcome_unknown" and self.kind != "rollback_commit":
+            raise ValueError("only rollback commit may have outcome_unknown")
+        return self
+
 
 class ProgramValidateResult(AgentModel):
     validation_id: str = Field(min_length=1, max_length=128)
@@ -903,13 +1377,17 @@ class ErrorMessage(AgentEnvelope):
 AgentMessage: TypeAlias = Union[
     HelloMessage,
     WelcomeMessage,
+    ApprovalRequestMessage,
+    ApprovalDecisionMessage,
     HeartbeatMessage,
     CommandMessage,
     ProgramCommandMessage,
+    RollbackCommandMessage,
     AckMessage,
     ProgressMessage,
     ResultMessage,
     ProgramResultMessage,
+    RollbackResultMessage,
     CancelMessage,
     ReconcileMessage,
     ReconcileResultMessage,
@@ -951,6 +1429,21 @@ def message_dict(message: AgentMessage) -> dict[str, Any]:
     if len(canonical_json(value).encode("utf-8")) > MAX_WEBSOCKET_MESSAGE_BYTES:
         raise ValueError("Agent message exceeds the protocol byte limit")
     return value
+
+
+def agent_approval_json_schema() -> dict[str, Any]:
+    schema = TypeAdapter(
+        Annotated[
+            Union[ApprovalRequestMessage, ApprovalDecisionMessage],
+            Field(discriminator="message_type"),
+        ]
+    ).json_schema(mode="validation")
+    schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+    schema["$id"] = (
+        "https://schemas.kythuatvang.local/cad-agent-2-approval.schema.json"
+    )
+    schema["title"] = "cad.agent/2 trusted local approval control messages"
+    return schema
 
 
 def agent_program_command_json_schema() -> dict[str, Any]:
@@ -1085,8 +1578,23 @@ def agent_program_result_json_schema() -> dict[str, Any]:
     return schema
 
 
+def agent_rollback_json_schema() -> dict[str, Any]:
+    schema = TypeAdapter(
+        Annotated[
+            Union[RollbackCommandMessage, RollbackResultMessage],
+            Field(discriminator="message_type"),
+        ]
+    ).json_schema(mode="validation")
+    schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+    schema["$id"] = "https://schemas.kythuatvang.local/cad-agent-2-rollback.schema.json"
+    schema["title"] = "cad.agent/2 typed rollback command and result messages"
+    return schema
+
+
 from .runtime import CapabilityManifest
 from .program import CadProgram
 
 HelloMessage.model_rebuild()
 ProgramCommandMessage.model_rebuild()
+RollbackCommandMessage.model_rebuild()
+RollbackResultMessage.model_rebuild()

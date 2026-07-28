@@ -1,0 +1,486 @@
+{
+  "$defs": {
+    "ApprovalDecisionMessage": {
+      "additionalProperties": false,
+      "description": "One device-signed response to one exact approval request.",
+      "properties": {
+        "protocol_version": {
+          "const": "cad.agent/2",
+          "default": "cad.agent/2",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "message_type": {
+          "const": "approval_decision",
+          "default": "approval_decision",
+          "title": "Message Type",
+          "type": "string"
+        },
+        "message_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Message Id",
+          "type": "string"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "session_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "device_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Device Id",
+          "type": "string"
+        },
+        "job_id": {
+          "default": null,
+          "title": "Job Id",
+          "type": "null"
+        },
+        "command_id": {
+          "default": null,
+          "title": "Command Id",
+          "type": "null"
+        },
+        "sequence": {
+          "default": 0,
+          "maximum": 1000000000,
+          "minimum": 0,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "issued_at": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Issued At",
+          "type": "string"
+        },
+        "deadline_at": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline At"
+        },
+        "approval_request_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Approval Request Id",
+          "type": "string"
+        },
+        "approval_request_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Approval Request Digest",
+          "type": "string"
+        },
+        "intent_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Intent Id",
+          "type": "string"
+        },
+        "consent_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Consent Id",
+          "type": "string"
+        },
+        "intent_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Intent Digest",
+          "type": "string"
+        },
+        "challenge_nonce": {
+          "pattern": "^[A-Za-z0-9_-]{32,128}$",
+          "title": "Challenge Nonce",
+          "type": "string"
+        },
+        "decision": {
+          "enum": [
+            "approve",
+            "deny"
+          ],
+          "title": "Decision",
+          "type": "string"
+        },
+        "decided_at": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Decided At",
+          "type": "string"
+        },
+        "device_identity_generation": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "title": "Device Identity Generation",
+          "type": "integer"
+        },
+        "device_key_thumbprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Device Key Thumbprint",
+          "type": "string"
+        },
+        "device_session_proof": {
+          "maxLength": 128,
+          "minLength": 80,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Device Session Proof",
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "device_id",
+        "approval_request_id",
+        "approval_request_digest",
+        "intent_id",
+        "consent_id",
+        "intent_digest",
+        "challenge_nonce",
+        "decision",
+        "decided_at",
+        "device_identity_generation",
+        "device_key_thumbprint",
+        "device_session_proof"
+      ],
+      "title": "ApprovalDecisionMessage",
+      "type": "object"
+    },
+    "ApprovalRequestMessage": {
+      "additionalProperties": false,
+      "description": "Exact-device trusted local confirmation request; never a CAD command.",
+      "properties": {
+        "protocol_version": {
+          "const": "cad.agent/2",
+          "default": "cad.agent/2",
+          "title": "Protocol Version",
+          "type": "string"
+        },
+        "message_type": {
+          "const": "approval_request",
+          "default": "approval_request",
+          "title": "Message Type",
+          "type": "string"
+        },
+        "message_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Message Id",
+          "type": "string"
+        },
+        "correlation_id": {
+          "anyOf": [
+            {
+              "maxLength": 128,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "session_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Session Id",
+          "type": "string"
+        },
+        "device_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Device Id",
+          "type": "string"
+        },
+        "job_id": {
+          "default": null,
+          "title": "Job Id",
+          "type": "null"
+        },
+        "command_id": {
+          "default": null,
+          "title": "Command Id",
+          "type": "null"
+        },
+        "sequence": {
+          "maximum": 1000000000,
+          "minimum": 0,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "issued_at": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Issued At",
+          "type": "string"
+        },
+        "deadline_at": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Deadline At"
+        },
+        "approval_request_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Approval Request Id",
+          "type": "string"
+        },
+        "intent_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Intent Id",
+          "type": "string"
+        },
+        "consent_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Consent Id",
+          "type": "string"
+        },
+        "intent_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Intent Digest",
+          "type": "string"
+        },
+        "challenge_nonce": {
+          "pattern": "^[A-Za-z0-9_-]{32,128}$",
+          "title": "Challenge Nonce",
+          "type": "string"
+        },
+        "expires_at": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Expires At",
+          "type": "string"
+        },
+        "required_assurance": {
+          "const": "device_local_confirmation",
+          "title": "Required Assurance",
+          "type": "string"
+        },
+        "device_identity_generation": {
+          "maximum": 2147483647,
+          "minimum": 1,
+          "title": "Device Identity Generation",
+          "type": "integer"
+        },
+        "device_key_thumbprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Device Key Thumbprint",
+          "type": "string"
+        },
+        "trusted_summary": {
+          "$ref": "#/$defs/ApprovalTrustedSummary"
+        },
+        "approval_request_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Approval Request Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message_id",
+        "session_id",
+        "device_id",
+        "sequence",
+        "issued_at",
+        "approval_request_id",
+        "intent_id",
+        "consent_id",
+        "intent_digest",
+        "challenge_nonce",
+        "expires_at",
+        "required_assurance",
+        "device_identity_generation",
+        "device_key_thumbprint",
+        "trusted_summary",
+        "approval_request_digest"
+      ],
+      "title": "ApprovalRequestMessage",
+      "type": "object"
+    },
+    "ApprovalTrustedSummary": {
+      "additionalProperties": false,
+      "description": "Server-derived fields that the local operator may trust.",
+      "properties": {
+        "operation": {
+          "enum": [
+            "program_commit",
+            "rollback_commit"
+          ],
+          "title": "Operation",
+          "type": "string"
+        },
+        "operation_summary": {
+          "maxLength": 512,
+          "minLength": 1,
+          "title": "Operation Summary",
+          "type": "string"
+        },
+        "document_name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "pattern": "^[^/\\\\:\\x00-\\x1f]+$",
+          "title": "Document Name",
+          "type": "string"
+        },
+        "document_id": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "operation_count": {
+          "maximum": 256,
+          "minimum": 1,
+          "title": "Operation Count",
+          "type": "integer"
+        },
+        "entity_count": {
+          "maximum": 256,
+          "minimum": 0,
+          "title": "Entity Count",
+          "type": "integer"
+        },
+        "runtime_label": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Runtime Label",
+          "type": "string"
+        },
+        "runtime_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Runtime Id",
+          "type": "string"
+        },
+        "package_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Package Id",
+          "type": "string"
+        },
+        "package_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Package Version",
+          "type": "string"
+        },
+        "registry_version": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Registry Version",
+          "type": "string"
+        },
+        "risk_class": {
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "destructive"
+          ],
+          "title": "Risk Class",
+          "type": "string"
+        },
+        "preview_created_at": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Preview Created At",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 16,
+          "title": "Warnings",
+          "type": "array"
+        },
+        "support_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+          "title": "Support Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation",
+        "operation_summary",
+        "document_name",
+        "document_id",
+        "operation_count",
+        "entity_count",
+        "runtime_label",
+        "runtime_id",
+        "package_id",
+        "package_version",
+        "registry_version",
+        "risk_class",
+        "preview_created_at",
+        "support_id"
+      ],
+      "title": "ApprovalTrustedSummary",
+      "type": "object"
+    }
+  },
+  "discriminator": {
+    "mapping": {
+      "approval_decision": "#/$defs/ApprovalDecisionMessage",
+      "approval_request": "#/$defs/ApprovalRequestMessage"
+    },
+    "propertyName": "message_type"
+  },
+  "oneOf": [
+    {
+      "$ref": "#/$defs/ApprovalRequestMessage"
+    },
+    {
+      "$ref": "#/$defs/ApprovalDecisionMessage"
+    }
+  ],
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kythuatvang.local/cad-agent-2-approval.schema.json",
+  "title": "cad.agent/2 trusted local approval control messages"
+}
