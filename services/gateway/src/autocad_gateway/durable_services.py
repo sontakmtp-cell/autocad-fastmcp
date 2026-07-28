@@ -10,6 +10,7 @@ import logging
 import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from autocad_contracts import (
@@ -61,6 +62,10 @@ from .phase7_admission import Phase7AdmissionPolicy, Phase7AdmissionService
 from .phase7_recovery import Phase7RecoveryService
 from .infrastructure.sqlite.phase7_repository import Phase7Repository
 from .infrastructure.sqlite.phase8_repository import Phase8Repository
+from .infrastructure.sqlite.phase9_repository import Phase9Repository
+from .skills.catalog import SkillCatalog
+from .skills.catalog_repository import SkillCatalogRepository
+from .workflows.service import WorkflowApplicationService
 from .phase8_gateway import Phase8FeatureFlags, Phase8GatewayService
 from .phase8_contract_adapter import Phase8CompilerPort, Phase8RevisionPort
 
@@ -135,20 +140,29 @@ class DurableGatewayServices:
         phase8_feature_flags: Phase8FeatureFlags | None = None,
         phase8_compiler: Phase8CompilerPort | None = None,
         phase8_revision_adapter: Phase8RevisionPort | None = None,
+        phase9_enabled: bool = False,
+        phase9_catalog_enabled: bool = False,
+        phase9_public_tools_enabled: bool = False,
+        phase9_write_enabled: bool = False,
+        phase9_policy_epoch: int = 0,
+        phase9_catalog_root: str | None = None,
     ) -> None:
         self.database = database
         self.registry = registry
         self.repository = SqliteRepository(database)
-        self.is_phase7 = profile in {"phase7_c2", "phase8_program"}
+        self.is_phase7 = profile in {"phase7_c2", "phase8_program", "phase9_workflow"}
         self.is_phase6 = profile in {
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         }
-        self.is_phase8 = profile == "phase8_program"
+        self.is_phase8 = profile in {"phase8_program", "phase9_workflow"}
+        self.is_phase9 = profile == "phase9_workflow"
         self.program_repository = ProgramRepository(database) if self.is_phase6 else None
         self.phase7_repository = Phase7Repository(database) if self.is_phase7 else None
         self.phase8_repository = Phase8Repository(database) if self.is_phase6 else None
+        self.phase9_repository = Phase9Repository(database) if self.is_phase9 else None
         self.phase8_gateway = (
             Phase8GatewayService(
                 self.phase8_repository,
@@ -188,6 +202,7 @@ class DurableGatewayServices:
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         }:
             self.agent_authenticator = FixtureDeviceAuthenticator(self.device_tokens)
         self.owner_subject = owner_subject
@@ -198,12 +213,14 @@ class DurableGatewayServices:
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         }
         self.is_phase5_identity = profile in {
             "phase5_identity",
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         }
         self.required_package = dict(required_package or {})
         self.display_name = display_name
@@ -261,6 +278,14 @@ class DurableGatewayServices:
                 else None
             )
         self.phase6_direct_commit_lab_enabled = phase6_direct_commit_lab_enabled
+        self.workflow_service = None
+        if self.is_phase9 and phase9_catalog_root:
+            catalog = SkillCatalog.from_fixed_package_root(Path(phase9_catalog_root))
+            self.workflow_service = WorkflowApplicationService(
+                self.phase9_repository, SkillCatalogRepository(database), catalog,
+                enabled=phase9_enabled and phase9_public_tools_enabled, catalog_enabled=phase9_catalog_enabled,
+                policy_epoch=phase9_policy_epoch, write_enabled=phase9_write_enabled,
+            )
 
     async def _phase7_rollback_preview_provider(
         self,

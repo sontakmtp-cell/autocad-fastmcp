@@ -306,6 +306,16 @@ export const consentDecisionResultSchema = z.object({
   intent_id: phase7PublicId,
 }).strict();
 
+export const workflowRunSchema = z.object({
+  run_id: z.string().min(1).max(160), skill_id: z.string().min(1).max(128),
+  skill_version: z.string().min(1).max(32), state: z.string().min(1).max(64),
+  state_version: z.number().int().nonnegative(), current_step_id: z.string().nullable().optional(),
+  device_id: z.string().min(1).max(128), created_at: utcTimestamp, updated_at: utcTimestamp,
+  pins: z.record(z.string(), z.unknown()), inputs: z.record(z.string(), z.unknown()),
+}).passthrough();
+export const workflowEventSchema = z.object({ sequence: z.number().int().positive(), event_type: z.string().min(1).max(128), created_at: utcTimestamp, payload: z.record(z.string(), z.unknown()) }).passthrough();
+export const workflowDetailSchema = z.object({ run: workflowRunSchema, events: z.array(workflowEventSchema).max(50) }).strict();
+
 export type Device = z.infer<typeof deviceSchema>;
 export type Pairing = z.infer<typeof pairingSchema>;
 export type ExecutionBinding = z.infer<typeof executionBindingSchema>;
@@ -318,6 +328,8 @@ export type ExecutionIntent = z.infer<typeof executionIntentSchema>;
 export type Consent = z.infer<typeof consentSchema>;
 export type ConsentDecisionResult = z.infer<typeof consentDecisionResultSchema>;
 export type PortalConsentResponse = z.infer<typeof portalConsentResponseSchema>;
+export type WorkflowRun = z.infer<typeof workflowRunSchema>;
+export type WorkflowDetail = z.infer<typeof workflowDetailSchema>;
 
 export function parseOpaqueId(value: string): string {
   return opaqueId.parse(value);
