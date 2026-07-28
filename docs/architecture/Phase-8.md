@@ -2,8 +2,6 @@
 
 > Trạng thái: kế hoạch kiến trúc và triển khai đã rà soát lại sau khi PR #11 merge vào `main`.
 >
-> Baseline repository: merge commit `1faa28cbaccba646715b8007ed191df28f1ddda4` ngày 2026-07-28.
->
 > Baseline Phase 7: implementation, automated suites và live AutoCAD Mechanical 2025 acceptance đã hoàn tất trước khi merge. Theo xác nhận của repository owner, live run đã phát hiện lỗi, các lỗi đã được sửa và retest thành công. PR #11 và tài liệu Phase 7 chưa ghi lại đầy đủ live evidence này; đó là khoản nợ tài liệu/evidence, không phải một engineering gate còn thiếu.
 >
 > Phase 7 đạt Engineering GO. Customer Pilot vẫn phụ thuộc các external production gates riêng như code signing, provenance, public OAuth lifecycle, telemetry soak, support ownership và explicit pilot cohort approval.
