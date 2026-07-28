@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Protocol
+from typing import Any, AsyncIterator, Protocol
 
 from autocad_contracts import (
+    ExecutionBindingV1,
     ProgramCommandMessage,
     ProgramCommitResult,
     ProgramPreviewResult,
@@ -19,6 +21,7 @@ from autocad_contracts import (
 )
 
 from .executor import AgentExecutionError
+from .phase8_admission import Phase8PlanAdmission, VerifiedPhase8Plan
 
 
 class ProgramRuntimeBroker(Protocol):
@@ -32,6 +35,21 @@ class ProgramRuntimeBroker(Protocol):
     ) -> Any: ...
 
 
+class DocumentWriteSerializer:
+    """One fail-fast write lane per document across program and rollback flows."""
+
+    def __init__(self) -> None:
+        self._mutexes: dict[str, asyncio.Lock] = {}
+
+    @asynccontextmanager
+    async def acquire(self, document_id: str) -> AsyncIterator[None]:
+        lock = self._mutexes.setdefault(document_id, asyncio.Lock())
+        if lock.locked():
+            raise AgentExecutionError("agent_busy")
+        async with lock:
+            yield
+
+
 class ProgramCommandExecutor:
     """No AutoCAD API access: broker selection and a narrow Host port only."""
 
@@ -41,9 +59,16 @@ class ProgramCommandExecutor:
         "program_validate": "cad.program.validate",
     }
 
-    def __init__(self, runtime_broker: ProgramRuntimeBroker) -> None:
+    def __init__(
+        self,
+        runtime_broker: ProgramRuntimeBroker,
+        *,
+        write_serializer: DocumentWriteSerializer | None = None,
+        phase8_admission: Phase8PlanAdmission | None = None,
+    ) -> None:
         self._runtime_broker = runtime_broker
-        self._document_mutexes: dict[str, asyncio.Lock] = {}
+        self.write_serializer = write_serializer or DocumentWriteSerializer()
+        self._phase8_admission = phase8_admission
 
     def validate_command(self, command: ProgramCommandMessage) -> None:
         if not isinstance(command, ProgramCommandMessage):
@@ -83,36 +108,40 @@ class ProgramCommandExecutor:
             ) from error
 
         adapter = selection.adapter
+        phase8 = self._verify_phase8(command, selection)
         health = await adapter.health()
         if not health.ok:
             raise AgentExecutionError(health.error_code or "managed_host_unavailable")
         self._validate_document_binding(health.payload, command)
 
         if command.effect_class != "write":
-            return await self._execute_host(adapter, command)
+            return await self._execute_host(adapter, command, phase8)
 
-        lock = self._document_mutexes.setdefault(
-            command.binding.document_id,
-            asyncio.Lock(),
-        )
-        if lock.locked():
-            raise AgentExecutionError("agent_busy")
-        async with lock:
-            return await self._execute_host(adapter, command)
+        async with self.write_serializer.acquire(command.binding.document_id):
+            return await self._execute_host(adapter, command, phase8)
 
     async def _execute_host(
         self,
         adapter: Any,
         command: ProgramCommandMessage,
+        phase8: VerifiedPhase8Plan | None = None,
     ) -> dict[str, Any]:
         result = await adapter.program_command(
             command.kind,
-            arguments=self._host_arguments(command),
+            arguments=self._host_arguments(command, phase8),
             deadline_at=command.deadline_at,
         )
         if not result.ok or not isinstance(result.payload, dict):
             raise AgentExecutionError(
                 result.error_code or "managed_host_unavailable"
+            )
+        if phase8 is not None:
+            if self._phase8_admission is None:
+                raise AgentExecutionError("capability_missing")
+            return self._phase8_admission.verify_result(
+                phase8,
+                result.payload,
+                command_kind=command.kind,
             )
         model = {
             "program_preview": ProgramPreviewResult,
@@ -139,7 +168,12 @@ class ProgramCommandExecutor:
             raise AgentExecutionError("stale_snapshot")
 
     @staticmethod
-    def _host_arguments(command: ProgramCommandMessage) -> dict[str, Any]:
+    def _host_arguments(
+        command: ProgramCommandMessage,
+        phase8: VerifiedPhase8Plan | None = None,
+    ) -> dict[str, Any]:
+        if phase8 is not None:
+            return phase8.host_arguments()
         arguments: dict[str, Any] = {
             "execution_binding": command.binding.model_dump(mode="json"),
         }
@@ -164,6 +198,37 @@ class ProgramCommandExecutor:
             )
         return arguments
 
+    def _verify_phase8(
+        self,
+        command: ProgramCommandMessage,
+        selection: Any,
+    ) -> VerifiedPhase8Plan | None:
+        plan = command.execution_plan
+        if plan is None:
+            return None
+        if self._phase8_admission is None:
+            raise AgentExecutionError("capability_missing")
+        if not isinstance(command.binding, ExecutionBindingV1):
+            raise AgentExecutionError("binding_mismatch")
+        return self._phase8_admission.verify(
+            plan,
+            binding=command.binding,
+            command_kind=command.kind,
+            approval_binding=command.approval_binding,
+            capability_states=getattr(selection, "capability_states", {}),
+            server_capability_evidence=command.capability_evidence,
+            legacy_binding=None,
+            device_id=command.device_id,
+            job_id=command.job_id,
+            command_id=command.command_id,
+            issued_at=command.issued_at,
+            preview_id=command.preview_id,
+            preview_digest=command.preview_digest,
+            preview_expires_at=command.expires_at,
+            receipt_id=command.receipt_id,
+            idempotency_key=command.idempotency_key,
+        )
+
 
 _ROLLBACK_KINDS = {
     "receipt_lookup": ("cad.recovery.receipt_query", "read"),
@@ -176,9 +241,14 @@ _ROLLBACK_KINDS = {
 class RollbackCommandExecutor:
     """Narrow Phase 7 rollback port; it cannot issue Undo or accept entity handles."""
 
-    def __init__(self, runtime_broker: ProgramRuntimeBroker) -> None:
+    def __init__(
+        self,
+        runtime_broker: ProgramRuntimeBroker,
+        *,
+        write_serializer: DocumentWriteSerializer | None = None,
+    ) -> None:
         self._runtime_broker = runtime_broker
-        self._document_mutexes: dict[str, asyncio.Lock] = {}
+        self.write_serializer = write_serializer or DocumentWriteSerializer()
 
     def validate_command(
         self, command: RollbackCommandMessage | dict[str, Any]
@@ -245,13 +315,7 @@ class RollbackCommandExecutor:
 
         if effect_class == "read":
             return await self._dispatch(adapter, parsed)
-        lock = self._document_mutexes.setdefault(
-            binding.document_id,
-            asyncio.Lock(),
-        )
-        if lock.locked():
-            raise AgentExecutionError("agent_busy")
-        async with lock:
+        async with self.write_serializer.acquire(binding.document_id):
             return await self._dispatch(adapter, parsed)
 
     @staticmethod

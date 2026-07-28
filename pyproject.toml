@@ -37,4 +37,5 @@ packages = ["src/autocad_mcp"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+norecursedirs = ["tests/phase8"]
 asyncio_mode = "auto"

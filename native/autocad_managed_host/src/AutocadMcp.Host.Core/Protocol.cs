@@ -294,6 +294,10 @@ public static class EnvelopeValidator
         }
         if (CadProgramV02Contract.OperationIds.Contains(operationId))
         {
+            if (Phase8CanonicalHostCommandParser.IsPhase8(arguments))
+            {
+                return;
+            }
             _ = CadProgramV02Parser.ParseRequest(operationId, arguments);
             return;
         }

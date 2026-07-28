@@ -170,6 +170,46 @@ def program_command_fields(
 ) -> dict[str, Any]:
     """Project one durable Program job onto the shared typed wire contract."""
 
+    binding_value = payload.get("binding")
+    if (
+        isinstance(binding_value, dict)
+        and binding_value.get("schema_version")
+        == "cad.execution-binding/1"
+    ):
+        allowed = {
+            "binding",
+            "execution_plan",
+            "approval_binding",
+            "capability_evidence",
+            "preview_id",
+            "expires_at",
+            "preview_digest",
+            "receipt_id",
+        }
+        if set(payload) - allowed:
+            raise ProgramContractError("Phase 8 payload contains non-wire fields")
+        values = {
+            "kind": kind,
+            "effect_class": effect_class,
+            **deepcopy(payload),
+        }
+        # Parsing happens again with the real job/command identity in JobService.
+        # This check still rejects malformed plan, binding and evidence before
+        # attempting dispatch.
+        if "approval_binding" not in values:
+            probe = {
+                "protocol_version": "cad.agent/2",
+                "session_id": "phase8-probe-session",
+                "device_id": payload["execution_plan"]["device_id"],
+                "job_id": "phase8-probe-job",
+                "command_id": "phase8-probe-command",
+                "idempotency_key": "phase8-probe-idempotency",
+                "payload_hash": "0" * 64,
+                **values,
+            }
+            ProgramCommandMessage.model_validate(probe)
+        return values
+
     execution = payload["execution"]
     pins = execution["pins"]
     binding = {
@@ -226,13 +266,32 @@ def program_wire_payload_hash(
 ) -> str:
     """Hash exactly the shared ProgramCommand projection consumed by the Agent."""
 
+    approval = payload.get("approval_binding")
+    execution_plan = payload.get("execution_plan")
+    phase8_device_id = (
+        execution_plan.get("device_id")
+        if isinstance(execution_plan, dict)
+        else None
+    )
     command = ProgramCommandMessage(
         protocol_version="cad.agent/2",
         session_id="hash-session",
-        device_id="hash-device",
-        job_id="hash-job",
-        command_id="hash-command",
-        idempotency_key="hash-idempotency",
+        device_id=phase8_device_id or "hash-device",
+        job_id=(
+            approval.get("job_id")
+            if isinstance(approval, dict)
+            else "hash-job"
+        ),
+        command_id=(
+            approval.get("command_id")
+            if isinstance(approval, dict)
+            else "hash-command"
+        ),
+        idempotency_key=(
+            approval.get("idempotency_key")
+            if isinstance(approval, dict)
+            else "hash-idempotency"
+        ),
         payload_hash="0" * 64,
         **program_command_fields(
             kind=kind,

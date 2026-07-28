@@ -1,0 +1,1079 @@
+{
+  "$defs": {
+    "CompilerBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "compiler_id": {
+          "const": "autocad-mcp.gateway.cad-program-v1",
+          "title": "Compiler Id",
+          "type": "string"
+        },
+        "compiler_version": {
+          "const": "1.1.0",
+          "title": "Compiler Version",
+          "type": "string"
+        },
+        "compiler_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Compiler Digest",
+          "type": "string"
+        },
+        "compiler_package_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Compiler Package Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "compiler_id",
+        "compiler_version",
+        "compiler_digest",
+        "compiler_package_hash"
+      ],
+      "title": "CompilerBinding",
+      "type": "object"
+    },
+    "ConcreteOperation": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "ensure_layer",
+            "create_line",
+            "create_circle",
+            "create_polyline",
+            "create_rectangle",
+            "create_text",
+            "create_dimension_linear",
+            "copy_entity",
+            "offset_entity",
+            "move_entity"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "operation_version": {
+          "const": 1,
+          "title": "Operation Version",
+          "type": "integer"
+        },
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "source_operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Source Operation Id",
+          "type": "string"
+        },
+        "layer": {
+          "anyOf": [
+            {
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]{1,255}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Layer"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "pattern": "^[^<>/\\\\\":;?*|=`\\x00-\\x1f]{1,255}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "color_index": {
+          "anyOf": [
+            {
+              "maximum": 255,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color Index"
+        },
+        "start": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConcretePoint3d"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "end": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConcretePoint3d"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "center": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConcretePoint3d"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "radius_mm": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Radius Mm"
+        },
+        "vertices": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/ConcretePoint3d"
+              },
+              "maxItems": 4096,
+              "minItems": 2,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Vertices"
+        },
+        "closed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Closed"
+        },
+        "first_corner": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConcretePoint3d"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "opposite_corner": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConcretePoint3d"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "position": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConcretePoint3d"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "text": {
+          "anyOf": [
+            {
+              "maxLength": 65536,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "height_mm": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height Mm"
+        },
+        "rotation_rad": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rotation Rad"
+        },
+        "extension_line1_point": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConcretePoint3d"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "extension_line2_point": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConcretePoint3d"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "dimension_line_point": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConcretePoint3d"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "text_override": {
+          "anyOf": [
+            {
+              "maxLength": 1024,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text Override"
+        },
+        "target_ref_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Ref Id"
+        },
+        "displacement_mm": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConcreteVector3d"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "signed_distance_mm": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Signed Distance Mm"
+        },
+        "output_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Id"
+        }
+      },
+      "required": [
+        "kind",
+        "operation_version",
+        "operation_id",
+        "source_operation_id"
+      ],
+      "title": "ConcreteOperation",
+      "type": "object"
+    },
+    "ConcretePoint3d": {
+      "additionalProperties": false,
+      "properties": {
+        "x_mm": {
+          "maxLength": 40,
+          "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+          "title": "X Mm",
+          "type": "string"
+        },
+        "y_mm": {
+          "maxLength": 40,
+          "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+          "title": "Y Mm",
+          "type": "string"
+        },
+        "z_mm": {
+          "maxLength": 40,
+          "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+          "title": "Z Mm",
+          "type": "string"
+        }
+      },
+      "required": [
+        "x_mm",
+        "y_mm",
+        "z_mm"
+      ],
+      "title": "ConcretePoint3d",
+      "type": "object"
+    },
+    "ConcreteVector3d": {
+      "additionalProperties": false,
+      "properties": {
+        "x_mm": {
+          "maxLength": 40,
+          "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+          "title": "X Mm",
+          "type": "string"
+        },
+        "y_mm": {
+          "maxLength": 40,
+          "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+          "title": "Y Mm",
+          "type": "string"
+        },
+        "z_mm": {
+          "maxLength": 40,
+          "pattern": "^-?(?:0|[1-9][0-9]{0,18})(?:\\.[0-9]{0,17}[1-9])?$",
+          "title": "Z Mm",
+          "type": "string"
+        }
+      },
+      "required": [
+        "x_mm",
+        "y_mm",
+        "z_mm"
+      ],
+      "title": "ConcreteVector3d",
+      "type": "object"
+    },
+    "EffectEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "operation_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "operation_kind": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Operation Kind",
+          "type": "string"
+        },
+        "operation_version": {
+          "const": 1,
+          "title": "Operation Version",
+          "type": "integer"
+        },
+        "effect_class": {
+          "enum": [
+            "create_only",
+            "modify_in_place",
+            "ensure_non_entity"
+          ],
+          "title": "Effect Class",
+          "type": "string"
+        },
+        "entity_type": {
+          "enum": [
+            "LAYER",
+            "LINE",
+            "CIRCLE",
+            "LWPOLYLINE",
+            "RECTANGLE",
+            "TEXT",
+            "DIMENSION_LINEAR"
+          ],
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "creates": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Creates",
+          "type": "integer"
+        },
+        "modifies": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Modifies",
+          "type": "integer"
+        },
+        "erases": {
+          "const": 0,
+          "title": "Erases",
+          "type": "integer"
+        },
+        "checkpoint_strategy": {
+          "enum": [
+            "none",
+            "cad.rollback.checkpoint/1-created-entities",
+            "cad.rollback.checkpoint/2"
+          ],
+          "title": "Checkpoint Strategy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "operation_kind",
+        "operation_version",
+        "effect_class",
+        "entity_type",
+        "creates",
+        "modifies",
+        "erases",
+        "checkpoint_strategy"
+      ],
+      "title": "EffectEntry",
+      "type": "object"
+    },
+    "EffectManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": "cad.effect-manifest/1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "entries": {
+          "items": {
+            "$ref": "#/$defs/EffectEntry"
+          },
+          "maxItems": 1024,
+          "minItems": 1,
+          "title": "Entries",
+          "type": "array"
+        },
+        "creates": {
+          "maximum": 1024,
+          "minimum": 0,
+          "title": "Creates",
+          "type": "integer"
+        },
+        "modifies": {
+          "maximum": 1024,
+          "minimum": 0,
+          "title": "Modifies",
+          "type": "integer"
+        },
+        "erases": {
+          "const": 0,
+          "title": "Erases",
+          "type": "integer"
+        },
+        "ensures_non_entity": {
+          "maximum": 256,
+          "minimum": 0,
+          "title": "Ensures Non Entity",
+          "type": "integer"
+        },
+        "risk_floor": {
+          "enum": [
+            "low",
+            "medium"
+          ],
+          "title": "Risk Floor",
+          "type": "string"
+        },
+        "checkpoint_strategy": {
+          "enum": [
+            "cad.rollback.checkpoint/1-created-entities",
+            "cad.rollback.checkpoint/2"
+          ],
+          "title": "Checkpoint Strategy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "entries",
+        "creates",
+        "modifies",
+        "erases",
+        "ensures_non_entity",
+        "risk_floor",
+        "checkpoint_strategy"
+      ],
+      "title": "EffectManifest",
+      "type": "object"
+    },
+    "ExecutionPins": {
+      "additionalProperties": false,
+      "properties": {
+        "runtime_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Runtime Id",
+          "type": "string"
+        },
+        "runtime_role": {
+          "const": "primary",
+          "title": "Runtime Role",
+          "type": "string"
+        },
+        "host_family": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Host Family",
+          "type": "string"
+        },
+        "host_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Host Version",
+          "type": "string"
+        },
+        "package_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Package Id",
+          "type": "string"
+        },
+        "package_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Package Version",
+          "type": "string"
+        },
+        "package_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Hash",
+          "type": "string"
+        },
+        "capability_manifest_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Manifest Hash",
+          "type": "string"
+        },
+        "operation_registry_version": {
+          "pattern": "^\\S{1,256}$",
+          "title": "Operation Registry Version",
+          "type": "string"
+        },
+        "operation_registry_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Registry Hash",
+          "type": "string"
+        },
+        "policy_version": {
+          "pattern": "^\\S{1,256}$",
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "rollout_policy_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Rollout Policy Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime_id",
+        "runtime_role",
+        "host_family",
+        "host_version",
+        "package_id",
+        "package_version",
+        "package_hash",
+        "capability_manifest_hash",
+        "operation_registry_version",
+        "operation_registry_hash",
+        "policy_version",
+        "rollout_policy_digest"
+      ],
+      "title": "ExecutionPins",
+      "type": "object"
+    },
+    "ExecutionPlanBudgets": {
+      "additionalProperties": false,
+      "properties": {
+        "estimated_operations": {
+          "maximum": 1024,
+          "minimum": 1,
+          "title": "Estimated Operations",
+          "type": "integer"
+        },
+        "hard_max_operations": {
+          "maximum": 1024,
+          "minimum": 1,
+          "title": "Hard Max Operations",
+          "type": "integer"
+        },
+        "estimated_entities": {
+          "maximum": 1024,
+          "minimum": 0,
+          "title": "Estimated Entities",
+          "type": "integer"
+        },
+        "hard_max_entities": {
+          "maximum": 1024,
+          "minimum": 1,
+          "title": "Hard Max Entities",
+          "type": "integer"
+        },
+        "estimated_vertices": {
+          "maximum": 4096,
+          "minimum": 0,
+          "title": "Estimated Vertices",
+          "type": "integer"
+        },
+        "hard_max_vertices": {
+          "maximum": 4096,
+          "minimum": 2,
+          "title": "Hard Max Vertices",
+          "type": "integer"
+        },
+        "estimated_text_bytes": {
+          "maximum": 65536,
+          "minimum": 0,
+          "title": "Estimated Text Bytes",
+          "type": "integer"
+        },
+        "hard_max_text_bytes": {
+          "maximum": 65536,
+          "minimum": 1,
+          "title": "Hard Max Text Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "estimated_operations",
+        "hard_max_operations",
+        "estimated_entities",
+        "hard_max_entities",
+        "estimated_vertices",
+        "hard_max_vertices",
+        "estimated_text_bytes",
+        "hard_max_text_bytes"
+      ],
+      "title": "ExecutionPlanBudgets",
+      "type": "object"
+    },
+    "MaterializedTargetRef": {
+      "additionalProperties": false,
+      "properties": {
+        "ref_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Ref Id",
+          "type": "string"
+        },
+        "owner_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "device_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Device Id",
+          "type": "string"
+        },
+        "document_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "snapshot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Snapshot Id",
+          "type": "string"
+        },
+        "document_revision": {
+          "pattern": "^\\S{1,256}$",
+          "title": "Document Revision",
+          "type": "string"
+        },
+        "entity_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Entity Id",
+          "type": "string"
+        },
+        "entity_type": {
+          "enum": [
+            "LINE",
+            "CIRCLE",
+            "LWPOLYLINE"
+          ],
+          "title": "Entity Type",
+          "type": "string"
+        },
+        "fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref_id",
+        "owner_id",
+        "device_id",
+        "document_id",
+        "snapshot_id",
+        "document_revision",
+        "entity_id",
+        "entity_type",
+        "fingerprint"
+      ],
+      "title": "MaterializedTargetRef",
+      "type": "object"
+    },
+    "OpaqueArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "owner_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "content_type": {
+          "const": "application/vnd.autocad-mcp.cad-program+json",
+          "title": "Content Type",
+          "type": "string"
+        },
+        "byte_length": {
+          "maximum": 5242880,
+          "minimum": 1,
+          "title": "Byte Length",
+          "type": "integer"
+        },
+        "artifact_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Artifact Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "owner_id",
+        "content_type",
+        "byte_length",
+        "artifact_digest"
+      ],
+      "title": "OpaqueArtifactRef",
+      "type": "object"
+    },
+    "OpaqueComponentRef": {
+      "additionalProperties": false,
+      "properties": {
+        "component_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Component Id",
+          "type": "string"
+        },
+        "owner_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Owner Id",
+          "type": "string"
+        },
+        "component_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Component Version",
+          "type": "string"
+        },
+        "content_type": {
+          "const": "application/vnd.autocad-mcp.component+json",
+          "title": "Content Type",
+          "type": "string"
+        },
+        "byte_length": {
+          "maximum": 5242880,
+          "minimum": 1,
+          "title": "Byte Length",
+          "type": "integer"
+        },
+        "component_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Component Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component_id",
+        "owner_id",
+        "component_version",
+        "content_type",
+        "byte_length",
+        "component_digest"
+      ],
+      "title": "OpaqueComponentRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": "cad.execution-plan/1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "plan_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Plan Id",
+      "type": "string"
+    },
+    "source_schema_version": {
+      "const": "cad.program/1.0",
+      "title": "Source Schema Version",
+      "type": "string"
+    },
+    "source_registry_version": {
+      "enum": [
+        "cad.program/1.0-create-core",
+        "cad.program/1.0-phase8-core"
+      ],
+      "title": "Source Registry Version",
+      "type": "string"
+    },
+    "source_program_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Source Program Id",
+      "type": "string"
+    },
+    "source_program_revision": {
+      "minimum": 1,
+      "title": "Source Program Revision",
+      "type": "integer"
+    },
+    "source_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Digest",
+      "type": "string"
+    },
+    "compiler": {
+      "$ref": "#/$defs/CompilerBinding"
+    },
+    "device_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Device Id",
+      "type": "string"
+    },
+    "document_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Document Id",
+      "type": "string"
+    },
+    "source_snapshot_id": {
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+      "title": "Source Snapshot Id",
+      "type": "string"
+    },
+    "expected_document_revision": {
+      "pattern": "^\\S{1,256}$",
+      "title": "Expected Document Revision",
+      "type": "string"
+    },
+    "operations": {
+      "items": {
+        "$ref": "#/$defs/ConcreteOperation"
+      },
+      "maxItems": 1024,
+      "minItems": 1,
+      "title": "Operations",
+      "type": "array"
+    },
+    "expansion_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Expansion Digest",
+      "type": "string"
+    },
+    "effect_manifest": {
+      "$ref": "#/$defs/EffectManifest"
+    },
+    "effect_manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Effect Manifest Digest",
+      "type": "string"
+    },
+    "materialized_target_refs": {
+      "items": {
+        "$ref": "#/$defs/MaterializedTargetRef"
+      },
+      "maxItems": 1024,
+      "title": "Materialized Target Refs",
+      "type": "array"
+    },
+    "target_refs_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Target Refs Digest",
+      "type": "string"
+    },
+    "validation_profiles_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Validation Profiles Digest",
+      "type": "string"
+    },
+    "checkpoint_strategy_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Checkpoint Strategy Digest",
+      "type": "string"
+    },
+    "hard_budgets_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Hard Budgets Digest",
+      "type": "string"
+    },
+    "execution_pins": {
+      "$ref": "#/$defs/ExecutionPins"
+    },
+    "budgets": {
+      "$ref": "#/$defs/ExecutionPlanBudgets"
+    },
+    "required_capabilities": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Required Capabilities",
+      "type": "array"
+    },
+    "validation_profiles": {
+      "items": {
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 1,
+      "title": "Validation Profiles",
+      "type": "array"
+    },
+    "artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/OpaqueArtifactRef"
+      },
+      "maxItems": 32,
+      "title": "Artifact Refs",
+      "type": "array"
+    },
+    "component_refs": {
+      "items": {
+        "$ref": "#/$defs/OpaqueComponentRef"
+      },
+      "maxItems": 32,
+      "title": "Component Refs",
+      "type": "array"
+    },
+    "checkpoint_strategy": {
+      "enum": [
+        "cad.rollback.checkpoint/1-created-entities",
+        "cad.rollback.checkpoint/2"
+      ],
+      "title": "Checkpoint Strategy",
+      "type": "string"
+    },
+    "execution_plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Execution Plan Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "schema_version",
+    "plan_id",
+    "source_schema_version",
+    "source_registry_version",
+    "source_program_id",
+    "source_program_revision",
+    "source_digest",
+    "compiler",
+    "device_id",
+    "document_id",
+    "source_snapshot_id",
+    "expected_document_revision",
+    "operations",
+    "expansion_digest",
+    "effect_manifest",
+    "effect_manifest_digest",
+    "target_refs_digest",
+    "validation_profiles_digest",
+    "checkpoint_strategy_digest",
+    "hard_budgets_digest",
+    "execution_pins",
+    "budgets",
+    "validation_profiles",
+    "checkpoint_strategy",
+    "execution_plan_digest"
+  ],
+  "title": "Sealed CAD execution plan 1 contract",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.kythuatvang.local/cad.execution-plan/1/schema.json"
+}

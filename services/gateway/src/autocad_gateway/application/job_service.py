@@ -1175,6 +1175,42 @@ class DurableJobService:
 
     @staticmethod
     def _program_result_binding(job: dict[str, Any]) -> dict[str, Any]:
+        payload = job["payload"]
+        phase8_binding = payload.get("binding")
+        if (
+            isinstance(phase8_binding, dict)
+            and phase8_binding.get("schema_version")
+            == "cad.execution-binding/1"
+        ):
+            plan = payload["execution_plan"]
+            pins = plan["execution_pins"]
+            return {
+                "program_digest": plan["source_digest"],
+                "execution_digest": phase8_binding[
+                    "execution_binding_digest"
+                ],
+                "document_id": plan["document_id"],
+                "document_revision": plan[
+                    "expected_document_revision"
+                ],
+                "runtime_id": pins["runtime_id"],
+                "runtime_role": pins["runtime_role"],
+                "host_family": pins["host_family"],
+                "host_version": pins["host_version"],
+                "package_id": pins["package_id"],
+                "package_version": pins["package_version"],
+                "package_hash": pins["package_hash"],
+                "capability_manifest_hash": pins[
+                    "capability_manifest_hash"
+                ],
+                "operation_registry_version": pins[
+                    "operation_registry_version"
+                ],
+                "operation_registry_hash": pins[
+                    "operation_registry_hash"
+                ],
+                "policy_version": pins["policy_version"],
+            }
         execution = job["payload"]["execution"]
         pins = execution["pins"]
         return {
@@ -1236,6 +1272,13 @@ class DurableJobService:
         if message.result is None:
             return None
         value = message.result.model_dump(mode="json")
+        binding = job["payload"].get("binding")
+        if (
+            isinstance(binding, dict)
+            and binding.get("schema_version")
+            == "cad.execution-binding/1"
+        ):
+            return value
         execution = job["payload"]["execution"]
         if message.kind == "program_preview":
             return {
@@ -1533,10 +1576,29 @@ class DurableJobService:
     ) -> tuple[str | None, str]:
         if connection is None:
             return "device_offline", "Agent is not connected"
-        execution = job.get("payload", {}).get("execution")
-        if not isinstance(execution, dict) or not isinstance(execution.get("pins"), dict):
+        payload = job.get("payload", {})
+        binding = payload.get("binding") if isinstance(payload, dict) else None
+        phase8 = (
+            isinstance(binding, dict)
+            and binding.get("schema_version")
+            == "cad.execution-binding/1"
+        )
+        if phase8:
+            plan = payload.get("execution_plan")
+            pins = (
+                plan.get("execution_pins")
+                if isinstance(plan, dict)
+                else None
+            )
+        else:
+            execution = payload.get("execution")
+            pins = (
+                execution.get("pins")
+                if isinstance(execution, dict)
+                else None
+            )
+        if not isinstance(pins, dict):
             return "binding_mismatch", "Program execution binding is missing"
-        pins = execution["pins"]
         if (
             self.program_policy_version is None
             or pins.get("policy_version") != self.program_policy_version
@@ -1569,7 +1631,12 @@ class DurableJobService:
         if (
             capability_hash != pins.get("capability_manifest_hash")
             or registry_hash != pins.get("operation_registry_hash")
-            or connection.registry_version != pins.get("registry_version")
+            or connection.registry_version
+            != pins.get(
+                "operation_registry_version"
+                if phase8
+                else "registry_version"
+            )
         ):
             return "binding_mismatch", "Capability or registry evidence changed"
         packages = list(connection.packages)

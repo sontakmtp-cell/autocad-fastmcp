@@ -18,6 +18,15 @@ from .infrastructure.agent_transport.connection_registry import ConnectionRegist
 from .infrastructure.sqlite.database import SqliteDatabase
 from .services import GatewayServices
 from .identity import Phase5IdentityService
+from .phase8_gateway import (
+    Phase8FeatureFlags,
+    canonical_rollout_policy_digest,
+)
+from .phase8_contract_adapter import (
+    AutocadContractsPhase8Compiler,
+    AutocadContractsPhase8Revision,
+    Phase8CompilerSettings,
+)
 
 
 def fixture_token_map(config: GatewayConfig) -> dict[str, str]:
@@ -31,6 +40,7 @@ def build_services(config: GatewayConfig) -> Any:
         "phase5_identity",
         "phase6_program",
         "phase7_c2",
+        "phase8_program",
     }:
         tokens = fixture_token_map(config)
         phase4 = config.profile == "phase4_c1"
@@ -39,6 +49,7 @@ def build_services(config: GatewayConfig) -> Any:
             "phase5_identity",
             "phase6_program",
             "phase7_c2",
+            "phase8_program",
         }
         services = DurableGatewayServices(
             SqliteDatabase(Path(config.db_path or "")),
@@ -54,7 +65,11 @@ def build_services(config: GatewayConfig) -> Any:
             program_enabled=config.program_v0_enabled,
             managed_write_enabled=config.managed_write_enabled,
             allowed_write_device_ids=config.phase6_allowed_device_ids,
-            program_policy_version=config.phase6_policy_version,
+            program_policy_version=(
+                config.phase8_policy_version
+                if config.profile == "phase8_program"
+                else config.phase6_policy_version
+            ),
             phase7_c2_enabled=config.phase7_c2_enabled,
             trusted_approval_enabled=config.trusted_approval_enabled,
             device_local_approval_enabled=config.device_local_approval_enabled,
@@ -66,8 +81,99 @@ def build_services(config: GatewayConfig) -> Any:
             phase6_direct_commit_lab_enabled=(
                 config.phase6_direct_commit_lab_enabled
             ),
+            phase8_feature_flags=Phase8FeatureFlags(
+                source_enabled=config.program_v1_source_enabled,
+                compiler_enabled=config.program_v1_compiler_enabled,
+                create_pack_enabled=config.program_v1_create_pack_enabled,
+                transform_pack_enabled=config.program_v1_transform_pack_enabled,
+                topology_pack_enabled=config.program_v1_topology_pack_enabled,
+                delete_pack_enabled=config.program_v1_delete_pack_enabled,
+                checkpoint_v2_enabled=config.checkpoint_v2_enabled,
+                scoped_rollback_revalidation_enabled=(
+                    config.scoped_rollback_revalidation_enabled
+                ),
+                lt_portable_write_enabled=config.lt_portable_write_enabled,
+                operation_pack_allowlist=config.operation_pack_allowlist,
+                rollout_policy_digest=config.phase8_rollout_policy_digest,
+                rollout_policy_epoch=config.phase8_rollout_policy_epoch,
+            ),
+            phase8_compiler=(
+                AutocadContractsPhase8Compiler(
+                    Phase8CompilerSettings(
+                        compiler_package_hash=(
+                            config.phase8_compiler_package_hash or ""
+                        ),
+                        runtime_id=config.phase8_runtime_id,
+                        host_family=config.phase8_host_family,
+                        host_version=config.phase8_host_version,
+                        package_id=config.phase8_package_id or "",
+                        package_version=config.phase8_package_version or "",
+                        package_hash=config.phase8_package_hash or "",
+                        capability_manifest_hash=(
+                            config.phase8_capability_manifest_hash or ""
+                        ),
+                        operation_registry_version=(
+                            config.phase8_operation_registry_version
+                        ),
+                        operation_registry_hash=(
+                            config.phase8_operation_registry_hash or ""
+                        ),
+                        policy_version=config.phase8_policy_version,
+                        rollout_policy_digest=(
+                            config.phase8_rollout_policy_digest
+                            or canonical_rollout_policy_digest(
+                                Phase8FeatureFlags(
+                                    source_enabled=config.program_v1_source_enabled,
+                                    compiler_enabled=(
+                                        config.program_v1_compiler_enabled
+                                    ),
+                                    create_pack_enabled=(
+                                        config.program_v1_create_pack_enabled
+                                    ),
+                                    transform_pack_enabled=(
+                                        config.program_v1_transform_pack_enabled
+                                    ),
+                                    topology_pack_enabled=(
+                                        config.program_v1_topology_pack_enabled
+                                    ),
+                                    delete_pack_enabled=(
+                                        config.program_v1_delete_pack_enabled
+                                    ),
+                                    checkpoint_v2_enabled=(
+                                        config.checkpoint_v2_enabled
+                                    ),
+                                    scoped_rollback_revalidation_enabled=(
+                                        config.scoped_rollback_revalidation_enabled
+                                    ),
+                                    lt_portable_write_enabled=(
+                                        config.lt_portable_write_enabled
+                                    ),
+                                    operation_pack_allowlist=(
+                                        config.operation_pack_allowlist
+                                    ),
+                                    rollout_policy_epoch=(
+                                        config.phase8_rollout_policy_epoch
+                                    ),
+                                )
+                            )
+                        ),
+                    )
+                )
+                if config.profile == "phase8_program"
+                else None
+            ),
+            phase8_revision_adapter=(
+                AutocadContractsPhase8Revision()
+                if config.profile == "phase8_program"
+                else None
+            ),
         )
-        if config.profile in {"phase5_identity", "phase6_program", "phase7_c2"}:
+        if config.profile in {
+            "phase5_identity",
+            "phase6_program",
+            "phase7_c2",
+            "phase8_program",
+        }:
             services.identity = Phase5IdentityService(services.database, services.registry)
             services.agent_authenticator = PairedDeviceAuthenticator(services.identity)
         return services
@@ -98,6 +204,7 @@ def build_human_auth(config: GatewayConfig) -> Any | None:
         "phase5_identity",
         "phase6_program",
         "phase7_c2",
+        "phase8_program",
     }:
         return None
     return build_phase4_auth(
@@ -109,6 +216,11 @@ def build_human_auth(config: GatewayConfig) -> Any | None:
             "phase5_identity",
             "phase6_program",
             "phase7_c2",
+            "phase8_program",
         },
-        include_write=config.profile in {"phase6_program", "phase7_c2"},
+        include_write=config.profile in {
+            "phase6_program",
+            "phase7_c2",
+            "phase8_program",
+        },
     )

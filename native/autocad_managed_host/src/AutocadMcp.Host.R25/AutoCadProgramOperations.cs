@@ -668,7 +668,7 @@ internal sealed class AutoCadProgramOperations(
         }
     }
 
-    private static ApplyResult Apply(
+    internal static ApplyResult Apply(
         Database database,
         Transaction transaction,
         CadProgramV02 program)
@@ -922,7 +922,7 @@ internal sealed class AutoCadProgramOperations(
                Math.Abs(left.MaxZ - right.MaxZ) <= tolerance;
     }
 
-    private static string EntityFingerprint(Entity entity, Transaction transaction)
+    internal static string EntityFingerprint(Entity entity, Transaction transaction)
     {
         var extents = entity.GeometricExtents;
         var geometry = new JsonObject();
@@ -1258,7 +1258,7 @@ internal sealed class AutoCadProgramOperations(
         }
     }
 
-    private sealed record ApplyResult(
+    internal sealed record ApplyResult(
         IReadOnlyList<Entity> Entities,
         IReadOnlyList<string> EnsuredLayers,
         bool CreatedNonEntityObject);

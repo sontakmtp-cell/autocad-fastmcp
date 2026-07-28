@@ -1,0 +1,34 @@
+{
+  "schema_version": "phase8.fault-recovery-matrix/1",
+  "status": "mixed_automated_contract_and_live_pending",
+  "automated_evidence": [
+    "services/gateway/tests/test_phase8_gateway_plumbing.py",
+    "native/autocad_managed_host/tests/AutocadMcp.Host.Core.Tests/Phase8ManagedOperationsTests.cs",
+    "tests/phase8/test_cross_stack_acceptance.py"
+  ],
+  "live_evidence_status": "missing",
+  "invariants": [
+    "no_job_before_trusted_approval",
+    "no_model_or_browser_approval",
+    "no_blind_retry_after_started",
+    "recovery_query_never_reexecutes",
+    "effect_receipt_checkpoint_atomic_when_required",
+    "duplicate_never_creates_second_effect",
+    "outcome_unknown_retains_write_lock",
+    "compiler_runtime_registry_change_invalidates_old_consent"
+  ],
+  "cases": [
+    {"id": "drop-before-release", "fault_point": "intent_pending", "expected_state": "no_job", "may_reexecute": false, "required_evidence": ["intent", "consent"]},
+    {"id": "drop-after-release-before-dispatch", "fault_point": "released", "expected_state": "queued_or_cancelled", "may_reexecute": false, "required_evidence": ["intent", "consent", "job"]},
+    {"id": "drop-after-dispatch-before-ack", "fault_point": "dispatched", "expected_state": "reconnect_pending", "may_reexecute": false, "required_evidence": ["job", "command_binding"]},
+    {"id": "drop-after-started", "fault_point": "running", "expected_state": "outcome_unknown", "may_reexecute": false, "required_evidence": ["agent_ledger", "write_lock"]},
+    {"id": "effect-response-lost", "fault_point": "effect_and_receipt_committed", "expected_state": "reconcile_exact_receipt", "may_reexecute": false, "required_evidence": ["receipt", "checkpoint_when_required"]},
+    {"id": "duplicate-exact-command", "fault_point": "host_duplicate", "expected_state": "same_receipt_no_second_effect", "may_reexecute": false, "required_evidence": ["idempotency_key", "receipt_digest"]},
+    {"id": "conflicting-duplicate", "fault_point": "host_duplicate_binding_mismatch", "expected_state": "needs_attention", "may_reexecute": false, "required_evidence": ["conflict", "original_binding"]},
+    {"id": "checkpoint-missing-after-effect", "fault_point": "atomic_materialization", "expected_state": "transaction_aborted_or_no_terminal_success", "may_reexecute": false, "required_evidence": ["host_transaction"]},
+    {"id": "rollback-response-lost", "fault_point": "rollback_effect_and_receipt_committed", "expected_state": "reconcile_exact_rollback_receipt", "may_reexecute": false, "required_evidence": ["rollback_receipt", "checkpoint_binding"]},
+    {"id": "restart-with-unknown", "fault_point": "gateway_or_agent_restart", "expected_state": "outcome_unknown_locked", "may_reexecute": false, "required_evidence": ["durable_job", "agent_ledger", "recovery_case"]},
+    {"id": "hard-pause-before-effect", "fault_point": "agent_hard_pause", "expected_state": "failed_closed", "may_reexecute": false, "required_evidence": ["pause_state", "job_event"]},
+    {"id": "capability-changed-after-preview", "fault_point": "pre_dispatch_revalidation", "expected_state": "intent_invalidated", "may_reexecute": false, "required_evidence": ["old_pins", "current_pins"]}
+  ]
+}

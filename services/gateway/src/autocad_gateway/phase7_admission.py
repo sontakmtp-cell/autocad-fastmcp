@@ -17,9 +17,11 @@ from autocad_contracts import (
     RollbackPlanRecord,
     approval_decision_proof_payload,
     approval_request_digest,
+    build_execution_binding_v1,
     canonical_receipt_id,
     canonical_json,
     execution_intent_digest,
+    normalize_sha256_digest,
     rollback_plan_digest,
 )
 
@@ -90,6 +92,181 @@ class Phase7AdmissionService:
         self.policy = policy
         self.database = repository.database
         self.rollback_preview_provider: Any | None = None
+        self.phase8_commit_provider: Any | None = None
+
+    async def create_phase8_commit_intent(
+        self,
+        *,
+        request: CadCommitInput,
+        principal: Principal,
+        plan: dict[str, Any],
+        preview: dict[str, Any],
+        connection: Any,
+        phase8_gateway: Any,
+        correlation_id: str,
+    ) -> CadCommitOutput:
+        self._require_phase7()
+        if request.idempotency_key is None:
+            raise GatewayError("invalid_request")
+        if _now() >= datetime.fromisoformat(preview["expires_at"]):
+            raise GatewayError("preview_expired")
+        key = request.idempotency_key
+        request_hash = canonical_digest(
+            {
+                "action": "phase8_program_commit",
+                "owner_subject": principal.subject,
+                "preview_id": preview["preview_id"],
+                "preview_binding_digest": preview[
+                    "execution_binding_digest"
+                ],
+                "execution_plan_digest": plan["plan_digest"],
+            }
+        )
+        intent_id = _stable_id("intent", principal.subject, key)
+        existing = await self.repository.get_intent(
+            principal.subject, intent_id
+        )
+        if existing is not None:
+            if existing["request_hash"] != request_hash:
+                raise GatewayError("idempotency_conflict")
+            consent = await self.repository.get_consent(
+                principal.subject,
+                _stable_id(
+                    "consent",
+                    existing["intent_id"],
+                    existing["intent_digest"],
+                ),
+            )
+            return self._phase8_commit_output(
+                plan,
+                preview,
+                existing,
+                consent,
+                correlation_id,
+                duplicate=True,
+            )
+        generation, thumbprint = self._stable_device_identity(
+            principal.subject, plan["plan"]["device_id"]
+        )
+        runtime = plan["runtime_pins"]
+        agent_hash = normalize_sha256_digest(
+            connection.package_manifest_hash
+        )
+        runtime_pins = {
+            "runtime_id": runtime["runtime_id"],
+            "runtime_role": runtime["runtime_role"],
+            "host_family": runtime["host_family"],
+            "host_version": runtime["host_version"],
+            "agent_package_id": "autocad.desktop_agent",
+            "agent_package_version": connection.agent_version,
+            "agent_package_hash": agent_hash,
+            "host_package_id": runtime["package_id"],
+            "host_package_version": runtime["package_version"],
+            "host_package_hash": runtime["package_hash"],
+        }
+        policy_pins = {
+            "capability_manifest_hash": runtime[
+                "capability_manifest_hash"
+            ],
+            "operation_registry_hash": runtime[
+                "operation_registry_hash"
+            ],
+            "registry_version": runtime[
+                "operation_registry_version"
+            ],
+            "policy_version": runtime["policy_version"],
+        }
+        created_at = _now()
+        expires_at = min(
+            datetime.fromisoformat(preview["expires_at"]),
+            created_at + timedelta(minutes=10),
+        )
+        receipt_id = canonical_receipt_id(preview["preview_id"])
+        commit_binding = build_execution_binding_v1(
+            plan["plan"],
+            action="commit",
+            preview_id=preview["preview_id"],
+            preview_expires_at=preview["expires_at"],
+            receipt_id=receipt_id,
+        )
+        assurance = self._program_assurance(plan)
+        value: dict[str, Any] = {
+            "schema_version": "cad.execution-intent/1",
+            "intent_id": intent_id,
+            "intent_version": 1,
+            "owner_subject": principal.subject,
+            "actor_principal": {
+                "issuer": "gateway",
+                "subject": principal.subject,
+            },
+            "action": "program_commit",
+            "state": "awaiting_approval",
+            "state_version": 0,
+            "device_id": plan["plan"]["device_id"],
+            "device_identity_generation": generation,
+            "device_key_thumbprint": thumbprint,
+            "document_id": plan["plan"]["document_id"],
+            "expected_document_revision": plan["plan"][
+                "expected_document_revision"
+            ],
+            "program_id": plan["program_id"],
+            "program_revision": plan["program_revision"],
+            "program_digest": plan["source_digest"],
+            "preview_id": preview["preview_id"],
+            "preview_digest": preview["preview_digest"],
+            "preview_execution_digest": preview[
+                "execution_binding_digest"
+            ],
+            "preview_expires_at": preview["expires_at"],
+            "deterministic_receipt_id": receipt_id,
+            "commit_execution_digest": commit_binding.execution_binding_digest,
+            "runtime_pins": runtime_pins,
+            "policy_pins": policy_pins,
+            "risk_class": plan["risk_class"],
+            "required_assurance": assurance,
+            "trusted_effect_summary": plan["trusted_effect_summary"],
+            "idempotency_key": key,
+            "request_hash": request_hash,
+            "intent_digest": "sha256:" + "0" * 64,
+            "created_at": _timestamp(created_at),
+            "expires_at": _timestamp(expires_at),
+            "consent_id": None,
+            "released_job_id": None,
+        }
+        value["intent_digest"] = execution_intent_digest(value)
+        try:
+            intent, _ = await self.repository.create_intent(
+                ExecutionIntentRecord.model_validate(value)
+            )
+            await phase8_gateway.bind_intent(
+                owner_subject=principal.subject,
+                intent_id=intent["intent_id"],
+                plan_id=plan["plan_id"],
+            )
+            consent = await self._create_consent(intent)
+            await phase8_gateway.bind_consent(
+                owner_subject=principal.subject,
+                consent_id=consent["consent_id"],
+                intent_id=intent["intent_id"],
+            )
+        except RepositoryConflict as error:
+            raise GatewayError(self._repository_code(error.code)) from None
+        if (
+            consent["state"] == "requested"
+            and intent["required_assurance"]
+            == "device_local_confirmation"
+        ):
+            await self.dispatch_local_request(
+                principal.subject, consent["consent_id"]
+            )
+        return self._phase8_commit_output(
+            plan,
+            preview,
+            intent,
+            consent,
+            correlation_id,
+            duplicate=False,
+        )
 
     async def commit(
         self,
@@ -941,10 +1118,15 @@ class Phase7AdmissionService:
     ) -> dict[str, Any] | None:
         if consent is not None and consent["state"] != "approved":
             return None
+        phase8 = await self._is_phase8_intent(intent)
         await self._revalidate_intent(intent)
         payload = json.loads(json.dumps(payload))
         kind = intent["action"]
-        if kind == "program_commit":
+        if kind == "program_commit" and phase8:
+            approval = payload.setdefault("approval_binding", {})
+            approval["intent_id"] = intent["intent_id"]
+            approval["intent_digest"] = intent["intent_digest"]
+        elif kind == "program_commit":
             payload["execution"]["intent_id"] = intent["intent_id"]
             payload["execution"]["intent_digest"] = intent["intent_digest"]
         else:
@@ -999,7 +1181,13 @@ class Phase7AdmissionService:
     async def _approve_and_release(
         self, intent: dict[str, Any], consent: dict[str, Any]
     ) -> dict[str, Any]:
-        if intent["action"] == "program_commit":
+        if intent["action"] == "program_commit" and await self._is_phase8_intent(
+            intent
+        ):
+            if self.phase8_commit_provider is None:
+                raise GatewayError("capability_missing")
+            payload = await self.phase8_commit_provider(intent)
+        elif intent["action"] == "program_commit":
             preview = await self.program_service.program_repository.get_preview(
                 intent["owner_subject"], intent["preview_id"]
             )
@@ -1092,6 +1280,21 @@ class Phase7AdmissionService:
             raise GatewayError("feature_disabled")
         if _now() >= datetime.fromisoformat(intent["expires_at"]):
             raise GatewayError("intent_expired")
+        if await self._is_phase8_intent(intent):
+            if self.phase8_commit_provider is None:
+                await self._invalidate(intent)
+                raise GatewayError("capability_missing")
+            await self.phase8_commit_provider(intent)
+            generation, thumbprint = self._stable_device_identity(
+                intent["owner_subject"], intent["device_id"]
+            )
+            if (
+                generation != intent["device_identity_generation"]
+                or thumbprint != intent["device_key_thumbprint"]
+            ):
+                await self._invalidate(intent)
+                raise GatewayError("binding_mismatch")
+            return
         program = await self.program_service._require_program(
             intent["owner_subject"], intent["program_id"], intent["program_revision"]
         )
@@ -1132,6 +1335,15 @@ class Phase7AdmissionService:
         ):
             await self._invalidate(intent)
             raise GatewayError("binding_mismatch")
+
+    async def _is_phase8_intent(self, intent: dict[str, Any]) -> bool:
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM phase8_intent_bindings "
+                "WHERE owner_subject = ? AND intent_id = ?",
+                (intent["owner_subject"], intent["intent_id"]),
+            ).fetchone()
+        return row is not None
 
     async def _invalidate(self, intent: dict[str, Any]) -> None:
         try:
@@ -1512,6 +1724,39 @@ class Phase7AdmissionService:
         )
 
     @staticmethod
+    def _phase8_commit_output(
+        plan: dict[str, Any],
+        preview: dict[str, Any],
+        intent: dict[str, Any],
+        consent: dict[str, Any] | None,
+        correlation_id: str,
+        *,
+        duplicate: bool,
+    ) -> CadCommitOutput:
+        return CadCommitOutput(
+            correlation_id=correlation_id,
+            program_id=plan["program_id"],
+            program_revision=plan["program_revision"],
+            preview_id=preview["preview_id"],
+            state="awaiting_approval",
+            program_digest=plan["source_digest"],
+            execution_digest=intent["commit_execution_digest"],
+            binding_digest=preview["execution_binding_digest"],
+            document_revision_before=plan["plan"][
+                "expected_document_revision"
+            ],
+            duplicate=duplicate,
+            admission_status="approval_required",
+            intent_id=intent["intent_id"],
+            consent_id=consent["consent_id"] if consent else None,
+            required_assurance=intent["required_assurance"],
+            intent_uri=f"cad://intents/{intent['intent_id']}",
+            consent_uri=(
+                f"cad://consents/{consent['consent_id']}" if consent else None
+            ),
+        )
+
+    @staticmethod
     def _rollback_preview_output(
         plan: dict[str, Any], *, duplicate: bool
     ) -> CadPreviewRollbackOutput:
@@ -1564,7 +1809,10 @@ class Phase7AdmissionService:
         )
 
     def _require_phase7(self) -> None:
-        if not self.policy.phase7_c2_enabled or self.policy.profile != "phase7_c2":
+        if (
+            not self.policy.phase7_c2_enabled
+            or self.policy.profile not in {"phase7_c2", "phase8_program"}
+        ):
             raise GatewayError("feature_disabled")
 
     def _require_rollback(self) -> None:

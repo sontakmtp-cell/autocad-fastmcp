@@ -12,6 +12,13 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from autocad_contracts import (
+    Phase8ApprovalBinding,
+    ProgramPreviewResult,
+    build_execution_binding_v1,
+    normalize_sha256_digest,
+)
+
 from .application.job_service import DurableJobError, DurableJobService
 from .domain.jobs import InvalidJobTransition
 from .contracts import (
@@ -29,6 +36,10 @@ from .contracts import (
     CadObserveOutputC1,
     CadQueryInput,
     CadQueryOutput,
+    CadPrepareProgramV1ConflictOutput,
+    CadPrepareProgramV1Output,
+    CadPrepareProgramV1RevisionRequest,
+    CadPreviewOutput,
     DeviceInfo,
     DeviceInfoC1,
     ExecutionEvidence,
@@ -49,6 +60,9 @@ from .program_services import ProgramGatewayPolicy, ProgramGatewayService
 from .phase7_admission import Phase7AdmissionPolicy, Phase7AdmissionService
 from .phase7_recovery import Phase7RecoveryService
 from .infrastructure.sqlite.phase7_repository import Phase7Repository
+from .infrastructure.sqlite.phase8_repository import Phase8Repository
+from .phase8_gateway import Phase8FeatureFlags, Phase8GatewayService
+from .phase8_contract_adapter import Phase8CompilerPort, Phase8RevisionPort
 
 
 PHASE3_OWNER = "phase3-fixture-user"
@@ -118,14 +132,33 @@ class DurableGatewayServices:
         public_rollback_enabled: bool = False,
         recovery_cases_enabled: bool = False,
         phase6_direct_commit_lab_enabled: bool = False,
+        phase8_feature_flags: Phase8FeatureFlags | None = None,
+        phase8_compiler: Phase8CompilerPort | None = None,
+        phase8_revision_adapter: Phase8RevisionPort | None = None,
     ) -> None:
         self.database = database
         self.registry = registry
         self.repository = SqliteRepository(database)
-        self.is_phase7 = profile == "phase7_c2"
-        self.is_phase6 = profile in {"phase6_program", "phase7_c2"}
+        self.is_phase7 = profile in {"phase7_c2", "phase8_program"}
+        self.is_phase6 = profile in {
+            "phase6_program",
+            "phase7_c2",
+            "phase8_program",
+        }
+        self.is_phase8 = profile == "phase8_program"
         self.program_repository = ProgramRepository(database) if self.is_phase6 else None
         self.phase7_repository = Phase7Repository(database) if self.is_phase7 else None
+        self.phase8_repository = Phase8Repository(database) if self.is_phase6 else None
+        self.phase8_gateway = (
+            Phase8GatewayService(
+                self.phase8_repository,
+                phase8_feature_flags or Phase8FeatureFlags(),
+                compiler=phase8_compiler,
+                revision_adapter=phase8_revision_adapter,
+            )
+            if self.phase8_repository is not None
+            else None
+        )
         self.phase7_recovery = (
             Phase7RecoveryService(
                 self.repository,
@@ -154,6 +187,7 @@ class DurableGatewayServices:
             "phase5_identity",
             "phase6_program",
             "phase7_c2",
+            "phase8_program",
         }:
             self.agent_authenticator = FixtureDeviceAuthenticator(self.device_tokens)
         self.owner_subject = owner_subject
@@ -163,11 +197,13 @@ class DurableGatewayServices:
             "phase5_identity",
             "phase6_program",
             "phase7_c2",
+            "phase8_program",
         }
         self.is_phase5_identity = profile in {
             "phase5_identity",
             "phase6_program",
             "phase7_c2",
+            "phase8_program",
         }
         self.required_package = dict(required_package or {})
         self.display_name = display_name
@@ -218,6 +254,11 @@ class DurableGatewayServices:
         if self.phase7_admission is not None:
             self.phase7_admission.rollback_preview_provider = (
                 self._phase7_rollback_preview_provider
+            )
+            self.phase7_admission.phase8_commit_provider = (
+                self._phase8_commit_payload_provider
+                if self.is_phase8
+                else None
             )
         self.phase6_direct_commit_lab_enabled = phase6_direct_commit_lab_enabled
 
@@ -348,6 +389,55 @@ class DurableGatewayServices:
     async def commit_program(
         self, request: Any, principal: Principal, correlation_id: str
     ) -> Any:
+        if getattr(self, "is_phase8", False) and getattr(
+            self, "phase8_repository", None
+        ) is not None:
+            preview = await self.phase8_repository.get_preview(
+                principal.subject, request.preview_id
+            )
+            if preview is not None:
+                if (
+                    self.phase7_admission is None
+                    or self.phase8_gateway is None
+                ):
+                    raise GatewayError("feature_disabled")
+                plan = await self.phase8_repository.get_plan(
+                    principal.subject, preview["plan_id"]
+                )
+                if plan is None:
+                    raise GatewayError("not_found")
+                preview_result = await self._phase8_preview_result(
+                    principal.subject, preview
+                )
+                preview = {
+                    **preview,
+                    "preview_digest": preview_result.preview_digest,
+                }
+                connection, current_pins = (
+                    await self._phase8_current_binding(plan)
+                )
+                if (
+                    connection.hard_pause
+                    or connection.paused
+                    or not connection.write_lock_enabled
+                ):
+                    raise GatewayError("write_lock_disabled")
+                await self._phase8_admit(
+                    principal=principal,
+                    plan=plan,
+                    connection=connection,
+                    current_pins=current_pins,
+                    action="commit",
+                )
+                return await self.phase7_admission.create_phase8_commit_intent(
+                    request=request,
+                    principal=principal,
+                    plan=plan,
+                    preview=preview,
+                    connection=connection,
+                    phase8_gateway=self.phase8_gateway,
+                    correlation_id=correlation_id,
+                )
         if self.phase7_admission is not None:
             return await self.phase7_admission.commit(
                 request, principal, correlation_id
@@ -355,6 +445,701 @@ class DurableGatewayServices:
         if not self.phase6_direct_commit_lab_enabled:
             raise GatewayError("feature_disabled")
         return await self.program_service.commit(request, principal, correlation_id)
+
+    async def _phase8_commit_payload_provider(
+        self, intent: dict[str, Any]
+    ) -> dict[str, Any]:
+        if (
+            self.phase8_repository is None
+            or self.phase8_gateway is None
+        ):
+            raise GatewayError("feature_disabled")
+        preview = await self.phase8_repository.get_preview(
+            intent["owner_subject"], intent["preview_id"]
+        )
+        if preview is None:
+            raise GatewayError("binding_mismatch")
+        preview_result = await self._phase8_preview_result(
+            intent["owner_subject"], preview
+        )
+        plan = await self.phase8_repository.get_plan(
+            intent["owner_subject"], preview["plan_id"]
+        )
+        if plan is None:
+            raise GatewayError("binding_mismatch")
+        connection, current_pins = await self._phase8_current_binding(plan)
+        if (
+            connection.hard_pause
+            or connection.paused
+            or not connection.write_lock_enabled
+        ):
+            raise GatewayError("write_lock_disabled")
+        admission = await self._phase8_admit(
+            principal=Principal(
+                subject=intent["owner_subject"], scopes=("autocad.write",)
+            ),
+            plan=plan,
+            connection=connection,
+            current_pins=current_pins,
+            action="commit",
+        )
+        binding = build_execution_binding_v1(
+            plan["plan"],
+            action="commit",
+            preview_id=preview["preview_id"],
+            preview_expires_at=preview["expires_at"],
+            receipt_id=intent["deterministic_receipt_id"],
+        ).model_dump(mode="json")
+        if (
+            binding["execution_binding_digest"]
+            != intent["commit_execution_digest"]
+            or preview_result.preview_digest != intent["preview_digest"]
+        ):
+            raise GatewayError("binding_mismatch")
+        consent = self._phase8_approved_consent(intent)
+        job_id = self._phase7_stable_id("job", intent["intent_id"])
+        command_id = self._phase7_stable_id(
+            "command", intent["intent_id"]
+        )
+        release_key = self._phase7_stable_id(
+            "release", intent["intent_id"]
+        )
+        approval = Phase8ApprovalBinding.model_validate(
+            {
+                "schema_version": "cad.phase8-approval-binding/1",
+                "action": "program_commit",
+                "intent_id": intent["intent_id"],
+                "consent_id": consent["consent_id"],
+                "intent_digest": intent["intent_digest"],
+                "approval_proof_digest": (
+                    "sha256:"
+                    + hashlib.sha256(
+                        canonical_json(
+                            {
+                                "consent_id": consent["consent_id"],
+                                "intent_id": consent["intent_id"],
+                                "intent_digest": consent["intent_digest"],
+                                "state": consent["state"],
+                                "state_version": consent["state_version"],
+                                "decision_source": consent[
+                                    "decision_source"
+                                ],
+                                "decision_principal": consent[
+                                    "decision_principal"
+                                ],
+                                "decided_at": consent["decided_at"],
+                            }
+                        ).encode("utf-8")
+                    ).hexdigest()
+                ),
+                "device_id": intent["device_id"],
+                "document_id": intent["document_id"],
+                "document_revision": intent[
+                    "expected_document_revision"
+                ],
+                "job_id": job_id,
+                "command_id": command_id,
+                "idempotency_key": release_key,
+                "source_digest": plan["source_digest"],
+                "execution_plan_digest": plan["plan_digest"],
+                "execution_binding_digest": binding[
+                    "execution_binding_digest"
+                ],
+                "expansion_digest": plan["expansion_digest"],
+                "effect_manifest_digest": plan["effect_digest"],
+                "target_refs_digest": plan["target_set_digest"],
+                "validation_profiles_digest": plan["plan"][
+                    "validation_profiles_digest"
+                ],
+                "checkpoint_strategy_digest": plan["plan"][
+                    "checkpoint_strategy_digest"
+                ],
+                "hard_budgets_digest": plan["plan"][
+                    "hard_budgets_digest"
+                ],
+                "preview_id": intent["preview_id"],
+                "preview_digest": intent["preview_digest"],
+                "preview_expires_at": preview["expires_at"],
+                "receipt_id": intent["deterministic_receipt_id"],
+            }
+        ).model_dump(mode="json")
+        return {
+            "binding": binding,
+            "execution_plan": plan["plan"],
+            "approval_binding": approval,
+            "capability_evidence": admission["capability_evidence"],
+            "preview_id": intent["preview_id"],
+            "expires_at": preview["expires_at"],
+            "preview_digest": intent["preview_digest"],
+            "receipt_id": intent["deterministic_receipt_id"],
+        }
+
+    async def _phase8_preview_result(
+        self, owner_subject: str, preview: dict[str, Any]
+    ) -> ProgramPreviewResult:
+        job = await self.repository.get_job(
+            owner_subject, preview["job_id"]
+        )
+        if (
+            job is None
+            or job["state"] != "succeeded"
+            or not isinstance(job.get("result"), dict)
+        ):
+            raise GatewayError("preview_unavailable")
+        try:
+            result = ProgramPreviewResult.model_validate(job["result"])
+        except (TypeError, ValueError):
+            raise GatewayError("preview_unavailable") from None
+        if (
+            result.preview_id != preview["preview_id"]
+            or result.expires_at != preview["expires_at"]
+        ):
+            raise GatewayError("binding_mismatch")
+        return result
+
+    def _phase8_approved_consent(
+        self, intent: dict[str, Any]
+    ) -> dict[str, Any]:
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT consent_id FROM consents "
+                "WHERE owner_subject = ? AND intent_id = ? AND state = 'approved'",
+                (intent["owner_subject"], intent["intent_id"]),
+            ).fetchone()
+        if row is None:
+            raise GatewayError("consent_not_approved")
+        consent = self.phase7_repository
+        if consent is None:
+            raise GatewayError("feature_disabled")
+        # This method is called from an async provider; reading through the
+        # repository is performed by the caller before release.
+        with self.database.read_connection() as conn:
+            record = conn.execute(
+                "SELECT * FROM consents WHERE consent_id = ?",
+                (row["consent_id"],),
+            ).fetchone()
+        if record is None:
+            raise GatewayError("consent_not_approved")
+        value = dict(record)
+        value["decision_principal"] = (
+            json.loads(value.pop("decision_principal_json"))
+            if value.get("decision_principal_json")
+            else None
+        )
+        return value
+
+    @staticmethod
+    def _phase7_stable_id(prefix: str, *parts: str) -> str:
+        material = "\0".join(parts).encode("utf-8")
+        return f"{prefix}-{hashlib.sha256(material).hexdigest()[:40]}"
+
+    async def prepare_program(
+        self,
+        request: Any,
+        principal: Principal,
+        correlation_id: str,
+        *,
+        schema_version: str = "cad.program/0.2",
+        program_v1_source: dict[str, Any] | None = None,
+        program_v1_revision_request: dict[str, Any] | None = None,
+    ) -> Any:
+        """Discriminate the existing public surface without changing v0.2."""
+
+        if schema_version == "cad.program/0.2":
+            if (
+                program_v1_source is not None
+                or program_v1_revision_request is not None
+            ):
+                raise GatewayError("invalid_request")
+            return await self.program_service.prepare(
+                request, principal, correlation_id
+            )
+        if schema_version != "cad.program/1.0":
+            raise GatewayError("invalid_request")
+        if not self.is_phase8 or self.phase8_gateway is None:
+            raise GatewayError("feature_disabled")
+        if "autocad.write" not in principal.scopes:
+            raise GatewayError("insufficient_scope")
+        if (program_v1_source is None) == (program_v1_revision_request is None):
+            raise GatewayError("invalid_request")
+        if program_v1_revision_request is not None:
+            try:
+                revision_request = CadPrepareProgramV1RevisionRequest.model_validate(
+                    program_v1_revision_request
+                )
+                return await self._prepare_program_revision(
+                    revision_request, principal, correlation_id
+                )
+            except (RepositoryConflict, ValueError) as error:
+                code = getattr(error, "code", "invalid_request")
+                if code in {
+                    "revision_execution_started",
+                    "revision_not_latest",
+                }:
+                    code = "binding_mismatch"
+                raise GatewayError(self.program_service._repository_code(code)) from None
+        if request is None or program_v1_source is None:
+            raise GatewayError("invalid_request")
+        if program_v1_source.get("schema_version") != "cad.program/1.0":
+            raise GatewayError("invalid_request")
+        if (
+            program_v1_source.get("device_id") != request.device_id
+            or program_v1_source.get("source_snapshot_id")
+            != request.source_snapshot_id
+            or program_v1_source.get("operations") != request.operations
+        ):
+            raise GatewayError("binding_mismatch")
+        snapshot = await self.repository.get_snapshot(
+            principal.subject, request.source_snapshot_id
+        )
+        if snapshot is None or snapshot["device_id"] != request.device_id:
+            raise GatewayError("not_found")
+        revision_evidence = snapshot.get("revision_evidence") or {}
+        if (
+            revision_evidence.get("commit_safe") is not True
+            or revision_evidence.get("revision_strength") in {
+                None,
+                "summary_only",
+            }
+        ):
+            raise GatewayError("stale_snapshot")
+        document_id = self.program_service._snapshot_document_id(snapshot)
+        if (
+            program_v1_source.get("document_id") != document_id
+            or program_v1_source.get("expected_document_revision")
+            != snapshot["document_revision"]
+            or program_v1_source.get("program_revision") != 1
+        ):
+            raise GatewayError("binding_mismatch")
+        materialized_target_refs = self._phase8_materialized_target_refs(
+            owner_subject=principal.subject,
+            snapshot=snapshot,
+            operations=request.operations,
+            document_id=document_id,
+        )
+        try:
+            prepared = await self.phase8_gateway.prepare_root(
+                owner_subject=principal.subject,
+                program_id=str(program_v1_source.get("program_id", "")),
+                device_id=request.device_id,
+                document_id=document_id,
+                source_snapshot_id=request.source_snapshot_id,
+                expected_document_revision=snapshot["document_revision"],
+                source=program_v1_source,
+                materialized_target_refs=materialized_target_refs,
+            )
+            sealed = prepared["plan"]
+            binding = build_execution_binding_v1(
+                sealed["plan"], action="compile_only"
+            )
+        except (RepositoryConflict, ValueError) as error:
+            code = getattr(error, "code", "invalid_request")
+            if code in {
+                "compiler_unavailable",
+                "source_binding_mismatch",
+                "plan_id_mismatch",
+            }:
+                code = "capability_missing"
+            else:
+                code = self.program_service._repository_code(code)
+            raise GatewayError(code) from None
+        return CadPrepareProgramV1Output(
+            correlation_id=correlation_id,
+            program_id=sealed["program_id"],
+            program_revision=sealed["program_revision"],
+            source_digest=sealed["source_digest"],
+            execution_plan_id=sealed["plan_id"],
+            execution_plan_digest=sealed["plan_digest"],
+            execution_binding=binding.model_dump(mode="json"),
+            effect_manifest_digest=sealed["effect_digest"],
+            document_id=document_id,
+            expected_document_revision=snapshot["document_revision"],
+            risk_class=sealed["risk_class"],
+            resource_uri=(
+                f"cad://programs/{sealed['program_id']}/revisions/"
+                f"{sealed['program_revision']}"
+            ),
+            ready_for_preview=True,
+        )
+
+    async def _prepare_program_revision(
+        self,
+        request: CadPrepareProgramV1RevisionRequest,
+        principal: Principal,
+        correlation_id: str,
+    ) -> Any:
+        if self.phase8_gateway is None or self.phase8_repository is None:
+            raise GatewayError("feature_disabled")
+        parent = await self.phase8_repository.get_revision(
+            principal.subject, request.program_id, request.source_revision
+        )
+        if parent is None:
+            raise RepositoryConflict("not_found")
+        old_snapshot = await self.repository.get_snapshot(
+            principal.subject, parent["source_snapshot_id"]
+        )
+        if old_snapshot is None:
+            raise RepositoryConflict("not_found")
+
+        if request.kind == "patch":
+            prepared = await self.phase8_gateway.patch(
+                owner_subject=principal.subject,
+                program_id=request.program_id,
+                source_revision=request.source_revision,
+                patch=request.changes or {},
+                target_ref_resolver=lambda source: (
+                    self._phase8_materialized_target_refs(
+                        owner_subject=principal.subject,
+                        snapshot=old_snapshot,
+                        operations=source["operations"],
+                        document_id=parent["document_id"],
+                    )
+                ),
+            )
+        else:
+            new_snapshot = await self.repository.get_snapshot(
+                principal.subject, request.new_snapshot_id or ""
+            )
+            if new_snapshot is None:
+                raise RepositoryConflict("not_found")
+            revision_evidence = new_snapshot.get("revision_evidence") or {}
+            if (
+                revision_evidence.get("commit_safe") is not True
+                or revision_evidence.get("revision_strength")
+                in {None, "summary_only"}
+            ):
+                raise RepositoryConflict("stale_snapshot")
+            prepared = await self.phase8_gateway.rebase(
+                owner_subject=principal.subject,
+                program_id=request.program_id,
+                source_revision=request.source_revision,
+                old_snapshot=old_snapshot,
+                new_snapshot=new_snapshot,
+                target_ref_resolver=lambda source: (
+                    self._phase8_materialized_target_refs(
+                        owner_subject=principal.subject,
+                        snapshot=new_snapshot,
+                        operations=source["operations"],
+                        document_id=parent["document_id"],
+                    )
+                ),
+            )
+
+        revision = prepared["revision"]
+        report = prepared["conflict_report"]
+        if report is not None:
+            return CadPrepareProgramV1ConflictOutput(
+                correlation_id=correlation_id,
+                program_id=request.program_id,
+                program_revision=revision["revision"],
+                lineage_kind=request.kind,
+                conflict_report_id=report["conflict_report_id"],
+                conflicts_digest=report["conflicts_digest"],
+                resource_uri=(
+                    f"cad://programs/{request.program_id}/revisions/"
+                    f"{revision['revision']}"
+                ),
+            )
+        sealed = prepared["plan"]
+        binding = build_execution_binding_v1(
+            sealed["plan"], action="compile_only"
+        )
+        return CadPrepareProgramV1Output(
+            correlation_id=correlation_id,
+            program_id=sealed["program_id"],
+            program_revision=sealed["program_revision"],
+            source_digest=sealed["source_digest"],
+            execution_plan_id=sealed["plan_id"],
+            execution_plan_digest=sealed["plan_digest"],
+            execution_binding=binding.model_dump(mode="json"),
+            effect_manifest_digest=sealed["effect_digest"],
+            document_id=revision["document_id"],
+            expected_document_revision=revision["expected_document_revision"],
+            risk_class=sealed["risk_class"],
+            resource_uri=(
+                f"cad://programs/{sealed['program_id']}/revisions/"
+                f"{sealed['program_revision']}"
+            ),
+            ready_for_preview=True,
+        )
+
+    async def read_program_resource(
+        self, owner_subject: str, program_id: str, revision: int
+    ) -> str:
+        if self.is_phase8 and self.phase8_repository is not None:
+            value = await self.phase8_repository.get_revision(
+                owner_subject, program_id, revision
+            )
+            if value is not None:
+                report = await self.phase8_repository.get_conflict_report_for_revision(
+                    owner_subject, program_id, revision
+                )
+                if report is not None:
+                    value["conflict_report"] = report
+            return self.program_service._bounded_resource(value)
+        return await self.program_service.read_program(
+            owner_subject, program_id, revision
+        )
+
+    @staticmethod
+    def _phase8_materialized_target_refs(
+        *,
+        owner_subject: str,
+        snapshot: dict[str, Any],
+        operations: list[dict[str, Any]],
+        document_id: str,
+    ) -> list[dict[str, Any]] | None:
+        target_kinds = {"copy_entity", "offset_entity", "move_entity"}
+        requested_values = [
+            operation.get("target_ref_id")
+            for operation in operations
+            if operation.get("kind") in target_kinds
+        ]
+        if not requested_values:
+            return None
+        if any(
+            not isinstance(ref_id, str) or not ref_id
+            for ref_id in requested_values
+        ):
+            raise GatewayError("invalid_request")
+        requested = list(dict.fromkeys(requested_values))
+        indexed: dict[str, dict[str, Any]] = {}
+        for entity in snapshot.get("entities") or []:
+            if not isinstance(entity, dict):
+                continue
+            for key in ("ref_id", "entity_id", "handle"):
+                value = entity.get(key)
+                if isinstance(value, str) and value:
+                    if value in indexed and indexed[value] != entity:
+                        raise GatewayError("binding_mismatch")
+                    indexed[value] = entity
+        result: list[dict[str, Any]] = []
+        for ref_id in requested:
+            entity = indexed.get(ref_id)
+            if entity is None:
+                raise GatewayError("not_found")
+            entity_id = entity.get("entity_id") or entity.get("handle")
+            entity_type = entity.get("entity_type") or entity.get("type")
+            fingerprint = entity.get("fingerprint")
+            if not all(
+                isinstance(value, str) and value
+                for value in (entity_id, entity_type, fingerprint)
+            ):
+                raise GatewayError("stale_snapshot")
+            result.append(
+                {
+                    "ref_id": ref_id,
+                    "owner_id": owner_subject,
+                    "device_id": snapshot["device_id"],
+                    "document_id": document_id,
+                    "snapshot_id": snapshot["snapshot_id"],
+                    "document_revision": snapshot["document_revision"],
+                    "entity_id": entity_id,
+                    "entity_type": entity_type,
+                    "fingerprint": fingerprint,
+                }
+            )
+        return result
+
+    async def preview_program(
+        self, request: Any, principal: Principal, correlation_id: str
+    ) -> Any:
+        if self.phase8_repository is None or self.phase8_gateway is None:
+            return await self.program_service.preview(
+                request, principal, correlation_id
+            )
+        plan = await self.phase8_repository.get_plan_for_program(
+            principal.subject, request.program_id, request.program_revision
+        )
+        if plan is None:
+            return await self.program_service.preview(
+                request, principal, correlation_id
+            )
+        if not self.is_phase8:
+            raise GatewayError("feature_disabled")
+        self.program_service._require_write_scope(principal)
+        self.program_service._require_managed_write()
+        self.program_service._require_allowed_device(plan["plan"]["device_id"])
+        connection, current_pins = await self._phase8_current_binding(plan)
+        admission = await self._phase8_admit(
+            principal=principal,
+            plan=plan,
+            connection=connection,
+            current_pins=current_pins,
+            action="preview",
+        )
+        key = request.idempotency_key or f"preview-{uuid.uuid4()}"
+        preview_id = (
+            "preview-v1-"
+            + hashlib.sha256(
+                (
+                    principal.subject
+                    + "\0"
+                    + plan["plan_id"]
+                    + "\0"
+                    + key
+                ).encode("utf-8")
+            ).hexdigest()[:48]
+        )
+        expires_at = (
+            datetime.now(timezone.utc) + timedelta(seconds=120)
+        ).isoformat()
+        binding = build_execution_binding_v1(
+            plan["plan"],
+            action="preview",
+            preview_id=preview_id,
+            preview_expires_at=expires_at,
+        ).model_dump(mode="json")
+        payload = {
+            "binding": binding,
+            "execution_plan": plan["plan"],
+            "capability_evidence": admission["capability_evidence"],
+            "preview_id": preview_id,
+            "expires_at": expires_at,
+        }
+        request_digest = (
+            "sha256:"
+            + hashlib.sha256(canonical_json(payload).encode("utf-8")).hexdigest()
+        )
+        try:
+            job = await self.repository.create_job(
+                owner_subject=principal.subject,
+                device_id=plan["plan"]["device_id"],
+                kind="program_preview",
+                effect_class="write",
+                payload=payload,
+                idempotency_key=key,
+                deadline_at=expires_at,
+            )
+            preview, duplicate = await self.phase8_repository.create_preview(
+                owner_subject=principal.subject,
+                plan_id=plan["plan_id"],
+                preview_id=preview_id,
+                job_id=job["job_id"],
+                execution_binding=binding,
+                capability_evidence_ids=admission[
+                    "capability_evidence_ids"
+                ],
+                expires_at=expires_at,
+                idempotency_key=key,
+                request_digest=request_digest,
+            )
+            await self.phase8_repository.append_usage_event(
+                owner_subject=principal.subject,
+                plan_id=plan["plan_id"],
+                state="previewed",
+                external_id=preview_id,
+                binding_digest=admission["binding_digest"],
+            )
+        except RepositoryConflict as error:
+            raise GatewayError(
+                self.program_service._repository_code(error.code)
+            ) from None
+        del duplicate
+        return CadPreviewOutput(
+            correlation_id=correlation_id,
+            program_id=plan["program_id"],
+            program_revision=plan["program_revision"],
+            preview_id=preview["preview_id"],
+            job_id=job["job_id"],
+            state=job["state"],
+            program_digest=plan["source_digest"],
+            execution_digest=binding["execution_binding_digest"],
+            binding_digest=admission["binding_digest"],
+            planned_operation_count=len(plan["plan"]["operations"]),
+            planned_entity_count=plan["create_count"],
+            planned_layer_count=plan["effect_manifest"][
+                "ensures_non_entity"
+            ],
+            validation=None,
+            expires_at=expires_at,
+            job_uri=f"cad://jobs/{job['job_id']}",
+            resource_uri=f"cad://previews/{preview_id}",
+        )
+
+    async def _phase8_current_binding(
+        self, plan: dict[str, Any]
+    ) -> tuple[Any, dict[str, str]]:
+        device_id = plan["plan"]["device_id"]
+        connection = await self.registry.get(device_id)
+        if (
+            connection is None
+            or not await self.registry.is_current_and_fresh(connection)
+        ):
+            raise GatewayError("device_offline")
+        if (
+            connection.active_document_id != plan["plan"]["document_id"]
+            or connection.active_document_revision
+            != plan["plan"]["expected_document_revision"]
+        ):
+            raise GatewayError("stale_revision")
+        expected = dict(plan["runtime_pins"])
+        try:
+            capability_hash = normalize_sha256_digest(
+                connection.capability_manifest_hash
+            )
+            registry_hash = normalize_sha256_digest(
+                connection.operation_registry_hash
+            )
+        except (TypeError, ValueError):
+            raise GatewayError("capability_missing") from None
+        if (
+            capability_hash != expected["capability_manifest_hash"]
+            or registry_hash != expected["operation_registry_hash"]
+            or connection.registry_version
+            != expected["operation_registry_version"]
+        ):
+            raise GatewayError("binding_mismatch")
+        manifest = connection.capability_manifest
+        candidates = [
+            item["runtime"]
+            for item in (manifest or {}).get("cad_products", [])
+            if isinstance(item, dict)
+            and isinstance(item.get("runtime"), dict)
+            and item.get("edition") == "full"
+            and item.get("release_year") == 2025
+        ]
+        if len(candidates) != 1:
+            raise GatewayError("capability_missing")
+        runtime = candidates[0]
+        actual = {
+            **expected,
+            "runtime_id": runtime.get("id"),
+            "host_family": runtime.get("host_family"),
+            "host_version": runtime.get("host_version"),
+            "package_id": runtime.get("package_id"),
+            "package_version": runtime.get("package_version"),
+            "package_hash": runtime.get("package_hash"),
+            "capability_manifest_hash": capability_hash,
+            "operation_registry_hash": registry_hash,
+        }
+        if actual != expected:
+            raise GatewayError("capability_missing")
+        return connection, actual
+
+    async def _phase8_admit(
+        self,
+        *,
+        principal: Principal,
+        plan: dict[str, Any],
+        connection: Any,
+        current_pins: dict[str, str],
+        action: str,
+    ) -> dict[str, Any]:
+        try:
+            return await self.phase8_gateway.admit(
+                owner_subject=principal.subject,
+                device_id=plan["plan"]["device_id"],
+                plan_id=plan["plan_id"],
+                action=action,
+                cohort="lab",
+                reported_capabilities=tuple(connection.capabilities),
+                current_runtime_pins=current_pins,
+            )
+        except RepositoryConflict as error:
+            raise GatewayError(
+                self.program_service._repository_code(error.code)
+            ) from None
 
     async def decide_phase7_local_approval(
         self, decision: dict[str, Any]

@@ -82,7 +82,17 @@ async def _running_job(repository: SqliteRepository, key: str):
 
 @pytest.mark.asyncio
 async def test_migrations_are_current_and_owner_filters_fail_closed(repository):
-    assert repository.database.migration_checksums.keys() == {1, 2, 3, 4, 5, 6}
+    assert repository.database.migration_checksums.keys() == {
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+    }
     assert repository.database.migrations_valid is True
     assert repository.database.verify_migration_state() is True
     assert [item["device_id"] for item in await repository.list_devices("owner")] == [

@@ -203,21 +203,41 @@ class SqliteDatabase:
 
     def _apply_migration(self, migration: Migration) -> None:
         connection = self._require_connection()
+        statements = list(_sql_statements(migration.sql))
+        disables_foreign_keys = bool(statements) and (
+            statements[0].strip().rstrip(";").lower().replace(" ", "")
+            == "pragmaforeign_keys=off"
+        )
+        if disables_foreign_keys:
+            statements.pop(0)
         with self._lock:
-            connection.execute("BEGIN IMMEDIATE")
+            if disables_foreign_keys:
+                connection.execute("PRAGMA foreign_keys = OFF")
             try:
-                for statement in _sql_statements(migration.sql):
+                connection.execute("BEGIN IMMEDIATE")
+                for statement in statements:
                     connection.execute(statement)
                 connection.execute(
                     "INSERT INTO schema_migrations(version, checksum, applied_at) "
                     "VALUES (?, ?, ?)",
                     (migration.version, migration.checksum, utc_now()),
                 )
+                if disables_foreign_keys:
+                    violations = connection.execute(
+                        "PRAGMA foreign_key_check"
+                    ).fetchall()
+                    if violations:
+                        raise DatabaseError(
+                            "migration produced foreign key violations"
+                        )
             except BaseException:
                 connection.rollback()
                 raise
             else:
                 connection.commit()
+            finally:
+                if disables_foreign_keys:
+                    connection.execute("PRAGMA foreign_keys = ON")
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:

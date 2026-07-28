@@ -16,6 +16,7 @@ from autocad_contracts import (
 )
 
 from ...domain.jobs import EffectClass, JobState, is_terminal, validate_transition
+from ...program_contract_adapter import program_wire_payload_hash
 from .database import SqliteDatabase, new_id, utc_now
 
 
@@ -524,7 +525,20 @@ class SqliteRepository:
         deadline_at: str | None,
     ) -> dict[str, Any]:
         try:
-            payload_hash = canonical_payload_hash(payload)
+            binding = payload.get("binding")
+            payload_hash = (
+                program_wire_payload_hash(
+                    kind=kind,
+                    effect_class=effect_class,
+                    payload=payload,
+                )
+                if (
+                    isinstance(binding, dict)
+                    and binding.get("schema_version")
+                    == "cad.execution-binding/1"
+                )
+                else canonical_payload_hash(payload)
+            )
         except (TypeError, ValueError) as error:
             raise RepositoryConflict("payload_invalid") from error
         request_fingerprint = _request_fingerprint(kind, effect_class, payload_hash)

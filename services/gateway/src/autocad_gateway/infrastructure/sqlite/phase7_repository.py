@@ -19,7 +19,7 @@ from autocad_contracts import (
     canonical_json,
 )
 
-from .database import SqliteDatabase
+from .database import SqliteDatabase, new_id
 from .repositories import RepositoryConflict
 
 
@@ -316,6 +316,12 @@ class Phase7Repository:
             if kind != expected_kind:
                 raise RepositoryConflict("job_kind_mismatch")
             self._require_job_binding(intent, payload)
+            self._require_phase8_release_binding(
+                conn,
+                intent=intent,
+                consent_id=consent_id,
+                payload=payload,
+            )
             if intent.state == "released":
                 if intent.released_job_id != job_id or intent.consent_id != consent_id:
                     raise RepositoryConflict("intent_release_conflict")
@@ -337,6 +343,13 @@ class Phase7Repository:
                     request_fingerprint=request_fingerprint,
                 ):
                     raise RepositoryConflict("job_conflict")
+                self._record_phase8_release_usage(
+                    conn,
+                    owner_subject=owner_subject,
+                    intent_id=intent_id,
+                    job_id=job_id,
+                    created_at=str(existing_job["created_at"]),
+                )
                 return {
                     "intent": _dump(intent),
                     "job": self._job_record(existing_job),
@@ -504,6 +517,13 @@ class Phase7Repository:
                 raise RepositoryConflict("intent_release_conflict") from error
             if released.rowcount != 1:
                 raise RepositoryConflict("cas_conflict")
+            self._record_phase8_release_usage(
+                conn,
+                owner_subject=owner_subject,
+                intent_id=intent_id,
+                job_id=job_id,
+                created_at=consumed_at,
+            )
             result = self._intent(conn, owner_subject, intent_id)
             job = conn.execute(
                 "SELECT * FROM jobs WHERE owner_subject = ? AND job_id = ?",
@@ -551,6 +571,24 @@ class Phase7Repository:
                 if existing is not None and self._same_consent_request(existing, record):
                     return _dump(existing), True
                 raise RepositoryConflict("consent_conflict") from error
+            phase8_binding = conn.execute(
+                "SELECT binding_digest FROM phase8_intent_bindings "
+                "WHERE owner_subject = ? AND intent_id = ?",
+                (record.owner_subject, record.intent_id),
+            ).fetchone()
+            if phase8_binding is not None:
+                conn.execute(
+                    "INSERT INTO phase8_consent_bindings("
+                    "consent_id, owner_subject, intent_id, binding_digest, created_at"
+                    ") VALUES (?, ?, ?, ?, ?)",
+                    (
+                        record.consent_id,
+                        record.owner_subject,
+                        record.intent_id,
+                        phase8_binding["binding_digest"],
+                        record.requested_at,
+                    ),
+                )
         return _dump(record), False
 
     async def get_consent(
@@ -1140,6 +1178,52 @@ class Phase7Repository:
             ):
                 raise RepositoryConflict("job_binding_mismatch")
             return
+        binding = payload.get("binding")
+        if (
+            isinstance(binding, dict)
+            and binding.get("schema_version")
+            == "cad.execution-binding/1"
+        ):
+            approval = payload.get("approval_binding")
+            if (
+                set(payload)
+                != {
+                    "binding",
+                    "execution_plan",
+                    "approval_binding",
+                    "capability_evidence",
+                    "preview_id",
+                    "expires_at",
+                    "preview_digest",
+                    "receipt_id",
+                }
+                or not isinstance(approval, dict)
+                or approval.get("intent_id") != intent.intent_id
+                or approval.get("intent_digest") != intent.intent_digest
+                or binding.get("action") != "commit"
+                or binding.get("source_program_id") != intent.program_id
+                or binding.get("source_program_revision")
+                != intent.program_revision
+                or binding.get("source_digest") != intent.program_digest
+                or binding.get("device_id") != intent.device_id
+                or binding.get("document_id") != intent.document_id
+                or binding.get("document_revision")
+                != intent.expected_document_revision
+                or binding.get("preview_id") != intent.preview_id
+                or binding.get("preview_expires_at")
+                != intent.preview_expires_at
+                or binding.get("receipt_id")
+                != intent.deterministic_receipt_id
+                or binding.get("execution_binding_digest")
+                != intent.commit_execution_digest
+                or payload.get("preview_id") != intent.preview_id
+                or payload.get("expires_at") != intent.preview_expires_at
+                or payload.get("preview_digest") != intent.preview_digest
+                or payload.get("receipt_id")
+                != intent.deterministic_receipt_id
+            ):
+                raise RepositoryConflict("job_binding_mismatch")
+            return
         execution = payload.get("execution")
         if not isinstance(execution, dict):
             raise RepositoryConflict("job_binding_mismatch")
@@ -1156,6 +1240,142 @@ class Phase7Repository:
         }
         if any(execution.get(key) != value for key, value in expected.items()):
             raise RepositoryConflict("job_binding_mismatch")
+
+    @staticmethod
+    def _require_phase8_release_binding(
+        conn: Any,
+        *,
+        intent: ExecutionIntentRecord,
+        consent_id: str | None,
+        payload: dict[str, Any],
+    ) -> None:
+        binding = conn.execute(
+            "SELECT * FROM phase8_intent_bindings "
+            "WHERE owner_subject = ? AND intent_id = ?",
+            (intent.owner_subject, intent.intent_id),
+        ).fetchone()
+        if binding is None:
+            execution_binding = payload.get("binding")
+            legacy_execution = payload.get("execution")
+            if (
+                isinstance(execution_binding, dict)
+                and execution_binding.get("schema_version")
+                == "cad.execution-binding/1"
+            ) or (
+                isinstance(legacy_execution, dict)
+                and (
+                    "phase8_binding_digest" in legacy_execution
+                    or "plan_digest" in legacy_execution
+                    or "effect_digest" in legacy_execution
+                )
+            ):
+                raise RepositoryConflict("job_binding_mismatch")
+            return
+        plan = payload.get("execution_plan")
+        execution_binding = payload.get("binding")
+        approval = payload.get("approval_binding")
+        legacy_execution = payload.get("execution")
+        legacy_expected = {
+            "source_digest": binding["source_digest"],
+            "semantic_digest": binding["semantic_digest"],
+            "plan_digest": binding["plan_digest"],
+            "expansion_digest": binding["expansion_digest"],
+            "effect_digest": binding["effect_digest"],
+            "target_set_digest": binding["target_set_digest"],
+            "reference_digest": binding["reference_digest"],
+            "compiler_hash": binding["compiler_hash"],
+            "risk_class": binding["risk_class"],
+            "trusted_effect_summary": _load(
+                binding["trusted_effect_summary_json"]
+            ),
+            "rollout_policy_digest": binding["rollout_policy_digest"],
+            "rollout_policy_epoch": binding["rollout_policy_epoch"],
+            "phase8_binding_digest": binding["binding_digest"],
+        }
+        legacy_matches = isinstance(legacy_execution, dict) and all(
+            legacy_execution.get(key) == value
+            for key, value in legacy_expected.items()
+        )
+        if (
+            not legacy_matches
+            and (
+            not isinstance(plan, dict)
+            or not isinstance(execution_binding, dict)
+            or not isinstance(approval, dict)
+            or plan.get("source_digest") != binding["source_digest"]
+            or plan.get("execution_plan_digest") != binding["plan_digest"]
+            or plan.get("expansion_digest") != binding["expansion_digest"]
+            or plan.get("effect_manifest_digest") != binding["effect_digest"]
+            or plan.get("target_refs_digest") != binding["target_set_digest"]
+            or plan.get("compiler", {}).get("compiler_package_hash")
+            != binding["compiler_hash"]
+            or execution_binding.get("source_digest")
+            != binding["source_digest"]
+            or execution_binding.get("execution_plan_digest")
+            != binding["plan_digest"]
+            or approval.get("intent_id") != intent.intent_id
+            or approval.get("intent_digest") != intent.intent_digest
+            or approval.get("consent_id") != consent_id
+            )
+        ):
+            raise RepositoryConflict("job_binding_mismatch")
+        if intent.required_assurance == "none":
+            if consent_id is not None:
+                raise RepositoryConflict("consent_binding_mismatch")
+            return
+        consent_binding = conn.execute(
+            "SELECT * FROM phase8_consent_bindings "
+            "WHERE owner_subject = ? AND consent_id = ? AND intent_id = ?",
+            (intent.owner_subject, consent_id, intent.intent_id),
+        ).fetchone()
+        if (
+            consent_binding is None
+            or consent_binding["binding_digest"] != binding["binding_digest"]
+        ):
+            raise RepositoryConflict("consent_binding_mismatch")
+
+    @staticmethod
+    def _record_phase8_release_usage(
+        conn: Any,
+        *,
+        owner_subject: str,
+        intent_id: str,
+        job_id: str,
+        created_at: str,
+    ) -> None:
+        binding = conn.execute(
+            "SELECT plan_id, binding_digest FROM phase8_intent_bindings "
+            "WHERE owner_subject = ? AND intent_id = ?",
+            (owner_subject, intent_id),
+        ).fetchone()
+        if binding is None:
+            return
+        existing = conn.execute(
+            "SELECT owner_subject, binding_digest FROM "
+            "phase8_revision_usage_events WHERE plan_id = ? "
+            "AND state = 'released' AND external_id = ?",
+            (binding["plan_id"], job_id),
+        ).fetchone()
+        if existing is not None:
+            if (
+                str(existing["owner_subject"]) != owner_subject
+                or str(existing["binding_digest"]) != binding["binding_digest"]
+            ):
+                raise RepositoryConflict("usage_event_conflict")
+            return
+        conn.execute(
+            "INSERT INTO phase8_revision_usage_events("
+            "usage_event_id, owner_subject, plan_id, state, external_id, "
+            "binding_digest, created_at) VALUES (?, ?, ?, 'released', ?, ?, ?)",
+            (
+                new_id("usage"),
+                owner_subject,
+                binding["plan_id"],
+                job_id,
+                binding["binding_digest"],
+                created_at,
+            ),
+        )
 
     @staticmethod
     def _same_job_material(
@@ -1265,36 +1485,75 @@ class Phase7Repository:
 
     @staticmethod
     def _require_intent_parents(conn: Any, record: ExecutionIntentRecord) -> None:
-        parents = (
-            conn.execute(
-                "SELECT 1 FROM devices WHERE owner_subject = ? AND device_id = ?",
-                (record.owner_subject, record.device_id),
-            ).fetchone(),
-            conn.execute(
-                "SELECT 1 FROM cad_program_revisions WHERE owner_subject = ? "
-                "AND program_id = ? AND revision = ? AND program_digest = ?",
-                (
-                    record.owner_subject,
-                    record.program_id,
-                    record.program_revision,
-                    record.program_digest,
-                ),
-            ).fetchone(),
-            conn.execute(
-                "SELECT 1 FROM cad_previews WHERE owner_subject = ? AND preview_id = ? "
-                "AND program_id = ? AND program_revision = ? "
-                "AND preview_digest = ? AND execution_digest = ?",
-                (
-                    record.owner_subject,
-                    record.preview_id,
-                    record.program_id,
-                    record.program_revision,
-                    record.preview_digest,
-                    record.preview_execution_digest,
-                ),
-            ).fetchone(),
-        )
-        if any(parent is None for parent in parents):
+        device = conn.execute(
+            "SELECT 1 FROM devices WHERE owner_subject = ? AND device_id = ?",
+            (record.owner_subject, record.device_id),
+        ).fetchone()
+        legacy_program = conn.execute(
+            "SELECT 1 FROM cad_program_revisions WHERE owner_subject = ? "
+            "AND program_id = ? AND revision = ? AND program_digest = ?",
+            (
+                record.owner_subject,
+                record.program_id,
+                record.program_revision,
+                record.program_digest,
+            ),
+        ).fetchone()
+        legacy_preview = conn.execute(
+            "SELECT 1 FROM cad_previews WHERE owner_subject = ? AND preview_id = ? "
+            "AND program_id = ? AND program_revision = ? "
+            "AND preview_digest = ? AND execution_digest = ?",
+            (
+                record.owner_subject,
+                record.preview_id,
+                record.program_id,
+                record.program_revision,
+                record.preview_digest,
+                record.preview_execution_digest,
+            ),
+        ).fetchone()
+        phase8_preview = conn.execute(
+            """
+            SELECT p.source_digest, v.execution_binding_digest, v.expires_at,
+                   j.device_id, j.kind, j.effect_class, j.state, j.result_json
+            FROM phase8_execution_plans AS p
+            JOIN phase8_previews AS v
+              ON v.owner_subject = p.owner_subject AND v.plan_id = p.plan_id
+            JOIN jobs AS j
+              ON j.owner_subject = v.owner_subject AND j.job_id = v.job_id
+            WHERE p.owner_subject = ? AND p.program_id = ?
+              AND p.program_revision = ? AND v.preview_id = ?
+            """,
+            (
+                record.owner_subject,
+                record.program_id,
+                record.program_revision,
+                record.preview_id,
+            ),
+        ).fetchone()
+        phase8_matches = False
+        if (
+            phase8_preview is not None
+            and phase8_preview["source_digest"] == record.program_digest
+            and phase8_preview["execution_binding_digest"]
+            == record.preview_execution_digest
+            and phase8_preview["expires_at"] == record.preview_expires_at
+            and phase8_preview["device_id"] == record.device_id
+            and phase8_preview["kind"] == "program_preview"
+            and phase8_preview["effect_class"] == "write"
+            and phase8_preview["state"] == "succeeded"
+            and phase8_preview["result_json"] is not None
+        ):
+            result = json.loads(phase8_preview["result_json"])
+            phase8_matches = (
+                result.get("preview_id") == record.preview_id
+                and result.get("preview_digest") == record.preview_digest
+                and result.get("expires_at") == record.preview_expires_at
+            )
+        if device is None or (
+            not (legacy_program is not None and legacy_preview is not None)
+            and not phase8_matches
+        ):
             raise RepositoryConflict("not_found")
 
     @staticmethod

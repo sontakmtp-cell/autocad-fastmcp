@@ -764,8 +764,15 @@ class ProgramCommandMessage(AgentEnvelope):
     payload_hash: str = Field(pattern=_SHA256_PATTERN)
     kind: Literal["program_preview", "program_commit", "program_validate"]
     effect_class: Literal["write", "read"]
-    binding: ProgramExecutionBinding
+    binding: "ProgramExecutionBinding | ExecutionBindingV1"
     program: "CadProgram | None" = None
+    execution_plan: "CadExecutionPlanV1 | None" = None
+    approval_binding: "Phase8ApprovalBinding | None" = None
+    capability_evidence: "list[Phase8CapabilityEvidence] | None" = Field(
+        default=None,
+        min_length=1,
+        max_length=MAX_CAPABILITIES,
+    )
     preview_id: str | None = Field(default=None, min_length=1, max_length=128)
     expires_at: str | None = Field(default=None, min_length=1, max_length=64)
     preview_digest: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
@@ -779,6 +786,17 @@ class ProgramCommandMessage(AgentEnvelope):
 
     @model_validator(mode="after")
     def _fields_match_kind(self) -> "ProgramCommandMessage":
+        if isinstance(self.binding, ExecutionBindingV1):
+            return self._validate_phase8_command()
+        return self._validate_legacy_command()
+
+    def _validate_legacy_command(self) -> "ProgramCommandMessage":
+        if {
+            "execution_plan",
+            "approval_binding",
+            "capability_evidence",
+        } & self.model_fields_set:
+            raise ValueError("legacy and Phase 8 command fields cannot be mixed")
         if self.kind in {"program_preview", "program_commit"}:
             if self.effect_class != "write" or self.program is None:
                 raise ValueError("preview and commit require write effect and program")
@@ -822,6 +840,125 @@ class ProgramCommandMessage(AgentEnvelope):
                 raise ValueError("binding document revision does not match program")
         return self
 
+    def _validate_phase8_command(self) -> "ProgramCommandMessage":
+        from .phase8_contracts import verify_execution_binding_v1
+
+        if self.kind == "program_validate":
+            raise ValueError("Phase 8 binding cannot be used for program_validate")
+        if "program" in self.model_fields_set or self.program is not None:
+            raise ValueError("Phase 8 command cannot carry source program")
+        if self.execution_plan is None:
+            raise ValueError("Phase 8 command requires sealed execution plan")
+        if self.effect_class != "write":
+            raise ValueError("Phase 8 preview and commit require write effect")
+        if self.device_id != self.execution_plan.device_id:
+            raise ValueError("command device_id does not match sealed plan")
+
+        expected_action: Literal["preview", "commit"] = (
+            "preview" if self.kind == "program_preview" else "commit"
+        )
+        if self.kind == "program_preview":
+            if (
+                self.preview_id is None
+                or self.expires_at is None
+                or {"preview_digest", "receipt_id", "validation", "approval_binding"}
+                & self.model_fields_set
+            ):
+                raise ValueError(
+                    "Phase 8 preview requires exact identity and no commit fields"
+                )
+            expected_receipt_id = None
+        else:
+            if (
+                self.preview_id is None
+                or self.expires_at is None
+                or self.preview_digest is None
+                or self.receipt_id is None
+                or self.approval_binding is None
+                or self.validation is not None
+            ):
+                raise ValueError(
+                    "Phase 8 commit requires preview, receipt, and approval binding"
+                )
+            expected_receipt_id = self.receipt_id
+
+        verify_execution_binding_v1(
+            self.binding,
+            self.execution_plan,
+            expected_action=expected_action,
+            expected_preview_id=self.preview_id,
+            expected_preview_expires_at=self.expires_at,
+            expected_receipt_id=expected_receipt_id,
+        )
+        self._validate_phase8_capability_evidence()
+        if self.kind == "program_commit":
+            self._validate_phase8_approval()
+        return self
+
+    def _validate_phase8_capability_evidence(self) -> None:
+        required = set(self.execution_plan.required_capabilities)
+        evidence = self.capability_evidence or []
+        if not required:
+            if "capability_evidence" in self.model_fields_set:
+                raise ValueError("Phase 8 command cannot carry unrequired capability evidence")
+            return
+        if {item.capability_key for item in evidence} != required or len(evidence) != len(
+            required
+        ):
+            raise ValueError("capability evidence must exactly cover required capabilities")
+
+        pins = self.execution_plan.execution_pins
+        issued_at = datetime.fromisoformat(self.issued_at)
+        allowed_states = (
+            {"preview_only", "lab_commit", "certified"}
+            if self.kind == "program_preview"
+            else {"lab_commit", "certified"}
+        )
+        for item in evidence:
+            if (
+                item.device_id != self.device_id
+                or item.runtime_id != pins.runtime_id
+                or item.host_family != pins.host_family
+                or item.package_hash != pins.package_hash
+                or item.capability_manifest_hash != pins.capability_manifest_hash
+                or item.operation_registry_hash != pins.operation_registry_hash
+                or item.support_state not in allowed_states
+            ):
+                raise ValueError("capability evidence does not match sealed plan")
+            if not (
+                datetime.fromisoformat(item.issued_at) <= issued_at
+                < datetime.fromisoformat(item.valid_until)
+            ):
+                raise ValueError("capability evidence is not valid at command issue time")
+
+    def _validate_phase8_approval(self) -> None:
+        approval = self.approval_binding
+        plan = self.execution_plan
+        binding = self.binding
+        expected = {
+            "device_id": self.device_id,
+            "document_id": plan.document_id,
+            "document_revision": plan.expected_document_revision,
+            "job_id": self.job_id,
+            "command_id": self.command_id,
+            "idempotency_key": self.idempotency_key,
+            "source_digest": plan.source_digest,
+            "execution_plan_digest": plan.execution_plan_digest,
+            "execution_binding_digest": binding.execution_binding_digest,
+            "expansion_digest": plan.expansion_digest,
+            "effect_manifest_digest": plan.effect_manifest_digest,
+            "target_refs_digest": plan.target_refs_digest,
+            "validation_profiles_digest": plan.validation_profiles_digest,
+            "checkpoint_strategy_digest": plan.checkpoint_strategy_digest,
+            "hard_budgets_digest": plan.hard_budgets_digest,
+            "preview_id": self.preview_id,
+            "preview_digest": self.preview_digest,
+            "preview_expires_at": self.expires_at,
+            "receipt_id": self.receipt_id,
+        }
+        if any(getattr(approval, field) != value for field, value in expected.items()):
+            raise ValueError("approval binding does not match Phase 8 command identity")
+
 
 def program_command_payload(
     command: ProgramCommandMessage | dict[str, Any],
@@ -836,10 +973,21 @@ def program_command_payload(
     payload: dict[str, Any] = {
         "kind": parsed.kind,
         "effect_class": parsed.effect_class,
-        "binding": parsed.binding.model_dump(mode="json"),
+        "binding": parsed.binding.model_dump(mode="json", exclude_none=True),
     }
     if parsed.program is not None:
         payload["program"] = parsed.program.model_dump(mode="json", exclude_none=True)
+    if parsed.execution_plan is not None:
+        payload["execution_plan"] = parsed.execution_plan.model_dump(
+            mode="json",
+            exclude_none=True,
+        )
+    if parsed.approval_binding is not None:
+        payload["approval_binding"] = parsed.approval_binding.model_dump(mode="json")
+    if parsed.capability_evidence is not None:
+        payload["capability_evidence"] = [
+            item.model_dump(mode="json") for item in parsed.capability_evidence
+        ]
     if parsed.preview_id is not None:
         payload["preview_id"] = parsed.preview_id
     if parsed.expires_at is not None:
@@ -1460,6 +1608,13 @@ def agent_program_command_json_schema() -> dict[str, Any]:
     schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
     schema["$id"] = "https://schemas.kythuatvang.local/cad.agent/2/program-command.schema.json"
     schema["title"] = "cad.agent/2 typed CAD Program command"
+    legacy_binding = {"$ref": "#/$defs/ProgramExecutionBinding"}
+    phase8_binding = {"$ref": "#/$defs/ExecutionBindingV1"}
+    phase8_fields = [
+        "execution_plan",
+        "approval_binding",
+        "capability_evidence",
+    ]
     schema["allOf"] = [
         {
             "if": {
@@ -1467,10 +1622,9 @@ def agent_program_command_json_schema() -> dict[str, Any]:
                 "required": ["kind"],
             },
             "then": {
-                "required": ["program", "preview_id", "expires_at"],
+                "required": ["preview_id", "expires_at"],
                 "properties": {
                     "effect_class": {"const": "write"},
-                    "program": {"$ref": "#/$defs/CadProgram"},
                     "preview_id": {"type": "string"},
                     "expires_at": {"type": "string"},
                 },
@@ -1479,8 +1633,29 @@ def agent_program_command_json_schema() -> dict[str, Any]:
                         {"required": ["preview_digest"]},
                         {"required": ["receipt_id"]},
                         {"required": ["validation"]},
+                        {"required": ["approval_binding"]},
                     ]
                 },
+                "oneOf": [
+                    {
+                        "required": ["program", "binding"],
+                        "properties": {"binding": legacy_binding},
+                        "not": {
+                            "anyOf": [
+                                {"required": [field]} for field in phase8_fields
+                            ]
+                        },
+                    },
+                    {
+                        "required": [
+                            "execution_plan",
+                            "binding",
+                            "capability_evidence",
+                        ],
+                        "properties": {"binding": phase8_binding},
+                        "not": {"required": ["program"]},
+                    },
+                ],
             },
         },
         {
@@ -1489,20 +1664,40 @@ def agent_program_command_json_schema() -> dict[str, Any]:
                 "required": ["kind"],
             },
             "then": {
-                "required": ["program", "preview_id", "preview_digest", "receipt_id"],
+                "required": ["preview_id", "preview_digest", "receipt_id"],
                 "properties": {
                     "effect_class": {"const": "write"},
-                    "program": {"$ref": "#/$defs/CadProgram"},
                     "preview_id": {"type": "string"},
                     "preview_digest": {"type": "string"},
                     "receipt_id": {"type": "string"},
                 },
-                "not": {
-                    "anyOf": [
-                        {"required": ["expires_at"]},
-                        {"required": ["validation"]},
-                    ]
-                },
+                "not": {"required": ["validation"]},
+                "oneOf": [
+                    {
+                        "required": ["program", "binding"],
+                        "properties": {"binding": legacy_binding},
+                        "not": {
+                            "anyOf": [
+                                {"required": ["expires_at"]},
+                                *[
+                                    {"required": [field]}
+                                    for field in phase8_fields
+                                ],
+                            ]
+                        },
+                    },
+                    {
+                        "required": [
+                            "execution_plan",
+                            "binding",
+                            "capability_evidence",
+                            "approval_binding",
+                            "expires_at",
+                        ],
+                        "properties": {"binding": phase8_binding},
+                        "not": {"required": ["program"]},
+                    },
+                ],
             },
         },
         {
@@ -1514,6 +1709,7 @@ def agent_program_command_json_schema() -> dict[str, Any]:
                 "required": ["validation"],
                 "properties": {
                     "effect_class": {"const": "read"},
+                    "binding": legacy_binding,
                     "validation": {"$ref": "#/$defs/ProgramValidationRequest"},
                 },
                 "not": {
@@ -1523,6 +1719,10 @@ def agent_program_command_json_schema() -> dict[str, Any]:
                         {"required": ["expires_at"]},
                         {"required": ["preview_digest"]},
                         {"required": ["receipt_id"]},
+                        *[
+                            {"required": [field]}
+                            for field in phase8_fields
+                        ],
                     ]
                 },
             },
@@ -1602,6 +1802,12 @@ def agent_rollback_json_schema() -> dict[str, Any]:
 
 from .runtime import CapabilityManifest
 from .program import CadProgram
+from .phase8_contracts import (
+    CadExecutionPlanV1,
+    ExecutionBindingV1,
+    Phase8ApprovalBinding,
+    Phase8CapabilityEvidence,
+)
 
 HelloMessage.model_rebuild()
 ProgramCommandMessage.model_rebuild()

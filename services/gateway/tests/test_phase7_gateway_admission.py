@@ -6,6 +6,7 @@ import json
 import time
 from datetime import datetime, timezone
 from hashlib import sha256
+from pathlib import Path
 
 import httpx
 import jwt
@@ -1042,6 +1043,54 @@ async def test_public_surface_has_rollback_ids_only_and_no_approval_tool(phase7)
         "cad://rollbacks/{rollback_id}",
         "cad://rollback-receipts/{receipt_id}",
     } <= uris
+
+
+async def test_phase8_public_tool_snapshot_is_exact_and_primitives_are_denied(phase7):
+    service, _, _, _ = phase7
+    async with Client(build_mcp_server(service)) as client:
+        tools = [
+            item.model_dump(mode="json", by_alias=True, exclude_none=True)
+            for item in await client.list_tools()
+        ]
+
+    def schema_hash(value):
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"))
+        return sha256(encoded.encode("utf-8")).hexdigest()
+
+    actual = [
+        {
+            "name": item["name"],
+            "annotations": item["annotations"],
+            "input_schema_sha256": schema_hash(item["inputSchema"]),
+            "output_schema_sha256": schema_hash(item["outputSchema"]),
+        }
+        for item in tools
+    ]
+    expected = json.loads(
+        (
+            Path(__file__).parents[1] / "snapshots" / "phase8_tools.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert actual == expected
+    names = {item["name"] for item in actual}
+    assert names.isdisjoint(
+        {
+            "cad_copy",
+            "cad_offset",
+            "cad_move",
+            "cad_rotate",
+            "cad_scale",
+            "cad_mirror",
+            "cad_delete",
+            "cad_erase",
+            "cad_trim",
+            "cad_extend",
+            "cad_fillet",
+            "cad_chamfer",
+            "cad_join",
+            "cad_explode",
+        }
+    )
 
 
 async def test_rollback_is_off_by_default_and_old_phase6_receipt_is_ineligible(phase7):

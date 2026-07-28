@@ -46,6 +46,9 @@ from .contracts import (
     CadQueryOutput,
     CadPrepareProgramInput,
     CadPrepareProgramOutput,
+    CadPrepareProgramV1ConflictOutput,
+    CadPrepareProgramV1Output,
+    CadPrepareProgramV1RevisionRequest,
     CadPreviewInput,
     CadPreviewOutput,
     CadCommitInput,
@@ -125,6 +128,7 @@ class GatewayConfig:
         "phase5_identity",
         "phase6_program",
         "phase7_c2",
+        "phase8_program",
     ] = "local"
     db_path: str | None = None
     fixture_tokens: tuple[tuple[str, str], ...] = ()
@@ -156,6 +160,29 @@ class GatewayConfig:
     public_rollback_enabled: bool = False
     recovery_cases_enabled: bool = False
     phase6_direct_commit_lab_enabled: bool = False
+    program_v1_source_enabled: bool = False
+    program_v1_compiler_enabled: bool = False
+    program_v1_create_pack_enabled: bool = False
+    program_v1_transform_pack_enabled: bool = False
+    program_v1_topology_pack_enabled: bool = False
+    program_v1_delete_pack_enabled: bool = False
+    checkpoint_v2_enabled: bool = False
+    scoped_rollback_revalidation_enabled: bool = False
+    lt_portable_write_enabled: bool = False
+    operation_pack_allowlist: tuple[str, ...] = ()
+    phase8_rollout_policy_digest: str | None = None
+    phase8_rollout_policy_epoch: int = 0
+    phase8_compiler_package_hash: str | None = None
+    phase8_runtime_id: str = "managed_dotnet"
+    phase8_host_family: str = "R25"
+    phase8_host_version: str = "2025"
+    phase8_package_id: str | None = None
+    phase8_package_version: str | None = None
+    phase8_package_hash: str | None = None
+    phase8_capability_manifest_hash: str | None = None
+    phase8_operation_registry_version: str = "cad.program/1.0-create-core"
+    phase8_operation_registry_hash: str | None = None
+    phase8_policy_version: str = "phase8-policy/1"
 
     @classmethod
     def from_env(cls) -> "GatewayConfig":
@@ -247,7 +274,7 @@ class GatewayConfig:
                 os.environ.get(
                     (
                         "AUTOCAD_MCP_PHASE7_DB_PATH"
-                        if profile == "phase7_c2"
+                        if profile in {"phase7_c2", "phase8_program"}
                         else "AUTOCAD_MCP_PHASE6_DB_PATH"
                     ),
                     os.environ.get(
@@ -258,7 +285,7 @@ class GatewayConfig:
                         ),
                     ),
                 ).strip()
-                if profile in {"phase6_program", "phase7_c2"}
+                if profile in {"phase6_program", "phase7_c2", "phase8_program"}
                 else (
                     os.environ.get(
                         "AUTOCAD_MCP_PHASE5_DB_PATH",
@@ -354,6 +381,87 @@ class GatewayConfig:
             phase6_direct_commit_lab_enabled=os.environ.get(
                 "AUTOCAD_MCP_PHASE6_DIRECT_COMMIT_LAB_ENABLED", "0"
             ).strip().lower() in {"1", "true", "yes", "on"},
+            program_v1_source_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V1_SOURCE_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            program_v1_compiler_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V1_COMPILER_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            program_v1_create_pack_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V1_CREATE_PACK_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            program_v1_transform_pack_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V1_TRANSFORM_PACK_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            program_v1_topology_pack_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V1_TOPOLOGY_PACK_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            program_v1_delete_pack_enabled=os.environ.get(
+                "AUTOCAD_MCP_PROGRAM_V1_DELETE_PACK_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            checkpoint_v2_enabled=os.environ.get(
+                "AUTOCAD_MCP_CHECKPOINT_V2_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            scoped_rollback_revalidation_enabled=os.environ.get(
+                "AUTOCAD_MCP_SCOPED_ROLLBACK_REVALIDATION_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            lt_portable_write_enabled=os.environ.get(
+                "AUTOCAD_MCP_LT_PORTABLE_WRITE_ENABLED", "0"
+            ).strip().lower() in {"1", "true", "yes", "on"},
+            operation_pack_allowlist=tuple(
+                item.strip()
+                for item in os.environ.get(
+                    "AUTOCAD_MCP_OPERATION_PACK_ALLOWLIST", ""
+                ).split(",")
+                if item.strip()
+            ),
+            phase8_rollout_policy_digest=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_ROLLOUT_POLICY_DIGEST", ""
+            ).strip()
+            or None,
+            phase8_rollout_policy_epoch=int(
+                os.environ.get("AUTOCAD_MCP_PHASE8_ROLLOUT_POLICY_EPOCH", "0")
+            ),
+            phase8_compiler_package_hash=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_COMPILER_PACKAGE_HASH", ""
+            ).strip()
+            or None,
+            phase8_runtime_id=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_RUNTIME_ID", "managed_dotnet"
+            ).strip(),
+            phase8_host_family=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_HOST_FAMILY", "R25"
+            ).strip(),
+            phase8_host_version=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_HOST_VERSION", "2025"
+            ).strip(),
+            phase8_package_id=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_PACKAGE_ID", ""
+            ).strip()
+            or None,
+            phase8_package_version=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_PACKAGE_VERSION", ""
+            ).strip()
+            or None,
+            phase8_package_hash=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_PACKAGE_HASH", ""
+            ).strip()
+            or None,
+            phase8_capability_manifest_hash=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_CAPABILITY_MANIFEST_HASH", ""
+            ).strip()
+            or None,
+            phase8_operation_registry_version=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_OPERATION_REGISTRY_VERSION",
+                "cad.program/1.0-create-core",
+            ).strip(),
+            phase8_operation_registry_hash=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_OPERATION_REGISTRY_HASH", ""
+            ).strip()
+            or None,
+            phase8_policy_version=os.environ.get(
+                "AUTOCAD_MCP_PHASE8_POLICY_VERSION", "phase8-policy/1"
+            ).strip(),
         )
         return config.validate()
 
@@ -401,10 +509,11 @@ class GatewayConfig:
             "phase5_identity",
             "phase6_program",
             "phase7_c2",
+            "phase8_program",
         }:
             raise ValueError(
                 "profile must be local, phase3_poc, phase4_c1, phase5_identity, "
-                "phase6_program or phase7_c2"
+                "phase6_program, phase7_c2 or phase8_program"
             )
         if not 1 <= self.stale_after_seconds <= 3600:
             raise ValueError("stale_after_seconds must be between 1 and 3600")
@@ -452,7 +561,12 @@ class GatewayConfig:
                     raise ValueError(f"phase4_c1 {name} must be a canonical HTTPS URL")
             if urlsplit(self.public_origin or "").path not in {"", "/"}:
                 raise ValueError("phase4_c1 public origin must not contain a path")
-        if self.profile in {"phase5_identity", "phase6_program", "phase7_c2"}:
+        if self.profile in {
+            "phase5_identity",
+            "phase6_program",
+            "phase7_c2",
+            "phase8_program",
+        }:
             required = {
                 "db_path": self.db_path,
                 "OAuth issuer": self.oauth_issuer,
@@ -521,6 +635,87 @@ class GatewayConfig:
             or len(self.phase6_policy_version.encode("utf-8")) > 64
         ):
             raise ValueError("phase6 policy version is invalid")
+        if self.program_v1_compiler_enabled and not self.program_v1_source_enabled:
+            raise ValueError("Program v1 compiler requires the source feature")
+        if (
+            self.program_v1_create_pack_enabled
+            or self.program_v1_transform_pack_enabled
+            or self.program_v1_topology_pack_enabled
+            or self.program_v1_delete_pack_enabled
+        ) and not self.program_v1_compiler_enabled:
+            raise ValueError("Program v1 operation packs require the compiler feature")
+        if self.program_v1_transform_pack_enabled and not self.checkpoint_v2_enabled:
+            raise ValueError("Program v1 transform pack requires checkpoint v2")
+        if self.program_v1_topology_pack_enabled or self.program_v1_delete_pack_enabled:
+            raise ValueError("Phase 8 destructive extension gate is not available")
+        if self.lt_portable_write_enabled:
+            raise ValueError("Phase 8 LT write certification gate is not available")
+        if (
+            self.scoped_rollback_revalidation_enabled
+            and not self.checkpoint_v2_enabled
+        ):
+            raise ValueError("scoped rollback revalidation requires checkpoint v2")
+        if len(set(self.operation_pack_allowlist)) != len(
+            self.operation_pack_allowlist
+        ) or any(
+            not item
+            or len(item.encode("utf-8")) > 128
+            or any(character.isspace() for character in item)
+            for item in self.operation_pack_allowlist
+        ):
+            raise ValueError("Phase 8 operation pack allowlist is invalid")
+        if self.program_v1_compiler_enabled and self.phase8_rollout_policy_epoch < 1:
+            raise ValueError("Phase 8 compiler requires a rollout policy epoch")
+        if self.phase8_rollout_policy_digest is not None:
+            digest = self.phase8_rollout_policy_digest
+            if (
+                len(digest) != 71
+                or not digest.startswith("sha256:")
+                or any(character not in "0123456789abcdef" for character in digest[7:])
+            ):
+                raise ValueError("Phase 8 rollout policy digest is invalid")
+        elif self.phase8_rollout_policy_epoch < 0:
+            raise ValueError("Phase 8 rollout policy epoch is invalid")
+        if self.profile == "phase8_program":
+            if not self.phase7_c2_enabled:
+                raise ValueError("phase8_program requires the Phase 7 C2 master flag")
+            if not self.program_v1_source_enabled or not self.program_v1_compiler_enabled:
+                raise ValueError("phase8_program requires Program v1 source and compiler")
+            trusted = {
+                "compiler package hash": self.phase8_compiler_package_hash,
+                "runtime ID": self.phase8_runtime_id,
+                "host family": self.phase8_host_family,
+                "host version": self.phase8_host_version,
+                "package ID": self.phase8_package_id,
+                "package version": self.phase8_package_version,
+                "package hash": self.phase8_package_hash,
+                "capability manifest hash": self.phase8_capability_manifest_hash,
+                "operation registry version": self.phase8_operation_registry_version,
+                "operation registry hash": self.phase8_operation_registry_hash,
+                "policy version": self.phase8_policy_version,
+            }
+            missing = [name for name, value in trusted.items() if not value]
+            if missing:
+                raise ValueError(
+                    "phase8_program requires trusted " + ", ".join(missing)
+                )
+            for name in (
+                "phase8_compiler_package_hash",
+                "phase8_package_hash",
+                "phase8_capability_manifest_hash",
+                "phase8_operation_registry_hash",
+            ):
+                value = getattr(self, name)
+                if (
+                    not isinstance(value, str)
+                    or len(value) != 71
+                    or not value.startswith("sha256:")
+                    or any(
+                        character not in "0123456789abcdef"
+                        for character in value[7:]
+                    )
+                ):
+                    raise ValueError(f"{name} must be a canonical SHA-256 digest")
         return self
 
     @property
@@ -787,6 +982,7 @@ def _principal(
         "phase5_identity",
         "phase6_program",
         "phase7_c2",
+        "phase8_program",
     }:
         issuer = token.claims.get("iss")
         if not isinstance(issuer, str) or not issuer:
@@ -1147,47 +1343,149 @@ def build_mcp_server(
         if program_service is None:
             raise RuntimeError("Phase 6 profile requires ProgramGatewayService")
 
-        @mcp.tool(
-            name="cad_prepare_program",
-            title="Prepare a CAD Program",
-            description=(
-                "Validate and store one owner-scoped create-only CAD Program without "
-                "dispatching it to the Desktop Agent."
-            ),
-            output_schema=CadPrepareProgramOutput.model_json_schema(),
-            annotations=_tool_annotations(idempotent=False, read_only=False),
-            auth=write_auth_check,
-        )
-        async def cad_prepare_program(
-            device_id: str,
-            source_snapshot_id: str,
-            operations: list[dict[str, Any]],
-            postconditions: list[dict[str, Any]] | None = None,
-            budget_overrides: dict[str, int] | None = None,
-            idempotency_key: Annotated[
-                str | None, Field(min_length=1, max_length=128)
-            ] = None,
-            *,
-            ctx: Context,
+        async def _prepare_program(
+            device_id: str | None,
+            source_snapshot_id: str | None,
+            operations: list[dict[str, Any]] | None,
+            postconditions: list[dict[str, Any]] | None,
+            budget_overrides: dict[str, int] | None,
+            idempotency_key: str | None,
+            schema_version: str,
+            program_v1_source: dict[str, Any] | None,
+            program_v1_revision_request: CadPrepareProgramV1RevisionRequest | None,
         ) -> dict[str, Any]:
-            del ctx
             correlation_id = current_correlation_id(make_correlation_id)
+            public_request = None
+            if program_v1_revision_request is not None:
+                if any(
+                    value is not None
+                    for value in (
+                        device_id,
+                        source_snapshot_id,
+                        operations,
+                        postconditions,
+                        budget_overrides,
+                        idempotency_key,
+                        program_v1_source,
+                    )
+                ):
+                    raise ToolError(
+                        "invalid_request: revision request cannot include root "
+                        f"source fields; correlation_id={correlation_id}"
+                    )
+            else:
+                public_request = CadPrepareProgramInput(
+                    device_id=device_id,
+                    source_snapshot_id=source_snapshot_id,
+                    operations=operations,
+                    postconditions=postconditions or [],
+                    budget_overrides=budget_overrides or {},
+                    idempotency_key=idempotency_key,
+                )
             result = await _run(
-                lambda: program_service.prepare(
-                    CadPrepareProgramInput(
-                        device_id=device_id,
-                        source_snapshot_id=source_snapshot_id,
-                        operations=operations,
-                        postconditions=postconditions or [],
-                        budget_overrides=budget_overrides or {},
-                        idempotency_key=idempotency_key,
-                    ),
+                lambda: services.prepare_program(
+                    public_request,
                     _principal(auth, services, correlation_id),
                     correlation_id,
+                    schema_version=schema_version,
+                    program_v1_source=program_v1_source,
+                    program_v1_revision_request=(
+                        program_v1_revision_request.model_dump(
+                            mode="json", exclude_none=True
+                        )
+                        if program_v1_revision_request is not None
+                        else None
+                    ),
                 ),
                 correlation_id,
             )
             return result.model_dump(mode="json")
+
+        prepare_metadata = {
+            "name": "cad_prepare_program",
+            "title": "Prepare a CAD Program",
+            "description": (
+                "Validate and store one owner-scoped create-only CAD Program without "
+                "dispatching it to the Desktop Agent."
+            ),
+            "annotations": _tool_annotations(idempotent=False, read_only=False),
+            "auth": write_auth_check,
+        }
+        if bool(getattr(services, "is_phase8", False)):
+
+            @mcp.tool(
+                **prepare_metadata,
+                output_schema={
+                    "type": "object",
+                    "oneOf": [
+                        CadPrepareProgramOutput.model_json_schema(),
+                        CadPrepareProgramV1Output.model_json_schema(),
+                        CadPrepareProgramV1ConflictOutput.model_json_schema(),
+                    ],
+                },
+            )
+            async def cad_prepare_program(
+                device_id: str | None = None,
+                source_snapshot_id: str | None = None,
+                operations: list[dict[str, Any]] | None = None,
+                postconditions: list[dict[str, Any]] | None = None,
+                budget_overrides: dict[str, int] | None = None,
+                idempotency_key: Annotated[
+                    str | None, Field(min_length=1, max_length=128)
+                ] = None,
+                schema_version: Literal[
+                    "cad.program/0.2", "cad.program/1.0"
+                ] = "cad.program/0.2",
+                program_v1_source: dict[str, Any] | None = None,
+                program_v1_revision_request: (
+                    CadPrepareProgramV1RevisionRequest | None
+                ) = None,
+                *,
+                ctx: Context,
+            ) -> dict[str, Any]:
+                del ctx
+                return await _prepare_program(
+                    device_id,
+                    source_snapshot_id,
+                    operations,
+                    postconditions,
+                    budget_overrides,
+                    idempotency_key,
+                    schema_version,
+                    program_v1_source,
+                    program_v1_revision_request,
+                )
+
+        else:
+
+            @mcp.tool(
+                **prepare_metadata,
+                output_schema=CadPrepareProgramOutput.model_json_schema(),
+            )
+            async def cad_prepare_program(
+                device_id: str,
+                source_snapshot_id: str,
+                operations: list[dict[str, Any]],
+                postconditions: list[dict[str, Any]] | None = None,
+                budget_overrides: dict[str, int] | None = None,
+                idempotency_key: Annotated[
+                    str | None, Field(min_length=1, max_length=128)
+                ] = None,
+                *,
+                ctx: Context,
+            ) -> dict[str, Any]:
+                del ctx
+                return await _prepare_program(
+                    device_id,
+                    source_snapshot_id,
+                    operations,
+                    postconditions,
+                    budget_overrides,
+                    idempotency_key,
+                    "cad.program/0.2",
+                    None,
+                    None,
+                )
 
         @mcp.tool(
             name="cad_preview",
@@ -1212,7 +1510,7 @@ def build_mcp_server(
             del ctx
             correlation_id = current_correlation_id(make_correlation_id)
             result = await _run(
-                lambda: program_service.preview(
+                lambda: services.preview_program(
                     CadPreviewInput(
                         program_id=program_id,
                         program_revision=program_revision,
@@ -1488,8 +1786,14 @@ def build_mcp_server(
             correlation_id = current_correlation_id(make_correlation_id)
             principal = _principal(auth, services, correlation_id)
             value = await _run(
-                lambda: program_service.read_program(
-                    principal.subject, program_id, revision
+                lambda: (
+                    services.read_program_resource(
+                        principal.subject, program_id, revision
+                    )
+                    if bool(getattr(services, "is_phase8", False))
+                    else program_service.read_program(
+                        principal.subject, program_id, revision
+                    )
                 ),
                 correlation_id,
             )
@@ -1711,6 +2015,7 @@ def create_app(
         "phase5_identity",
         "phase6_program",
         "phase7_c2",
+        "phase8_program",
     } and auth is None:
         raise ValueError(f"{config.profile} requires OAuth authentication")
     if stateless_http is not None:
@@ -2340,7 +2645,12 @@ def create_app(
             Route("/readyz", readyz, methods=["GET"]),
             WebSocketRoute("/agent/ws", agent_ws),
     ]
-    if config.profile in {"phase5_identity", "phase6_program", "phase7_c2"}:
+    if config.profile in {
+        "phase5_identity",
+        "phase6_program",
+        "phase7_c2",
+        "phase8_program",
+    }:
         routes.extend(
             [
                 Route("/api/agent/v1/enrollments", pairing_start, methods=["POST"]),
@@ -2404,7 +2714,7 @@ def create_app(
                 Route("/identity/device/revoke", device_revoke, methods=["POST"]),
             ]
         )
-    if config.profile in {"phase6_program", "phase7_c2"}:
+    if config.profile in {"phase6_program", "phase7_c2", "phase8_program"}:
         routes.extend(
             [
                 Route(
@@ -2439,7 +2749,7 @@ def create_app(
                 ),
             ]
         )
-    if config.profile == "phase7_c2":
+    if config.profile in {"phase7_c2", "phase8_program"}:
         routes.extend(
             [
                 Route(
