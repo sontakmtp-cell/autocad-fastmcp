@@ -238,6 +238,24 @@ class Phase8Repository:
             row = self._revision_row(conn, owner_subject, program_id, revision)
         return self._revision(row) if row is not None else None
 
+    async def require_revision_revisable(
+        self, owner_subject: str, program_id: str, revision: int
+    ) -> None:
+        """Reject lineage changes after this revision started execution."""
+
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM phase8_revision_usage_events AS usage "
+                "JOIN phase8_execution_plans AS plan ON plan.plan_id = usage.plan_id "
+                "WHERE plan.owner_subject = ? AND plan.program_id = ? "
+                "AND plan.program_revision = ? "
+                "AND usage.state IN ('released', 'dispatched', 'running', "
+                "'outcome_unknown', 'terminal') LIMIT 1",
+                (owner_subject, program_id, revision),
+            ).fetchone()
+        if row is not None:
+            raise RepositoryConflict("revision_execution_started")
+
     async def next_revision(self, owner_subject: str, program_id: str) -> int:
         with self.database.read_connection() as conn:
             row = conn.execute(
@@ -988,6 +1006,20 @@ class Phase8Repository:
                 "SELECT * FROM phase8_conflict_reports "
                 "WHERE owner_subject = ? AND conflict_report_id = ?",
                 (owner_subject, conflict_report_id),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._conflict_report(conn, row)
+
+    async def get_conflict_report_for_revision(
+        self, owner_subject: str, program_id: str, candidate_revision: int
+    ) -> dict[str, Any] | None:
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM phase8_conflict_reports "
+                "WHERE owner_subject = ? AND program_id = ? "
+                "AND candidate_revision = ?",
+                (owner_subject, program_id, candidate_revision),
             ).fetchone()
             if row is None:
                 return None

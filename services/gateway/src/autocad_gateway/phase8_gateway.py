@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Any
+from typing import Any, Callable
 
 from autocad_contracts import canonical_json
 
@@ -175,6 +175,9 @@ class Phase8GatewayService:
         program_id: str,
         source_revision: int,
         patch: dict[str, Any],
+        target_ref_resolver: (
+            Callable[[dict[str, Any]], list[dict[str, Any]] | None] | None
+        ) = None,
         plan_id: str | None = None,
     ) -> dict[str, Any]:
         self._require_revision_adapter()
@@ -183,10 +186,30 @@ class Phase8GatewayService:
         )
         if parent is None:
             raise RepositoryConflict("not_found")
-        materialized = self.revision_adapter.apply_patch(parent["source"], patch)
+        await self.repository.require_revision_revisable(
+            owner_subject, program_id, source_revision
+        )
         candidate_revision = await self.repository.next_revision(
             owner_subject, program_id
         )
+        if candidate_revision != source_revision + 1:
+            raise RepositoryConflict("revision_not_latest")
+        materialized = self.revision_adapter.apply_patch(parent["source"], patch)
+        compilation = None
+        if not materialized.conflicts:
+            materialized_target_refs = (
+                target_ref_resolver(materialized.source)
+                if target_ref_resolver is not None
+                else None
+            )
+            compilation = self._compile(
+                materialized.source,
+                materialized_target_refs=materialized_target_refs,
+                materialized_owner_id=(
+                    owner_subject if materialized_target_refs is not None else None
+                ),
+            )
+            self._require_compiler_digests(materialized, compilation)
         revision, _ = await self.repository.create_revision(
             owner_subject=owner_subject,
             program_id=program_id,
@@ -218,8 +241,8 @@ class Phase8GatewayService:
                 conflicts=list(materialized.conflicts),
             )
             return {"revision": revision, "conflict_report": report, "plan": None}
-        compilation = self._compile(materialized.source)
-        self._require_compiler_digests(materialized, compilation)
+        if compilation is None:
+            raise RepositoryConflict("compiler_result_invalid")
         plan, _ = await self.repository.seal_plan(
             owner_subject=owner_subject,
             program_id=program_id,
@@ -239,6 +262,9 @@ class Phase8GatewayService:
         source_revision: int,
         old_snapshot: dict[str, Any],
         new_snapshot: dict[str, Any],
+        target_ref_resolver: (
+            Callable[[dict[str, Any]], list[dict[str, Any]] | None] | None
+        ) = None,
         plan_id: str | None = None,
     ) -> dict[str, Any]:
         self._require_revision_adapter()
@@ -247,14 +273,34 @@ class Phase8GatewayService:
         )
         if parent is None:
             raise RepositoryConflict("not_found")
+        await self.repository.require_revision_revisable(
+            owner_subject, program_id, source_revision
+        )
+        candidate_revision = await self.repository.next_revision(
+            owner_subject, program_id
+        )
+        if candidate_revision != source_revision + 1:
+            raise RepositoryConflict("revision_not_latest")
         materialized = self.revision_adapter.rebase(
             parent["source"],
             old_snapshot=old_snapshot,
             new_snapshot=new_snapshot,
         )
-        candidate_revision = await self.repository.next_revision(
-            owner_subject, program_id
-        )
+        compilation = None
+        if not materialized.conflicts:
+            materialized_target_refs = (
+                target_ref_resolver(materialized.source)
+                if target_ref_resolver is not None
+                else None
+            )
+            compilation = self._compile(
+                materialized.source,
+                materialized_target_refs=materialized_target_refs,
+                materialized_owner_id=(
+                    owner_subject if materialized_target_refs is not None else None
+                ),
+            )
+            self._require_compiler_digests(materialized, compilation)
         revision, _ = await self.repository.create_revision(
             owner_subject=owner_subject,
             program_id=program_id,
@@ -287,8 +333,8 @@ class Phase8GatewayService:
                 conflicts=list(materialized.conflicts),
             )
             return {"revision": revision, "conflict_report": report, "plan": None}
-        compilation = self._compile(materialized.source)
-        self._require_compiler_digests(materialized, compilation)
+        if compilation is None:
+            raise RepositoryConflict("compiler_result_invalid")
         plan, _ = await self.repository.seal_plan(
             owner_subject=owner_subject,
             program_id=program_id,

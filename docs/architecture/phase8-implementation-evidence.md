@@ -15,6 +15,9 @@
 - Operation registry: `cad.operation-registry/1`
 - Enabled live packs: copy/offset create-equivalent and move exact-transform
   for LINE, CIRCLE and LWPOLYLINE
+- Public revision lifecycle: explicit immutable patch/rebase requests through
+  `cad_prepare_program`, trusted snapshot ref rematerialization, conflict
+  reports and released-revision protection
 - Disabled packs: delete, topology, trim, extend, fillet, chamfer, join,
   explode and LT write
 
@@ -33,7 +36,7 @@ scripts/test-phase8-regression.ps1 -StopOnFailure` passed all 11 suites:
 | Root Phase 0-5 | 409 passed, 1 skipped |
 | Shared contracts | 113 passed |
 | Host contract snapshots | 9 passed |
-| Gateway | 250 passed |
+| Gateway | 252 passed |
 | Desktop Agent | 142 passed |
 | Managed Host Core | 72 passed |
 | Web Portal unit/component | 35 passed |

@@ -319,6 +319,54 @@ class CadPrepareProgramV1Output(StrictModel):
     ready_for_preview: bool
 
 
+class CadPrepareProgramV1RevisionRequest(StrictModel):
+    kind: Literal["patch", "rebase"]
+    program_id: str = Field(min_length=1, max_length=128)
+    source_revision: int = Field(ge=1)
+    changes: dict[str, Any] | None = Field(default=None, max_length=8)
+    new_snapshot_id: str | None = Field(default=None, min_length=1, max_length=128)
+
+    @field_validator("program_id", "new_snapshot_id")
+    @classmethod
+    def validate_revision_ids(cls, value: str | None, info: Any) -> str | None:
+        if value is None:
+            return None
+        return _bounded_public_id(value, info.field_name)
+
+    @model_validator(mode="after")
+    def validate_revision_shape(self) -> "CadPrepareProgramV1RevisionRequest":
+        editable = {
+            "variables",
+            "operations",
+            "budgets",
+            "required_capabilities",
+            "validation_profiles",
+            "artifact_refs",
+            "component_refs",
+        }
+        if self.kind == "patch":
+            if not self.changes or self.new_snapshot_id is not None:
+                raise ValueError("patch requires changes only")
+            if not set(self.changes).issubset(editable):
+                raise ValueError("patch contains a non-editable field")
+        elif self.changes is not None or self.new_snapshot_id is None:
+            raise ValueError("rebase requires new_snapshot_id only")
+        return self
+
+
+class CadPrepareProgramV1ConflictOutput(StrictModel):
+    contract_version: str = PHASE8_CONTRACT_VERSION
+    schema_version: Literal["cad.program/1.0"] = "cad.program/1.0"
+    correlation_id: str
+    program_id: str
+    program_revision: int = Field(ge=1)
+    lineage_kind: Literal["patch", "rebase"]
+    conflict_report_id: str
+    conflicts_digest: str
+    resource_uri: str
+    ready_for_preview: Literal[False] = False
+
+
 class CadPreviewInput(StrictModel):
     program_id: str = Field(min_length=1, max_length=128)
     program_revision: int = Field(default=1, ge=1)

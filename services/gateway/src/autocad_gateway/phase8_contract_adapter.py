@@ -15,6 +15,7 @@ from autocad_contracts import (
     ExecutionPins,
     canonical_hard_budgets,
     canonical_json,
+    canonical_source_digest,
     compile_cad_program_v1,
     parse_execution_plan_v1,
     seal_cad_program_v1,
@@ -24,6 +25,46 @@ from autocad_contracts import (
 COMPILER_CORE_OPERATION_PACK = "compiler.core/1"
 CREATE_EQUIVALENT_OPERATION_PACK = "create-equivalent/1"
 TRANSFORM_EXACT_OPERATION_PACK = "transform.exact/1"
+_REVISION_REQUEST_DOMAIN = "cad.program.revision-request/1"
+_REVISION_CONFLICT_DOMAIN = "cad.program.revision-conflicts/1"
+_PATCHABLE_SOURCE_FIELDS = frozenset(
+    {
+        "variables",
+        "operations",
+        "budgets",
+        "required_capabilities",
+        "validation_profiles",
+        "artifact_refs",
+        "component_refs",
+    }
+)
+
+
+def _domain_digest(domain: str, value: Any) -> str:
+    material = canonical_json({"domain": domain, "value": value}).encode("utf-8")
+    return "sha256:" + sha256(material).hexdigest()
+
+
+def _snapshot_entities(snapshot: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    indexed: dict[str, dict[str, Any]] = {}
+    for entity in snapshot.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        for key in ("ref_id", "entity_id", "handle"):
+            value = entity.get(key)
+            if isinstance(value, str) and value:
+                if value in indexed and indexed[value] != entity:
+                    raise ValueError("snapshot ref is ambiguous")
+                indexed[value] = entity
+    return indexed
+
+
+def _snapshot_document_id(snapshot: dict[str, Any]) -> str | None:
+    drawing = snapshot.get("drawing")
+    if not isinstance(drawing, dict):
+        return None
+    value = drawing.get("document_id")
+    return value if isinstance(value, str) and value else None
 
 
 @dataclass(frozen=True)
@@ -246,4 +287,129 @@ class AutocadContractsPhase8Compiler:
             create_count=parsed.effect_manifest.creates,
             modify_count=parsed.effect_manifest.modifies,
             erase_count=parsed.effect_manifest.erases,
+        )
+
+
+class AutocadContractsPhase8Revision:
+    """Materialize bounded immutable patch/rebase revisions from trusted inputs."""
+
+    def apply_patch(
+        self,
+        source: dict[str, Any],
+        patch: dict[str, Any],
+    ) -> RevisionMaterialization:
+        if not isinstance(patch, dict) or not patch:
+            raise ValueError("patch changes are required")
+        if not set(patch).issubset(_PATCHABLE_SOURCE_FIELDS):
+            raise ValueError("patch contains a non-editable field")
+        parent = seal_cad_program_v1(source)
+        candidate = parent.model_dump(mode="json", exclude_none=True)
+        candidate.update(patch)
+        candidate["program_revision"] = parent.program_revision + 1
+        candidate["parent_revision"] = parent.program_revision
+        sealed = seal_cad_program_v1(candidate)
+        value = sealed.model_dump(mode="json", exclude_none=True)
+        request = {
+            "kind": "patch",
+            "program_id": parent.program_id,
+            "source_revision": parent.program_revision,
+            "changes": patch,
+        }
+        return RevisionMaterialization(
+            source=value,
+            source_digest=canonical_source_digest(value),
+            semantic_digest=sealed.semantic_digest,
+            request_digest=_domain_digest(_REVISION_REQUEST_DOMAIN, request),
+        )
+
+    def rebase(
+        self,
+        source: dict[str, Any],
+        *,
+        old_snapshot: dict[str, Any],
+        new_snapshot: dict[str, Any],
+    ) -> RevisionMaterialization:
+        parent = seal_cad_program_v1(source)
+        if (
+            old_snapshot.get("snapshot_id") != parent.source_snapshot_id
+            or old_snapshot.get("device_id") != parent.device_id
+            or _snapshot_document_id(old_snapshot) != parent.document_id
+        ):
+            raise ValueError("old snapshot does not match source binding")
+        if (
+            new_snapshot.get("device_id") != parent.device_id
+            or _snapshot_document_id(new_snapshot) != parent.document_id
+        ):
+            raise ValueError("new snapshot does not match source binding")
+        new_snapshot_id = new_snapshot.get("snapshot_id")
+        new_revision = new_snapshot.get("document_revision")
+        if not isinstance(new_snapshot_id, str) or not isinstance(new_revision, str):
+            raise ValueError("new snapshot binding is incomplete")
+
+        old_entities = _snapshot_entities(old_snapshot)
+        new_entities = _snapshot_entities(new_snapshot)
+        target_ids = sorted(
+            {
+                operation.target_ref_id
+                for operation in parent.operations
+                if getattr(operation, "target_ref_id", None) is not None
+            }
+        )
+        conflicts: list[dict[str, Any]] = []
+        for ref_id in target_ids:
+            old_entity = old_entities.get(ref_id)
+            new_entity = new_entities.get(ref_id)
+            if old_entity is None:
+                conflicts.append({"code": "old_target_missing", "ref_id": ref_id})
+                continue
+            if new_entity is None:
+                conflicts.append({"code": "target_missing", "ref_id": ref_id})
+                continue
+            old_type = old_entity.get("entity_type") or old_entity.get("type")
+            new_type = new_entity.get("entity_type") or new_entity.get("type")
+            if old_type != new_type:
+                conflicts.append(
+                    {
+                        "code": "target_type_changed",
+                        "ref_id": ref_id,
+                        "old_type": old_type,
+                        "new_type": new_type,
+                    }
+                )
+                continue
+            if old_entity.get("fingerprint") != new_entity.get("fingerprint"):
+                conflicts.append(
+                    {"code": "target_fingerprint_changed", "ref_id": ref_id}
+                )
+
+        candidate = parent.model_dump(mode="json", exclude_none=True)
+        candidate.update(
+            {
+                "program_revision": parent.program_revision + 1,
+                "parent_revision": parent.program_revision,
+                "source_snapshot_id": new_snapshot_id,
+                "expected_document_revision": new_revision,
+            }
+        )
+        sealed = seal_cad_program_v1(candidate)
+        value = sealed.model_dump(mode="json", exclude_none=True)
+        request = {
+            "kind": "rebase",
+            "program_id": parent.program_id,
+            "source_revision": parent.program_revision,
+            "old_snapshot_id": old_snapshot["snapshot_id"],
+            "new_snapshot_id": new_snapshot_id,
+        }
+        conflicts_value = tuple(conflicts)
+        return RevisionMaterialization(
+            source=value,
+            source_digest=canonical_source_digest(value),
+            semantic_digest=sealed.semantic_digest,
+            request_digest=_domain_digest(_REVISION_REQUEST_DOMAIN, request),
+            conflicts_digest=(
+                _domain_digest(_REVISION_CONFLICT_DOMAIN, conflicts)
+                if conflicts
+                else None
+            ),
+            conflicts=conflicts_value,
         )

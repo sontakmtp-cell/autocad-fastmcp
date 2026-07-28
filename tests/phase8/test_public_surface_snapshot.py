@@ -140,9 +140,11 @@ async def test_phase8_profile_has_only_the_documented_prepare_schema_delta():
         assert actual["annotations"] == expected["annotations"]
         assert actual["input_schema_sha256"] == change["input_schema_sha256"]
         assert actual["output_schema_sha256"] == change["output_schema_sha256"]
-    assert [
+    actual_resources = [
         [item.name, str(item.uriTemplate), item.mimeType] for item in resources
-    ] == baseline["resources"]
+    ]
+    assert len(actual_resources) == delta["resource_template_count"]
+    assert actual_resources == baseline["resources"]
 
 
 @pytest.mark.asyncio

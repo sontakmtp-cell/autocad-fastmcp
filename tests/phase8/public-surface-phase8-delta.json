@@ -6,9 +6,9 @@
   "new_public_tool_names": [],
   "changed_tools": {
     "cad_prepare_program": {
-      "reason": "Add cad.program/1.0 as a discriminated input/output variant while retaining cad.program/0.2.",
-      "input_schema_sha256": "f74ba55b44a4d7d61d750aad895b670e8ab431175a01b54982ce32f78437addd",
-      "output_schema_sha256": "60f41bb8e11ec1231e5b694a22b48ead5a339db19fc707c199b2a86087e5d357"
+      "reason": "Add cad.program/1.0 full-source and explicit immutable patch/rebase input/output variants while retaining cad.program/0.2.",
+      "input_schema_sha256": "5bcd4685b2c52bb2938dcdc7b5d9ea56dabe5fe5adfbf9e886a01d7ea7dc3e0a",
+      "output_schema_sha256": "ce9ca6134daff31f037f4f9168eefeda06435e8431fe9e843c15f8a88765e6a5"
     }
   }
 }

@@ -24,6 +24,7 @@ from .phase8_gateway import (
 )
 from .phase8_contract_adapter import (
     AutocadContractsPhase8Compiler,
+    AutocadContractsPhase8Revision,
     Phase8CompilerSettings,
 )
 
@@ -158,6 +159,11 @@ def build_services(config: GatewayConfig) -> Any:
                         ),
                     )
                 )
+                if config.profile == "phase8_program"
+                else None
+            ),
+            phase8_revision_adapter=(
+                AutocadContractsPhase8Revision()
                 if config.profile == "phase8_program"
                 else None
             ),

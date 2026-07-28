@@ -46,7 +46,9 @@ from .contracts import (
     CadQueryOutput,
     CadPrepareProgramInput,
     CadPrepareProgramOutput,
+    CadPrepareProgramV1ConflictOutput,
     CadPrepareProgramV1Output,
+    CadPrepareProgramV1RevisionRequest,
     CadPreviewInput,
     CadPreviewOutput,
     CadCommitInput,
@@ -1342,30 +1344,58 @@ def build_mcp_server(
             raise RuntimeError("Phase 6 profile requires ProgramGatewayService")
 
         async def _prepare_program(
-            device_id: str,
-            source_snapshot_id: str,
-            operations: list[dict[str, Any]],
+            device_id: str | None,
+            source_snapshot_id: str | None,
+            operations: list[dict[str, Any]] | None,
             postconditions: list[dict[str, Any]] | None,
             budget_overrides: dict[str, int] | None,
             idempotency_key: str | None,
             schema_version: str,
             program_v1_source: dict[str, Any] | None,
+            program_v1_revision_request: CadPrepareProgramV1RevisionRequest | None,
         ) -> dict[str, Any]:
             correlation_id = current_correlation_id(make_correlation_id)
+            public_request = None
+            if program_v1_revision_request is not None:
+                if any(
+                    value is not None
+                    for value in (
+                        device_id,
+                        source_snapshot_id,
+                        operations,
+                        postconditions,
+                        budget_overrides,
+                        idempotency_key,
+                        program_v1_source,
+                    )
+                ):
+                    raise ToolError(
+                        "invalid_request: revision request cannot include root "
+                        f"source fields; correlation_id={correlation_id}"
+                    )
+            else:
+                public_request = CadPrepareProgramInput(
+                    device_id=device_id,
+                    source_snapshot_id=source_snapshot_id,
+                    operations=operations,
+                    postconditions=postconditions or [],
+                    budget_overrides=budget_overrides or {},
+                    idempotency_key=idempotency_key,
+                )
             result = await _run(
                 lambda: services.prepare_program(
-                    CadPrepareProgramInput(
-                        device_id=device_id,
-                        source_snapshot_id=source_snapshot_id,
-                        operations=operations,
-                        postconditions=postconditions or [],
-                        budget_overrides=budget_overrides or {},
-                        idempotency_key=idempotency_key,
-                    ),
+                    public_request,
                     _principal(auth, services, correlation_id),
                     correlation_id,
                     schema_version=schema_version,
                     program_v1_source=program_v1_source,
+                    program_v1_revision_request=(
+                        program_v1_revision_request.model_dump(
+                            mode="json", exclude_none=True
+                        )
+                        if program_v1_revision_request is not None
+                        else None
+                    ),
                 ),
                 correlation_id,
             )
@@ -1390,13 +1420,14 @@ def build_mcp_server(
                     "oneOf": [
                         CadPrepareProgramOutput.model_json_schema(),
                         CadPrepareProgramV1Output.model_json_schema(),
+                        CadPrepareProgramV1ConflictOutput.model_json_schema(),
                     ],
                 },
             )
             async def cad_prepare_program(
-                device_id: str,
-                source_snapshot_id: str,
-                operations: list[dict[str, Any]],
+                device_id: str | None = None,
+                source_snapshot_id: str | None = None,
+                operations: list[dict[str, Any]] | None = None,
                 postconditions: list[dict[str, Any]] | None = None,
                 budget_overrides: dict[str, int] | None = None,
                 idempotency_key: Annotated[
@@ -1406,6 +1437,9 @@ def build_mcp_server(
                     "cad.program/0.2", "cad.program/1.0"
                 ] = "cad.program/0.2",
                 program_v1_source: dict[str, Any] | None = None,
+                program_v1_revision_request: (
+                    CadPrepareProgramV1RevisionRequest | None
+                ) = None,
                 *,
                 ctx: Context,
             ) -> dict[str, Any]:
@@ -1419,6 +1453,7 @@ def build_mcp_server(
                     idempotency_key,
                     schema_version,
                     program_v1_source,
+                    program_v1_revision_request,
                 )
 
         else:
@@ -1448,6 +1483,7 @@ def build_mcp_server(
                     budget_overrides,
                     idempotency_key,
                     "cad.program/0.2",
+                    None,
                     None,
                 )
 
@@ -1750,8 +1786,14 @@ def build_mcp_server(
             correlation_id = current_correlation_id(make_correlation_id)
             principal = _principal(auth, services, correlation_id)
             value = await _run(
-                lambda: program_service.read_program(
-                    principal.subject, program_id, revision
+                lambda: (
+                    services.read_program_resource(
+                        principal.subject, program_id, revision
+                    )
+                    if bool(getattr(services, "is_phase8", False))
+                    else program_service.read_program(
+                        principal.subject, program_id, revision
+                    )
                 ),
                 correlation_id,
             )

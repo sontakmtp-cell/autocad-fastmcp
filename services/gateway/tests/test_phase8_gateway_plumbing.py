@@ -247,6 +247,24 @@ async def test_gateway_calls_injected_compiler_without_reinterpreting_source(pha
 
 
 @pytest.mark.asyncio
+async def test_released_revision_cannot_be_patched_or_rebased(phase8):
+    _, repository = phase8
+    _, plan = await create_root_and_plan(repository)
+    await repository.append_usage_event(
+        owner_subject="owner-a",
+        plan_id=plan["plan_id"],
+        state="released",
+        external_id="job-released",
+        binding_digest=digest("released-binding"),
+    )
+
+    with pytest.raises(RepositoryConflict, match="revision_execution_started"):
+        await repository.require_revision_revisable(
+            "owner-a", "program-1", 1
+        )
+
+
+@pytest.mark.asyncio
 async def test_revisions_plans_refs_and_conflicts_are_immutable_and_cas_guarded(phase8):
     database, repository = phase8
     query_digest = digest("query")

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from fastmcp import Client
 
+import autocad_gateway.app as gateway_app
 from autocad_contracts import (
     Phase8CapabilityEvidence,
     ProgramCommandMessage,
@@ -13,7 +16,7 @@ from autocad_contracts import (
     program_command_payload_hash,
 )
 from autocad_gateway.application.job_service import DurableJobService
-from autocad_gateway.app import GatewayConfig
+from autocad_gateway.app import GatewayConfig, build_mcp_server
 from autocad_gateway.composition import build_services
 from autocad_gateway.contracts import CadPrepareProgramInput, Principal
 from autocad_gateway.durable_services import DurableGatewayServices
@@ -31,6 +34,7 @@ from autocad_gateway.infrastructure.sqlite.repositories import (
 )
 from autocad_gateway.phase8_contract_adapter import (
     AutocadContractsPhase8Compiler,
+    AutocadContractsPhase8Revision,
     COMPILER_CORE_OPERATION_PACK,
     CREATE_EQUIVALENT_OPERATION_PACK,
     Phase8CompilerSettings,
@@ -220,6 +224,58 @@ class _Socket:
         return None
 
 
+async def _seed_move_snapshot(
+    service: DurableGatewayServices,
+    *,
+    snapshot_id: str,
+    document_revision: str,
+    fingerprint: str,
+) -> None:
+    observe = await service.repository.create_job(
+        owner_subject="owner-a",
+        device_id="device-a",
+        kind="observe",
+        effect_class="read",
+        payload={"observation_level": "detail"},
+        idempotency_key=f"observe-{snapshot_id}",
+        deadline_at=None,
+    )
+    await service.repository.claim_job(observe["job_id"])
+    await service.repository.transition_job(observe["job_id"], "acknowledged")
+    snapshot = {
+        "snapshot_id": snapshot_id,
+        "document_revision": document_revision,
+        "observation_level": "detail",
+        "drawing": {
+            "document_id": "document-1",
+            "document_name": "drawing33.dwg",
+        },
+        "entity_summary": {"entity_count": 1},
+        "entities": [
+            {
+                "entity_id": "ref-line",
+                "entity_type": "LINE",
+                "layer": "0",
+                "fingerprint": fingerprint,
+            }
+        ],
+        "revision_evidence": {
+            "revision_schema": "cad.revision/1",
+            "revision_strength": "database_object_fingerprint",
+            "commit_safe": True,
+        },
+    }
+    await service.repository.finalize_job_result(
+        job_id=observe["job_id"],
+        device_id="device-a",
+        command_id=observe["command_id"],
+        payload_hash=observe["payload_hash"],
+        target="succeeded",
+        result={"snapshot": snapshot},
+        snapshot=snapshot,
+    )
+
+
 def test_phase8_composition_injects_the_real_compiler(tmp_path):
     config = GatewayConfig(
         profile="phase8_program",
@@ -244,6 +300,10 @@ def test_phase8_composition_injects_the_real_compiler(tmp_path):
     assert isinstance(
         services.phase8_gateway.compiler,
         AutocadContractsPhase8Compiler,
+    )
+    assert isinstance(
+        services.phase8_gateway.revision_adapter,
+        AutocadContractsPhase8Revision,
     )
 
 
@@ -357,6 +417,191 @@ async def test_public_prepare_accepts_move_plan_and_returns_medium_risk(tmp_path
             COMPILER_CORE_OPERATION_PACK,
             TRANSFORM_EXACT_OPERATION_PACK,
         ]
+    finally:
+        await service.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_public_prepare_patch_and_rebase_rematerialize_move_target(
+    tmp_path, monkeypatch
+):
+    database = SqliteDatabase(tmp_path / "phase8-public-revision.db")
+    registry = ConnectionRegistry()
+    flags = _move_flags()
+    service = DurableGatewayServices(
+        database,
+        registry,
+        device_tokens={},
+        profile="phase8_program",
+        program_enabled=True,
+        managed_write_enabled=True,
+        allowed_write_device_ids=("device-a",),
+        program_policy_version="phase8-policy/1",
+        phase8_feature_flags=flags,
+        phase8_compiler=AutocadContractsPhase8Compiler(_settings(flags)),
+        phase8_revision_adapter=AutocadContractsPhase8Revision(),
+    )
+    await service.initialize()
+    principal = Principal(
+        subject="owner-a",
+        scopes=("autocad.read", "autocad.write"),
+    )
+    try:
+        await service.repository.seed_device(
+            owner_subject="owner-a",
+            device_id="device-a",
+            display_name="Mechanical 2025",
+            capabilities=["observe"],
+            fixture_auth_ref="paired:device-a",
+        )
+        await _seed_move_snapshot(
+            service,
+            snapshot_id="snapshot-move",
+            document_revision="revision-before",
+            fingerprint=_sha("d"),
+        )
+        source = _move_source()
+        root = await service.prepare_program(
+            CadPrepareProgramInput(
+                device_id="device-a",
+                source_snapshot_id="snapshot-move",
+                operations=source["operations"],
+            ),
+            principal,
+            "revision-root",
+            schema_version="cad.program/1.0",
+            program_v1_source=source,
+        )
+        monkeypatch.setattr(
+            gateway_app,
+            "_principal",
+            lambda *_args, **_kwargs: principal,
+        )
+        client = Client(build_mcp_server(service))
+        async with client:
+            root_resource = await client.read_resource(root.resource_uri)
+        assert json.loads(root_resource[0].text)["revision"] == 1
+
+        patched_operations = _move_source()["operations"]
+        patched_operations[0]["displacement"]["x"]["value"]["value"] = "25"
+        missing_target_operations = _move_source()["operations"]
+        missing_target_operations[0]["target_ref_id"] = "missing-ref"
+        async with client:
+            rejected = await client.call_tool(
+                "cad_prepare_program",
+                {
+                    "schema_version": "cad.program/1.0",
+                    "program_v1_revision_request": {
+                        "kind": "patch",
+                        "program_id": root.program_id,
+                        "source_revision": 1,
+                        "changes": {"operations": missing_target_operations},
+                    },
+                },
+                raise_on_error=False,
+            )
+        assert rejected.is_error
+        assert (
+            await service.phase8_repository.get_revision(
+                "owner-a", root.program_id, 2
+            )
+            is None
+        )
+        async with client:
+            patched_result = await client.call_tool(
+                "cad_prepare_program",
+                {
+                    "schema_version": "cad.program/1.0",
+                    "program_v1_revision_request": {
+                        "kind": "patch",
+                        "program_id": root.program_id,
+                        "source_revision": 1,
+                        "changes": {"operations": patched_operations},
+                    },
+                },
+            )
+        patched = patched_result.structured_content
+        assert patched["program_revision"] == 2
+        patched_plan = await service.phase8_repository.get_plan(
+            "owner-a", patched["execution_plan_id"]
+        )
+        assert patched_plan["plan"]["materialized_target_refs"][0][
+            "snapshot_id"
+        ] == "snapshot-move"
+
+        await _seed_move_snapshot(
+            service,
+            snapshot_id="snapshot-move-new",
+            document_revision="revision-after",
+            fingerprint=_sha("d"),
+        )
+        async with client:
+            rebased_result = await client.call_tool(
+                "cad_prepare_program",
+                {
+                    "schema_version": "cad.program/1.0",
+                    "program_v1_revision_request": {
+                        "kind": "rebase",
+                        "program_id": root.program_id,
+                        "source_revision": 2,
+                        "new_snapshot_id": "snapshot-move-new",
+                    },
+                },
+            )
+        rebased = rebased_result.structured_content
+        assert rebased["program_revision"] == 3
+        assert rebased["expected_document_revision"] == "revision-after"
+        rebased_plan = await service.phase8_repository.get_plan(
+            "owner-a", rebased["execution_plan_id"]
+        )
+        assert rebased_plan["plan"]["materialized_target_refs"][0][
+            "snapshot_id"
+        ] == "snapshot-move-new"
+        revision = await service.phase8_repository.get_revision(
+            "owner-a", root.program_id, 3
+        )
+        assert revision["lineage_kind"] == "rebase"
+        assert revision["parent_revision"] == 2
+
+        await _seed_move_snapshot(
+            service,
+            snapshot_id="snapshot-move-conflict",
+            document_revision="revision-conflict",
+            fingerprint=_sha("e"),
+        )
+        async with client:
+            conflict_result = await client.call_tool(
+                "cad_prepare_program",
+                {
+                    "schema_version": "cad.program/1.0",
+                    "program_v1_revision_request": {
+                        "kind": "rebase",
+                        "program_id": root.program_id,
+                        "source_revision": 3,
+                        "new_snapshot_id": "snapshot-move-conflict",
+                    },
+                },
+            )
+        conflict = conflict_result.structured_content
+        assert conflict["lineage_kind"] == "rebase"
+        assert conflict["program_revision"] == 4
+        assert conflict["ready_for_preview"] is False
+        report = await service.phase8_repository.get_conflict_report(
+            "owner-a", conflict["conflict_report_id"]
+        )
+        assert report["conflicts"] == [
+            {
+                "code": "target_fingerprint_changed",
+                "ref_id": "ref-line",
+            }
+        ]
+        async with client:
+            conflict_resource = await client.read_resource(
+                conflict["resource_uri"]
+            )
+        assert json.loads(conflict_resource[0].text)["conflict_report"][
+            "conflicts"
+        ] == report["conflicts"]
     finally:
         await service.shutdown()
 

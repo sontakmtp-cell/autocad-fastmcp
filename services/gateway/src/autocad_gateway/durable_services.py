@@ -36,7 +36,9 @@ from .contracts import (
     CadObserveOutputC1,
     CadQueryInput,
     CadQueryOutput,
+    CadPrepareProgramV1ConflictOutput,
     CadPrepareProgramV1Output,
+    CadPrepareProgramV1RevisionRequest,
     CadPreviewOutput,
     DeviceInfo,
     DeviceInfoC1,
@@ -60,7 +62,7 @@ from .phase7_recovery import Phase7RecoveryService
 from .infrastructure.sqlite.phase7_repository import Phase7Repository
 from .infrastructure.sqlite.phase8_repository import Phase8Repository
 from .phase8_gateway import Phase8FeatureFlags, Phase8GatewayService
-from .phase8_contract_adapter import Phase8CompilerPort
+from .phase8_contract_adapter import Phase8CompilerPort, Phase8RevisionPort
 
 
 PHASE3_OWNER = "phase3-fixture-user"
@@ -132,6 +134,7 @@ class DurableGatewayServices:
         phase6_direct_commit_lab_enabled: bool = False,
         phase8_feature_flags: Phase8FeatureFlags | None = None,
         phase8_compiler: Phase8CompilerPort | None = None,
+        phase8_revision_adapter: Phase8RevisionPort | None = None,
     ) -> None:
         self.database = database
         self.registry = registry
@@ -151,6 +154,7 @@ class DurableGatewayServices:
                 self.phase8_repository,
                 phase8_feature_flags or Phase8FeatureFlags(),
                 compiler=phase8_compiler,
+                revision_adapter=phase8_revision_adapter,
             )
             if self.phase8_repository is not None
             else None
@@ -637,21 +641,45 @@ class DurableGatewayServices:
         *,
         schema_version: str = "cad.program/0.2",
         program_v1_source: dict[str, Any] | None = None,
+        program_v1_revision_request: dict[str, Any] | None = None,
     ) -> Any:
         """Discriminate the existing public surface without changing v0.2."""
 
         if schema_version == "cad.program/0.2":
-            if program_v1_source is not None:
+            if (
+                program_v1_source is not None
+                or program_v1_revision_request is not None
+            ):
                 raise GatewayError("invalid_request")
             return await self.program_service.prepare(
                 request, principal, correlation_id
             )
-        if schema_version != "cad.program/1.0" or program_v1_source is None:
+        if schema_version != "cad.program/1.0":
             raise GatewayError("invalid_request")
         if not self.is_phase8 or self.phase8_gateway is None:
             raise GatewayError("feature_disabled")
         if "autocad.write" not in principal.scopes:
             raise GatewayError("insufficient_scope")
+        if (program_v1_source is None) == (program_v1_revision_request is None):
+            raise GatewayError("invalid_request")
+        if program_v1_revision_request is not None:
+            try:
+                revision_request = CadPrepareProgramV1RevisionRequest.model_validate(
+                    program_v1_revision_request
+                )
+                return await self._prepare_program_revision(
+                    revision_request, principal, correlation_id
+                )
+            except (RepositoryConflict, ValueError) as error:
+                code = getattr(error, "code", "invalid_request")
+                if code in {
+                    "revision_execution_started",
+                    "revision_not_latest",
+                }:
+                    code = "binding_mismatch"
+                raise GatewayError(self.program_service._repository_code(code)) from None
+        if request is None or program_v1_source is None:
+            raise GatewayError("invalid_request")
         if program_v1_source.get("schema_version") != "cad.program/1.0":
             raise GatewayError("invalid_request")
         if (
@@ -732,6 +760,125 @@ class DurableGatewayServices:
                 f"{sealed['program_revision']}"
             ),
             ready_for_preview=True,
+        )
+
+    async def _prepare_program_revision(
+        self,
+        request: CadPrepareProgramV1RevisionRequest,
+        principal: Principal,
+        correlation_id: str,
+    ) -> Any:
+        if self.phase8_gateway is None or self.phase8_repository is None:
+            raise GatewayError("feature_disabled")
+        parent = await self.phase8_repository.get_revision(
+            principal.subject, request.program_id, request.source_revision
+        )
+        if parent is None:
+            raise RepositoryConflict("not_found")
+        old_snapshot = await self.repository.get_snapshot(
+            principal.subject, parent["source_snapshot_id"]
+        )
+        if old_snapshot is None:
+            raise RepositoryConflict("not_found")
+
+        if request.kind == "patch":
+            prepared = await self.phase8_gateway.patch(
+                owner_subject=principal.subject,
+                program_id=request.program_id,
+                source_revision=request.source_revision,
+                patch=request.changes or {},
+                target_ref_resolver=lambda source: (
+                    self._phase8_materialized_target_refs(
+                        owner_subject=principal.subject,
+                        snapshot=old_snapshot,
+                        operations=source["operations"],
+                        document_id=parent["document_id"],
+                    )
+                ),
+            )
+        else:
+            new_snapshot = await self.repository.get_snapshot(
+                principal.subject, request.new_snapshot_id or ""
+            )
+            if new_snapshot is None:
+                raise RepositoryConflict("not_found")
+            revision_evidence = new_snapshot.get("revision_evidence") or {}
+            if (
+                revision_evidence.get("commit_safe") is not True
+                or revision_evidence.get("revision_strength")
+                in {None, "summary_only"}
+            ):
+                raise RepositoryConflict("stale_snapshot")
+            prepared = await self.phase8_gateway.rebase(
+                owner_subject=principal.subject,
+                program_id=request.program_id,
+                source_revision=request.source_revision,
+                old_snapshot=old_snapshot,
+                new_snapshot=new_snapshot,
+                target_ref_resolver=lambda source: (
+                    self._phase8_materialized_target_refs(
+                        owner_subject=principal.subject,
+                        snapshot=new_snapshot,
+                        operations=source["operations"],
+                        document_id=parent["document_id"],
+                    )
+                ),
+            )
+
+        revision = prepared["revision"]
+        report = prepared["conflict_report"]
+        if report is not None:
+            return CadPrepareProgramV1ConflictOutput(
+                correlation_id=correlation_id,
+                program_id=request.program_id,
+                program_revision=revision["revision"],
+                lineage_kind=request.kind,
+                conflict_report_id=report["conflict_report_id"],
+                conflicts_digest=report["conflicts_digest"],
+                resource_uri=(
+                    f"cad://programs/{request.program_id}/revisions/"
+                    f"{revision['revision']}"
+                ),
+            )
+        sealed = prepared["plan"]
+        binding = build_execution_binding_v1(
+            sealed["plan"], action="compile_only"
+        )
+        return CadPrepareProgramV1Output(
+            correlation_id=correlation_id,
+            program_id=sealed["program_id"],
+            program_revision=sealed["program_revision"],
+            source_digest=sealed["source_digest"],
+            execution_plan_id=sealed["plan_id"],
+            execution_plan_digest=sealed["plan_digest"],
+            execution_binding=binding.model_dump(mode="json"),
+            effect_manifest_digest=sealed["effect_digest"],
+            document_id=revision["document_id"],
+            expected_document_revision=revision["expected_document_revision"],
+            risk_class=sealed["risk_class"],
+            resource_uri=(
+                f"cad://programs/{sealed['program_id']}/revisions/"
+                f"{sealed['program_revision']}"
+            ),
+            ready_for_preview=True,
+        )
+
+    async def read_program_resource(
+        self, owner_subject: str, program_id: str, revision: int
+    ) -> str:
+        if self.is_phase8 and self.phase8_repository is not None:
+            value = await self.phase8_repository.get_revision(
+                owner_subject, program_id, revision
+            )
+            if value is not None:
+                report = await self.phase8_repository.get_conflict_report_for_revision(
+                    owner_subject, program_id, revision
+                )
+                if report is not None:
+                    value["conflict_report"] = report
+            return self.program_service._bounded_resource(value)
+        return await self.program_service.read_program(
+            owner_subject, program_id, revision
         )
 
     @staticmethod
