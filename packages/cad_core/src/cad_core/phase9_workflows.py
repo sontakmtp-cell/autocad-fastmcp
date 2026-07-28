@@ -136,8 +136,10 @@ def plan_auto_dimension_overall(context: dict[str, Any], entities: list[dict[str
     return _seal(_base_program(context, "phase9.auto-dimension-overall", operations))
 
 
-def audit_cleanup(entities: list[dict[str, Any]], *, max_candidates: int = 64) -> dict[str, Any]:
+def audit_cleanup(context: dict[str, Any], entities: list[dict[str, Any]], *, max_candidates: int = 64) -> dict[str, Any]:
     """Return a read-only, snapshot-bound audit without commands or effects."""
+    if not isinstance(context.get("source_snapshot_id"), str) or not context["source_snapshot_id"] or not isinstance(context.get("document_revision"), str) or not context["document_revision"]:
+        raise Phase9PlannerError("source_snapshot_id and document_revision are required")
     if not isinstance(entities, list) or len(entities) > MAX_AUDIT_ENTITIES:
         raise Phase9PlannerError(f"audit accepts at most {MAX_AUDIT_ENTITIES} entities")
     if not isinstance(max_candidates, int) or not 1 <= max_candidates <= 128:
@@ -163,7 +165,7 @@ def audit_cleanup(entities: list[dict[str, Any]], *, max_candidates: int = 64) -
         groups.setdefault(key, []).append(entity_id)
     duplicates = [sorted(ids) for ids in groups.values() if len(ids) > 1]
     duplicates.sort()
-    report = {"schema_version": "cad.cleanup-audit-report/1", "source_snapshot_id": entities[0].get("source_snapshot_id") if entities else None, "document_revision": entities[0].get("document_revision") if entities else None, "duplicate_groups": duplicates[:max_candidates], "degenerate_entity_ids": sorted(degenerate)[:max_candidates], "unsupported_entity_summary": dict(sorted(unsupported.items())), "layer_anomalies": sorted({str(item.get("layer")) for _, _, item in normalized if isinstance(item.get("layer"), str) and (item["layer"].strip() != item["layer"] or not item["layer"])}), "tiny_entity_ids": sorted([entity_id for _, entity_id, item in normalized if isinstance(item.get("geometry"), dict) and item["geometry"].get("tiny") is True])[:max_candidates], "dimension_style_summary": dict(sorted(Counter(str(item.get("dimension_style")) for _, _, item in normalized if item.get("entity_type", item.get("type")) == "DIMENSION" and item.get("dimension_style") is not None).items())), "truncated": len(duplicates) > max_candidates or len(degenerate) > max_candidates, "effect": "none"}
+    report = {"schema_version": "cad.cleanup-audit-report/1", "source_snapshot_id": context["source_snapshot_id"], "document_revision": context["document_revision"], "duplicate_groups": duplicates[:max_candidates], "degenerate_entity_ids": sorted(degenerate)[:max_candidates], "unsupported_entity_summary": dict(sorted(unsupported.items())), "layer_anomalies": sorted({str(item.get("layer")) for _, _, item in normalized if isinstance(item.get("layer"), str) and (item["layer"].strip() != item["layer"] or not item["layer"])}), "tiny_entity_ids": sorted([entity_id for _, entity_id, item in normalized if isinstance(item.get("geometry"), dict) and item["geometry"].get("tiny") is True])[:max_candidates], "dimension_style_summary": dict(sorted(Counter(str(item.get("dimension_style")) for _, _, item in normalized if item.get("entity_type", item.get("type")) == "DIMENSION" and item.get("dimension_style") is not None).items())), "truncated": len(duplicates) > max_candidates or len(degenerate) > max_candidates, "effect": "none", "duplicate_rule": "geometry_only_across_layers"}
     report["report_digest"] = _canonical_digest("cad.cleanup-audit-report/1", report)
     return report
 

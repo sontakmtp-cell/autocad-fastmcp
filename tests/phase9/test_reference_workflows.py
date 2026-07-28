@@ -40,7 +40,7 @@ def test_auto_dimension_rejects_implicit_or_unsupported_selection():
 
 
 def test_cleanup_audit_is_read_only_and_reports_bounded_candidates():
-    report = audit_cleanup([
+    report = audit_cleanup({"source_snapshot_id": "snapshot_1", "document_revision": "revision_1"}, [
         {"entity_id": "a", "type": "LINE", "geometry": {"start": [0, 0], "end": [1, 0]}},
         {"entity_id": "b", "type": "LINE", "geometry": {"start": [0, 0], "end": [1, 0]}},
         {"entity_id": "c", "type": "LINE", "geometry": {"start": [2, 2], "end": [2, 2]}},
