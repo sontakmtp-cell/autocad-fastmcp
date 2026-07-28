@@ -752,6 +752,16 @@ class Phase7AdmissionService:
             checkpoint["program_id"],
             checkpoint["program_revision"],
         )
+        preview = await self.program_service.program_repository.get_preview(
+            principal.subject, checkpoint["preview_id"]
+        )
+        if (
+            preview is None
+            or preview["program_id"] != checkpoint["program_id"]
+            or preview["program_revision"] != checkpoint["program_revision"]
+            or preview["preview_digest"] != checkpoint["preview_digest"]
+        ):
+            raise GatewayError("rollback_binding_mismatch")
         generation, thumbprint = self._stable_device_identity(
             principal.subject, program["device_id"]
         )
@@ -775,7 +785,7 @@ class Phase7AdmissionService:
             "program_digest": checkpoint["program_digest"],
             "preview_id": checkpoint["preview_id"],
             "preview_digest": checkpoint["preview_digest"],
-            "preview_execution_digest": checkpoint["execution_digest"],
+            "preview_execution_digest": preview["execution_digest"],
             "preview_expires_at": plan["expires_at"],
             "deterministic_receipt_id": receipt_id,
             "commit_execution_digest": plan["rollback_execution_digest"],
@@ -933,15 +943,19 @@ class Phase7AdmissionService:
             return None
         await self._revalidate_intent(intent)
         payload = json.loads(json.dumps(payload))
-        payload["execution"]["intent_id"] = intent["intent_id"]
-        payload["execution"]["intent_digest"] = intent["intent_digest"]
+        kind = intent["action"]
+        if kind == "program_commit":
+            payload["execution"]["intent_id"] = intent["intent_id"]
+            payload["execution"]["intent_digest"] = intent["intent_digest"]
+        else:
+            payload["intent_id"] = intent["intent_id"]
+            payload["intent_digest"] = intent["intent_digest"]
         job_id = _stable_id("job", intent["intent_id"])
         command_id = _stable_id("command", intent["intent_id"])
         deadline_at = _timestamp(
             datetime.fromisoformat(intent["created_at"])
             + timedelta(seconds=self.policy.job_deadline_seconds)
         )
-        kind = intent["action"]
         try:
             payload_hash = (
                 program_wire_payload_hash(

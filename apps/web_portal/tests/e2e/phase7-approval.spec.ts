@@ -12,7 +12,7 @@ async function authenticatedContext(
   const context = await browser.newContext();
   const expiresAt = Math.floor(Date.now() / 1000) + 3600;
   const ownerKey = `user-${createHash("sha256")
-    .update(`http://127.0.0.1:4321/oidc\0owner-${owner}`)
+    .update(`http://127.0.0.1:4321/oidc/\0owner-${owner}`)
     .digest("hex")}`;
   const token = await new EncryptJWT({
     subject: `owner-${owner}`,

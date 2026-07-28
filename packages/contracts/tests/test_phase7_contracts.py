@@ -173,6 +173,7 @@ def rollback_receipt_value(**updates) -> dict:
         "original_receipt_digest": checkpoint["original_receipt_digest"],
         "program_digest": checkpoint["program_digest"],
         "original_execution_digest": checkpoint["execution_digest"],
+        "original_document_revision": checkpoint["document_revision_before"],
         "checkpoint_id": checkpoint["checkpoint_id"],
         "checkpoint_digest": checkpoint["checkpoint_digest"],
         "rollback_plan_id": plan["plan_id"],

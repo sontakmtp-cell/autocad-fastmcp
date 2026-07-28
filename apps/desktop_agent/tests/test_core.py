@@ -292,6 +292,57 @@ async def test_started_commit_transport_loss_is_outcome_unknown_and_not_retried(
     assert reply.binding == command.binding
 
 
+@pytest.mark.asyncio
+async def test_rollback_terminal_reconcile_carries_exact_kind_and_binding(tmp_path):
+    core, _ = make_core(tmp_path, program_executor=ProgramExecutor())
+    command = make_program_command()
+    binding = command.binding.model_dump(mode="json")
+    package = {
+        "package_id": command.binding.package_id,
+        "version": command.binding.package_version,
+        "sha256": command.binding.package_hash.removeprefix("sha256:"),
+    }
+    core.ledger.record_received(
+        command_id="rollback-command",
+        job_id="rollback-job",
+        idempotency_key="rollback-idempotency",
+        payload_hash="a" * 64,
+        package=package,
+        session_id="session-1",
+        device_id="device-1",
+        kind="rollback_commit",
+        binding=binding,
+    )
+    core.ledger.transition("rollback-command", "accepted")
+    core.ledger.transition("rollback-command", "started")
+    core.ledger.transition(
+        "rollback-command",
+        "succeeded",
+        result={"rollback_receipt_id": "rollback-receipt-1"},
+    )
+    socket = Socket()
+
+    await core._handle_reconcile(
+        socket,
+        ReconcileMessage(
+            session_id="session-1",
+            device_id="device-1",
+            commands=[
+                ReconcileCommandDescriptor(
+                    job_id="rollback-job",
+                    command_id="rollback-command",
+                    payload_hash="a" * 64,
+                )
+            ],
+        ),
+    )
+
+    reply = socket.messages[0]
+    assert isinstance(reply, ReconcileResultMessage)
+    assert reply.kind == "rollback_commit"
+    assert reply.binding == command.binding
+
+
 @pytest.mark.parametrize(
     ("initial_state", "expected_state", "expected_calls"),
     [

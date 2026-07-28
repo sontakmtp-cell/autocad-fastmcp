@@ -1043,6 +1043,8 @@ class Phase7Repository:
             or checkpoint.original_receipt_digest != record.original_receipt_digest
             or checkpoint.program_digest != record.program_digest
             or checkpoint.execution_digest != record.original_execution_digest
+            or checkpoint.document_revision_before
+            != record.original_document_revision
             or checkpoint.document_id != record.document_id
             or set(plan.entity_handles)
             != {item.handle for item in record.removed_entities}
@@ -1054,14 +1056,14 @@ class Phase7Repository:
                 INSERT INTO rollback_receipts(
                     rollback_receipt_id, owner_subject, original_receipt_id,
                     original_receipt_digest, program_digest,
-                    original_execution_digest,
+                    original_execution_digest, original_document_revision,
                     checkpoint_id, checkpoint_digest,
                     rollback_plan_id, rollback_plan_digest, rollback_job_id,
                     rollback_execution_digest, document_id,
                     document_revision_before, document_revision_after,
                     removed_entities_json, runtime_pins_json, policy_pins_json,
                     receipt_digest, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record.rollback_receipt_id,
@@ -1070,6 +1072,7 @@ class Phase7Repository:
                     record.original_receipt_digest,
                     record.program_digest,
                     record.original_execution_digest,
+                    record.original_document_revision,
                     record.checkpoint_id,
                     record.checkpoint_digest,
                     record.rollback_plan_id,
@@ -1718,6 +1721,9 @@ class Phase7Repository:
                 "original_receipt_digest": row["original_receipt_digest"],
                 "program_digest": row["program_digest"],
                 "original_execution_digest": row["original_execution_digest"],
+                "original_document_revision": row[
+                    "original_document_revision"
+                ],
                 "checkpoint_id": row["checkpoint_id"],
                 "checkpoint_digest": row["checkpoint_digest"],
                 "rollback_plan_id": row["rollback_plan_id"],

@@ -212,6 +212,9 @@ class Phase7RecoveryService:
                 "original_receipt_digest": receipt["original_receipt_digest"],
                 "program_digest": checkpoint["program_digest"],
                 "original_execution_digest": checkpoint["execution_digest"],
+                "original_document_revision": checkpoint[
+                    "document_revision_before"
+                ],
                 "checkpoint_id": receipt["checkpoint_id"],
                 "checkpoint_digest": receipt["checkpoint_digest"],
                 "rollback_plan_id": receipt["rollback_plan_id"],
@@ -246,6 +249,10 @@ class Phase7RecoveryService:
         """Create the deterministic Gateway terminal event before atomic persistence."""
 
         intent = await self._released_intent(job["owner_subject"], job["job_id"])
+        event_id = f"evidence-terminal-{sha256(job['job_id'].encode()).hexdigest()[:32]}"
+        existing = await self.phase7.get_evidence(job["owner_subject"], event_id)
+        if existing is not None:
+            return ExecutionEvidenceEvent.model_validate(existing)
         received_at = _now()
         outcome = (
             "rolled_back"
@@ -267,7 +274,7 @@ class Phase7RecoveryService:
         receipt_digest = result.get("receipt_digest")
         value: dict[str, Any] = {
             "schema_version": "cad.execution-evidence/1",
-            "event_id": f"evidence-terminal-{sha256(job['job_id'].encode()).hexdigest()[:32]}",
+            "event_id": event_id,
             "owner_subject": job["owner_subject"],
             "source": "gateway",
             "source_sequence": 1,

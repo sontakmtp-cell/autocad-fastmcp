@@ -644,6 +644,7 @@ class RollbackReceiptRecord(Phase7Model):
     original_receipt_digest: Digest
     program_digest: Digest
     original_execution_digest: Digest
+    original_document_revision: RevisionToken
     checkpoint_id: PublicId
     checkpoint_digest: Digest
     rollback_plan_id: PublicId
@@ -698,7 +699,7 @@ def rollback_receipt_digest(value: RollbackReceiptRecord | dict[str, Any]) -> st
             "program_digest": data["program_digest"],
             "execution_digest": data["original_execution_digest"],
             "document_id": data["document_id"],
-            "document_revision": data["document_revision_before"],
+            "document_revision": data["original_document_revision"],
             "runtime_id": runtime["runtime_id"],
             "runtime_role": runtime["runtime_role"],
             "host_family": runtime["host_family"],

@@ -130,7 +130,7 @@ export async function exchangeCode(code: string, transaction: OAuthTransaction) 
   }
   const jwks = z.object({ keys: z.array(z.record(z.string(), z.unknown())).min(1).max(16) })
     .parse(await jwksResponse.json());
-  const issuer = env.PORTAL_OIDC_ISSUER.replace(/\/+$/, "");
+  const issuer = env.PORTAL_OIDC_ISSUER;
   const { payload } = await jwtVerify(token.id_token, createLocalJWKSet(jwks), {
     issuer,
     audience: env.PORTAL_OIDC_CLIENT_ID,

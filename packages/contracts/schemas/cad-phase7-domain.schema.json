@@ -1600,6 +1600,13 @@
           "title": "Original Execution Digest",
           "type": "string"
         },
+        "original_document_revision": {
+          "maxLength": 256,
+          "minLength": 1,
+          "pattern": "^\\S{1,256}$",
+          "title": "Original Document Revision",
+          "type": "string"
+        },
         "checkpoint_id": {
           "maxLength": 256,
           "minLength": 1,
@@ -1690,6 +1697,7 @@
         "original_receipt_digest",
         "program_digest",
         "original_execution_digest",
+        "original_document_revision",
         "checkpoint_id",
         "checkpoint_digest",
         "rollback_plan_id",

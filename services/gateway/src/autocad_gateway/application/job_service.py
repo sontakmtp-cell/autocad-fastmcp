@@ -451,38 +451,38 @@ class DurableJobService:
             await self._fail_payload(job)
             return
         if message.status == "terminal" and message.result_status:
-            if (
-                job["kind"] == "program_commit"
-                and job["state"] == "outcome_unknown"
-                and message.result_status == "failed"
-                and message.error_code == "outcome_unknown"
-            ):
-                logger.warning(
-                    "Agent reconciliation still reports an unknown Program commit outcome",
-                    extra={"job_id": job["job_id"], "state": job["state"]},
-                )
-                if self.phase7_recovery_service is not None:
-                    await self.phase7_recovery_service.record_reconcile_outcome(
-                        owner_subject=job["owner_subject"],
-                        job_id=job["job_id"],
-                        outcome="inconclusive",
-                        source="agent",
-                        summary="Agent ledger cannot prove the exact commit outcome",
-                        attempt=_attempt + 1,
-                    )
-                return
-            if job["kind"] in {
+            program_kinds = {
                 "program_preview",
                 "program_commit",
                 "program_validate",
-            } and (
-                message.kind != job["kind"]
-                or message.binding is None
-                or message.binding.model_dump(mode="json")
-                != self._program_result_binding(job)
-            ):
+            }
+            rollback_kinds = {
+                "receipt_lookup",
+                "checkpoint_lookup",
+                "rollback_preview",
+                "rollback_commit",
+                "rollback_validate",
+            }
+            binding_mismatch = False
+            if job["kind"] in program_kinds:
+                binding_mismatch = (
+                    message.kind != job["kind"]
+                    or message.binding is None
+                    or message.binding.model_dump(mode="json")
+                    != self._program_result_binding(job)
+                )
+            elif job["kind"] in rollback_kinds:
+                payload = job.get("payload")
+                binding_mismatch = (
+                    not isinstance(payload, dict)
+                    or message.kind != job["kind"]
+                    or message.binding is None
+                    or message.binding.model_dump(mode="json")
+                    != payload.get("binding")
+                )
+            if binding_mismatch:
                 logger.warning(
-                    "Program reconciliation did not prove its durable execution binding",
+                    "Typed reconciliation did not prove its durable execution binding",
                     extra={"job_id": job["job_id"], "state": job["state"]},
                 )
                 if self.phase7_recovery_service is not None:
@@ -495,13 +495,31 @@ class DurableJobService:
                         attempt=_attempt + 1,
                     )
                 return
+            if (
+                job["kind"] in {"program_commit", "rollback_commit"}
+                and job["state"] == "outcome_unknown"
+                and message.result_status == "failed"
+                and message.error_code == "outcome_unknown"
+            ):
+                logger.warning(
+                    "Agent reconciliation still reports an unknown write outcome",
+                    extra={"job_id": job["job_id"], "state": job["state"]},
+                )
+                if self.phase7_recovery_service is not None:
+                    await self.phase7_recovery_service.record_reconcile_outcome(
+                        owner_subject=job["owner_subject"],
+                        job_id=job["job_id"],
+                        outcome="inconclusive",
+                        source="agent",
+                        summary="Agent ledger cannot prove the exact write outcome",
+                        attempt=_attempt + 1,
+                    )
+                return
             message_type = (
                 ProgramResultMessage
-                if job["kind"] in {
-                    "program_preview",
-                    "program_commit",
-                    "program_validate",
-                }
+                if job["kind"] in program_kinds
+                else RollbackResultMessage
+                if job["kind"] in rollback_kinds
                 else ResultMessage
             )
             result_values = {
@@ -516,7 +534,7 @@ class DurableJobService:
                 "error_code": message.error_code,
                 "error_message": message.error_message,
             }
-            if message_type is ProgramResultMessage:
+            if message_type in {ProgramResultMessage, RollbackResultMessage}:
                 result_values.update(
                     kind=message.kind,
                     binding=message.binding,
@@ -1086,15 +1104,21 @@ class DurableJobService:
                             result=result,
                         )
                     )
-                if terminal_evidence is not None:
+                if terminal_evidence is not None or job["kind"] == "rollback_commit":
 
                     def terminal_hook(conn, _row):
-                        self.phase7_recovery_service.phase7.insert_evidence(
-                            conn, terminal_evidence
-                        )
+                        if terminal_evidence is not None:
+                            self.phase7_recovery_service.phase7.insert_evidence(
+                                conn, terminal_evidence
+                            )
                         if receipt is not None:
                             self.phase7_recovery_service.phase7.insert_rollback_receipt(
                                 conn, receipt
+                            )
+                        if job["kind"] == "rollback_commit":
+                            conn.execute(
+                                "DELETE FROM cad_program_write_locks WHERE job_id = ?",
+                                (job["job_id"],),
                             )
                 updated = await self.repository.finalize_job_result(
                     job_id=job["job_id"],

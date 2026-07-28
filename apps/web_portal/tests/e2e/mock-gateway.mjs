@@ -29,7 +29,7 @@ const devices = {
 
 const digest = (character) => `sha256:${character.repeat(64)}`;
 const ownerAKey = `user-${createHash("sha256")
-  .update("http://127.0.0.1:4321/oidc\0owner-a")
+  .update("http://127.0.0.1:4321/oidc/\0owner-a")
   .digest("hex")}`;
 const nonce = "phase7-challenge-nonce-owner-a-0001";
 const nonceHash = `sha256:${createHash("sha256").update(nonce).digest("hex")}`;
@@ -147,7 +147,7 @@ function phase7Intent(intentId, consentId, overrides = {}) {
     intent_version: 1,
     owner_subject: ownerAKey,
     actor_principal: {
-      issuer: "http://127.0.0.1:4321/oidc",
+      issuer: "http://127.0.0.1:4321/oidc/",
       subject: "owner-a",
     },
     action: "program_commit",
@@ -315,7 +315,7 @@ createServer(async (request, response) => {
       auth_time: now,
     })
       .setProtectedHeader({ alg: "RS256", kid: "playwright-key" })
-      .setIssuer("http://127.0.0.1:4321/oidc")
+      .setIssuer("http://127.0.0.1:4321/oidc/")
       .setAudience("playwright-client")
       .setIssuedAt(now)
       .setExpirationTime(now + 3600)

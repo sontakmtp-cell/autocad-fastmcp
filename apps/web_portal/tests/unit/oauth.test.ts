@@ -56,7 +56,7 @@ describe("OAuth account selection", () => {
       auth_time: now,
     })
       .setProtectedHeader({ alg: "RS256", kid: "unit-key" })
-      .setIssuer("https://issuer.test")
+      .setIssuer("https://issuer.test/")
       .setAudience("unit-test-client")
       .setIssuedAt(now)
       .setExpirationTime(now + 300)

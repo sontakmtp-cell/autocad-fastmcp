@@ -1207,6 +1207,11 @@ class AgentCore:
                     "program_preview",
                     "program_commit",
                     "program_validate",
+                    "receipt_lookup",
+                    "checkpoint_lookup",
+                    "rollback_preview",
+                    "rollback_commit",
+                    "rollback_validate",
                 }:
                     kwargs["kind"] = entry.kind
                     kwargs["binding"] = entry.binding

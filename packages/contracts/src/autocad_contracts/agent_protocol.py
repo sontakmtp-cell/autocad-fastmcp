@@ -1327,7 +1327,16 @@ class ReconcileResultMessage(AgentEnvelope):
     result: dict[str, Any] | None = Field(default=None, max_length=MAX_RESULT_ITEMS)
     error_code: str | None = Field(default=None, max_length=64)
     error_message: str | None = Field(default=None, max_length=MAX_MESSAGE_TEXT)
-    kind: Literal["program_preview", "program_commit", "program_validate"] | None = None
+    kind: Literal[
+        "program_preview",
+        "program_commit",
+        "program_validate",
+        "receipt_lookup",
+        "checkpoint_lookup",
+        "rollback_preview",
+        "rollback_commit",
+        "rollback_validate",
+    ] | None = None
     binding: ProgramExecutionBinding | None = None
 
     @model_validator(mode="after")
@@ -1353,7 +1362,7 @@ class ReconcileResultMessage(AgentEnvelope):
         ):
             raise ValueError("only failed reconciliation may include error fields")
         if (self.kind is None) != (self.binding is None):
-            raise ValueError("program reconciliation requires kind and binding together")
+            raise ValueError("typed reconciliation requires kind and binding together")
         return self
 
 

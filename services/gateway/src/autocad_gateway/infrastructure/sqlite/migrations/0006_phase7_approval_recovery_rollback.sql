@@ -196,6 +196,7 @@ CREATE TABLE rollback_receipts (
     original_receipt_digest TEXT NOT NULL,
     program_digest TEXT NOT NULL,
     original_execution_digest TEXT NOT NULL,
+    original_document_revision TEXT NOT NULL,
     checkpoint_id TEXT NOT NULL REFERENCES rollback_checkpoints(checkpoint_id),
     checkpoint_digest TEXT NOT NULL,
     rollback_plan_id TEXT NOT NULL UNIQUE REFERENCES rollback_plans(plan_id),

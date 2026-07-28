@@ -15,9 +15,12 @@ from autocad_contracts import (
     ApprovalDecisionMessage,
     ApprovalRequestMessage,
     ProgramResultMessage,
+    ReconcileResultMessage,
     approval_decision_proof_payload,
     canonical_capability_hash,
     canonical_package_manifest_hash,
+    rollback_checkpoint_digest,
+    rollback_receipt_digest,
 )
 from fastmcp import Client
 from cryptography.hazmat.primitives import serialization
@@ -28,6 +31,7 @@ from autocad_gateway.app import GatewayConfig, build_mcp_server, create_app
 from autocad_gateway.auth import build_fixture_auth
 from autocad_gateway.contracts import (
     CadCommitInput,
+    CadCommitRollbackInput,
     CadPrepareProgramInput,
     CadPreviewInput,
     CadPreviewRollbackInput,
@@ -114,6 +118,11 @@ CAPABILITIES = (
     "program_preview",
     "program_commit",
     "program_validate",
+    "receipt_lookup",
+    "checkpoint_lookup",
+    "rollback_preview",
+    "rollback_commit",
+    "rollback_validate",
 )
 
 
@@ -377,6 +386,287 @@ async def signed_local_decision(
         device_key_thumbprint=request.device_key_thumbprint,
         device_session_proof=proof,
     )
+
+
+async def make_checkpointed_commit(
+    service: DurableGatewayServices,
+    connection: AgentConnection,
+    socket: FakeWebSocket,
+    private_key: Ed25519PrivateKey,
+) -> dict:
+    preview = await make_preview(service, suffix="checkpoint")
+    pending = await service.commit_program(
+        CadCommitInput(
+            preview_id=preview["preview_id"],
+            idempotency_key="checkpoint-commit",
+        ),
+        WRITE_PRINCIPAL,
+        "checkpoint-commit",
+    )
+    decision = await signed_local_decision(
+        service, connection, pending.consent_id, private_key
+    )
+    released = await service.decide_phase7_local_approval(decision)
+    job = await service.repository.get_job(OWNER, released["job"]["job_id"])
+    assert job is not None
+    if job["state"] == "dispatched":
+        job = await service.repository.transition_job(job["job_id"], "acknowledged")
+    command = next(
+        item
+        for item in reversed(socket.messages)
+        if item.get("kind") == "program_commit"
+    )
+    execution = job["payload"]["execution"]
+    intent = await service.phase7_repository.get_intent(OWNER, pending.intent_id)
+    assert intent is not None
+    receipt_digest = "sha256:" + "9" * 64
+    revision_after = "d" * 64
+    gateway_checkpoint = {
+        "schema_version": "cad.rollback.checkpoint/1",
+        "checkpoint_id": "checkpoint-phase7-e2e",
+        "owner_subject": OWNER,
+        "original_receipt_id": execution["receipt_id"],
+        "original_receipt_digest": receipt_digest,
+        "program_id": execution["program_id"],
+        "program_revision": execution["program_revision"],
+        "program_digest": execution["program_digest"],
+        "preview_id": execution["preview_id"],
+        "preview_digest": execution["preview_digest"],
+        "execution_digest": execution["execution_digest"],
+        "document_id": execution["document_id"],
+        "document_revision_before": REVISION,
+        "document_revision_after": revision_after,
+        "created_entities": [
+            {
+                "handle": "1A",
+                "entity_type": "LINE",
+                "layer": "MCP",
+                "canonical_fingerprint": "sha256:" + "8" * 64,
+            }
+        ],
+        "non_entity_object_created": True,
+        "runtime_pins": intent["runtime_pins"],
+        "policy_pins": intent["policy_pins"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    checkpoint_digest = rollback_checkpoint_digest(gateway_checkpoint)
+    host_checkpoint = {
+        **{
+            key: value
+            for key, value in gateway_checkpoint.items()
+            if key not in {"owner_subject", "runtime_pins", "policy_pins"}
+        },
+        "runtime_and_policy_pins": command["binding"],
+        "checkpoint_digest": checkpoint_digest,
+    }
+    await service.job_service.handle_message(
+        connection,
+        ProgramResultMessage(
+            session_id=connection.session_id,
+            device_id=DEVICE,
+            job_id=job["job_id"],
+            command_id=job["command_id"],
+            sequence=10,
+            kind="program_commit",
+            status="succeeded",
+            payload_hash=job["payload_hash"],
+            binding=command["binding"],
+            result={
+                "receipt_id": execution["receipt_id"],
+                "receipt_digest": receipt_digest,
+                "document_revision_before": REVISION,
+                "document_revision_after": revision_after,
+                "created_entity_count": 1,
+                "rollback_eligible": True,
+                "checkpoint_id": host_checkpoint["checkpoint_id"],
+                "checkpoint_digest": checkpoint_digest,
+                "checkpoint": host_checkpoint,
+                "milestone": "effect_and_receipt_committed",
+                "duplicate": False,
+            },
+        ),
+    )
+    connection.active_document_revision = revision_after
+    checkpoint = await service.phase7_repository.get_checkpoint(
+        OWNER, host_checkpoint["checkpoint_id"]
+    )
+    assert checkpoint is not None
+    return checkpoint
+
+
+async def make_released_rollback(
+    service: DurableGatewayServices,
+    connection: AgentConnection,
+    socket: FakeWebSocket,
+    private_key: Ed25519PrivateKey,
+    *,
+    suffix: str,
+) -> tuple[dict, dict, dict]:
+    checkpoint = await make_checkpointed_commit(
+        service, connection, socket, private_key
+    )
+    service.phase7_admission.policy = service.phase7_admission.policy.__class__(
+        **{
+            **service.phase7_admission.policy.__dict__,
+            "public_rollback_enabled": True,
+            "device_local_approval_enabled": False,
+            "portal_recent_auth_approval_enabled": True,
+        }
+    )
+
+    async def preview_provider(checkpoint_value, _request):
+        return {
+            "current_document_revision": checkpoint_value[
+                "document_revision_after"
+            ],
+            "conflicts": [],
+            "runtime_pins": checkpoint_value["runtime_pins"],
+            "policy_pins": checkpoint_value["policy_pins"],
+        }
+
+    service.phase7_admission.rollback_preview_provider = preview_provider
+    preview = await service.phase7_admission.preview_rollback(
+        CadPreviewRollbackInput(
+            checkpoint_id=checkpoint["checkpoint_id"],
+            idempotency_key=f"rollback-preview-{suffix}",
+        ),
+        WRITE_PRINCIPAL,
+        f"rollback-preview-{suffix}",
+    )
+    pending = await service.phase7_admission.commit_rollback(
+        CadCommitRollbackInput(
+            rollback_plan_id=preview.rollback_plan_id,
+            idempotency_key=f"rollback-commit-{suffix}",
+        ),
+        WRITE_PRINCIPAL,
+        f"rollback-commit-{suffix}",
+    )
+    detail = await service.phase7_admission.portal_consent(
+        OWNER, pending.consent_id
+    )
+    released = await service.phase7_admission.portal_decide(
+        owner_subject=OWNER,
+        consent_id=pending.consent_id,
+        decision="approved",
+        intent_digest=detail["intent"]["intent_digest"],
+        consent_version=detail["consent"]["consent_version"],
+        nonce=detail["decision_nonce"],
+        actor_issuer="https://issuer.example/",
+        actor_subject="owner-a",
+        auth_time=datetime.now(timezone.utc).timestamp(),
+    )
+    plan = await service.phase7_repository.get_rollback_plan(
+        OWNER, preview.rollback_plan_id
+    )
+    assert plan is not None
+    return checkpoint, plan, released
+
+
+async def disconnect_started_rollback(
+    service: DurableGatewayServices, released: dict
+) -> dict:
+    job = await service.repository.get_job(OWNER, released["job"]["job_id"])
+    assert job is not None
+    if job["state"] == "queued":
+        await service.job_service.dispatch(job["job_id"], correlation_id=job["job_id"])
+        job = await service.repository.get_job(OWNER, job["job_id"])
+    if job["state"] == "dispatched":
+        job = await service.repository.transition_job(job["job_id"], "acknowledged")
+    if job["state"] == "acknowledged":
+        job = await service.repository.transition_job(job["job_id"], "running")
+    await service.job_service.handle_disconnect(DEVICE)
+    unknown = await service.repository.get_job(OWNER, job["job_id"])
+    assert unknown is not None and unknown["state"] == "outcome_unknown"
+    return unknown
+
+
+def rollback_commit_result(checkpoint: dict, plan: dict, job: dict) -> dict:
+    created_at = datetime.now(timezone.utc).isoformat()
+    revision_after = "e" * 64
+    removed_entities = [
+        {
+            "handle": item["handle"],
+            "entity_type": item["entity_type"],
+            "prior_fingerprint": item["canonical_fingerprint"],
+        }
+        for item in checkpoint["created_entities"]
+    ]
+    gateway_receipt = {
+        "schema_version": "cad.rollback.receipt/1",
+        "rollback_receipt_id": job["payload"]["arguments"]["rollback_receipt_id"],
+        "owner_subject": OWNER,
+        "original_receipt_id": checkpoint["original_receipt_id"],
+        "original_receipt_digest": checkpoint["original_receipt_digest"],
+        "program_digest": checkpoint["program_digest"],
+        "original_execution_digest": checkpoint["execution_digest"],
+        "original_document_revision": checkpoint["document_revision_before"],
+        "checkpoint_id": checkpoint["checkpoint_id"],
+        "checkpoint_digest": checkpoint["checkpoint_digest"],
+        "rollback_plan_id": plan["plan_id"],
+        "rollback_plan_digest": plan["plan_digest"],
+        "rollback_job_id": job["job_id"],
+        "rollback_execution_digest": plan["rollback_execution_digest"],
+        "document_id": checkpoint["document_id"],
+        "document_revision_before": plan["current_document_revision"],
+        "document_revision_after": revision_after,
+        "removed_entities": removed_entities,
+        "runtime_pins": plan["runtime_pins"],
+        "policy_pins": plan["policy_pins"],
+        "created_at": created_at,
+    }
+    receipt_digest = rollback_receipt_digest(gateway_receipt)
+    runtime = plan["runtime_pins"]
+    policy = plan["policy_pins"]
+    host_receipt = {
+        **{
+            key: value
+            for key, value in gateway_receipt.items()
+            if key
+            not in {
+                "owner_subject",
+                "program_digest",
+                "original_execution_digest",
+                "original_document_revision",
+                "rollback_job_id",
+                "runtime_pins",
+                "policy_pins",
+            }
+        },
+        "runtime_and_policy_pins": {
+            "program_digest": checkpoint["program_digest"],
+            "execution_digest": checkpoint["execution_digest"],
+            "document_id": checkpoint["document_id"],
+            "document_revision": checkpoint["document_revision_before"],
+            "runtime_id": runtime["runtime_id"],
+            "runtime_role": runtime["runtime_role"],
+            "host_family": runtime["host_family"],
+            "host_version": runtime["host_version"],
+            "package_id": runtime["host_package_id"],
+            "package_version": runtime["host_package_version"],
+            "package_hash": runtime["host_package_hash"],
+            "capability_manifest_hash": policy["capability_manifest_hash"],
+            "operation_registry_version": policy["registry_version"],
+            "operation_registry_hash": policy["operation_registry_hash"],
+            "policy_version": policy["policy_version"],
+        },
+        "receipt_digest": receipt_digest,
+    }
+    return {
+        "rollback_receipt_id": gateway_receipt["rollback_receipt_id"],
+        "receipt_digest": receipt_digest,
+        "original_receipt_id": checkpoint["original_receipt_id"],
+        "checkpoint_id": checkpoint["checkpoint_id"],
+        "checkpoint_digest": checkpoint["checkpoint_digest"],
+        "rollback_plan_id": plan["plan_id"],
+        "rollback_plan_digest": plan["plan_digest"],
+        "rollback_execution_digest": plan["rollback_execution_digest"],
+        "document_revision_before": plan["current_document_revision"],
+        "document_revision_after": revision_after,
+        "removed_entity_count": len(removed_entities),
+        "receipt": host_receipt,
+        "milestone": "effect_and_receipt_committed",
+        "duplicate": False,
+    }
 
 
 async def test_all_phase7_flags_default_off_and_direct_lab_is_profile_bounded():
@@ -783,6 +1073,188 @@ async def test_rollback_is_off_by_default_and_old_phase6_receipt_is_ineligible(p
             "rollback",
         )
     assert old.value.code == "rollback_unavailable"
+
+
+async def test_rollback_preview_recent_auth_approval_consumes_consent_and_releases_job(
+    phase7,
+):
+    service, connection, socket, private_key = phase7
+    checkpoint = await make_checkpointed_commit(
+        service, connection, socket, private_key
+    )
+    service.phase7_admission.policy = service.phase7_admission.policy.__class__(
+        **{
+            **service.phase7_admission.policy.__dict__,
+            "public_rollback_enabled": True,
+            "device_local_approval_enabled": False,
+            "portal_recent_auth_approval_enabled": True,
+        }
+    )
+
+    async def preview_provider(checkpoint_value, _request):
+        return {
+            "current_document_revision": checkpoint_value[
+                "document_revision_after"
+            ],
+            "conflicts": [],
+            "runtime_pins": checkpoint_value["runtime_pins"],
+            "policy_pins": checkpoint_value["policy_pins"],
+        }
+
+    service.phase7_admission.rollback_preview_provider = preview_provider
+    plan = await service.phase7_admission.preview_rollback(
+        CadPreviewRollbackInput(
+            checkpoint_id=checkpoint["checkpoint_id"],
+            idempotency_key="rollback-preview-e2e",
+        ),
+        WRITE_PRINCIPAL,
+        "rollback-preview-e2e",
+    )
+    pending = await service.phase7_admission.commit_rollback(
+        CadCommitRollbackInput(
+            rollback_plan_id=plan.rollback_plan_id,
+            idempotency_key="rollback-commit-e2e",
+        ),
+        WRITE_PRINCIPAL,
+        "rollback-commit-e2e",
+    )
+    assert pending.state == "awaiting_approval"
+    detail = await service.phase7_admission.portal_consent(
+        OWNER, pending.consent_id
+    )
+    released = await service.phase7_admission.portal_decide(
+        owner_subject=OWNER,
+        consent_id=pending.consent_id,
+        decision="approved",
+        intent_digest=detail["intent"]["intent_digest"],
+        consent_version=detail["consent"]["consent_version"],
+        nonce=detail["decision_nonce"],
+        actor_issuer="https://issuer.example/",
+        actor_subject="owner-a",
+        auth_time=datetime.now(timezone.utc).timestamp(),
+    )
+
+    assert released["job"]["kind"] == "rollback_commit"
+    assert released["job"]["payload"]["intent_id"] == pending.intent_id
+    assert (
+        released["job"]["payload"]["intent_digest"]
+        == detail["intent"]["intent_digest"]
+    )
+    consumed = await service.phase7_repository.get_consent(
+        OWNER, pending.consent_id
+    )
+    intent = await service.phase7_repository.get_intent(OWNER, pending.intent_id)
+    assert consumed["state"] == "consumed"
+    assert intent["state"] == "released"
+    assert intent["released_job_id"] == released["job"]["job_id"]
+
+
+async def test_rollback_reconcile_unknown_preserves_lock_and_mismatch_fails_closed(
+    phase7,
+):
+    service, connection, socket, private_key = phase7
+    _, _, released = await make_released_rollback(
+        service, connection, socket, private_key, suffix="unknown"
+    )
+    unknown = await disconnect_started_rollback(service, released)
+    binding = unknown["payload"]["binding"]
+
+    await service.job_service.handle_reconcile_result(
+        connection,
+        ReconcileResultMessage(
+            session_id=connection.session_id,
+            device_id=DEVICE,
+            job_id=unknown["job_id"],
+            command_id=unknown["command_id"],
+            sequence=20,
+            status="terminal",
+            payload_hash=unknown["payload_hash"],
+            result_status="failed",
+            error_code="outcome_unknown",
+            error_message="Rollback outcome remains unknown",
+            kind="rollback_commit",
+            binding=binding,
+        ),
+    )
+    still_unknown = await service.repository.get_job(OWNER, unknown["job_id"])
+    assert still_unknown["state"] == "outcome_unknown"
+    with service.database.read_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM cad_program_write_locks WHERE job_id = ?",
+            (unknown["job_id"],),
+        ).fetchone()[0] == 1
+
+    service.phase7_recovery.cases_enabled = True
+    mismatched = dict(binding)
+    mismatched["document_revision"] = "f" * 64
+    await service.job_service.handle_reconcile_result(
+        connection,
+        ReconcileResultMessage(
+            session_id=connection.session_id,
+            device_id=DEVICE,
+            job_id=unknown["job_id"],
+            command_id=unknown["command_id"],
+            sequence=21,
+            status="terminal",
+            payload_hash=unknown["payload_hash"],
+            result_status="succeeded",
+            result={},
+            kind="rollback_commit",
+            binding=mismatched,
+        ),
+    )
+    attention = await service.repository.get_job(OWNER, unknown["job_id"])
+    assert attention["state"] == "needs_attention"
+    assert await service.phase7_repository.list_rollback_receipts(OWNER) == []
+    with service.database.read_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM cad_program_write_locks WHERE job_id = ?",
+            (unknown["job_id"],),
+        ).fetchone()[0] == 1
+
+
+async def test_rollback_reconcile_exact_host_commit_materializes_once(phase7):
+    service, connection, socket, private_key = phase7
+    checkpoint, plan, released = await make_released_rollback(
+        service, connection, socket, private_key, suffix="committed"
+    )
+    unknown = await disconnect_started_rollback(service, released)
+    result = rollback_commit_result(checkpoint, plan, unknown)
+
+    for sequence in (30, 31):
+        await service.job_service.handle_reconcile_result(
+            connection,
+            ReconcileResultMessage(
+                session_id=connection.session_id,
+                device_id=DEVICE,
+                job_id=unknown["job_id"],
+                command_id=unknown["command_id"],
+                sequence=sequence,
+                status="terminal",
+                payload_hash=unknown["payload_hash"],
+                result_status="succeeded",
+                result=result,
+                kind="rollback_commit",
+                binding=unknown["payload"]["binding"],
+            ),
+        )
+
+    reconciled = await service.repository.get_job(OWNER, unknown["job_id"])
+    receipts = await service.phase7_repository.list_rollback_receipts(OWNER)
+    evidence = await service.phase7_repository.list_evidence(
+        OWNER, unknown["job_id"]
+    )
+    assert reconciled["state"] == "succeeded"
+    assert len(receipts) == 1
+    assert receipts[0]["receipt_digest"] == result["receipt_digest"]
+    assert [
+        item["payload"]["milestone"] for item in evidence
+    ].count("terminal_persisted") == 1
+    with service.database.read_connection() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM cad_program_write_locks WHERE job_id = ?",
+            (unknown["job_id"],),
+        ).fetchone()[0] == 0
 
 
 def test_phase6_lab_output_remains_compatible():
