@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Protocol
 
 from autocad_contracts import (
+    ExecutionBindingV1,
     ProgramCommandMessage,
     ProgramCommitResult,
     ProgramPreviewResult,
@@ -171,12 +172,12 @@ class ProgramCommandExecutor:
         command: ProgramCommandMessage,
         phase8: VerifiedPhase8Plan | None = None,
     ) -> dict[str, Any]:
+        if phase8 is not None:
+            return phase8.host_arguments()
         arguments: dict[str, Any] = {
             "execution_binding": command.binding.model_dump(mode="json"),
         }
-        if phase8 is not None:
-            arguments.update(phase8.host_arguments())
-        elif command.program is not None:
+        if command.program is not None:
             arguments["program"] = command.program.model_dump(
                 mode="json",
                 exclude_none=True,
@@ -202,24 +203,28 @@ class ProgramCommandExecutor:
         command: ProgramCommandMessage,
         selection: Any,
     ) -> VerifiedPhase8Plan | None:
-        plan = getattr(command, "execution_plan", None)
+        plan = command.execution_plan
         if plan is None:
             return None
         if self._phase8_admission is None:
             raise AgentExecutionError("capability_missing")
+        if not isinstance(command.binding, ExecutionBindingV1):
+            raise AgentExecutionError("binding_mismatch")
         return self._phase8_admission.verify(
             plan,
             binding=command.binding,
             command_kind=command.kind,
-            approval_binding=getattr(command, "approval_binding", None),
+            approval_binding=command.approval_binding,
             capability_states=getattr(selection, "capability_states", {}),
-            server_capability_evidence=getattr(
-                command,
-                "capability_evidence",
-                None,
-            ),
+            server_capability_evidence=command.capability_evidence,
+            legacy_binding=None,
             device_id=command.device_id,
+            job_id=command.job_id,
+            command_id=command.command_id,
+            issued_at=command.issued_at,
             preview_id=command.preview_id,
+            preview_digest=command.preview_digest,
+            preview_expires_at=command.expires_at,
             receipt_id=command.receipt_id,
             idempotency_key=command.idempotency_key,
         )

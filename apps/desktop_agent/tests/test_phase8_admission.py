@@ -1,12 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from autocad_contracts import (
+    Phase8ApprovalBinding,
+    Phase8CapabilityEvidence,
+    ProgramCommandMessage,
+    build_execution_binding_v1,
+    canonical_phase8_capability_evidence_digest,
+    compile_cad_program_v1,
+    program_command_payload_hash,
+    seal_cad_program_v1,
+)
 from autocad_contracts.agent_protocol import canonical_json
 
 from autocad_desktop_agent.config import AgentConfig
@@ -22,18 +33,54 @@ from autocad_desktop_agent.program_executor import (
 )
 from autocad_desktop_agent.runtime.managed_dotnet import ManagedDotNetCadReadPort
 
+_CAPABILITIES = (
+    "cad.program.v1.compile",
+    "cad.program.v1.execute.create",
+)
+
 
 def _digest(domain: str, value: dict) -> str:
     encoded = canonical_json({"domain": domain, "payload": value}).encode()
     return f"sha256:{sha256(encoded).hexdigest()}"
 
 
-def _binding(*, program_digest: str, execution_digest: str) -> dict:
+def _literal(value_type: str, value: str, unit: str | None = None) -> dict:
+    typed = {"type": value_type, "value": value}
+    if unit is not None:
+        typed["unit"] = unit
+    return {"op": "literal", "value": typed}
+
+
+def _point(x: str, y: str) -> dict:
     return {
-        "program_digest": program_digest,
-        "execution_digest": execution_digest,
-        "document_id": "doc-1",
-        "document_revision": "42",
+        "x": _literal("length", x, "mm"),
+        "y": _literal("length", y, "mm"),
+        "z": _literal("length", "0", "mm"),
+    }
+
+
+def _rollout(*, entity_types: list[str] | None = None) -> dict:
+    value = {
+        "epoch": 1,
+        "source_enabled": True,
+        "create_pack_enabled": True,
+        "transform_pack_enabled": False,
+        "checkpoint_v2_enabled": False,
+        "topology_pack_enabled": False,
+        "delete_pack_enabled": False,
+        "lt_write_enabled": False,
+        "operation_pack_allowlist": ["create-equivalent-v1"],
+        "cohort_id": "phase8-lab",
+        "cohort_allowed": True,
+        "runtime_allowlist": ["managed_dotnet:R25"],
+        "entity_type_allowlist": entity_types or ["LAYER", "LINE", "CIRCLE"],
+    }
+    value["digest"] = _digest("cad.rollout-policy/1", value)
+    return value
+
+
+def _pins(rollout_digest: str) -> dict:
+    return {
         "runtime_id": "managed_dotnet",
         "runtime_role": "primary",
         "host_family": "R25",
@@ -42,286 +89,147 @@ def _binding(*, program_digest: str, execution_digest: str) -> dict:
         "package_version": "1.0.0",
         "package_hash": f"sha256:{'1' * 64}",
         "capability_manifest_hash": f"sha256:{'2' * 64}",
-        "operation_registry_version": "cad.operation-registry/1",
+        "operation_registry_version": "cad.program.1.create.core",
         "operation_registry_hash": f"sha256:{'3' * 64}",
         "policy_version": "phase8-lab-v1",
+        "rollout_policy_digest": rollout_digest,
     }
 
 
-def _plan(
-    *,
-    transform: bool = False,
-    kind: str | None = None,
-) -> tuple[dict, dict, dict]:
-    source_digest = f"sha256:{'4' * 64}"
-    operation_kind = kind or ("move" if transform else "copy")
-    operations = [
+def _source() -> dict:
+    return {
+        "schema_version": "cad.program/1.0",
+        "registry_version": "cad.program/1.0-create-core",
+        "program_id": "desktop-phase8",
+        "program_revision": 1,
+        "device_id": "device-1",
+        "source_snapshot_id": "snapshot-1",
+        "document_id": "doc-1",
+        "expected_document_revision": "42",
+        "variables": [],
+        "operations": [
+            {
+                "kind": "create_line",
+                "operation_id": "line-main",
+                "layer": "PHASE8",
+                "start": _point("0", "0"),
+                "end": _point("100", "0"),
+            },
+        ],
+        "budgets": {
+            "max_source_operations": 8,
+            "max_expanded_operations": 16,
+            "max_entities": 16,
+            "max_vertices": 64,
+            "max_expression_nodes": 128,
+            "max_coordinate_abs_mm": "10000",
+            "max_text_bytes": 1024,
+        },
+        "required_capabilities": list(_CAPABILITIES),
+        "validation_profiles": ["geometry.basic.1"],
+        "artifact_refs": [],
+        "component_refs": [],
+    }
+
+
+def _compiled() -> tuple[object, dict]:
+    rollout = _rollout()
+    source = seal_cad_program_v1(_source())
+    plan = compile_cad_program_v1(
+        source,
+        _pins(rollout["digest"]),
+        compiler_package_hash=f"sha256:{'7' * 64}",
+    )
+    return plan, rollout
+
+
+def _transform_compiled() -> tuple[object, dict]:
+    rollout = _rollout(entity_types=["LINE"])
+    source = _source()
+    source["registry_version"] = "cad.program/1.0-phase8-core"
+    source["operations"] = [
         {
-            "operation_id": "op-1",
-            "kind": operation_kind,
-            "arguments": {"target_ref": "entity-ref-1"},
+            "kind": "move_entity",
+            "operation_id": "move-line",
+            "target_ref_id": "ref-line-1",
+            "displacement": _point("25", "0"),
         }
     ]
-    effect = {
-        "operation_id": "op-1",
-        "create_count": 0 if transform else 1,
-        "modify_count": 1 if transform else 0,
-        "erase_count": 0,
-        "capability_key": (
-            "cad.op.move.line.v1"
-            if transform
-            else "cad.op.copy.line.v1"
-        ),
-        "operation_pack": "transform.basic/1" if transform else "create.basic/1",
-    }
-    effect_manifest = {
-        "schema_version": "cad.effect-manifest/1",
-        "operations": [effect],
-        "totals": {
-            "create_count": effect["create_count"],
-            "modify_count": effect["modify_count"],
-            "erase_count": 0,
-        },
-    }
-    pins = _binding(program_digest=source_digest, execution_digest="pending")
-    pins = {
-        key: value
-        for key, value in pins.items()
-        if key
-        not in {
-            "program_digest",
-            "execution_digest",
-            "document_id",
-            "document_revision",
-        }
-    }
-    plan = {
-        "schema_version": "cad.execution-plan/1",
-        "source": {
-            "schema_version": "cad.program/1.0",
-            "digest_domain": "cad.program.source/1",
-            "program_id": "program-1",
-            "revision": 1,
-            "device_id": "device-1",
-            "snapshot_id": "snapshot-1",
-            "document_id": "doc-1",
-            "document_revision": "42",
-            "digest": source_digest,
-        },
-        "compiler": {
-            "id": "gateway-compiler",
-            "version": "1.0.0",
-            "hash": f"sha256:{'5' * 64}",
-        },
-        "operations": operations,
-        "expansion_digest": _digest(
-            "cad.program.expansion/1",
-            {"operations": operations},
-        ),
-        "effect_manifest": effect_manifest,
-        "effect_manifest_digest": _digest(
-            "cad.effect-manifest/1",
-            effect_manifest,
-        ),
-        "pins": pins,
-        "budgets": {
-            "estimated": {
-                "operations": 1,
-                "entities": 1,
-                "vertices": 0,
-                "text_bytes": 0,
-                "payload_bytes": 16_384,
-                "result_bytes": 16_384,
-                "checkpoint_bytes": 16_384,
-            },
-            "hard": {
-                "operations": 16,
-                "entities": 16,
-                "vertices": 256,
-                "text_bytes": 4096,
-                "payload_bytes": 65_536,
-                "result_bytes": 65_536,
-                "checkpoint_bytes": 65_536,
-            },
-        },
-        "required_capabilities": [
+    source["required_capabilities"] = ["cad.program.v1.compile"]
+    sealed = seal_cad_program_v1(source)
+    plan = compile_cad_program_v1(
+        sealed,
+        _pins(rollout["digest"]),
+        compiler_package_hash=f"sha256:{'7' * 64}",
+        materialized_target_refs=[
             {
-                "key": (
-                    "cad.op.move.line.v1"
-                    if transform
-                    else "cad.op.copy.line.v1"
-                ),
-                "minimum_state": "lab_commit" if transform else "preview_only",
-            }
-        ],
-        "operation_packs": [
-            "transform.basic/1" if transform else "create.basic/1"
-        ],
-        "materialized_refs": [
-            {
-                "ref_id": "entity-ref-1",
+                "ref_id": "ref-line-1",
+                "owner_id": "owner-1",
                 "device_id": "device-1",
                 "document_id": "doc-1",
                 "snapshot_id": "snapshot-1",
                 "document_revision": "42",
-                "entity_id": "entity-1",
+                "entity_id": "entity-line-1",
                 "entity_type": "LINE",
-                "fingerprint": f"sha256:{'9' * 64}",
+                "fingerprint": f"sha256:{'d' * 64}",
             }
         ],
-        "validation_profiles": [
-            {
-                "profile_id": "geometry.basic/1",
-                "digest": f"sha256:{'a' * 64}",
-            }
-        ],
-        "checkpoint_strategy": (
-            {
-                "schema_version": "cad.rollback.checkpoint/2",
-                "strategy": "restore_typed_preimage",
-            }
-            if transform
-            else {
-                "schema_version": "cad.rollback.checkpoint/1",
-                "strategy": "erase_created_entities",
-            }
-        ),
-    }
-    capability_key = plan["required_capabilities"][0]["key"]
-    capability_state = "lab_commit" if transform else "preview_only"
-    evidence = _capability_evidence(
-        capability_key,
-        state=capability_state,
-        pins=plan["pins"],
-        compiler_hash=plan["compiler"]["hash"],
     )
-    plan["pins"]["capability_evidence_digest"] = evidence["digest"]
-    rollout = {
-        "epoch": 1,
-        "source_enabled": True,
-        "create_pack_enabled": True,
-        "transform_pack_enabled": True,
-        "checkpoint_v2_enabled": True,
-        "topology_pack_enabled": False,
-        "delete_pack_enabled": False,
-        "lt_write_enabled": False,
-        "operation_pack_allowlist": ["create.basic/1", "transform.basic/1"],
-        "capability_evidence_digest": evidence["digest"],
-        "cohort_id": "phase8-lab",
-        "cohort_allowed": True,
-        "runtime_allowlist": ["managed_dotnet:R25"],
-        "entity_type_allowlist": ["LINE", "CIRCLE", "LWPOLYLINE"],
-    }
-    rollout["digest"] = _digest("cad.rollout-policy/1", rollout)
-    plan["rollout_policy"] = rollout
-    plan["pins"]["rollout_policy_digest"] = rollout["digest"]
-    plan["pins"]["capability_state_hash"] = _digest(
-        "cad.capability-intersection/1",
-        {"capability_states": {capability_key: capability_state}}
-    )
-    plan["target_set_digest"] = _digest(
-        "cad.target-refs/1",
-        {"target_refs": plan["materialized_refs"]},
-    )
-    plan["validation_profile_digest"] = _digest(
-        "cad.validation-profiles/1",
-        {"validation_profiles": plan["validation_profiles"]},
-    )
-    plan["checkpoint_strategy_digest"] = _digest(
-        "cad.checkpoint-strategy/1",
-        plan["checkpoint_strategy"],
-    )
-    plan["hard_budget_digest"] = _digest(
-        "cad.execution-budgets/1",
-        {
-            "max_operations": plan["budgets"]["hard"]["operations"],
-            "max_entities": plan["budgets"]["hard"]["entities"],
-            "max_vertices": plan["budgets"]["hard"]["vertices"],
-            "max_text_bytes": plan["budgets"]["hard"]["text_bytes"],
-        },
-    )
-    plan["execution_plan_digest"] = _digest("cad.execution-plan/1", plan)
-    binding = _binding(
-        program_digest=source_digest,
-        execution_digest=plan["execution_plan_digest"],
-    )
-    return plan, binding, evidence
+    return plan, rollout
 
 
-def _capability_evidence(
-    key: str,
+def _evidence(
+    plan,
+    rollout: dict,
     *,
     state: str,
-    pins: dict,
-    compiler_hash: str,
-) -> dict:
-    value = {
-        "schema_version": "cad.capability-evidence/1",
-        "evidence_id": "evidence-1",
-        "issued_at": datetime.now(timezone.utc).isoformat(),
-        "expires_at": (
-            datetime.now(timezone.utc) + timedelta(hours=1)
-        ).isoformat(),
-        "revoked": False,
-        "rollout_policy_epoch": 1,
-        "package_hash": pins["package_hash"],
-        "host_family": pins["host_family"],
-        "operation_registry_hash": pins["operation_registry_hash"],
-        "compiler_hash": compiler_hash,
-        "policy_version": pins["policy_version"],
-        "capabilities": [{"key": key, "state": state}],
-    }
-    value["digest"] = _digest("cad.capability-evidence/1", value)
-    return value
+    host_family: str = "R25",
+    entity_types: list[str] | None = None,
+    operation_pack: str = "create-equivalent-v1",
+) -> list[Phase8CapabilityEvidence]:
+    pins = plan.execution_pins
+    del rollout
+    issued = datetime.now(timezone.utc)
+    results = []
+    for index, key in enumerate(plan.required_capabilities):
+        value = {
+            "schema_version": "cad.capability-evidence/1",
+            "evidence_authority": "gateway_server",
+            "evidence_id": f"evidence-{index}",
+            "device_id": plan.device_id,
+            "capability_key": key,
+            "operation_pack": operation_pack,
+            "runtime_id": "managed_dotnet",
+            "host_family": host_family,
+            "entity_type": (entity_types or ["LINE"])[0],
+            "support_state": state,
+            "package_hash": pins.package_hash,
+            "capability_manifest_hash": pins.capability_manifest_hash,
+            "operation_registry_hash": pins.operation_registry_hash,
+            "package_signature_verified": True,
+            "agent_evidence_digest": f"sha256:{'a' * 64}",
+            "host_evidence_digest": f"sha256:{'b' * 64}",
+            "cohort": "phase8-lab",
+            "evidence_version": "1",
+            "issued_at": issued.isoformat(),
+            "valid_until": (issued + timedelta(hours=1)).isoformat(),
+        }
+        value["evidence_digest"] = canonical_phase8_capability_evidence_digest(
+            value
+        )
+        results.append(Phase8CapabilityEvidence.model_validate(value))
+    return results
 
 
-def _approval(plan: dict, binding: dict) -> dict:
-    preview_expires_at = (
-        datetime.now(timezone.utc) + timedelta(minutes=10)
-    ).isoformat()
-    identity = {
-        "action": "program_commit",
-        "execution_plan_digest": plan["execution_plan_digest"],
-        "effect_manifest_digest": plan["effect_manifest_digest"],
-        "target_set_digest": plan["target_set_digest"],
-        "document_id": binding["document_id"],
-        "document_revision_before": binding["document_revision"],
-        "preview_id": "preview-1",
-        "preview_expires_at": preview_expires_at,
-        "receipt_id": "receipt-1",
-        "checkpoint_strategy_digest": plan["checkpoint_strategy_digest"],
-        "operation_packs": plan["operation_packs"],
-        "runtime_id": binding["runtime_id"],
-        "host_family": binding["host_family"],
-        "package_hash": binding["package_hash"],
-        "operation_registry_hash": binding["operation_registry_hash"],
-        "policy_version": binding["policy_version"],
-        "rollout_policy_digest": plan["pins"]["rollout_policy_digest"],
-    }
+def _legacy_binding(plan) -> dict:
+    pins = plan.execution_pins.model_dump(mode="json")
+    pins.pop("rollout_policy_digest")
     return {
-        "intent_digest": f"sha256:{'6' * 64}",
-        "binding_domain": "cad.execution-intent/2",
-        "consent_id": "consent-1",
-        "approval_proof_digest": f"sha256:{'7' * 64}",
-        "action": "program_commit",
-        "preview_id": "preview-1",
-        "preview_expires_at": preview_expires_at,
-        "receipt_id": "receipt-1",
-        "source_digest": plan["source"]["digest"],
-        "compiler_hash": plan["compiler"]["hash"],
-        "expansion_digest": plan["expansion_digest"],
-        "effect_manifest_digest": plan["effect_manifest_digest"],
-        "execution_plan_digest": plan["execution_plan_digest"],
-        "capability_state_hash": plan["pins"]["capability_state_hash"],
-        "target_set_digest": plan["target_set_digest"],
-        "validation_profile_digest": plan["validation_profile_digest"],
-        "checkpoint_strategy_digest": plan["checkpoint_strategy_digest"],
-        "hard_budget_digest": plan["hard_budget_digest"],
-        "effect_identity_digest": _digest(
-            "cad.effect-identity/1",
-            identity,
-        ),
-        **plan["pins"],
+        "program_digest": plan.source_digest,
+        "execution_digest": plan.execution_plan_digest,
+        "document_id": plan.document_id,
+        "document_revision": plan.expected_document_revision,
+        **pins,
     }
 
 
@@ -330,36 +238,121 @@ def _admission() -> Phase8PlanAdmission:
         Phase8AdmissionPolicy(
             source_enabled=True,
             create_pack_enabled=True,
-            transform_pack_enabled=True,
-            checkpoint_v2_enabled=True,
-            operation_pack_allowlist=frozenset(
-                {"create.basic/1", "transform.basic/1"}
-            ),
+            transform_pack_enabled=False,
+            checkpoint_v2_enabled=False,
+            operation_pack_allowlist=frozenset({"create-equivalent-v1"}),
             rollout_policy_epoch=1,
         )
     )
 
 
-def test_preview_accepts_exact_sealed_plan_and_forwards_no_source() -> None:
-    plan, binding, evidence = _plan()
+def _transform_admission() -> Phase8PlanAdmission:
+    return Phase8PlanAdmission(
+        Phase8AdmissionPolicy(
+            source_enabled=True,
+            create_pack_enabled=False,
+            transform_pack_enabled=True,
+            checkpoint_v2_enabled=True,
+            operation_pack_allowlist=frozenset({"transform-exact-v1"}),
+            rollout_policy_epoch=1,
+        )
+    )
+
+
+def _preview_artifacts():
+    plan, rollout = _compiled()
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    binding = build_execution_binding_v1(
+        plan,
+        action="preview",
+        preview_id="preview-1",
+        preview_expires_at=expires_at,
+    )
+    evidence = _evidence(plan, rollout, state="preview_only")
+    return plan, binding, evidence, expires_at
+
+
+def _commit_artifacts():
+    plan, rollout = _compiled()
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    binding = build_execution_binding_v1(
+        plan,
+        action="commit",
+        preview_id="preview-1",
+        preview_expires_at=expires_at,
+        receipt_id="receipt-1",
+    )
+    evidence = _evidence(plan, rollout, state="lab_commit")
+    state_hash = _digest(
+        "cad.capability-intersection/1",
+        {
+            "capability_states": {key: "lab_commit" for key in _CAPABILITIES}
+        },
+    )
+    approval = {
+        "schema_version": "cad.phase8-approval-binding/1",
+        "action": "program_commit",
+        "intent_id": "intent-1",
+        "intent_digest": f"sha256:{'8' * 64}",
+        "approval_proof_digest": f"sha256:{'9' * 64}",
+        "consent_id": "consent-1",
+        "device_id": plan.device_id,
+        "document_id": plan.document_id,
+        "document_revision": plan.expected_document_revision,
+        "job_id": "job-1",
+        "command_id": "command-1",
+        "idempotency_key": "idem-1",
+        "preview_id": binding.preview_id,
+        "preview_digest": f"sha256:{'c' * 64}",
+        "preview_expires_at": binding.preview_expires_at,
+        "receipt_id": binding.receipt_id,
+        "execution_binding_digest": binding.execution_binding_digest,
+        "source_digest": plan.source_digest,
+        "expansion_digest": plan.expansion_digest,
+        "effect_manifest_digest": plan.effect_manifest_digest,
+        "execution_plan_digest": plan.execution_plan_digest,
+        "target_refs_digest": plan.target_refs_digest,
+        "validation_profiles_digest": plan.validation_profiles_digest,
+        "checkpoint_strategy_digest": plan.checkpoint_strategy_digest,
+        "hard_budgets_digest": plan.hard_budgets_digest,
+    }
+    del state_hash
+    return plan, binding, evidence, Phase8ApprovalBinding.model_validate(approval)
+
+
+def test_real_compiler_preview_is_verified_and_only_sealed_plan_is_dispatched() -> None:
+    plan, binding, evidence, expires_at = _preview_artifacts()
     verified = _admission().verify(
         plan,
         binding=binding,
+        legacy_binding=_legacy_binding(plan),
         command_kind="program_preview",
         approval_binding=None,
-        capability_states={"cad.op.copy.line.v1": "preview_only"},
+        capability_states={key: "preview_only" for key in _CAPABILITIES},
         server_capability_evidence=evidence,
+        device_id="device-1",
+        preview_id="preview-1",
+        preview_expires_at=expires_at,
     )
 
-    assert verified.host_arguments() == {"execution_plan": plan}
+    arguments = ProgramCommandExecutor._host_arguments(
+        SimpleNamespace(),
+        verified,
+    )
+    assert arguments == {
+        "execution_plan": plan.model_dump(mode="json", exclude_none=True)
+    }
+    assert "program" not in arguments
+    assert "execution_binding" not in arguments
+
     result = _admission().verify_result(
         verified,
         {
-            "execution_plan_digest": plan["execution_plan_digest"],
-            "effect_manifest_digest": plan["effect_manifest_digest"],
-            "target_set_digest": plan["target_set_digest"],
-            "hard_budget_digest": plan["hard_budget_digest"],
-            "rollout_policy_digest": plan["pins"]["rollout_policy_digest"],
+            "execution_plan_digest": plan.execution_plan_digest,
+            "effect_manifest_digest": plan.effect_manifest_digest,
+            "target_refs_digest": plan.target_refs_digest,
+            "hard_budgets_digest": plan.hard_budgets_digest,
+            "rollout_policy_digest": plan.execution_pins.rollout_policy_digest,
             "transaction_aborted": True,
             "drawing_unchanged": True,
         },
@@ -368,262 +361,363 @@ def test_preview_accepts_exact_sealed_plan_and_forwards_no_source() -> None:
     assert result["drawing_unchanged"] is True
 
 
-@pytest.mark.parametrize(
-    ("field", "code"),
-    [
-        ("expansion_digest", "expansion_mismatch"),
-        ("effect_manifest_digest", "effect_mismatch"),
-        ("target_set_digest", "target_mismatch"),
-        ("hard_budget_digest", "budget_mismatch"),
-        ("execution_plan_digest", "plan_mismatch"),
-    ],
-)
-def test_digest_mismatch_fails_before_dispatch(field: str, code: str) -> None:
-    plan, binding, evidence = _plan()
-    plan[field] = f"sha256:{'f' * 64}"
-    if field == "execution_plan_digest":
-        binding["execution_digest"] = plan[field]
-
-    with pytest.raises(AgentExecutionError, match=code):
-        _admission().verify(
-            plan,
-            binding=binding,
-            command_kind="program_preview",
-            approval_binding=None,
-            capability_states={"cad.op.copy.line.v1": "preview_only"},
-            server_capability_evidence=evidence,
-        )
-
-
-def test_runtime_package_registry_and_policy_pins_are_exact() -> None:
-    plan, binding, evidence = _plan()
-    cases = {
-        "host_version": "runtime_mismatch",
-        "package_hash": "package_mismatch",
-        "operation_registry_hash": "registry_mismatch",
-        "policy_version": "policy_mismatch",
+async def test_program_executor_accepts_typed_phase8_command_and_dispatches_no_source() -> None:
+    plan, binding, evidence, expires_at = _preview_artifacts()
+    deadline = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
+    command = ProgramCommandMessage(
+        session_id="session-1",
+        device_id="device-1",
+        job_id="job-1",
+        command_id="command-1",
+        idempotency_key="preview-idem-1",
+        payload_hash="0" * 64,
+        kind="program_preview",
+        effect_class="write",
+        binding=binding,
+        execution_plan=plan,
+        capability_evidence=evidence,
+        preview_id="preview-1",
+        expires_at=expires_at,
+        deadline_at=deadline,
+    )
+    command = command.model_copy(
+        update={"payload_hash": program_command_payload_hash(command)}
+    )
+    host_result = {
+        "execution_plan_digest": plan.execution_plan_digest,
+        "effect_manifest_digest": plan.effect_manifest_digest,
+        "target_refs_digest": plan.target_refs_digest,
+        "hard_budgets_digest": plan.hard_budgets_digest,
+        "rollout_policy_digest": plan.execution_pins.rollout_policy_digest,
+        "transaction_aborted": True,
+        "drawing_unchanged": True,
     }
-    for field, code in cases.items():
-        changed = dict(binding)
-        changed[field] = (
-            f"sha256:{'e' * 64}" if field.endswith("_hash") else "changed"
-        )
-        with pytest.raises(AgentExecutionError, match=code):
-            _admission().verify(
-                plan,
-                binding=changed,
-                command_kind="program_preview",
-                approval_binding=None,
-                capability_states={"cad.op.copy.line.v1": "preview_only"},
-                server_capability_evidence=evidence,
+
+    class Adapter:
+        arguments = None
+
+        async def health(self):
+            return SimpleNamespace(
+                ok=True,
+                payload={
+                    "active_document_id": "doc-1",
+                    "active_document_revision": "42",
+                },
+                error_code=None,
             )
 
-    missing = dict(binding)
-    missing.pop("policy_version")
-    with pytest.raises(AgentExecutionError, match="policy_mismatch"):
-        _admission().verify(
-            plan,
-            binding=missing,
-            command_kind="program_preview",
-            approval_binding=None,
-            capability_states={"cad.op.copy.line.v1": "preview_only"},
-            server_capability_evidence=evidence,
-        )
+        async def program_command(self, kind, *, arguments, deadline_at):
+            assert kind == "program_preview"
+            assert deadline_at == deadline
+            self.arguments = arguments
+            return SimpleNamespace(ok=True, payload=host_result, error_code=None)
+
+    adapter = Adapter()
+
+    class Broker:
+        async def select_write_runtime(self, binding, **kwargs):
+            assert isinstance(binding, type(command.binding))
+            assert kwargs["required_capability"] == "cad.program.preview"
+            return SimpleNamespace(
+                adapter=adapter,
+                capability_states={
+                    key: "preview_only" for key in _CAPABILITIES
+                },
+            )
+
+    result = await ProgramCommandExecutor(
+        Broker(),
+        phase8_admission=_admission(),
+    ).execute(command, write_lock_enabled=True)
+    assert result["drawing_unchanged"] is True
+    assert adapter.arguments == {
+        "execution_plan": plan.model_dump(mode="json", exclude_none=True)
+    }
+    assert "program" not in adapter.arguments
+    assert "execution_binding" not in adapter.arguments
 
 
-def test_hard_budget_and_granular_capability_state_fail_closed() -> None:
-    plan, binding, evidence = _plan()
-    plan["budgets"]["hard"]["operations"] = 0
-    plan["hard_budget_digest"] = _digest(
-        "cad.execution-budgets/1",
-        {
-            "max_operations": plan["budgets"]["hard"]["operations"],
-            "max_entities": plan["budgets"]["hard"]["entities"],
-            "max_vertices": plan["budgets"]["hard"]["vertices"],
-            "max_text_bytes": plan["budgets"]["hard"]["text_bytes"],
-        },
-    )
-    plan["execution_plan_digest"] = _digest(
-        "cad.execution-plan/1",
-        {key: value for key, value in plan.items() if key != "execution_plan_digest"}
-    )
-    binding["execution_digest"] = plan["execution_plan_digest"]
-    with pytest.raises(AgentExecutionError, match="budget_exceeded"):
-        _admission().verify(
-            plan,
-            binding=binding,
-            command_kind="program_preview",
-            approval_binding=None,
-            capability_states={"cad.op.copy.line.v1": "preview_only"},
-            server_capability_evidence=evidence,
-        )
-
-    plan, binding, evidence = _plan()
-    with pytest.raises(AgentExecutionError, match="capability_missing"):
-        _admission().verify(
-            plan,
-            binding=binding,
-            command_kind="program_preview",
-            approval_binding=None,
-            capability_states={"cad.op.copy.line.v1": "contract_only"},
-            server_capability_evidence=evidence,
-        )
-
-
-def test_self_report_cannot_exceed_server_evidence_or_stale_epoch() -> None:
-    plan, binding, evidence = _plan()
-    with pytest.raises(AgentExecutionError, match="capability_missing"):
-        _admission().verify(
-            plan,
-            binding=binding,
-            command_kind="program_commit",
-            approval_binding=None,
-            capability_states={"cad.op.copy.line.v1": "certified"},
-            server_capability_evidence=evidence,
-            preview_id="preview-1",
-            receipt_id="receipt-1",
-        )
-
-    stale_policy = Phase8PlanAdmission(
-        Phase8AdmissionPolicy(
-            source_enabled=True,
-            create_pack_enabled=True,
-            transform_pack_enabled=True,
-            checkpoint_v2_enabled=True,
-            operation_pack_allowlist=frozenset(
-                {"create.basic/1", "transform.basic/1"}
-            ),
-            rollout_policy_epoch=2,
-        )
-    )
-    with pytest.raises(AgentExecutionError, match="capability_missing"):
-        stale_policy.verify(
-            plan,
-            binding=binding,
-            command_kind="program_preview",
-            approval_binding=None,
-            capability_states={"cad.op.copy.line.v1": "preview_only"},
-            server_capability_evidence=evidence,
-        )
-
-
-@pytest.mark.parametrize("field", ["path", "command", "script", "raw_handle"])
-def test_arbitrary_authority_fields_are_rejected(field: str) -> None:
-    plan, binding, evidence = _plan()
-    plan["operations"][0]["arguments"][field] = "attacker-controlled"
-    with pytest.raises(AgentExecutionError, match="capability_missing"):
-        _admission().verify(
-            plan,
-            binding=binding,
-            command_kind="program_preview",
-            approval_binding=None,
-            capability_states={"cad.op.copy.line.v1": "preview_only"},
-            server_capability_evidence=evidence,
-        )
-
-
-def test_transform_commit_requires_phase7_binding_and_checkpoint_v2() -> None:
-    plan, binding, evidence = _plan(transform=True)
-    states = {"cad.op.move.line.v1": "lab_commit"}
-    with pytest.raises(AgentExecutionError, match="approval_required"):
-        _admission().verify(
-            plan,
-            binding=binding,
-            command_kind="program_commit",
-            approval_binding=None,
-            capability_states=states,
-            server_capability_evidence=evidence,
-            preview_id="preview-1",
-            receipt_id="receipt-1",
-        )
-
-    verified = _admission().verify(
+def test_exact_move_commit_requires_transform_gate_checkpoint_v2_and_exact_tuple() -> None:
+    plan, rollout = _transform_compiled()
+    expires_at = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+    binding = build_execution_binding_v1(
         plan,
-        binding=binding,
-        command_kind="program_commit",
-        approval_binding=(approval := _approval(plan, binding)),
-        capability_states=states,
-        server_capability_evidence=evidence,
-        preview_id="preview-1",
-        receipt_id="receipt-1",
-        idempotency_key=approval["effect_identity_digest"],
+        action="commit",
+        preview_id="preview-move-1",
+        preview_expires_at=expires_at,
+        receipt_id="receipt-move-1",
     )
-    result = _admission().verify_result(
+    evidence = _evidence(
+        plan,
+        rollout,
+        state="lab_commit",
+        operation_pack="transform-exact-v1",
+    )
+    states = {key: "lab_commit" for key in plan.required_capabilities}
+    approval = Phase8ApprovalBinding(
+        schema_version="cad.phase8-approval-binding/1",
+        action="program_commit",
+        intent_id="intent-move-1",
+        consent_id="consent-move-1",
+        intent_digest=f"sha256:{'8' * 64}",
+        approval_proof_digest=f"sha256:{'9' * 64}",
+        device_id="device-1",
+        document_id="doc-1",
+        document_revision="42",
+        job_id="job-move-1",
+        command_id="command-move-1",
+        idempotency_key="idem-move-1",
+        source_digest=plan.source_digest,
+        execution_plan_digest=plan.execution_plan_digest,
+        execution_binding_digest=binding.execution_binding_digest,
+        expansion_digest=plan.expansion_digest,
+        effect_manifest_digest=plan.effect_manifest_digest,
+        target_refs_digest=plan.target_refs_digest,
+        validation_profiles_digest=plan.validation_profiles_digest,
+        checkpoint_strategy_digest=plan.checkpoint_strategy_digest,
+        hard_budgets_digest=plan.hard_budgets_digest,
+        preview_id="preview-move-1",
+        preview_digest=f"sha256:{'c' * 64}",
+        preview_expires_at=expires_at,
+        receipt_id="receipt-move-1",
+    )
+    common = {
+        "plan": plan,
+        "binding": binding,
+        "command_kind": "program_commit",
+        "approval_binding": approval,
+        "capability_states": states,
+        "server_capability_evidence": evidence,
+        "device_id": "device-1",
+        "job_id": "job-move-1",
+        "command_id": "command-move-1",
+        "preview_id": "preview-move-1",
+        "preview_digest": f"sha256:{'c' * 64}",
+        "preview_expires_at": expires_at,
+        "receipt_id": "receipt-move-1",
+        "idempotency_key": "idem-move-1",
+    }
+
+    verified = _transform_admission().verify(**common)
+    assert verified.modifies_entities is True
+    assert plan.checkpoint_strategy == "cad.rollback.checkpoint/2"
+    assert "cad.op.move.line.v1" in verified.required_capabilities
+    assert verified.operation_packs == ("transform-exact-v1",)
+
+    with pytest.raises(AgentExecutionError, match="checkpoint_mismatch"):
+        _admission().verify(**common)
+
+    wrong_tuple = _evidence(
+        plan,
+        rollout,
+        state="lab_commit",
+        entity_types=["CIRCLE"],
+        operation_pack="transform-exact-v1",
+    )
+    with pytest.raises(AgentExecutionError, match="capability_missing"):
+        _transform_admission().verify(
+            **{**common, "server_capability_evidence": wrong_tuple}
+        )
+
+    result = _transform_admission().verify_result(
         verified,
         {
-            "execution_plan_digest": plan["execution_plan_digest"],
-            "effect_manifest_digest": plan["effect_manifest_digest"],
-            "target_set_digest": plan["target_set_digest"],
-            "hard_budget_digest": plan["hard_budget_digest"],
-            "rollout_policy_digest": plan["pins"]["rollout_policy_digest"],
-            "effect_identity_digest": approval["effect_identity_digest"],
+            "execution_plan_digest": plan.execution_plan_digest,
+            "effect_manifest_digest": plan.effect_manifest_digest,
+            "target_refs_digest": plan.target_refs_digest,
+            "hard_budgets_digest": plan.hard_budgets_digest,
+            "rollout_policy_digest": plan.execution_pins.rollout_policy_digest,
+            "effect_identity_digest": verified.effect_identity_digest,
             "milestone": "effect_and_receipt_committed",
             "checkpoint": {
                 "schema_version": "cad.rollback.checkpoint/2",
-                "digest": f"sha256:{'8' * 64}",
+                "digest": f"sha256:{'e' * 64}",
             },
         },
         command_kind="program_commit",
     )
     assert result["checkpoint"]["schema_version"] == "cad.rollback.checkpoint/2"
 
-    with pytest.raises(AgentExecutionError, match="effect_identity_mismatch"):
+
+@pytest.mark.parametrize(
+    ("target", "code"),
+    [
+        ("plan", "plan_mismatch"),
+        ("binding", "binding_mismatch"),
+    ],
+)
+def test_real_compiler_artifact_tamper_fails_before_dispatch(
+    target: str,
+    code: str,
+) -> None:
+    plan, binding, evidence, expires_at = _preview_artifacts()
+    plan_value = plan.model_dump(mode="json", exclude_none=True)
+    binding_value = binding.model_dump(mode="json", exclude_none=True)
+    if target == "plan":
+        plan_value["operations"][0]["end"]["x_mm"] = "101"
+    else:
+        binding_value["package_hash"] = f"sha256:{'f' * 64}"
+
+    with pytest.raises(AgentExecutionError, match=code):
         _admission().verify(
-            plan,
-            binding=binding,
-            command_kind="program_commit",
-            approval_binding=approval,
-            capability_states=states,
+            plan_value,
+            binding=binding_value,
+            command_kind="program_preview",
+            approval_binding=None,
+            capability_states={key: "preview_only" for key in _CAPABILITIES},
             server_capability_evidence=evidence,
+            device_id="device-1",
             preview_id="preview-1",
-            receipt_id="receipt-1",
-            idempotency_key="caller-chosen-key",
+            preview_expires_at=expires_at,
         )
 
-    plan_v1, binding_v1, evidence_v1 = _plan(transform=True)
-    plan_v1["checkpoint_strategy"] = {
-        "schema_version": "cad.rollback.checkpoint/1",
-        "strategy": "erase_created_entities",
-    }
-    plan_v1["checkpoint_strategy_digest"] = _digest(
-        "cad.checkpoint-strategy/1",
-        plan_v1["checkpoint_strategy"],
+
+def test_unsupported_runtime_entity_tuple_and_optimistic_self_report_fail_closed() -> None:
+    plan, binding, _, expires_at = _preview_artifacts()
+    bad_rollout = _rollout()
+    bad_plan = compile_cad_program_v1(
+        seal_cad_program_v1(_source()),
+        _pins(bad_rollout["digest"]),
+        compiler_package_hash=f"sha256:{'7' * 64}",
     )
-    plan_v1["execution_plan_digest"] = _digest(
-        "cad.execution-plan/1",
-        {
-            key: value
-            for key, value in plan_v1.items()
-            if key != "execution_plan_digest"
-        },
+    bad_binding = build_execution_binding_v1(
+        bad_plan,
+        action="preview",
+        preview_id="preview-1",
+        preview_expires_at=expires_at,
     )
-    binding_v1["execution_digest"] = plan_v1["execution_plan_digest"]
-    approval_v1 = _approval(plan_v1, binding_v1)
-    with pytest.raises(AgentExecutionError, match="checkpoint_mismatch"):
+    bad_evidence = _evidence(
+        bad_plan,
+        bad_rollout,
+        state="certified",
+        host_family="LT",
+        entity_types=["LAYER", "CIRCLE"],
+    )
+    with pytest.raises(AgentExecutionError, match="capability_missing"):
         _admission().verify(
-            plan_v1,
-            binding=binding_v1,
-            command_kind="program_commit",
-            approval_binding=approval_v1,
-            capability_states=states,
-            server_capability_evidence=evidence_v1,
+            bad_plan,
+            binding=bad_binding,
+            command_kind="program_preview",
+            approval_binding=None,
+            capability_states={key: "certified" for key in _CAPABILITIES},
+            server_capability_evidence=bad_evidence,
+            device_id="device-1",
             preview_id="preview-1",
-            receipt_id="receipt-1",
-            idempotency_key=approval_v1["effect_identity_digest"],
+            preview_expires_at=expires_at,
         )
 
-
-@pytest.mark.parametrize("kind", ["delete", "trim", "fillet", "chamfer"])
-def test_destructive_and_topology_operations_remain_disabled(kind: str) -> None:
-    plan, binding, evidence = _plan(kind=kind)
+    _, rollout = _compiled()
+    evidence = _evidence(plan, rollout, state="contract_only")
     with pytest.raises(AgentExecutionError, match="capability_missing"):
         _admission().verify(
             plan,
             binding=binding,
             command_kind="program_preview",
             approval_binding=None,
-            capability_states={"cad.op.copy.line.v1": "certified"},
+            capability_states={key: "certified" for key in _CAPABILITIES},
             server_capability_evidence=evidence,
+            device_id="device-1",
+            preview_id="preview-1",
+            preview_expires_at=expires_at,
+        )
+
+
+def test_commit_requires_exact_phase7_binding_effect_identity_and_replay_key() -> None:
+    plan, binding, evidence, approval = _commit_artifacts()
+    common = {
+        "plan": plan,
+        "binding": binding,
+        "legacy_binding": _legacy_binding(plan),
+        "command_kind": "program_commit",
+        "capability_states": {key: "lab_commit" for key in _CAPABILITIES},
+        "server_capability_evidence": evidence,
+        "device_id": "device-1",
+        "job_id": "job-1",
+        "command_id": "command-1",
+        "preview_id": "preview-1",
+        "preview_digest": f"sha256:{'c' * 64}",
+        "preview_expires_at": binding.preview_expires_at,
+        "receipt_id": "receipt-1",
+        "idempotency_key": "idem-1",
+    }
+    with pytest.raises(AgentExecutionError, match="approval_required"):
+        _admission().verify(approval_binding=None, **common)
+
+    verified = _admission().verify(
+        approval_binding=approval,
+        **common,
+    )
+    assert verified.effect_identity_digest is not None
+
+    changed_key = dict(common)
+    changed_key["idempotency_key"] = "idem-replayed"
+    with pytest.raises(AgentExecutionError, match="approval_binding_mismatch"):
+        _admission().verify(
+            approval_binding=approval,
+            **changed_key,
+        )
+
+    replayed = approval.model_dump(mode="json")
+    replayed["receipt_id"] = "receipt-replayed"
+    with pytest.raises(AgentExecutionError, match="approval_binding_mismatch"):
+        _admission().verify(
+            approval_binding=replayed,
+            **common,
+        )
+
+    result = _admission().verify_result(
+        verified,
+        {
+            "execution_plan_digest": plan.execution_plan_digest,
+            "effect_manifest_digest": plan.effect_manifest_digest,
+            "target_refs_digest": plan.target_refs_digest,
+            "hard_budgets_digest": plan.hard_budgets_digest,
+            "rollout_policy_digest": plan.execution_pins.rollout_policy_digest,
+            "effect_identity_digest": verified.effect_identity_digest,
+            "milestone": "effect_and_receipt_committed",
+        },
+        command_kind="program_commit",
+    )
+    assert result["milestone"] == "effect_and_receipt_committed"
+
+
+def test_runtime_pin_or_stale_rollout_evidence_cannot_be_substituted() -> None:
+    plan, binding, evidence, expires_at = _preview_artifacts()
+    legacy = _legacy_binding(plan)
+    legacy["package_hash"] = f"sha256:{'e' * 64}"
+    with pytest.raises(AgentExecutionError, match="package_mismatch"):
+        _admission().verify(
+            plan,
+            binding=binding,
+            legacy_binding=legacy,
+            command_kind="program_preview",
+            approval_binding=None,
+            capability_states={key: "preview_only" for key in _CAPABILITIES},
+            server_capability_evidence=evidence,
+            device_id="device-1",
+            preview_id="preview-1",
+            preview_expires_at=expires_at,
+        )
+
+    stale = [item.model_dump(mode="json") for item in evidence]
+    issued = datetime.now(timezone.utc) - timedelta(hours=2)
+    for item in stale:
+        item["issued_at"] = issued.isoformat()
+        item["valid_until"] = (issued + timedelta(hours=1)).isoformat()
+        item["evidence_digest"] = canonical_phase8_capability_evidence_digest(
+            item
+        )
+    with pytest.raises(AgentExecutionError, match="capability_missing"):
+        _admission().verify(
+            plan,
+            binding=binding,
+            command_kind="program_preview",
+            approval_binding=None,
+            capability_states={key: "preview_only" for key in _CAPABILITIES},
+            server_capability_evidence=stale,
+            device_id="device-1",
+            preview_id="preview-1",
+            preview_expires_at=expires_at,
         )
 
 
