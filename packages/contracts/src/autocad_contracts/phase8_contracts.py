@@ -9,14 +9,12 @@ from __future__ import annotations
 import re
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN, localcontext
 from hashlib import sha256
 from typing import Annotated, Any, Literal, TypeAlias, Union
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, model_validator
-
-from .agent_protocol import canonical_json
-
 
 CAD_PROGRAM_V1_SCHEMA_VERSION = "cad.program/1.0"
 CAD_EXECUTION_PLAN_SCHEMA_VERSION = "cad.execution-plan/1"
@@ -381,7 +379,7 @@ class CadProgramV1Source(Phase8Model):
             raise ValueError("expressions exceed node budget")
         if self.semantic_digest != canonical_source_digest(self):
             raise ValueError("semantic_digest does not match canonical source")
-        encoded = canonical_json(canonical_source(self)).encode("utf-8")
+        encoded = _canonical_json(canonical_source(self)).encode("utf-8")
         if len(encoded) > MAX_SOURCE_BYTES:
             raise ValueError("source exceeds byte budget")
         return self
@@ -590,6 +588,95 @@ class ExecutionBindingV1(ExecutionPins):
         return self
 
 
+class Phase8ApprovalBinding(Phase8Model):
+    """Phase 7 approval proof bound to one exact Phase 8 commit dispatch."""
+
+    schema_version: Literal["cad.phase8-approval-binding/1"]
+    action: Literal["program_commit"]
+    intent_id: Identifier
+    consent_id: Identifier
+    intent_digest: Digest
+    approval_proof_digest: Digest
+    device_id: Identifier
+    document_id: Identifier
+    document_revision: RevisionToken
+    job_id: Identifier
+    command_id: Identifier
+    idempotency_key: Identifier
+    source_digest: Digest
+    execution_plan_digest: Digest
+    execution_binding_digest: Digest
+    expansion_digest: Digest
+    effect_manifest_digest: Digest
+    target_refs_digest: Digest
+    validation_profiles_digest: Digest
+    checkpoint_strategy_digest: Digest
+    hard_budgets_digest: Digest
+    preview_id: Identifier
+    preview_digest: Digest
+    preview_expires_at: str = Field(
+        min_length=20,
+        max_length=64,
+        pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$",
+    )
+    receipt_id: Identifier
+
+    @model_validator(mode="after")
+    def _preview_expiry_is_timezone_aware(self) -> "Phase8ApprovalBinding":
+        _parse_timestamp(self.preview_expires_at, "preview_expires_at")
+        return self
+
+
+class Phase8CapabilityEvidence(Phase8Model):
+    """One server-authoritative capability claim admitted for dispatch."""
+
+    schema_version: Literal["cad.capability-evidence/1"]
+    evidence_id: Identifier
+    evidence_authority: Literal["gateway_server"]
+    device_id: Identifier
+    capability_key: Identifier
+    operation_pack: RevisionToken
+    runtime_id: Identifier
+    host_family: Identifier
+    entity_type: Identifier
+    support_state: Literal[
+        "unsupported",
+        "contract_only",
+        "preview_only",
+        "lab_commit",
+        "certified",
+    ]
+    package_hash: Digest
+    capability_manifest_hash: Digest
+    operation_registry_hash: Digest
+    package_signature_verified: Literal[True]
+    agent_evidence_digest: Digest
+    host_evidence_digest: Digest
+    cohort: Identifier
+    evidence_version: RevisionToken
+    issued_at: str = Field(
+        min_length=20,
+        max_length=64,
+        pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$",
+    )
+    valid_until: str = Field(
+        min_length=20,
+        max_length=64,
+        pattern=r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$",
+    )
+    evidence_digest: Digest
+
+    @model_validator(mode="after")
+    def _timestamps_and_digest_match(self) -> "Phase8CapabilityEvidence":
+        issued_at = _parse_timestamp(self.issued_at, "issued_at")
+        valid_until = _parse_timestamp(self.valid_until, "valid_until")
+        if valid_until <= issued_at:
+            raise ValueError("capability evidence expiry must follow issue time")
+        if self.evidence_digest != canonical_phase8_capability_evidence_digest(self):
+            raise ValueError("capability evidence digest does not match claim")
+        return self
+
+
 class ExecutionPlanBudgets(Phase8Model):
     estimated_operations: int = Field(ge=1, le=MAX_EXPANDED_OPERATIONS)
     hard_max_operations: int = Field(ge=1, le=MAX_EXPANDED_OPERATIONS)
@@ -686,7 +773,7 @@ class CadExecutionPlanV1(Phase8Model):
             or self.budgets.estimated_text_bytes > self.budgets.hard_max_text_bytes
         ):
             raise ValueError("estimated plan usage exceeds hard budget")
-        if len(canonical_json(canonical_execution_plan(self)).encode("utf-8")) > MAX_PLAN_BYTES:
+        if len(_canonical_json(canonical_execution_plan(self)).encode("utf-8")) > MAX_PLAN_BYTES:
             raise ValueError("execution plan exceeds byte budget")
         return self
 
@@ -1399,6 +1486,27 @@ def canonical_execution_binding_digest(
     )
 
 
+def canonical_phase8_capability_evidence(
+    evidence: Phase8CapabilityEvidence | dict[str, Any],
+) -> dict[str, Any]:
+    payload = (
+        evidence.model_dump(mode="json")
+        if isinstance(evidence, Phase8CapabilityEvidence)
+        else dict(evidence)
+    )
+    payload.pop("evidence_digest", None)
+    return payload
+
+
+def canonical_phase8_capability_evidence_digest(
+    evidence: Phase8CapabilityEvidence | dict[str, Any],
+) -> str:
+    return _domain_digest(
+        "cad.capability-evidence/1",
+        canonical_phase8_capability_evidence(evidence),
+    )
+
+
 def build_execution_binding_v1(
     plan: CadExecutionPlanV1 | dict[str, Any],
     *,
@@ -1529,11 +1637,30 @@ def cad_execution_binding_v1_json_schema() -> dict[str, Any]:
 
 
 def _digest(payload: Any) -> str:
-    return f"sha256:{sha256(canonical_json(payload).encode('utf-8')).hexdigest()}"
+    return f"sha256:{sha256(_canonical_json(payload).encode('utf-8')).hexdigest()}"
 
 
 def _domain_digest(domain: str, payload: Any) -> str:
     return _digest({"domain": domain, "payload": payload})
+
+
+def _parse_timestamp(value: str, field: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{field} must be ISO 8601") from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{field} must include a UTC offset")
+    return parsed
+
+
+def _canonical_json(value: Any) -> str:
+    # Imported lazily so the Phase 8 types can be used by agent_protocol without
+    # creating a module-import cycle. The protocol remains the single canonical
+    # JSON implementation for all wire digests.
+    from .agent_protocol import canonical_json
+
+    return canonical_json(value)
 
 
 def _strict_json_loads(value: str | bytes) -> Any:

@@ -33,6 +33,19 @@ Phase 6 integration APIs:
   or package hash to `sha256:<64hex>`. `ProgramExecutionBinding` itself is a
   strict wire boundary and rejects unprefixed digests.
 
+Phase 8 commands reuse the same `cad.agent/2` envelope and `binding` field.
+`ProgramCommandMessage` accepts exactly one of these modes:
+
+- legacy `CadProgram` plus `ProgramExecutionBinding`; or
+- canonical `CadExecutionPlanV1` plus `ExecutionBindingV1`, with no
+  `cad.program/1.0` source in the Agent message.
+
+The Phase 8 payload hash covers the sealed plan, execution binding, bounded
+server capability evidence, and the Phase 7 approval binding used for commit.
+The command validator rejects mixed modes and verifies action, device,
+document, preview, receipt, runtime pins, digests, and replay identity before
+the message reaches an Agent executor.
+
 `HelloMessage` and `HeartbeatMessage` expose optional, bounded Phase 6
 presence fields on `cad.agent/2`: write lock, hard pause, active
 document/revision, active job, support ID, mismatch reason, and
