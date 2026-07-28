@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from autocad_contracts import (
     CAD_EXECUTION_PLAN_SCHEMA_VERSION,
+    CAD_PROGRAM_V1_PHASE8_REGISTRY_VERSION,
     CAD_PROGRAM_SCHEMA_VERSION,
     CadProgram,
     build_execution_binding_v1,
@@ -17,6 +18,7 @@ from autocad_contracts import (
     cad_program_v1_json_schema,
     canonical_checkpoint_strategy_digest,
     canonical_compiler_digest,
+    canonical_compiler_manifest,
     canonical_effect_digest,
     canonical_execution_binding_digest,
     canonical_execution_plan_digest,
@@ -174,6 +176,93 @@ def source_payload() -> dict:
         "artifact_refs": [],
         "component_refs": [],
     }
+
+
+def target_source_payload() -> dict:
+    zero = literal("length", "0", "mm")
+    return {
+        "schema_version": "cad.program/1.0",
+        "registry_version": CAD_PROGRAM_V1_PHASE8_REGISTRY_VERSION,
+        "program_id": "phase8-target-golden",
+        "program_revision": 1,
+        "device_id": "device-001",
+        "source_snapshot_id": "snapshot-001",
+        "document_id": "document-001",
+        "expected_document_revision": "revision-007",
+        "variables": [],
+        "operations": [
+            {
+                "kind": "copy_entity",
+                "operation_id": "copy-line",
+                "target_ref_id": "ref-line",
+                "displacement": point(
+                    literal("length", "25.4", "mm"),
+                    zero,
+                ),
+            },
+            {
+                "kind": "offset_entity",
+                "operation_id": "offset-circle",
+                "target_ref_id": "ref-circle",
+                "signed_distance": literal("length", "-5", "mm"),
+            },
+            {
+                "kind": "move_entity",
+                "operation_id": "move-polyline",
+                "target_ref_id": "ref-polyline",
+                "displacement": point(
+                    zero,
+                    literal("length", "10", "mm"),
+                ),
+            },
+        ],
+        "budgets": {
+            "max_source_operations": 8,
+            "max_expanded_operations": 8,
+            "max_entities": 8,
+            "max_vertices": 8,
+            "max_expression_nodes": 32,
+            "max_coordinate_abs_mm": "1000",
+            "max_text_bytes": 128,
+        },
+        "required_capabilities": ["cad.program.v1.compile"],
+        "validation_profiles": ["geometry.basic.1"],
+        "artifact_refs": [],
+        "component_refs": [],
+    }
+
+
+def target_refs() -> list[dict]:
+    common = {
+        "owner_id": "owner-001",
+        "device_id": "device-001",
+        "document_id": "document-001",
+        "snapshot_id": "snapshot-001",
+        "document_revision": "revision-007",
+    }
+    return [
+        {
+            **common,
+            "ref_id": "ref-polyline",
+            "entity_id": "entity-polyline",
+            "entity_type": "LWPOLYLINE",
+            "fingerprint": "sha256:" + "c" * 64,
+        },
+        {
+            **common,
+            "ref_id": "ref-line",
+            "entity_id": "entity-line",
+            "entity_type": "LINE",
+            "fingerprint": "sha256:" + "a" * 64,
+        },
+        {
+            **common,
+            "ref_id": "ref-circle",
+            "entity_id": "entity-circle",
+            "entity_type": "CIRCLE",
+            "fingerprint": "sha256:" + "b" * 64,
+        },
+    ]
 
 
 def test_v1_source_is_strict_immutable_and_v02_contract_is_unchanged():
@@ -516,6 +605,356 @@ def test_expression_depth_is_hard_bounded():
     payload["operations"][1]["end"]["x"] = expression
     with pytest.raises(ValueError, match="nesting|maximum depth"):
         seal_cad_program_v1(payload)
+
+
+def test_materialized_ref_operations_compile_to_one_exact_sealed_plan():
+    source = seal_cad_program_v1(target_source_payload())
+    plan = compile_cad_program_v1(
+        source,
+        pins(),
+        compiler_package_hash=compiler_package_hash(),
+        materialized_target_refs=target_refs(),
+        materialized_owner_id="owner-001",
+    )
+
+    assert [item.kind for item in plan.operations] == [
+        "copy_entity",
+        "offset_entity",
+        "move_entity",
+    ]
+    assert plan.operations[0].target_ref_id == "ref-line"
+    assert plan.operations[0].displacement_mm.x_mm == "25.4"
+    assert plan.operations[0].output_id == "copy-line"
+    assert plan.operations[1].signed_distance_mm == "-5"
+    assert plan.operations[2].displacement_mm.y_mm == "10"
+    assert [item.ref_id for item in plan.materialized_target_refs] == [
+        "ref-circle",
+        "ref-line",
+        "ref-polyline",
+    ]
+    assert plan.effect_manifest.creates == 2
+    assert plan.effect_manifest.modifies == 1
+    assert plan.effect_manifest.erases == 0
+    assert plan.effect_manifest.risk_floor == "medium"
+    assert plan.checkpoint_strategy == "cad.rollback.checkpoint/2"
+    assert [item.checkpoint_strategy for item in plan.effect_manifest.entries] == [
+        "cad.rollback.checkpoint/1-created-entities",
+        "cad.rollback.checkpoint/1-created-entities",
+        "cad.rollback.checkpoint/2",
+    ]
+    assert plan.required_capabilities[-3:] == [
+        "cad.op.copy.line.v1",
+        "cad.op.offset.circle.v1",
+        "cad.op.move.lwpolyline.v1",
+    ]
+    assert plan.target_refs_digest == canonical_target_refs_digest(
+        list(plan.materialized_target_refs)
+    )
+
+    binding = build_execution_binding_v1(plan)
+    assert binding.source_registry_version == CAD_PROGRAM_V1_PHASE8_REGISTRY_VERSION
+    assert binding.execution_plan_digest == plan.execution_plan_digest
+    assert verify_execution_binding_v1(binding, plan) == binding
+
+
+@pytest.mark.parametrize(
+    ("ref_index", "entity_type", "capability"),
+    [
+        (1, "LINE", "cad.op.move.line.v1"),
+        (2, "CIRCLE", "cad.op.move.circle.v1"),
+        (0, "LWPOLYLINE", "cad.op.move.lwpolyline.v1"),
+    ],
+)
+def test_move_entity_is_exactly_typed_for_supported_entities(
+    ref_index, entity_type, capability
+):
+    ref = target_refs()[ref_index]
+    payload = target_source_payload()
+    move = deepcopy(payload["operations"][2])
+    move["target_ref_id"] = ref["ref_id"]
+    payload["operations"] = [move]
+    plan = compile_cad_program_v1(
+        seal_cad_program_v1(payload),
+        pins(),
+        compiler_package_hash=compiler_package_hash(),
+        materialized_target_refs=[ref],
+        materialized_owner_id="owner-001",
+    )
+
+    assert plan.operations[0].kind == "move_entity"
+    assert plan.effect_manifest.entries[0].entity_type == entity_type
+    assert plan.effect_manifest.entries[0].effect_class == "modify_in_place"
+    assert plan.checkpoint_strategy == "cad.rollback.checkpoint/2"
+    assert capability in plan.required_capabilities
+
+
+def test_create_only_program_still_uses_checkpoint_v1():
+    plan = compile_cad_program_v1(
+        seal_cad_program_v1(source_payload()),
+        pins(),
+        compiler_package_hash=compiler_package_hash(),
+    )
+    assert plan.source_registry_version == "cad.program/1.0-create-core"
+    assert plan.effect_manifest.modifies == 0
+    assert plan.checkpoint_strategy == "cad.rollback.checkpoint/1-created-entities"
+
+
+@pytest.mark.parametrize("forbidden", ["handle", "path", "url", "restore_payload"])
+def test_source_and_materialized_refs_reject_raw_authority_fields(forbidden):
+    source_payload_value = target_source_payload()
+    source_payload_value["operations"][0][forbidden] = "attacker-controlled"
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        seal_cad_program_v1(source_payload_value)
+
+    ref_values = target_refs()
+    ref_values[0][forbidden] = "attacker-controlled"
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        compile_cad_program_v1(
+            seal_cad_program_v1(target_source_payload()),
+            pins(),
+            compiler_package_hash=compiler_package_hash(),
+            materialized_target_refs=ref_values,
+            materialized_owner_id="owner-001",
+        )
+
+
+def test_source_cannot_manufacture_or_bypass_gateway_materialized_refs():
+    source = seal_cad_program_v1(target_source_payload())
+    with pytest.raises(ValueError, match="owner identity is required"):
+        compile_cad_program_v1(
+            source,
+            pins(),
+            compiler_package_hash=compiler_package_hash(),
+        )
+    with pytest.raises(ValueError, match="exactly match source target_ref_id"):
+        compile_cad_program_v1(
+            source,
+            pins(),
+            compiler_package_hash=compiler_package_hash(),
+            materialized_owner_id="owner-001",
+        )
+
+    missing = target_refs()[1:]
+    with pytest.raises(ValueError, match="exactly match source target_ref_id"):
+        compile_cad_program_v1(
+            source,
+            pins(),
+            compiler_package_hash=compiler_package_hash(),
+            materialized_target_refs=missing,
+            materialized_owner_id="owner-001",
+        )
+
+    extra = target_refs()
+    extra.append(
+        {
+            **extra[0],
+            "ref_id": "ref-unused",
+            "entity_id": "entity-unused",
+        }
+    )
+    with pytest.raises(ValueError, match="exactly match source target_ref_id"):
+        compile_cad_program_v1(
+            source,
+            pins(),
+            compiler_package_hash=compiler_package_hash(),
+            materialized_target_refs=extra,
+            materialized_owner_id="owner-001",
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("owner_id", "owner-other"),
+        ("device_id", "device-other"),
+        ("document_id", "document-other"),
+        ("snapshot_id", "snapshot-other"),
+        ("document_revision", "revision-other"),
+    ],
+)
+def test_materialized_ref_context_must_match_source(field, value):
+    refs = target_refs()
+    refs[0][field] = value
+    with pytest.raises(ValueError, match="does not match source context"):
+        compile_cad_program_v1(
+            seal_cad_program_v1(target_source_payload()),
+            pins(),
+            compiler_package_hash=compiler_package_hash(),
+            materialized_target_refs=refs,
+            materialized_owner_id="owner-001",
+        )
+
+
+def test_target_type_duplicate_ref_and_in_place_reuse_are_rejected():
+    unsupported = target_refs()
+    unsupported[0]["entity_type"] = "HATCH"
+    with pytest.raises(ValidationError):
+        compile_cad_program_v1(
+            seal_cad_program_v1(target_source_payload()),
+            pins(),
+            compiler_package_hash=compiler_package_hash(),
+            materialized_target_refs=unsupported,
+            materialized_owner_id="owner-001",
+        )
+
+    duplicate = target_refs()
+    duplicate.append(deepcopy(duplicate[0]))
+    with pytest.raises(ValueError, match="must be unique"):
+        compile_cad_program_v1(
+            seal_cad_program_v1(target_source_payload()),
+            pins(),
+            compiler_package_hash=compiler_package_hash(),
+            materialized_target_refs=duplicate,
+            materialized_owner_id="owner-001",
+        )
+
+    reused_source = target_source_payload()
+    reused_source["operations"][0]["target_ref_id"] = "ref-polyline"
+    reused_refs = target_refs()
+    with pytest.raises(ValueError, match="in-place target cannot be reused"):
+        compile_cad_program_v1(
+            seal_cad_program_v1(reused_source),
+            pins(),
+            compiler_package_hash=compiler_package_hash(),
+            materialized_target_refs=[reused_refs[0], reused_refs[2]],
+            materialized_owner_id="owner-001",
+        )
+
+
+@pytest.mark.parametrize(
+    ("operation_index", "field", "value", "error"),
+    [
+        (
+            0,
+            "displacement",
+            {
+                "x": {"op": "literal", "value": {"type": "length", "value": "1001", "unit": "mm"}},
+                "y": {"op": "literal", "value": {"type": "length", "value": "0", "unit": "mm"}},
+                "z": {"op": "literal", "value": {"type": "length", "value": "0", "unit": "mm"}},
+            },
+            "displacement exceeds budget",
+        ),
+        (
+            1,
+            "signed_distance",
+            {"op": "literal", "value": {"type": "length", "value": "0", "unit": "mm"}},
+            "offset distance must be non-zero",
+        ),
+        (
+            2,
+            "displacement",
+            {
+                "x": {"op": "literal", "value": {"type": "length", "value": "0", "unit": "mm"}},
+                "y": {"op": "literal", "value": {"type": "length", "value": "0", "unit": "mm"}},
+                "z": {"op": "literal", "value": {"type": "length", "value": "0", "unit": "mm"}},
+            },
+            "displacement must be non-zero",
+        ),
+    ],
+)
+def test_target_operation_numeric_parameters_are_bounded(
+    operation_index, field, value, error
+):
+    payload = target_source_payload()
+    payload["operations"][operation_index][field] = value
+    with pytest.raises(ValueError, match=error):
+        compile_cad_program_v1(
+            seal_cad_program_v1(payload),
+            pins(),
+            compiler_package_hash=compiler_package_hash(),
+            materialized_target_refs=target_refs(),
+            materialized_owner_id="owner-001",
+        )
+
+
+def test_target_operations_count_against_entity_budget():
+    payload = target_source_payload()
+    payload["budgets"]["max_entities"] = 2
+    with pytest.raises(ValueError, match="entity count exceeds budget"):
+        compile_cad_program_v1(
+            seal_cad_program_v1(payload),
+            pins(),
+            compiler_package_hash=compiler_package_hash(),
+            materialized_target_refs=target_refs(),
+            materialized_owner_id="owner-001",
+        )
+
+
+def test_transform_plan_rejects_checkpoint_effect_and_target_tampering():
+    plan = compile_cad_program_v1(
+        seal_cad_program_v1(target_source_payload()),
+        pins(),
+        compiler_package_hash=compiler_package_hash(),
+        materialized_target_refs=target_refs(),
+        materialized_owner_id="owner-001",
+    )
+
+    checkpoint = plan.model_dump(mode="json")
+    checkpoint["checkpoint_strategy"] = "cad.rollback.checkpoint/1-created-entities"
+    checkpoint["checkpoint_strategy_digest"] = canonical_checkpoint_strategy_digest(
+        checkpoint["checkpoint_strategy"]
+    )
+    checkpoint["execution_plan_digest"] = canonical_execution_plan_digest(checkpoint)
+    with pytest.raises(ValidationError, match="effect manifest"):
+        parse_execution_plan_v1(checkpoint)
+
+    effect = plan.model_dump(mode="json")
+    effect["effect_manifest"]["entries"][2]["modifies"] = 0
+    effect["effect_manifest"]["modifies"] = 0
+    effect["effect_manifest"]["risk_floor"] = "low"
+    effect["effect_manifest"]["checkpoint_strategy"] = (
+        "cad.rollback.checkpoint/1-created-entities"
+    )
+    effect["effect_manifest"]["entries"][2]["checkpoint_strategy"] = (
+        "cad.rollback.checkpoint/1-created-entities"
+    )
+    effect["effect_manifest_digest"] = canonical_effect_digest(
+        effect["effect_manifest"]
+    )
+    effect["execution_plan_digest"] = canonical_execution_plan_digest(effect)
+    with pytest.raises(ValidationError, match="effect class|counts|checkpoint"):
+        parse_execution_plan_v1(effect)
+
+    target = plan.model_dump(mode="json", exclude_none=True)
+    target["operations"][2]["target_ref_id"] = "ref-line"
+    target["expansion_digest"] = canonical_expansion_digest(target["operations"])
+    target["execution_plan_digest"] = canonical_execution_plan_digest(target)
+    with pytest.raises(
+        ValidationError,
+        match="exactly match operation targets|reused|effect entity type",
+    ):
+        parse_execution_plan_v1(target)
+
+
+def test_phase8_cross_runtime_target_vector_is_current():
+    source = seal_cad_program_v1(target_source_payload())
+    plan = compile_cad_program_v1(
+        source,
+        pins(),
+        compiler_package_hash=compiler_package_hash(),
+        materialized_target_refs=target_refs(),
+        materialized_owner_id="owner-001",
+    )
+    binding = build_execution_binding_v1(plan)
+    generated = {
+        "fixture_version": "cad.phase8.cross-runtime-target-vector/1",
+        "compiler_manifest": canonical_compiler_manifest(),
+        "source": source.model_dump(mode="json", exclude_none=True),
+        "materialized_owner_id": "owner-001",
+        "gateway_materialized_target_refs": [
+            item.model_dump(mode="json") for item in plan.materialized_target_refs
+        ],
+        "execution_plan": plan.model_dump(mode="json", exclude_none=True),
+        "execution_binding": binding.model_dump(mode="json", exclude_none=True),
+    }
+    fixture = json.loads(
+        (
+            Path(__file__).parents[1]
+            / "fixtures"
+            / "cad-program-1.0-phase8-target-vector.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert fixture == generated
 
 
 def test_checked_in_json_schemas_match_runtime_models():

@@ -973,12 +973,15 @@ def program_command_payload(
     payload: dict[str, Any] = {
         "kind": parsed.kind,
         "effect_class": parsed.effect_class,
-        "binding": parsed.binding.model_dump(mode="json"),
+        "binding": parsed.binding.model_dump(mode="json", exclude_none=True),
     }
     if parsed.program is not None:
         payload["program"] = parsed.program.model_dump(mode="json", exclude_none=True)
     if parsed.execution_plan is not None:
-        payload["execution_plan"] = parsed.execution_plan.model_dump(mode="json")
+        payload["execution_plan"] = parsed.execution_plan.model_dump(
+            mode="json",
+            exclude_none=True,
+        )
     if parsed.approval_binding is not None:
         payload["approval_binding"] = parsed.approval_binding.model_dump(mode="json")
     if parsed.capability_evidence is not None:

@@ -1,0 +1,373 @@
+{
+  "fixture_version": "cad.phase8.cross-runtime-target-vector/1",
+  "compiler_manifest": {
+    "compiler_id": "autocad-mcp.gateway.cad-program-v1",
+    "compiler_version": "1.1.0",
+    "expression_ast": "bounded-v1",
+    "numeric_model": "decimal-mm-rad-1e-9-half-even",
+    "repeat_model": "linear-rectangular-polar-stable-id-v1",
+    "operation_registry_versions": [
+      "cad.program/1.0-create-core",
+      "cad.program/1.0-phase8-core"
+    ],
+    "materialized_ref_model": "gateway-sealed-exact-closure-v1",
+    "target_operation_model": "copy-offset-move-v1"
+  },
+  "source": {
+    "schema_version": "cad.program/1.0",
+    "registry_version": "cad.program/1.0-phase8-core",
+    "program_id": "phase8-target-golden",
+    "program_revision": 1,
+    "device_id": "device-001",
+    "source_snapshot_id": "snapshot-001",
+    "document_id": "document-001",
+    "expected_document_revision": "revision-007",
+    "variables": [],
+    "operations": [
+      {
+        "operation_id": "copy-line",
+        "kind": "copy_entity",
+        "target_ref_id": "ref-line",
+        "displacement": {
+          "x": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "25.4",
+              "unit": "mm"
+            }
+          },
+          "y": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          },
+          "z": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          }
+        }
+      },
+      {
+        "operation_id": "offset-circle",
+        "kind": "offset_entity",
+        "target_ref_id": "ref-circle",
+        "signed_distance": {
+          "op": "literal",
+          "value": {
+            "type": "length",
+            "value": "-5",
+            "unit": "mm"
+          }
+        }
+      },
+      {
+        "operation_id": "move-polyline",
+        "kind": "move_entity",
+        "target_ref_id": "ref-polyline",
+        "displacement": {
+          "x": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          },
+          "y": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "10",
+              "unit": "mm"
+            }
+          },
+          "z": {
+            "op": "literal",
+            "value": {
+              "type": "length",
+              "value": "0",
+              "unit": "mm"
+            }
+          }
+        }
+      }
+    ],
+    "budgets": {
+      "max_source_operations": 8,
+      "max_expanded_operations": 8,
+      "max_entities": 8,
+      "max_vertices": 8,
+      "max_expression_nodes": 32,
+      "max_coordinate_abs_mm": "1000",
+      "max_text_bytes": 128
+    },
+    "required_capabilities": [
+      "cad.program.v1.compile"
+    ],
+    "validation_profiles": [
+      "geometry.basic.1"
+    ],
+    "artifact_refs": [],
+    "component_refs": [],
+    "semantic_digest": "sha256:04f6132c4d2d0be7c74a4721ca63ef11d2323ce8b42c77a364397920ab57e479"
+  },
+  "materialized_owner_id": "owner-001",
+  "gateway_materialized_target_refs": [
+    {
+      "ref_id": "ref-circle",
+      "owner_id": "owner-001",
+      "device_id": "device-001",
+      "document_id": "document-001",
+      "snapshot_id": "snapshot-001",
+      "document_revision": "revision-007",
+      "entity_id": "entity-circle",
+      "entity_type": "CIRCLE",
+      "fingerprint": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    },
+    {
+      "ref_id": "ref-line",
+      "owner_id": "owner-001",
+      "device_id": "device-001",
+      "document_id": "document-001",
+      "snapshot_id": "snapshot-001",
+      "document_revision": "revision-007",
+      "entity_id": "entity-line",
+      "entity_type": "LINE",
+      "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+      "ref_id": "ref-polyline",
+      "owner_id": "owner-001",
+      "device_id": "device-001",
+      "document_id": "document-001",
+      "snapshot_id": "snapshot-001",
+      "document_revision": "revision-007",
+      "entity_id": "entity-polyline",
+      "entity_type": "LWPOLYLINE",
+      "fingerprint": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ],
+  "execution_plan": {
+    "schema_version": "cad.execution-plan/1",
+    "plan_id": "phase8-target-golden.r1",
+    "source_schema_version": "cad.program/1.0",
+    "source_registry_version": "cad.program/1.0-phase8-core",
+    "source_program_id": "phase8-target-golden",
+    "source_program_revision": 1,
+    "source_digest": "sha256:04f6132c4d2d0be7c74a4721ca63ef11d2323ce8b42c77a364397920ab57e479",
+    "compiler": {
+      "compiler_id": "autocad-mcp.gateway.cad-program-v1",
+      "compiler_version": "1.1.0",
+      "compiler_digest": "sha256:98732381c0674120be01bdae9b6e825a89dd2579a6c6af31e8ec4030bf1c35d9",
+      "compiler_package_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777"
+    },
+    "device_id": "device-001",
+    "document_id": "document-001",
+    "source_snapshot_id": "snapshot-001",
+    "expected_document_revision": "revision-007",
+    "operations": [
+      {
+        "kind": "copy_entity",
+        "operation_version": 1,
+        "operation_id": "copy-line",
+        "source_operation_id": "copy-line",
+        "target_ref_id": "ref-line",
+        "displacement_mm": {
+          "x_mm": "25.4",
+          "y_mm": "0",
+          "z_mm": "0"
+        },
+        "output_id": "copy-line"
+      },
+      {
+        "kind": "offset_entity",
+        "operation_version": 1,
+        "operation_id": "offset-circle",
+        "source_operation_id": "offset-circle",
+        "target_ref_id": "ref-circle",
+        "signed_distance_mm": "-5",
+        "output_id": "offset-circle"
+      },
+      {
+        "kind": "move_entity",
+        "operation_version": 1,
+        "operation_id": "move-polyline",
+        "source_operation_id": "move-polyline",
+        "target_ref_id": "ref-polyline",
+        "displacement_mm": {
+          "x_mm": "0",
+          "y_mm": "10",
+          "z_mm": "0"
+        }
+      }
+    ],
+    "expansion_digest": "sha256:54a2f58351908a75b3ede9797da05899436434c86228d79877e5bf9f1ee30fbf",
+    "effect_manifest": {
+      "schema_version": "cad.effect-manifest/1",
+      "entries": [
+        {
+          "operation_id": "copy-line",
+          "operation_kind": "copy_entity",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "LINE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "offset-circle",
+          "operation_kind": "offset_entity",
+          "operation_version": 1,
+          "effect_class": "create_only",
+          "entity_type": "CIRCLE",
+          "creates": 1,
+          "modifies": 0,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/1-created-entities"
+        },
+        {
+          "operation_id": "move-polyline",
+          "operation_kind": "move_entity",
+          "operation_version": 1,
+          "effect_class": "modify_in_place",
+          "entity_type": "LWPOLYLINE",
+          "creates": 0,
+          "modifies": 1,
+          "erases": 0,
+          "checkpoint_strategy": "cad.rollback.checkpoint/2"
+        }
+      ],
+      "creates": 2,
+      "modifies": 1,
+      "erases": 0,
+      "ensures_non_entity": 0,
+      "risk_floor": "medium",
+      "checkpoint_strategy": "cad.rollback.checkpoint/2"
+    },
+    "effect_manifest_digest": "sha256:393d0f179b33ad85de4fb401ebfc61a28e8705e3b43c8de0b01d51f99c5b4dbc",
+    "materialized_target_refs": [
+      {
+        "ref_id": "ref-circle",
+        "owner_id": "owner-001",
+        "device_id": "device-001",
+        "document_id": "document-001",
+        "snapshot_id": "snapshot-001",
+        "document_revision": "revision-007",
+        "entity_id": "entity-circle",
+        "entity_type": "CIRCLE",
+        "fingerprint": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      {
+        "ref_id": "ref-line",
+        "owner_id": "owner-001",
+        "device_id": "device-001",
+        "document_id": "document-001",
+        "snapshot_id": "snapshot-001",
+        "document_revision": "revision-007",
+        "entity_id": "entity-line",
+        "entity_type": "LINE",
+        "fingerprint": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "ref_id": "ref-polyline",
+        "owner_id": "owner-001",
+        "device_id": "device-001",
+        "document_id": "document-001",
+        "snapshot_id": "snapshot-001",
+        "document_revision": "revision-007",
+        "entity_id": "entity-polyline",
+        "entity_type": "LWPOLYLINE",
+        "fingerprint": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      }
+    ],
+    "target_refs_digest": "sha256:e206f1ffbeece4b0733e886b957624cc0b0916e4d0aba494129573861a2d6a5f",
+    "validation_profiles_digest": "sha256:e9e6f56a08938569affe313a42850a24b85d4c0741606f1c0d710f44cb00def8",
+    "checkpoint_strategy_digest": "sha256:c9ef2cc60527da8ba6fd01960374ac662bdd994a05b00dce5a7eda96c082acfe",
+    "hard_budgets_digest": "sha256:9a291a2c8cde2dbdd16054a0a39adc1eb66036eb8b5f0ff36f9a81cb015cb243",
+    "execution_pins": {
+      "runtime_id": "managed_dotnet",
+      "runtime_role": "primary",
+      "host_family": "R25",
+      "host_version": "0.8.0",
+      "package_id": "autocad.managed_host.r25",
+      "package_version": "0.8.0",
+      "package_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "capability_manifest_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "operation_registry_version": "cad.program.1.create.core",
+      "operation_registry_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "policy_version": "phase8.policy.1",
+      "rollout_policy_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666"
+    },
+    "budgets": {
+      "estimated_operations": 3,
+      "hard_max_operations": 8,
+      "estimated_entities": 3,
+      "hard_max_entities": 8,
+      "estimated_vertices": 0,
+      "hard_max_vertices": 8,
+      "estimated_text_bytes": 0,
+      "hard_max_text_bytes": 128
+    },
+    "required_capabilities": [
+      "cad.program.v1.compile",
+      "cad.op.copy.line.v1",
+      "cad.op.offset.circle.v1",
+      "cad.op.move.lwpolyline.v1"
+    ],
+    "validation_profiles": [
+      "geometry.basic.1"
+    ],
+    "artifact_refs": [],
+    "component_refs": [],
+    "checkpoint_strategy": "cad.rollback.checkpoint/2",
+    "execution_plan_digest": "sha256:74247c9eb51d6be96777772b0c91d795312cdecfae4130724df19635f929d25d"
+  },
+  "execution_binding": {
+    "runtime_id": "managed_dotnet",
+    "runtime_role": "primary",
+    "host_family": "R25",
+    "host_version": "0.8.0",
+    "package_id": "autocad.managed_host.r25",
+    "package_version": "0.8.0",
+    "package_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "capability_manifest_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "operation_registry_version": "cad.program.1.create.core",
+    "operation_registry_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "policy_version": "phase8.policy.1",
+    "rollout_policy_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "schema_version": "cad.execution-binding/1",
+    "action": "compile_only",
+    "source_schema_version": "cad.program/1.0",
+    "source_registry_version": "cad.program/1.0-phase8-core",
+    "source_program_id": "phase8-target-golden",
+    "source_program_revision": 1,
+    "source_digest": "sha256:04f6132c4d2d0be7c74a4721ca63ef11d2323ce8b42c77a364397920ab57e479",
+    "compiler_id": "autocad-mcp.gateway.cad-program-v1",
+    "compiler_version": "1.1.0",
+    "compiler_digest": "sha256:98732381c0674120be01bdae9b6e825a89dd2579a6c6af31e8ec4030bf1c35d9",
+    "compiler_package_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+    "plan_schema_version": "cad.execution-plan/1",
+    "execution_plan_digest": "sha256:74247c9eb51d6be96777772b0c91d795312cdecfae4130724df19635f929d25d",
+    "expansion_digest": "sha256:54a2f58351908a75b3ede9797da05899436434c86228d79877e5bf9f1ee30fbf",
+    "effect_manifest_digest": "sha256:393d0f179b33ad85de4fb401ebfc61a28e8705e3b43c8de0b01d51f99c5b4dbc",
+    "target_refs_digest": "sha256:e206f1ffbeece4b0733e886b957624cc0b0916e4d0aba494129573861a2d6a5f",
+    "validation_profiles_digest": "sha256:e9e6f56a08938569affe313a42850a24b85d4c0741606f1c0d710f44cb00def8",
+    "checkpoint_strategy_digest": "sha256:c9ef2cc60527da8ba6fd01960374ac662bdd994a05b00dce5a7eda96c082acfe",
+    "hard_budgets_digest": "sha256:9a291a2c8cde2dbdd16054a0a39adc1eb66036eb8b5f0ff36f9a81cb015cb243",
+    "device_id": "device-001",
+    "document_id": "document-001",
+    "source_snapshot_id": "snapshot-001",
+    "document_revision": "revision-007",
+    "execution_binding_digest": "sha256:3f744c03c0922441d57a523ace937f8ca7dc3ca7a23f670452532feb16d25b14"
+  }
+}

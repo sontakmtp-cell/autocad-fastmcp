@@ -302,8 +302,14 @@ def test_phase8_command_carries_only_canonical_plan_and_binding(kind):
     assert parsed.binding.schema_version == "cad.execution-binding/1"
     assert parsed.execution_plan.schema_version == "cad.execution-plan/1"
     assert "program" not in projection
-    assert projection["execution_plan"] == parsed.execution_plan.model_dump(mode="json")
-    assert projection["binding"] == parsed.binding.model_dump(mode="json")
+    assert projection["execution_plan"] == parsed.execution_plan.model_dump(
+        mode="json",
+        exclude_none=True,
+    )
+    assert projection["binding"] == parsed.binding.model_dump(
+        mode="json",
+        exclude_none=True,
+    )
     assert projection["capability_evidence"]
     assert program_command_payload_hash(parsed) == canonical_payload_hash(projection)
     if kind == "program_commit":

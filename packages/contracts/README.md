@@ -46,6 +46,21 @@ The command validator rejects mixed modes and verifies action, device,
 document, preview, receipt, runtime pins, digests, and replay identity before
 the message reaches an Agent executor.
 
+`compile_cad_program_v1(..., materialized_target_refs=...,
+materialized_owner_id=...)` also supports the Phase 8 core registry's
+`copy_entity`, `offset_entity`, and `move_entity` operations. Source operations
+carry only an opaque `target_ref_id`. The compiler accepts the corresponding
+strict Gateway-materialized records and trusted owner identity,
+requires exact ref closure and matching device/document/snapshot/revision,
+sorts and seals them into `cad.execution-plan/1`, and derives entity-specific
+capabilities. Copy/offset remain create-equivalent with checkpoint v1;
+in-place move for `LINE`, `CIRCLE`, and `LWPOLYLINE` raises the plan risk floor
+and requires `cad.rollback.checkpoint/2`.
+
+The cross-runtime target-operation golden vector is
+`fixtures/cad-program-1.0-phase8-target-vector.json`. It intentionally contains
+no source program path, URL, raw handle, or checkpoint restore payload.
+
 `HelloMessage` and `HeartbeatMessage` expose optional, bounded Phase 6
 presence fields on `cad.agent/2`: write lock, hard pause, active
 document/revision, active job, support ID, mismatch reason, and

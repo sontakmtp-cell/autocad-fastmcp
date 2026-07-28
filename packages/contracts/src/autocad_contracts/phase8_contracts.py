@@ -20,8 +20,9 @@ CAD_PROGRAM_V1_SCHEMA_VERSION = "cad.program/1.0"
 CAD_EXECUTION_PLAN_SCHEMA_VERSION = "cad.execution-plan/1"
 CAD_EFFECT_MANIFEST_SCHEMA_VERSION = "cad.effect-manifest/1"
 CAD_PROGRAM_V1_REGISTRY_VERSION = "cad.program/1.0-create-core"
+CAD_PROGRAM_V1_PHASE8_REGISTRY_VERSION = "cad.program/1.0-phase8-core"
 CAD_PROGRAM_V1_COMPILER_ID = "autocad-mcp.gateway.cad-program-v1"
-CAD_PROGRAM_V1_COMPILER_VERSION = "1.0.0"
+CAD_PROGRAM_V1_COMPILER_VERSION = "1.1.0"
 SOURCE_DIGEST_DOMAIN = "cad.program.source/1"
 COMPILER_DIGEST_DOMAIN = "cad.program.compiler/1"
 EXPANSION_DIGEST_DOMAIN = "cad.program.expansion/1"
@@ -67,6 +68,11 @@ LayerName = Annotated[str, Field(pattern=_LAYER_NAME)]
 NumericType: TypeAlias = Literal["integer", "scalar", "length", "angle"]
 LengthUnit: TypeAlias = Literal["mm", "cm", "m", "in", "ft"]
 AngleUnit: TypeAlias = Literal["rad", "deg"]
+ProgramV1RegistryVersion: TypeAlias = Literal[
+    "cad.program/1.0-create-core",
+    "cad.program/1.0-phase8-core",
+]
+TargetEntityType: TypeAlias = Literal["LINE", "CIRCLE", "LWPOLYLINE"]
 
 
 class Phase8Model(BaseModel):
@@ -273,6 +279,24 @@ class CreateDimensionLinearSource(SourceOperation):
     text_override: str | None = Field(default=None, max_length=1024)
 
 
+class CopyEntitySource(SourceOperation):
+    kind: Literal["copy_entity"]
+    target_ref_id: Identifier
+    displacement: ExpressionPoint3d
+
+
+class OffsetEntitySource(SourceOperation):
+    kind: Literal["offset_entity"]
+    target_ref_id: Identifier
+    signed_distance: Expression
+
+
+class MoveEntitySource(SourceOperation):
+    kind: Literal["move_entity"]
+    target_ref_id: Identifier
+    displacement: ExpressionPoint3d
+
+
 CadSourceOperation: TypeAlias = Annotated[
     Union[
         EnsureLayerSource,
@@ -282,6 +306,9 @@ CadSourceOperation: TypeAlias = Annotated[
         CreateRectangleSource,
         CreateTextSource,
         CreateDimensionLinearSource,
+        CopyEntitySource,
+        OffsetEntitySource,
+        MoveEntitySource,
     ],
     Field(discriminator="kind"),
 ]
@@ -310,7 +337,7 @@ class ProgramV1Budgets(Phase8Model):
 
 class CadProgramV1Source(Phase8Model):
     schema_version: Literal["cad.program/1.0"] = CAD_PROGRAM_V1_SCHEMA_VERSION
-    registry_version: Literal["cad.program/1.0-create-core"] = CAD_PROGRAM_V1_REGISTRY_VERSION
+    registry_version: ProgramV1RegistryVersion = CAD_PROGRAM_V1_REGISTRY_VERSION
     program_id: Identifier
     program_revision: int = Field(ge=1)
     parent_revision: int | None = Field(default=None, ge=1)
@@ -357,10 +384,30 @@ class CadProgramV1Source(Phase8Model):
                 if operation.repeat is not None:
                     raise ValueError("ensure_layer cannot be repeated")
                 known_layers.add(operation.operation_id)
-            else:
+            elif isinstance(
+                operation,
+                (
+                    CreateLineSource,
+                    CreateCircleSource,
+                    CreatePolylineSource,
+                    CreateRectangleSource,
+                    CreateTextSource,
+                    CreateDimensionLinearSource,
+                ),
+            ):
                 layer = operation.layer
                 if isinstance(layer, LayerOutputRefV1) and layer.operation_id not in known_layers:
                     raise ValueError("layer reference must target an earlier ensure_layer output")
+            if isinstance(
+                operation,
+                (CopyEntitySource, OffsetEntitySource, MoveEntitySource),
+            ):
+                if self.registry_version != CAD_PROGRAM_V1_PHASE8_REGISTRY_VERSION:
+                    raise ValueError(
+                        "materialized-ref operations require the Phase 8 core registry"
+                    )
+                if operation.repeat is not None:
+                    raise ValueError("materialized-ref operations cannot use source repeat")
             if isinstance(operation.repeat, PolarRepeat) and isinstance(
                 operation, CreateRectangleSource
             ):
@@ -391,6 +438,12 @@ class ConcretePoint3d(Phase8Model):
     z_mm: CanonicalDecimalText
 
 
+class ConcreteVector3d(Phase8Model):
+    x_mm: CanonicalDecimalText
+    y_mm: CanonicalDecimalText
+    z_mm: CanonicalDecimalText
+
+
 class ConcreteOperation(Phase8Model):
     kind: Literal[
         "ensure_layer",
@@ -400,6 +453,9 @@ class ConcreteOperation(Phase8Model):
         "create_rectangle",
         "create_text",
         "create_dimension_linear",
+        "copy_entity",
+        "offset_entity",
+        "move_entity",
     ]
     operation_version: Literal[1]
     operation_id: Identifier
@@ -423,6 +479,10 @@ class ConcreteOperation(Phase8Model):
     extension_line2_point: ConcretePoint3d | None = None
     dimension_line_point: ConcretePoint3d | None = None
     text_override: str | None = Field(default=None, max_length=1024)
+    target_ref_id: Identifier | None = None
+    displacement_mm: ConcreteVector3d | None = None
+    signed_distance_mm: CanonicalDecimalText | None = None
+    output_id: Identifier | None = None
 
     @model_validator(mode="after")
     def _concrete_shape_matches_kind(self) -> "ConcreteOperation":
@@ -447,6 +507,20 @@ class ConcreteOperation(Phase8Model):
                 "dimension_line_point",
                 "text_override",
             },
+            "copy_entity": {
+                "target_ref_id",
+                "displacement_mm",
+                "output_id",
+            },
+            "offset_entity": {
+                "target_ref_id",
+                "signed_distance_mm",
+                "output_id",
+            },
+            "move_entity": {
+                "target_ref_id",
+                "displacement_mm",
+            },
         }[self.kind]
         dumped = self.model_dump(exclude_none=True)
         if set(dumped) - common != {name for name in allowed if name in dumped}:
@@ -458,6 +532,19 @@ class ConcreteOperation(Phase8Model):
             raise ValueError("concrete radius must be positive")
         if self.height_mm is not None and _parse_decimal(self.height_mm) <= 0:
             raise ValueError("concrete text height must be positive")
+        if self.signed_distance_mm is not None and _parse_decimal(
+            self.signed_distance_mm
+        ) == 0:
+            raise ValueError("concrete offset distance must be non-zero")
+        if self.displacement_mm is not None and all(
+            _parse_decimal(value) == 0
+            for value in (
+                self.displacement_mm.x_mm,
+                self.displacement_mm.y_mm,
+                self.displacement_mm.z_mm,
+            )
+        ):
+            raise ValueError("concrete displacement must be non-zero")
         return self
 
 
@@ -465,7 +552,7 @@ class EffectEntry(Phase8Model):
     operation_id: Identifier
     operation_kind: str = Field(min_length=1, max_length=64)
     operation_version: Literal[1]
-    effect_class: Literal["create_only", "ensure_non_entity"]
+    effect_class: Literal["create_only", "modify_in_place", "ensure_non_entity"]
     entity_type: Literal[
         "LAYER",
         "LINE",
@@ -476,35 +563,53 @@ class EffectEntry(Phase8Model):
         "DIMENSION_LINEAR",
     ]
     creates: int = Field(ge=0, le=1)
-    modifies: Literal[0]
+    modifies: int = Field(ge=0, le=1)
     erases: Literal[0]
-    checkpoint_strategy: Literal["none", "cad.rollback.checkpoint/1-created-entities"]
+    checkpoint_strategy: Literal[
+        "none",
+        "cad.rollback.checkpoint/1-created-entities",
+        "cad.rollback.checkpoint/2",
+    ]
 
 
 class EffectManifest(Phase8Model):
     schema_version: Literal["cad.effect-manifest/1"]
     entries: list[EffectEntry] = Field(min_length=1, max_length=MAX_EXPANDED_OPERATIONS)
     creates: int = Field(ge=0, le=MAX_EXPANDED_OPERATIONS)
-    modifies: Literal[0]
+    modifies: int = Field(ge=0, le=MAX_EXPANDED_OPERATIONS)
     erases: Literal[0]
     ensures_non_entity: int = Field(ge=0, le=MAX_SOURCE_OPERATIONS)
-    risk_floor: Literal["low"]
-    checkpoint_strategy: Literal["cad.rollback.checkpoint/1-created-entities"]
+    risk_floor: Literal["low", "medium"]
+    checkpoint_strategy: Literal[
+        "cad.rollback.checkpoint/1-created-entities",
+        "cad.rollback.checkpoint/2",
+    ]
 
     @model_validator(mode="after")
     def _totals_match_entries(self) -> "EffectManifest":
         if self.creates != sum(item.creates for item in self.entries):
             raise ValueError("effect create total does not match entries")
+        if self.modifies != sum(item.modifies for item in self.entries):
+            raise ValueError("effect modify total does not match entries")
         if self.ensures_non_entity != sum(
             item.effect_class == "ensure_non_entity" for item in self.entries
         ):
             raise ValueError("effect ensure total does not match entries")
+        expected_strategy = (
+            "cad.rollback.checkpoint/2"
+            if self.modifies
+            else "cad.rollback.checkpoint/1-created-entities"
+        )
+        if self.checkpoint_strategy != expected_strategy:
+            raise ValueError("effect checkpoint strategy does not match effect classes")
+        if self.risk_floor != ("medium" if self.modifies else "low"):
+            raise ValueError("effect risk floor does not match effect classes")
         return self
 
 
 class CompilerBinding(Phase8Model):
     compiler_id: Literal["autocad-mcp.gateway.cad-program-v1"]
-    compiler_version: Literal["1.0.0"]
+    compiler_version: Literal["1.1.0"]
     compiler_digest: Digest
     compiler_package_hash: Digest
 
@@ -517,7 +622,7 @@ class MaterializedTargetRef(Phase8Model):
     snapshot_id: Identifier
     document_revision: RevisionToken
     entity_id: Identifier
-    entity_type: Identifier
+    entity_type: TargetEntityType
     fingerprint: Digest
 
 
@@ -540,11 +645,12 @@ class ExecutionBindingV1(ExecutionPins):
     schema_version: Literal["cad.execution-binding/1"]
     action: Literal["compile_only", "preview", "commit"]
     source_schema_version: Literal["cad.program/1.0"]
+    source_registry_version: ProgramV1RegistryVersion
     source_program_id: Identifier
     source_program_revision: int = Field(ge=1)
     source_digest: Digest
     compiler_id: Literal["autocad-mcp.gateway.cad-program-v1"]
-    compiler_version: Literal["1.0.0"]
+    compiler_version: Literal["1.1.0"]
     compiler_digest: Digest
     compiler_package_hash: Digest
     plan_schema_version: Literal["cad.execution-plan/1"]
@@ -692,6 +798,7 @@ class CadExecutionPlanV1(Phase8Model):
     schema_version: Literal["cad.execution-plan/1"]
     plan_id: Identifier
     source_schema_version: Literal["cad.program/1.0"]
+    source_registry_version: ProgramV1RegistryVersion
     source_program_id: Identifier
     source_program_revision: int = Field(ge=1)
     source_digest: Digest
@@ -717,7 +824,10 @@ class CadExecutionPlanV1(Phase8Model):
     validation_profiles: list[Identifier] = Field(min_length=1, max_length=16)
     artifact_refs: list[OpaqueArtifactRef] = Field(default_factory=list, max_length=32)
     component_refs: list[OpaqueComponentRef] = Field(default_factory=list, max_length=32)
-    checkpoint_strategy: Literal["cad.rollback.checkpoint/1-created-entities"]
+    checkpoint_strategy: Literal[
+        "cad.rollback.checkpoint/1-created-entities",
+        "cad.rollback.checkpoint/2",
+    ]
     execution_plan_digest: Digest
 
     @model_validator(mode="after")
@@ -734,6 +844,102 @@ class CadExecutionPlanV1(Phase8Model):
             for entry, operation in zip(self.effect_manifest.entries, self.operations)
         ):
             raise ValueError("effect entries do not match ordered operations")
+        if self.effect_manifest.checkpoint_strategy != self.checkpoint_strategy:
+            raise ValueError("plan checkpoint strategy does not match effect manifest")
+        refs_by_id = {item.ref_id: item for item in self.materialized_target_refs}
+        if len(refs_by_id) != len(self.materialized_target_refs):
+            raise ValueError("materialized target ref IDs must be unique")
+        if len({item.owner_id for item in self.materialized_target_refs}) > 1:
+            raise ValueError("materialized target refs must have one owner")
+        if list(refs_by_id) != sorted(refs_by_id):
+            raise ValueError("materialized target refs must be sorted by ref_id")
+        used_ref_ids = {
+            item.target_ref_id
+            for item in self.operations
+            if item.target_ref_id is not None
+        }
+        if used_ref_ids != set(refs_by_id):
+            raise ValueError("materialized target refs must exactly match operation targets")
+        if used_ref_ids and (
+            self.source_registry_version != CAD_PROGRAM_V1_PHASE8_REGISTRY_VERSION
+        ):
+            raise ValueError("target operations require the Phase 8 core registry")
+        if len(self.required_capabilities) != len(set(self.required_capabilities)):
+            raise ValueError("required plan capabilities must be unique")
+        derived_capabilities = _derived_target_capabilities(
+            list(self.operations),
+            refs_by_id,
+        )
+        if any(
+            capability not in self.required_capabilities
+            for capability in derived_capabilities
+        ):
+            raise ValueError("target operation capability is missing from sealed plan")
+        for ref in self.materialized_target_refs:
+            if (
+                ref.device_id != self.device_id
+                or ref.document_id != self.document_id
+                or ref.snapshot_id != self.source_snapshot_id
+                or ref.document_revision != self.expected_document_revision
+            ):
+                raise ValueError("materialized target ref does not match plan context")
+        static_entity_types = {
+            "ensure_layer": "LAYER",
+            "create_line": "LINE",
+            "create_circle": "CIRCLE",
+            "create_polyline": "LWPOLYLINE",
+            "create_rectangle": "RECTANGLE",
+            "create_text": "TEXT",
+            "create_dimension_linear": "DIMENSION_LINEAR",
+        }
+        target_usage: dict[str, list[str]] = {}
+        modified_ref_ids: set[str] = set()
+        for operation, effect in zip(self.operations, self.effect_manifest.entries):
+            if operation.target_ref_id is not None:
+                ref = refs_by_id[operation.target_ref_id]
+                target_usage.setdefault(operation.target_ref_id, []).append(operation.kind)
+                expected_entity_type = ref.entity_type
+            else:
+                expected_entity_type = static_entity_types[operation.kind]
+            if effect.entity_type != expected_entity_type:
+                raise ValueError("effect entity type does not match materialized target")
+            expected_effect = (
+                "ensure_non_entity"
+                if operation.kind == "ensure_layer"
+                else "modify_in_place"
+                if operation.kind == "move_entity"
+                else "create_only"
+            )
+            if effect.effect_class != expected_effect:
+                raise ValueError("effect class does not match target operation")
+            expected_creates = int(
+                operation.kind not in {"ensure_layer", "move_entity"}
+            )
+            expected_modifies = int(operation.kind == "move_entity")
+            expected_checkpoint = (
+                "none"
+                if operation.kind == "ensure_layer"
+                else "cad.rollback.checkpoint/2"
+                if expected_modifies
+                else "cad.rollback.checkpoint/1-created-entities"
+            )
+            if (
+                effect.creates != expected_creates
+                or effect.modifies != expected_modifies
+                or effect.checkpoint_strategy != expected_checkpoint
+            ):
+                raise ValueError("effect counts or checkpoint do not match operation")
+            if operation.kind == "move_entity":
+                if operation.target_ref_id in modified_ref_ids:
+                    raise ValueError("a target ref cannot be modified more than once")
+                modified_ref_ids.add(operation.target_ref_id)
+        if any(
+            "move_entity" in kinds and len(kinds) != 1
+            for kinds in target_usage.values()
+        ):
+            raise ValueError(
+                "an in-place target cannot be reused by another operation in one plan"
+            )
         if self.target_refs_digest != canonical_target_refs_digest(
             self.materialized_target_refs
         ):
@@ -752,7 +958,10 @@ class CadExecutionPlanV1(Phase8Model):
             raise ValueError("execution plan digest does not match plan")
         if self.budgets.estimated_operations != len(self.operations):
             raise ValueError("estimated operation count does not match plan")
-        if self.effect_manifest.creates != self.budgets.estimated_entities:
+        if (
+            self.effect_manifest.creates + self.effect_manifest.modifies
+            != self.budgets.estimated_entities
+        ):
             raise ValueError("effect entity count does not match plan budget")
         estimated_vertices = sum(
             len(item.vertices or []) + (4 if item.kind == "create_rectangle" else 0)
@@ -868,13 +1077,14 @@ def _operation_expressions(operation: CadSourceOperation) -> list[Expression]:
         "extension_line1_point",
         "extension_line2_point",
         "dimension_line_point",
+        "displacement",
     ):
         value = getattr(operation, name, None)
         if isinstance(value, ExpressionPoint3d):
             point(value)
     for value in getattr(operation, "vertices", None) or []:
         point(value)
-    for name in ("radius", "height", "rotation"):
+    for name in ("radius", "height", "rotation", "signed_distance"):
         value = getattr(operation, name, None)
         if isinstance(value, Expression):
             expressions.append(value)
@@ -989,6 +1199,18 @@ def _point(
     )
 
 
+def _vector(
+    value: ExpressionPoint3d,
+    variables: dict[str, _Evaluated],
+    index: int,
+) -> ConcreteVector3d:
+    return ConcreteVector3d(
+        x_mm=_normalize(_expect(value.x, "length", variables, index)),
+        y_mm=_normalize(_expect(value.y, "length", variables, index)),
+        z_mm=_normalize(_expect(value.z, "length", variables, index)),
+    )
+
+
 def _positive(value: Decimal, name: str) -> str:
     if value <= 0:
         raise ValueError(f"{name} must be positive")
@@ -1088,6 +1310,28 @@ def _compile_operation(
     if isinstance(operation, EnsureLayerSource):
         layers[operation.operation_id] = operation.name
         return ConcreteOperation(**common, name=operation.name, color_index=operation.color_index)
+    if isinstance(operation, CopyEntitySource):
+        return ConcreteOperation(
+            **common,
+            target_ref_id=operation.target_ref_id,
+            displacement_mm=_vector(operation.displacement, variables, index),
+            output_id=operation_id,
+        )
+    if isinstance(operation, OffsetEntitySource):
+        return ConcreteOperation(
+            **common,
+            target_ref_id=operation.target_ref_id,
+            signed_distance_mm=_normalize(
+                _expect(operation.signed_distance, "length", variables, index)
+            ),
+            output_id=operation_id,
+        )
+    if isinstance(operation, MoveEntitySource):
+        return ConcreteOperation(
+            **common,
+            target_ref_id=operation.target_ref_id,
+            displacement_mm=_vector(operation.displacement, variables, index),
+        )
     layer = _layer_name(operation.layer, layers)
     if isinstance(operation, CreateLineSource):
         return ConcreteOperation(
@@ -1143,7 +1387,10 @@ def _compile_operation(
     )
 
 
-def _effect_manifest(operations: list[ConcreteOperation]) -> EffectManifest:
+def _effect_manifest(
+    operations: list[ConcreteOperation],
+    refs_by_id: dict[str, MaterializedTargetRef],
+) -> EffectManifest:
     entity_types = {
         "ensure_layer": "LAYER",
         "create_line": "LINE",
@@ -1153,33 +1400,53 @@ def _effect_manifest(operations: list[ConcreteOperation]) -> EffectManifest:
         "create_text": "TEXT",
         "create_dimension_linear": "DIMENSION_LINEAR",
     }
-    entries = [
-        EffectEntry(
-            operation_id=item.operation_id,
-            operation_kind=item.kind,
-            operation_version=1,
-            effect_class="ensure_non_entity" if item.kind == "ensure_layer" else "create_only",
-            entity_type=entity_types[item.kind],
-            creates=0 if item.kind == "ensure_layer" else 1,
-            modifies=0,
-            erases=0,
-            checkpoint_strategy=(
-                "none"
-                if item.kind == "ensure_layer"
-                else "cad.rollback.checkpoint/1-created-entities"
-            ),
+    entries: list[EffectEntry] = []
+    for item in operations:
+        if item.target_ref_id is not None:
+            entity_type = refs_by_id[item.target_ref_id].entity_type
+        else:
+            entity_type = entity_types[item.kind]
+        modifies = 1 if item.kind == "move_entity" else 0
+        creates = 0 if item.kind in {"ensure_layer", "move_entity"} else 1
+        entries.append(
+            EffectEntry(
+                operation_id=item.operation_id,
+                operation_kind=item.kind,
+                operation_version=1,
+                effect_class=(
+                    "ensure_non_entity"
+                    if item.kind == "ensure_layer"
+                    else "modify_in_place"
+                    if modifies
+                    else "create_only"
+                ),
+                entity_type=entity_type,
+                creates=creates,
+                modifies=modifies,
+                erases=0,
+                checkpoint_strategy=(
+                    "none"
+                    if item.kind == "ensure_layer"
+                    else "cad.rollback.checkpoint/2"
+                    if modifies
+                    else "cad.rollback.checkpoint/1-created-entities"
+                ),
+            )
         )
-        for item in operations
-    ]
+    modifies = sum(item.modifies for item in entries)
     return EffectManifest(
         schema_version=CAD_EFFECT_MANIFEST_SCHEMA_VERSION,
         entries=entries,
         creates=sum(item.creates for item in entries),
-        modifies=0,
+        modifies=modifies,
         erases=0,
         ensures_non_entity=sum(item.effect_class == "ensure_non_entity" for item in entries),
-        risk_floor="low",
-        checkpoint_strategy="cad.rollback.checkpoint/1-created-entities",
+        risk_floor="medium" if modifies else "low",
+        checkpoint_strategy=(
+            "cad.rollback.checkpoint/2"
+            if modifies
+            else "cad.rollback.checkpoint/1-created-entities"
+        ),
     )
 
 
@@ -1209,6 +1476,20 @@ def _plan_budget(operations: list[ConcreteOperation], source: CadProgramV1Source
                 for value in (point.x_mm, point.y_mm, point.z_mm)
             ):
                 raise ValueError("expanded coordinate exceeds budget")
+        if operation.displacement_mm is not None and any(
+            abs(_parse_decimal(value)) > coordinate_limit
+            for value in (
+                operation.displacement_mm.x_mm,
+                operation.displacement_mm.y_mm,
+                operation.displacement_mm.z_mm,
+            )
+        ):
+            raise ValueError("expanded displacement exceeds budget")
+        if (
+            operation.signed_distance_mm is not None
+            and abs(_parse_decimal(operation.signed_distance_mm)) > coordinate_limit
+        ):
+            raise ValueError("expanded offset distance exceeds budget")
     return ExecutionPlanBudgets(
         estimated_operations=len(operations),
         hard_max_operations=source.budgets.max_expanded_operations,
@@ -1241,11 +1522,79 @@ def _concrete_points(operation: ConcreteOperation) -> list[ConcretePoint3d]:
     return points
 
 
+def _materialize_target_refs(
+    source: CadProgramV1Source,
+    supplied: list[MaterializedTargetRef | dict[str, Any]] | None,
+    expected_owner_id: str | None,
+) -> list[MaterializedTargetRef]:
+    target_operations = [
+        item
+        for item in source.operations
+        if isinstance(item, (CopyEntitySource, OffsetEntitySource, MoveEntitySource))
+    ]
+    refs = TypeAdapter(list[MaterializedTargetRef]).validate_python(supplied or [])
+    if target_operations:
+        if expected_owner_id is None:
+            raise ValueError("trusted materialized owner identity is required")
+        parsed_owner_id = TypeAdapter(Identifier).validate_python(expected_owner_id)
+    else:
+        if expected_owner_id is not None:
+            raise ValueError("materialized owner identity requires target operations")
+        parsed_owner_id = None
+    refs_by_id = {item.ref_id: item for item in refs}
+    if len(refs_by_id) != len(refs):
+        raise ValueError("materialized target ref IDs must be unique")
+    requested = {item.target_ref_id for item in target_operations}
+    if requested != set(refs_by_id):
+        raise ValueError(
+            "trusted materialized refs must exactly match source target_ref_id values"
+        )
+    for ref in refs:
+        if (
+            ref.owner_id != parsed_owner_id
+            or ref.device_id != source.device_id
+            or ref.document_id != source.document_id
+            or ref.snapshot_id != source.source_snapshot_id
+            or ref.document_revision != source.expected_document_revision
+        ):
+            raise ValueError("materialized target ref does not match source context")
+    operations_by_ref: dict[str, list[CadSourceOperation]] = {}
+    for operation in target_operations:
+        operations_by_ref.setdefault(operation.target_ref_id, []).append(operation)
+    for operations in operations_by_ref.values():
+        if any(isinstance(item, MoveEntitySource) for item in operations) and len(
+            operations
+        ) != 1:
+            raise ValueError(
+                "an in-place target cannot be reused by another operation in one plan"
+            )
+    return sorted(refs, key=lambda item: item.ref_id)
+
+
+def _derived_target_capabilities(
+    operations: list[ConcreteOperation],
+    refs_by_id: dict[str, MaterializedTargetRef],
+) -> list[str]:
+    capabilities: list[str] = []
+    for operation in operations:
+        if operation.target_ref_id is None:
+            continue
+        entity = refs_by_id[operation.target_ref_id].entity_type.lower()
+        capability = f"cad.op.{operation.kind.removesuffix('_entity')}.{entity}.v1"
+        if capability not in capabilities:
+            capabilities.append(capability)
+    return capabilities
+
+
 def compile_cad_program_v1(
     source: CadProgramV1Source | dict[str, Any],
     pins: ExecutionPins | dict[str, Any],
     *,
     compiler_package_hash: Digest,
+    materialized_target_refs: (
+        list[MaterializedTargetRef | dict[str, Any]] | None
+    ) = None,
+    materialized_owner_id: str | None = None,
 ) -> CadExecutionPlanV1:
     parsed = source if isinstance(source, CadProgramV1Source) else parse_cad_program_v1(source)
     parsed_pins = pins if isinstance(pins, ExecutionPins) else ExecutionPins.model_validate(pins)
@@ -1253,6 +1602,12 @@ def compile_cad_program_v1(
         raise ValueError(
             "artifact/component refs require trusted Gateway materialization before compile"
         )
+    target_refs = _materialize_target_refs(
+        parsed,
+        materialized_target_refs,
+        materialized_owner_id,
+    )
+    refs_by_id = {item.ref_id: item for item in target_refs}
     variables = {item.name: _normalize_value(item.value) for item in parsed.variables}
     layers: dict[str, str] = {}
     operations: list[ConcreteOperation] = []
@@ -1272,16 +1627,15 @@ def compile_cad_program_v1(
                 )
             )
     budget = _plan_budget(operations, parsed)
-    manifest = _effect_manifest(operations)
+    manifest = _effect_manifest(operations, refs_by_id)
     expansion_digest = canonical_expansion_digest(operations)
     effect_digest = canonical_effect_digest(manifest)
-    target_refs: list[MaterializedTargetRef] = []
     target_refs_digest = canonical_target_refs_digest(target_refs)
     compiler_digest = canonical_compiler_digest()
     validation_profiles_digest = canonical_validation_profiles_digest(
         parsed.validation_profiles
     )
-    checkpoint_strategy = "cad.rollback.checkpoint/1-created-entities"
+    checkpoint_strategy = manifest.checkpoint_strategy
     checkpoint_strategy_digest = canonical_checkpoint_strategy_digest(
         checkpoint_strategy
     )
@@ -1290,6 +1644,7 @@ def compile_cad_program_v1(
         "schema_version": CAD_EXECUTION_PLAN_SCHEMA_VERSION,
         "plan_id": f"{parsed.program_id}.r{parsed.program_revision}",
         "source_schema_version": CAD_PROGRAM_V1_SCHEMA_VERSION,
+        "source_registry_version": parsed.registry_version,
         "source_program_id": parsed.program_id,
         "source_program_revision": parsed.program_revision,
         "source_digest": parsed.semantic_digest,
@@ -1307,14 +1662,23 @@ def compile_cad_program_v1(
         "expansion_digest": expansion_digest,
         "effect_manifest": manifest.model_dump(mode="json"),
         "effect_manifest_digest": effect_digest,
-        "materialized_target_refs": [],
+        "materialized_target_refs": [
+            item.model_dump(mode="json") for item in target_refs
+        ],
         "target_refs_digest": target_refs_digest,
         "validation_profiles_digest": validation_profiles_digest,
         "checkpoint_strategy_digest": checkpoint_strategy_digest,
         "hard_budgets_digest": hard_budgets_digest,
         "execution_pins": parsed_pins.model_dump(mode="json"),
         "budgets": budget.model_dump(mode="json"),
-        "required_capabilities": parsed.required_capabilities,
+        "required_capabilities": [
+            *parsed.required_capabilities,
+            *[
+                item
+                for item in _derived_target_capabilities(operations, refs_by_id)
+                if item not in parsed.required_capabilities
+            ],
+        ],
         "validation_profiles": parsed.validation_profiles,
         "artifact_refs": [],
         "component_refs": [],
@@ -1373,7 +1737,12 @@ def canonical_compiler_manifest() -> dict[str, Any]:
         "expression_ast": "bounded-v1",
         "numeric_model": "decimal-mm-rad-1e-9-half-even",
         "repeat_model": "linear-rectangular-polar-stable-id-v1",
-        "operation_registry_version": CAD_PROGRAM_V1_REGISTRY_VERSION,
+        "operation_registry_versions": [
+            CAD_PROGRAM_V1_REGISTRY_VERSION,
+            CAD_PROGRAM_V1_PHASE8_REGISTRY_VERSION,
+        ],
+        "materialized_ref_model": "gateway-sealed-exact-closure-v1",
+        "target_operation_model": "copy-offset-move-v1",
     }
 
 
@@ -1520,6 +1889,7 @@ def build_execution_binding_v1(
         "schema_version": "cad.execution-binding/1",
         "action": action,
         "source_schema_version": parsed.source_schema_version,
+        "source_registry_version": parsed.source_registry_version,
         "source_program_id": parsed.source_program_id,
         "source_program_revision": parsed.source_program_revision,
         "source_digest": parsed.source_digest,
@@ -1578,6 +1948,7 @@ def verify_execution_binding_v1(
     )
     expected = {
         "source_schema_version": parsed_plan.source_schema_version,
+        "source_registry_version": parsed_plan.source_registry_version,
         "source_program_id": parsed_plan.source_program_id,
         "source_program_revision": parsed_plan.source_program_revision,
         "source_digest": parsed_plan.source_digest,
