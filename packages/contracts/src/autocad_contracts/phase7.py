@@ -139,7 +139,13 @@ class PolicyPins(Phase7Model):
 
 
 class EffectSummaryItem(Phase7Model):
-    kind: Literal["create_entities", "erase_entities", "ensure_layers", "document_change"]
+    kind: Literal[
+        "create_entities",
+        "modify_entities",
+        "erase_entities",
+        "ensure_layers",
+        "document_change",
+    ]
     count: int = Field(ge=0, le=256)
     summary: str = Field(min_length=1, max_length=512)
 

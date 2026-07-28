@@ -253,6 +253,7 @@
         "kind": {
           "enum": [
             "create_entities",
+            "modify_entities",
             "erase_entities",
             "ensure_layers",
             "document_change"

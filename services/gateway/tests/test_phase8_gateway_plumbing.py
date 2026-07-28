@@ -247,24 +247,6 @@ async def test_gateway_calls_injected_compiler_without_reinterpreting_source(pha
 
 
 @pytest.mark.asyncio
-async def test_released_revision_cannot_be_patched_or_rebased(phase8):
-    _, repository = phase8
-    _, plan = await create_root_and_plan(repository)
-    await repository.append_usage_event(
-        owner_subject="owner-a",
-        plan_id=plan["plan_id"],
-        state="released",
-        external_id="job-released",
-        binding_digest=digest("released-binding"),
-    )
-
-    with pytest.raises(RepositoryConflict, match="revision_execution_started"):
-        await repository.require_revision_revisable(
-            "owner-a", "program-1", 1
-        )
-
-
-@pytest.mark.asyncio
 async def test_revisions_plans_refs_and_conflicts_are_immutable_and_cas_guarded(phase8):
     database, repository = phase8
     query_digest = digest("query")
@@ -694,3 +676,18 @@ async def test_phase7_release_requires_exact_phase8_intent_and_consent_binding(p
         ),
     )
     assert {value["job_existing"] for value in outcomes} == {False, True}
+    with repository.database.read_connection() as conn:
+        usage = conn.execute(
+            "SELECT plan_id, state, external_id, binding_digest "
+            "FROM phase8_revision_usage_events "
+            "WHERE plan_id = ? AND state = 'released'",
+            (plan["plan_id"],),
+        ).fetchall()
+    assert [dict(row) for row in usage] == [
+        {
+            "plan_id": plan["plan_id"],
+            "state": "released",
+            "external_id": material["job_id"],
+            "binding_digest": binding,
+        }
+    ]

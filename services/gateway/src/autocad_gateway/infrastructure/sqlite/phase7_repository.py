@@ -19,7 +19,7 @@ from autocad_contracts import (
     canonical_json,
 )
 
-from .database import SqliteDatabase
+from .database import SqliteDatabase, new_id
 from .repositories import RepositoryConflict
 
 
@@ -343,6 +343,13 @@ class Phase7Repository:
                     request_fingerprint=request_fingerprint,
                 ):
                     raise RepositoryConflict("job_conflict")
+                self._record_phase8_release_usage(
+                    conn,
+                    owner_subject=owner_subject,
+                    intent_id=intent_id,
+                    job_id=job_id,
+                    created_at=str(existing_job["created_at"]),
+                )
                 return {
                     "intent": _dump(intent),
                     "job": self._job_record(existing_job),
@@ -510,6 +517,13 @@ class Phase7Repository:
                 raise RepositoryConflict("intent_release_conflict") from error
             if released.rowcount != 1:
                 raise RepositoryConflict("cas_conflict")
+            self._record_phase8_release_usage(
+                conn,
+                owner_subject=owner_subject,
+                intent_id=intent_id,
+                job_id=job_id,
+                created_at=consumed_at,
+            )
             result = self._intent(conn, owner_subject, intent_id)
             job = conn.execute(
                 "SELECT * FROM jobs WHERE owner_subject = ? AND job_id = ?",
@@ -1321,6 +1335,49 @@ class Phase7Repository:
             raise RepositoryConflict("consent_binding_mismatch")
 
     @staticmethod
+    def _record_phase8_release_usage(
+        conn: Any,
+        *,
+        owner_subject: str,
+        intent_id: str,
+        job_id: str,
+        created_at: str,
+    ) -> None:
+        binding = conn.execute(
+            "SELECT plan_id, binding_digest FROM phase8_intent_bindings "
+            "WHERE owner_subject = ? AND intent_id = ?",
+            (owner_subject, intent_id),
+        ).fetchone()
+        if binding is None:
+            return
+        existing = conn.execute(
+            "SELECT owner_subject, binding_digest FROM "
+            "phase8_revision_usage_events WHERE plan_id = ? "
+            "AND state = 'released' AND external_id = ?",
+            (binding["plan_id"], job_id),
+        ).fetchone()
+        if existing is not None:
+            if (
+                str(existing["owner_subject"]) != owner_subject
+                or str(existing["binding_digest"]) != binding["binding_digest"]
+            ):
+                raise RepositoryConflict("usage_event_conflict")
+            return
+        conn.execute(
+            "INSERT INTO phase8_revision_usage_events("
+            "usage_event_id, owner_subject, plan_id, state, external_id, "
+            "binding_digest, created_at) VALUES (?, ?, ?, 'released', ?, ?, ?)",
+            (
+                new_id("usage"),
+                owner_subject,
+                binding["plan_id"],
+                job_id,
+                binding["binding_digest"],
+                created_at,
+            ),
+        )
+
+    @staticmethod
     def _same_job_material(
         row: Any,
         *,
@@ -1428,36 +1485,75 @@ class Phase7Repository:
 
     @staticmethod
     def _require_intent_parents(conn: Any, record: ExecutionIntentRecord) -> None:
-        parents = (
-            conn.execute(
-                "SELECT 1 FROM devices WHERE owner_subject = ? AND device_id = ?",
-                (record.owner_subject, record.device_id),
-            ).fetchone(),
-            conn.execute(
-                "SELECT 1 FROM cad_program_revisions WHERE owner_subject = ? "
-                "AND program_id = ? AND revision = ? AND program_digest = ?",
-                (
-                    record.owner_subject,
-                    record.program_id,
-                    record.program_revision,
-                    record.program_digest,
-                ),
-            ).fetchone(),
-            conn.execute(
-                "SELECT 1 FROM cad_previews WHERE owner_subject = ? AND preview_id = ? "
-                "AND program_id = ? AND program_revision = ? "
-                "AND preview_digest = ? AND execution_digest = ?",
-                (
-                    record.owner_subject,
-                    record.preview_id,
-                    record.program_id,
-                    record.program_revision,
-                    record.preview_digest,
-                    record.preview_execution_digest,
-                ),
-            ).fetchone(),
-        )
-        if any(parent is None for parent in parents):
+        device = conn.execute(
+            "SELECT 1 FROM devices WHERE owner_subject = ? AND device_id = ?",
+            (record.owner_subject, record.device_id),
+        ).fetchone()
+        legacy_program = conn.execute(
+            "SELECT 1 FROM cad_program_revisions WHERE owner_subject = ? "
+            "AND program_id = ? AND revision = ? AND program_digest = ?",
+            (
+                record.owner_subject,
+                record.program_id,
+                record.program_revision,
+                record.program_digest,
+            ),
+        ).fetchone()
+        legacy_preview = conn.execute(
+            "SELECT 1 FROM cad_previews WHERE owner_subject = ? AND preview_id = ? "
+            "AND program_id = ? AND program_revision = ? "
+            "AND preview_digest = ? AND execution_digest = ?",
+            (
+                record.owner_subject,
+                record.preview_id,
+                record.program_id,
+                record.program_revision,
+                record.preview_digest,
+                record.preview_execution_digest,
+            ),
+        ).fetchone()
+        phase8_preview = conn.execute(
+            """
+            SELECT p.source_digest, v.execution_binding_digest, v.expires_at,
+                   j.device_id, j.kind, j.effect_class, j.state, j.result_json
+            FROM phase8_execution_plans AS p
+            JOIN phase8_previews AS v
+              ON v.owner_subject = p.owner_subject AND v.plan_id = p.plan_id
+            JOIN jobs AS j
+              ON j.owner_subject = v.owner_subject AND j.job_id = v.job_id
+            WHERE p.owner_subject = ? AND p.program_id = ?
+              AND p.program_revision = ? AND v.preview_id = ?
+            """,
+            (
+                record.owner_subject,
+                record.program_id,
+                record.program_revision,
+                record.preview_id,
+            ),
+        ).fetchone()
+        phase8_matches = False
+        if (
+            phase8_preview is not None
+            and phase8_preview["source_digest"] == record.program_digest
+            and phase8_preview["execution_binding_digest"]
+            == record.preview_execution_digest
+            and phase8_preview["expires_at"] == record.preview_expires_at
+            and phase8_preview["device_id"] == record.device_id
+            and phase8_preview["kind"] == "program_preview"
+            and phase8_preview["effect_class"] == "write"
+            and phase8_preview["state"] == "succeeded"
+            and phase8_preview["result_json"] is not None
+        ):
+            result = json.loads(phase8_preview["result_json"])
+            phase8_matches = (
+                result.get("preview_id") == record.preview_id
+                and result.get("preview_digest") == record.preview_digest
+                and result.get("expires_at") == record.preview_expires_at
+            )
+        if device is None or (
+            not (legacy_program is not None and legacy_preview is not None)
+            and not phase8_matches
+        ):
             raise RepositoryConflict("not_found")
 
     @staticmethod

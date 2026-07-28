@@ -10,6 +10,7 @@ import autocad_gateway.app as gateway_app
 from autocad_contracts import (
     Phase8CapabilityEvidence,
     ProgramCommandMessage,
+    ProgramPreviewResult,
     build_execution_binding_v1,
     canonical_capability_hash,
     canonical_phase8_capability_evidence_digest,
@@ -45,7 +46,13 @@ from autocad_gateway.phase8_gateway import (
     Phase8GatewayService,
     canonical_rollout_policy_digest,
 )
-from test_phase7_domain_storage import seed_parent_rows
+from test_phase7_domain_storage import (
+    DECIDED,
+    consent_value,
+    intent_value,
+    release_material,
+    seed_parent_rows,
+)
 
 
 def _sha(character: str) -> str:
@@ -276,6 +283,23 @@ async def _seed_move_snapshot(
     )
 
 
+def _public_move_service(database: SqliteDatabase) -> DurableGatewayServices:
+    flags = _move_flags()
+    return DurableGatewayServices(
+        database,
+        ConnectionRegistry(),
+        device_tokens={},
+        profile="phase8_program",
+        program_enabled=True,
+        managed_write_enabled=True,
+        allowed_write_device_ids=("device-a",),
+        program_policy_version="phase8-policy/1",
+        phase8_feature_flags=flags,
+        phase8_compiler=AutocadContractsPhase8Compiler(_settings(flags)),
+        phase8_revision_adapter=AutocadContractsPhase8Revision(),
+    )
+
+
 def test_phase8_composition_injects_the_real_compiler(tmp_path):
     config = GatewayConfig(
         profile="phase8_program",
@@ -426,21 +450,7 @@ async def test_public_prepare_patch_and_rebase_rematerialize_move_target(
     tmp_path, monkeypatch
 ):
     database = SqliteDatabase(tmp_path / "phase8-public-revision.db")
-    registry = ConnectionRegistry()
-    flags = _move_flags()
-    service = DurableGatewayServices(
-        database,
-        registry,
-        device_tokens={},
-        profile="phase8_program",
-        program_enabled=True,
-        managed_write_enabled=True,
-        allowed_write_device_ids=("device-a",),
-        program_policy_version="phase8-policy/1",
-        phase8_feature_flags=flags,
-        phase8_compiler=AutocadContractsPhase8Compiler(_settings(flags)),
-        phase8_revision_adapter=AutocadContractsPhase8Revision(),
-    )
+    service = _public_move_service(database)
     await service.initialize()
     principal = Principal(
         subject="owner-a",
@@ -563,14 +573,151 @@ async def test_public_prepare_patch_and_rebase_rematerialize_move_target(
         assert revision["lineage_kind"] == "rebase"
         assert revision["parent_revision"] == 2
 
+        preview_id = "preview-phase8-public-release"
+        preview_expires_at = "2026-07-27T01:10:00+00:00"
+        preview_digest = _sha("e")
+        preview_binding = build_execution_binding_v1(
+            rebased_plan["plan"],
+            action="preview",
+            preview_id=preview_id,
+            preview_expires_at=preview_expires_at,
+        ).model_dump(mode="json")
+        preview_job = await service.repository.create_job(
+            owner_subject="owner-a",
+            device_id="device-a",
+            kind="program_preview",
+            effect_class="write",
+            payload={"purpose": "phase8-public-release-preview"},
+            idempotency_key="phase8-public-release-preview",
+            deadline_at=preview_expires_at,
+        )
+        await service.phase8_repository.create_preview(
+            owner_subject="owner-a",
+            plan_id=rebased_plan["plan_id"],
+            preview_id=preview_id,
+            job_id=preview_job["job_id"],
+            execution_binding=preview_binding,
+            capability_evidence_ids=[],
+            expires_at=preview_expires_at,
+            idempotency_key="phase8-public-release-preview",
+            request_digest=_sha("f"),
+        )
+        await service.repository.claim_job(preview_job["job_id"])
+        await service.repository.transition_job(
+            preview_job["job_id"], "acknowledged"
+        )
+        await service.repository.finalize_job_result(
+            job_id=preview_job["job_id"],
+            device_id="device-a",
+            command_id=preview_job["command_id"],
+            payload_hash=preview_job["payload_hash"],
+            target="succeeded",
+            result=ProgramPreviewResult(
+                preview_id=preview_id,
+                preview_digest=preview_digest,
+                expires_at=preview_expires_at,
+                planned_operation_count=1,
+                planned_entity_count=0,
+                planned_layer_count=0,
+                transaction_aborted=True,
+                drawing_unchanged=True,
+            ).model_dump(mode="json"),
+        )
+        intent_raw = intent_value(
+            "phase8-public-release",
+            program_id=root.program_id,
+            program_revision=3,
+            program_digest=rebased_plan["source_digest"],
+            preview_id=preview_id,
+            preview_digest=preview_digest,
+            preview_execution_digest=preview_binding[
+                "execution_binding_digest"
+            ],
+            preview_expires_at=preview_expires_at,
+            expected_document_revision="revision-after",
+            risk_class=rebased_plan["risk_class"],
+            trusted_effect_summary=rebased_plan["trusted_effect_summary"],
+        )
+        intent, _ = await service.phase7_repository.create_intent(intent_raw)
+        binding = await service.phase8_gateway.bind_intent(
+            owner_subject="owner-a",
+            intent_id=intent["intent_id"],
+            plan_id=rebased_plan["plan_id"],
+        )
+        consent_raw = consent_value(intent_raw, "phase8-public-release")
+        consent, _ = await service.phase7_repository.create_consent(consent_raw)
+        await service.phase8_gateway.bind_consent(
+            owner_subject="owner-a",
+            consent_id=consent["consent_id"],
+            intent_id=intent["intent_id"],
+        )
+        approved = await service.phase7_repository.transition_consent(
+            owner_subject="owner-a",
+            consent_id=consent["consent_id"],
+            target="approved",
+            expected_version=0,
+            transition_at=DECIDED,
+            decision_source="portal_recent_auth",
+            decision_principal={
+                "issuer": "https://issuer.test/",
+                "subject": "user-a",
+            },
+        )
+        release = release_material(intent, "phase8-public-release")
+        release["payload"]["execution"].update(
+            {
+                "source_digest": rebased_plan["source_digest"],
+                "semantic_digest": rebased_plan["semantic_digest"],
+                "plan_digest": rebased_plan["plan_digest"],
+                "expansion_digest": rebased_plan["expansion_digest"],
+                "effect_digest": rebased_plan["effect_digest"],
+                "target_set_digest": rebased_plan["target_set_digest"],
+                "reference_digest": rebased_plan["reference_digest"],
+                "compiler_hash": rebased_plan["compiler_hash"],
+                "risk_class": rebased_plan["risk_class"],
+                "trusted_effect_summary": rebased_plan[
+                    "trusted_effect_summary"
+                ],
+                "rollout_policy_digest": rebased_plan[
+                    "rollout_policy_digest"
+                ],
+                "rollout_policy_epoch": rebased_plan["rollout_policy_epoch"],
+                "phase8_binding_digest": binding["binding_digest"],
+            }
+        )
+        released = await service.phase7_repository.release_intent(
+            owner_subject="owner-a",
+            intent_id=intent["intent_id"],
+            expected_intent_version=0,
+            consumed_at=DECIDED,
+            consent_id=consent["consent_id"],
+            expected_consent_version=approved["state_version"],
+            **release,
+        )
+        assert released["intent"]["state"] == "released"
+
         await _seed_move_snapshot(
             service,
-            snapshot_id="snapshot-move-conflict",
-            document_revision="revision-conflict",
-            fingerprint=_sha("e"),
+            snapshot_id="snapshot-move-release-next",
+            document_revision="revision-release-next",
+            fingerprint=_sha("d"),
         )
         async with client:
-            conflict_result = await client.call_tool(
+            blocked_patch = await client.call_tool(
+                "cad_prepare_program",
+                {
+                    "schema_version": "cad.program/1.0",
+                    "program_v1_revision_request": {
+                        "kind": "patch",
+                        "program_id": root.program_id,
+                        "source_revision": 3,
+                        "changes": {"operations": patched_operations},
+                    },
+                },
+                raise_on_error=False,
+            )
+        async with client:
+            blocked_rebase = await client.call_tool(
                 "cad_prepare_program",
                 {
                     "schema_version": "cad.program/1.0",
@@ -578,30 +725,112 @@ async def test_public_prepare_patch_and_rebase_rematerialize_move_target(
                         "kind": "rebase",
                         "program_id": root.program_id,
                         "source_revision": 3,
+                        "new_snapshot_id": "snapshot-move-release-next",
+                    },
+                },
+                raise_on_error=False,
+            )
+        assert blocked_patch.is_error
+        assert blocked_rebase.is_error
+        assert "binding_mismatch" in blocked_patch.content[0].text
+        assert "binding_mismatch" in blocked_rebase.content[0].text
+        assert (
+            await service.phase8_repository.get_revision(
+                "owner-a", root.program_id, 4
+            )
+            is None
+        )
+        with database.read_connection() as conn:
+            released_usage = conn.execute(
+                "SELECT external_id, binding_digest "
+                "FROM phase8_revision_usage_events "
+                "WHERE plan_id = ? AND state = 'released'",
+                (rebased_plan["plan_id"],),
+            ).fetchall()
+        assert [dict(row) for row in released_usage] == [
+            {
+                "external_id": release["job_id"],
+                "binding_digest": binding["binding_digest"],
+            }
+        ]
+    finally:
+        await service.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_public_rebase_returns_owner_scoped_conflict_resource(
+    tmp_path, monkeypatch
+):
+    database = SqliteDatabase(tmp_path / "phase8-public-conflict.db")
+    service = _public_move_service(database)
+    await service.initialize()
+    principal = Principal(
+        subject="owner-a",
+        scopes=("autocad.read", "autocad.write"),
+    )
+    try:
+        await service.repository.seed_device(
+            owner_subject="owner-a",
+            device_id="device-a",
+            display_name="Mechanical 2025",
+            capabilities=["observe"],
+            fixture_auth_ref="paired:device-a",
+        )
+        await _seed_move_snapshot(
+            service,
+            snapshot_id="snapshot-move",
+            document_revision="revision-before",
+            fingerprint=_sha("d"),
+        )
+        await _seed_move_snapshot(
+            service,
+            snapshot_id="snapshot-move-conflict",
+            document_revision="revision-conflict",
+            fingerprint=_sha("e"),
+        )
+        source = _move_source()
+        root = await service.prepare_program(
+            CadPrepareProgramInput(
+                device_id="device-a",
+                source_snapshot_id="snapshot-move",
+                operations=source["operations"],
+            ),
+            principal,
+            "conflict-root",
+            schema_version="cad.program/1.0",
+            program_v1_source=source,
+        )
+        monkeypatch.setattr(
+            gateway_app,
+            "_principal",
+            lambda *_args, **_kwargs: principal,
+        )
+        client = Client(build_mcp_server(service))
+        async with client:
+            result = await client.call_tool(
+                "cad_prepare_program",
+                {
+                    "schema_version": "cad.program/1.0",
+                    "program_v1_revision_request": {
+                        "kind": "rebase",
+                        "program_id": root.program_id,
+                        "source_revision": 1,
                         "new_snapshot_id": "snapshot-move-conflict",
                     },
                 },
             )
-        conflict = conflict_result.structured_content
-        assert conflict["lineage_kind"] == "rebase"
-        assert conflict["program_revision"] == 4
+        conflict = result.structured_content
+        assert conflict["program_revision"] == 2
         assert conflict["ready_for_preview"] is False
-        report = await service.phase8_repository.get_conflict_report(
-            "owner-a", conflict["conflict_report_id"]
-        )
+        async with client:
+            resource = await client.read_resource(conflict["resource_uri"])
+        report = json.loads(resource[0].text)["conflict_report"]
         assert report["conflicts"] == [
             {
                 "code": "target_fingerprint_changed",
                 "ref_id": "ref-line",
             }
         ]
-        async with client:
-            conflict_resource = await client.read_resource(
-                conflict["resource_uri"]
-            )
-        assert json.loads(conflict_resource[0].text)["conflict_report"][
-            "conflicts"
-        ] == report["conflicts"]
     finally:
         await service.shutdown()
 
