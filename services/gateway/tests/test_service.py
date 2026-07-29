@@ -33,7 +33,25 @@ def test_public_entity_projection_accepts_richer_agent_entity():
         "entity_type": "LINE",
         "layer": "0",
         "geometry": {"start": [0, 0], "end": [1, 1]},
+        "geometry_truncated": False,
     }
+
+
+def test_public_entity_projection_preserves_unavailable_geometry():
+    entity = CadEntity.model_validate(
+        {
+            "entity_id": "2A",
+            "entity_type": "LWPOLYLINE",
+            "layer": "0",
+            "geometry": None,
+            "geometry_truncated": True,
+            "fingerprint": f"sha256:{'b' * 64}",
+        },
+        extra="ignore",
+    )
+
+    assert entity.geometry is None
+    assert entity.geometry_truncated is True
 
 
 @pytest.mark.asyncio

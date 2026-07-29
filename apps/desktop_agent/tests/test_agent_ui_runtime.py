@@ -133,7 +133,17 @@ class HostTransport:
             if operation == "cad.program.preview"
             else {
                 "document_id": "doc-1",
+                "database_fingerprint": "database-1",
+                "revision": {"revision": 42},
+                "cursor": 0,
+                "next_cursor": None,
+                "entities": [],
+            }
+            if operation == "entity.snapshot.page"
+            else {
+                "document_id": "doc-1",
                 "document_name": r"C:\private\mat-bich.dwg",
+                "revision": {"revision": 42},
                 "entity_count": 12,
                 "layer_count": 2,
                 "layers": ["0", "DIM"],
@@ -586,11 +596,11 @@ async def test_reloading_adapter_discovers_host_started_after_agent(tmp_path):
 async def test_reloading_adapter_forwards_entity_snapshot_limit(tmp_path):
     bootstrap = tmp_path / "managed-host-r25.json"
     bootstrap.write_text('{"generation": 1}', encoding="utf-8")
-    calls: list[int] = []
+    calls: list[tuple[int, int | None]] = []
 
     class SnapshotAdapter:
-        async def entity_snapshot(self, *, limit: int):
-            calls.append(limit)
+        async def entity_snapshot(self, *, limit: int, expected_revision: int | None):
+            calls.append((limit, expected_revision))
             return CadPortResult(True, payload={"entities": []})
 
     adapter = ReloadingManagedDotNetCadReadPort(
@@ -599,10 +609,29 @@ async def test_reloading_adapter_forwards_entity_snapshot_limit(tmp_path):
         adapter_factory=lambda _path: SnapshotAdapter(),
     )
 
-    result = await adapter.entity_snapshot(limit=37)
+    result = await adapter.entity_snapshot(limit=37, expected_revision=42)
 
     assert result.ok is True
-    assert calls == [37]
+    assert calls == [(37, 42)]
+
+
+async def test_managed_snapshot_pins_summary_revision_on_first_page():
+    transport = HostTransport()
+    adapter = ManagedDotNetCadReadPort(
+        transport,
+        session_secret=SECRET,
+        agent_version="0.1.0",
+    )
+
+    result = await adapter.entity_snapshot(expected_revision=42)
+
+    assert result.ok is True
+    page = next(
+        request
+        for request in transport.requests
+        if request["payload"].get("operation_id") == "entity.snapshot.page"
+    )
+    assert page["payload"]["arguments"]["expected_revision"] == 42
 
 
 async def test_reloading_adapter_uses_rotated_bootstrap_after_host_restart(tmp_path):

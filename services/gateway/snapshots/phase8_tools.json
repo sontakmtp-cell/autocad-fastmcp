@@ -15,7 +15,7 @@
     "name": "cad_query",
     "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
     "input_schema_sha256": "26e5f25f4bb5197f068a0bde512136021d4d552002e590aef4f99b1e604af948",
-    "output_schema_sha256": "f2a613bf544025354646a44f3c31abc24e013aad0111d61f26d4890bdff870b9"
+    "output_schema_sha256": "31986d51d126115b5cf10a4f32ac2c5de28d48f7a647af52711ea41b11fcc500"
   },
   {
     "name": "cad_get_job",

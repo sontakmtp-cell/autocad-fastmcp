@@ -245,18 +245,38 @@ class ReadCommandExecutor:
         if not result.ok or not isinstance(result.payload, dict):
             raise AgentExecutionError(self._safe_code(result.error_code))
         runtime = getattr(selection, "evidence", None)
+        managed_dotnet = getattr(runtime, "id", None) == "managed_dotnet"
         summary = self._validate_summary(
             result.payload,
-            require_compatibility_package=(
-                selection is None or getattr(runtime, "id", None) != "managed_dotnet"
-            ),
+            require_compatibility_package=not managed_dotnet,
         )
         detail_payload: dict[str, Any] | None = None
         if detail:
-            detail_result = await entity_snapshot()
+            summary_revision = None
+            if managed_dotnet:
+                revision = result.payload.get("revision")
+                if (
+                    not isinstance(revision, dict)
+                    or isinstance(revision.get("revision"), bool)
+                    or not isinstance(revision.get("revision"), int)
+                    or revision["revision"] <= 0
+                ):
+                    raise AgentExecutionError("protocol_mismatch")
+                summary_revision = revision["revision"]
+            detail_result = (
+                await entity_snapshot(expected_revision=summary_revision)
+                if summary_revision is not None
+                else await entity_snapshot()
+            )
             if not detail_result.ok or not isinstance(detail_result.payload, dict):
                 raise AgentExecutionError(self._safe_code(detail_result.error_code))
             detail_payload = detail_result.payload
+            if (
+                summary_revision is not None
+                and detail_payload.get("revision", {}).get("revision")
+                != summary_revision
+            ):
+                raise AgentExecutionError("active_document_changed")
         revision_source = {
             "document_name": summary["document_name"],
             "entity_count": summary["entity_count"],

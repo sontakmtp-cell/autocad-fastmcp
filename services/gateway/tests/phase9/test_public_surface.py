@@ -49,7 +49,7 @@ async def test_phase9_registers_four_workflow_tools_not_skill_tools():
 
 
 @pytest.mark.asyncio
-async def test_phase9_write_profile_advertises_write_scope_in_real_metadata(
+async def test_phase9_freeform_write_surface_advertises_write_scope_when_workflow_writes_are_off(
     tmp_path,
 ):
     digest = "sha256:" + "a" * 64
@@ -75,17 +75,19 @@ async def test_phase9_write_profile_advertises_write_scope_in_real_metadata(
         phase8_capability_manifest_hash=digest,
         phase8_operation_registry_hash=digest,
         phase9_workflow_engine_enabled=True,
-        phase9_write_workflows_enabled=True,
+        phase9_write_workflows_enabled=False,
     ).validate()
     services = SimpleNamespace(
         is_phase3=False,
         is_phase4=False,
-        is_phase6=False,
-        is_phase7=False,
-        is_phase8=False,
+        is_phase6=True,
+        is_phase7=True,
+        is_phase8=True,
         is_phase9=True,
         owner_subject="owner-a",
         workflow_service=SimpleNamespace(enabled=False, catalog_enabled=False),
+        program_service=object(),
+        phase7_admission=object(),
     )
     with pytest.raises(ValueError, match="requires OAuth"):
         create_app(services, config=config)
@@ -105,6 +107,8 @@ async def test_phase9_write_profile_advertises_write_scope_in_real_metadata(
         "autocad.device.manage",
         "autocad.write",
     ]
+    async with Client(build_mcp_server(services)) as client:
+        assert "cad_commit" in {tool.name for tool in await client.list_tools()}
 
 
 def test_phase9_flags_are_default_off():

@@ -335,7 +335,12 @@ class ManagedDotNetCadReadPort:
             return CadPortResult(False, error_code=code)
         return CadPortResult(True, payload=value)
 
-    async def entity_snapshot(self, *, limit: int = 512) -> CadPortResult:
+    async def entity_snapshot(
+        self,
+        *,
+        limit: int = 512,
+        expected_revision: int | None = None,
+    ) -> CadPortResult:
         try:
             handshake = await self._ensure_handshake()
             entities: list[dict[str, Any]] = []
@@ -350,8 +355,13 @@ class ManagedDotNetCadReadPort:
                     "space": "model",
                     "types": ["LINE", "CIRCLE", "LWPOLYLINE"],
                 }
-                if revision is not None:
-                    arguments["expected_revision"] = revision["revision"]
+                pinned_revision = (
+                    revision["revision"]
+                    if revision is not None
+                    else expected_revision
+                )
+                if pinned_revision is not None:
+                    arguments["expected_revision"] = pinned_revision
                 page = await self._command(
                     "entity.snapshot.page",
                     document_id=document_id,
@@ -857,8 +867,17 @@ class ReloadingManagedDotNetCadReadPort:
     async def drawing_info(self) -> CadPortResult:
         return await self._call_with_reload("drawing_info")
 
-    async def entity_snapshot(self, *, limit: int = 512) -> CadPortResult:
-        return await self._call_with_reload("entity_snapshot", limit=limit)
+    async def entity_snapshot(
+        self,
+        *,
+        limit: int = 512,
+        expected_revision: int | None = None,
+    ) -> CadPortResult:
+        return await self._call_with_reload(
+            "entity_snapshot",
+            limit=limit,
+            expected_revision=expected_revision,
+        )
 
     async def program_command(
         self,

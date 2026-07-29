@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 import pytest
 from autocad_contracts import CommandMessage, canonical_payload_hash
@@ -76,6 +77,30 @@ class TruncatedDetailReadPort(DetailReadPort):
         result = await super().entity_snapshot()
         result.payload["scan_truncated"] = True
         return result
+
+
+class ChangedRevisionReadPort(ReadPort):
+    async def drawing_info(self):
+        result = await super().drawing_info()
+        result.payload["revision"] = {"revision": 7}
+        return result
+
+    async def entity_snapshot(self, *, expected_revision):
+        assert expected_revision == 7
+        result = await DetailReadPort().entity_snapshot()
+        result.payload["revision"] = {"revision": 8}
+        return result
+
+
+class ManagedBroker:
+    def __init__(self, adapter):
+        self.adapter = adapter
+
+    async def select_read_runtime(self):
+        return SimpleNamespace(
+            adapter=self.adapter,
+            evidence=SimpleNamespace(id="managed_dotnet"),
+        )
 
 
 def command(**changes):
@@ -158,6 +183,26 @@ async def test_executor_never_marks_truncated_detail_commit_safe():
 
     assert snapshot["entity_summary"]["truncated"] is True
     assert snapshot["revision_evidence"]["commit_safe"] is False
+
+
+@pytest.mark.asyncio
+async def test_executor_rejects_summary_and_detail_from_different_revisions():
+    cmd = command(
+        payload={
+            "observation_level": "detail",
+            "include_preview_image": False,
+            "package": PACKAGE,
+        }
+    )
+    cmd = cmd.model_copy(update={"payload_hash": canonical_payload_hash(cmd.payload)})
+
+    with pytest.raises(AgentExecutionError, match="active_document_changed"):
+        await DrawingInfoExecutor(
+            ReadPort(),
+            PACKAGE,
+            "0.1.0",
+            runtime_broker=ManagedBroker(ChangedRevisionReadPort()),
+        ).execute(cmd)
 
 
 @pytest.mark.asyncio

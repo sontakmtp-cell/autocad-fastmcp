@@ -122,7 +122,8 @@ class CadEntity(StrictModel):
     entity_id: str
     entity_type: str
     layer: str
-    geometry: dict[str, Any] = Field(default_factory=dict)
+    geometry: dict[str, Any] | None = None
+    geometry_truncated: bool = False
 
 
 class CadObserveOutput(StrictModel):
