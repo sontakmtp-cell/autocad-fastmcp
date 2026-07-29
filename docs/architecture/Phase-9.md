@@ -1791,7 +1791,6 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   it does not gain approval authority or execute skill/template content.
 - This does **not** claim a ChatGPT Agent-to-AutoCAD end-to-end run. Customer
   Pilot remains a separate gate.
-- Status: the previous live-evidence blocker for **Phase 9 Engineering GO is
-  cleared technically**. Formal GO remains pending until these final code,
-  security-review and evidence changes are committed to PR 13. Customer Pilot
-  remains **NO-GO**.
+- Status: **Phase 9 Engineering GO**. The final code, security review and live
+  evidence are committed to PR 13. ChatGPT Agent end-to-end remains outside
+  this acceptance claim, and Customer Pilot remains **NO-GO**.

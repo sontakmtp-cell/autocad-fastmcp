@@ -43,9 +43,9 @@ identities and no duplicate effect.
 Portal unit/E2E tests and the bounded signed-R25 effect-path drills pass.
 Scoped public OAuth plus trusted Portal approval is covered; no ChatGPT
 Agent-to-AutoCAD end-to-end claim is made. The former live-restart blocker is
-cleared technically, but formal Engineering GO awaits commit of the final
-changes to PR 13. All Phase 9 feature flags remain default-off outside the
-explicit lab profile, and Customer Pilot remains **NO-GO**.
+cleared and the committed evidence supports **Phase 9 Engineering GO**. All
+Phase 9 feature flags remain default-off outside the explicit lab profile, and
+Customer Pilot remains **NO-GO**.
 
 The local revision sidecar is availability/recovery evidence under the existing
 trusted Windows-user boundary, not a hostile-tamper control. Invalid JSON,
