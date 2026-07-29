@@ -22,21 +22,49 @@ class WorkflowRunner:
         dispatch_started = False
         try:
             validate_safe_retry(retry_class=action["retry_class"], child_state=action.get("child_state"), effect_class=action["effect_class"])
+            preflight = getattr(self.port, "preflight", None)
+            if preflight is not None:
+                await preflight(action["action_kind"], action["payload"])
             # This durable boundary is intentionally before the port call.  A
             # process death after it cannot turn an inconclusive write into a
             # fresh dispatch.
             action = await self.repository.mark_dispatch_started(action["action_id"], self.worker_id)
             dispatch_started = True
             result = await self.port.dispatch(action["action_kind"], action["payload"], idempotency_key=action["idempotency_key"])
-            await self.repository.complete_action(action["action_id"], self.worker_id, result)
+            child_ref = {
+                key: result[key]
+                for key in (
+                    "program_id",
+                    "program_revision",
+                    "preview_id",
+                    "intent_id",
+                    "consent_id",
+                    "job_id",
+                    "receipt_id",
+                    "recovery_id",
+                )
+                if result.get(key) is not None
+            }
+            child_ref["idempotency_key"] = action["idempotency_key"]
+            await self.repository.complete_action(
+                action["action_id"],
+                self.worker_id,
+                result,
+                child_ref=child_ref,
+            )
         except Exception as error:
+            error_code = getattr(error, "code", type(error).__name__)
             # A port can explicitly prove an error happened before dispatch.
             # Every other error after the durable start boundary is unknown for
             # write effects and must go through recovery/reconciliation.
             if action["effect_class"] == "write" and dispatch_started:
-                await self.repository.mark_action_outcome_unknown(action["action_id"], self.worker_id, type(error).__name__)
+                await self.repository.mark_action_outcome_unknown(
+                    action["action_id"], self.worker_id, error_code
+                )
             else:
-                await self.repository.fail_action(action["action_id"], self.worker_id, type(error).__name__)
+                await self.repository.fail_action(
+                    action["action_id"], self.worker_id, error_code
+                )
         return True
 
     async def reconcile_restart(self) -> int:
@@ -49,7 +77,17 @@ class WorkflowRunner:
             child_ref = action.get("child_ref")
             if child_ref is None:
                 continue
-            outcome = await lookup(action["action_kind"], child_ref, idempotency_key=action["idempotency_key"])
+            try:
+                outcome = await lookup(
+                    action["action_kind"],
+                    child_ref,
+                    idempotency_key=action["idempotency_key"],
+                )
+            except Exception:
+                # Reconnect can happen after process startup. Keep the durable
+                # child identity and retry reconciliation; never redispatch a
+                # started write through the normal claim path.
+                continue
             if outcome is not None:
                 await self.repository.record_reconciled_outcome(action["action_id"], outcome)
         return reclaimed

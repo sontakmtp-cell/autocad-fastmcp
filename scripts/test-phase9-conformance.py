@@ -17,6 +17,8 @@ TARGETS = [
 
 
 def main() -> int:
+    basetemp = ROOT / ".pytest_cache" / "phase9-conformance"
+    basetemp.parent.mkdir(parents=True, exist_ok=True)
     environment = dict(os.environ)
     environment["PYTHONPATH"] = os.pathsep.join(
         str(ROOT / path)
@@ -25,7 +27,7 @@ def main() -> int:
     command = [
         "uv", "run", "--project", "services/gateway", "--group", "test",
         "python", "-m", "pytest", "-q",
-        "--basetemp=.pytest_cache/phase9-conformance",
+        f"--basetemp={basetemp}",
         *TARGETS,
     ]
     return subprocess.run(command, cwd=ROOT, env=environment, check=False).returncode

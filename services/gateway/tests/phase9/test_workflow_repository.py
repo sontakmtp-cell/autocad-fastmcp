@@ -156,3 +156,141 @@ async def test_wait_exact_state_schema_and_idempotency(repo):
     assert (await repo.resolve_wait(owner_subject="alice", run_id="run", wait_id=wait["wait_id"], expected_state_version=2, response_schema_digest=wait["response_schema_digest"], response={"x": 1}, idempotency_key="control"))[1]
     with pytest.raises(RepositoryConflict, match="idempotency_conflict"):
         await repo.resolve_wait(owner_subject="alice", run_id="run", wait_id=wait["wait_id"], expected_state_version=2, response_schema_digest=wait["response_schema_digest"], response={"x": 2}, idempotency_key="control")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "trigger",
+    [
+        """
+        CREATE TRIGGER fail_after_run BEFORE INSERT ON workflow_steps
+        BEGIN SELECT RAISE(ABORT, 'crash_after_run'); END
+        """,
+        """
+        CREATE TRIGGER fail_during_steps BEFORE INSERT ON workflow_steps
+        WHEN NEW.step_id='b'
+        BEGIN SELECT RAISE(ABORT, 'crash_during_steps'); END
+        """,
+        """
+        CREATE TRIGGER fail_before_running BEFORE UPDATE ON workflow_runs
+        WHEN NEW.state='running'
+        BEGIN SELECT RAISE(ABORT, 'crash_before_running'); END
+        """,
+    ],
+)
+async def test_initialized_run_rolls_back_on_failure_injection(repo, trigger):
+    with repo.database.transaction() as connection:
+        connection.execute(trigger)
+    with pytest.raises(Exception):
+        await repo.create_run(
+            owner_subject="alice",
+            actor_issuer="https://issuer.example/",
+            actor_subject="alice",
+            run_id="atomic-run",
+            idempotency_key="atomic-start",
+            pins=PINS,
+            inputs={},
+            device_id="device-1",
+            device_identity_generation=1,
+            steps=[
+                {"step_id": "a", "kind": "query", "input_ref": {}},
+                {"step_id": "b", "kind": "report", "input_ref": {}},
+            ],
+            first_step_id="a",
+        )
+    assert await repo.get_run("alice", "atomic-run") is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_keeps_started_write_but_cancels_not_started_actions(repo):
+    await _run(repo)
+    await repo.transition_run(
+        owner_subject="alice",
+        run_id="run",
+        expected_state="created",
+        expected_version=0,
+        target="running",
+    )
+    for step, action_kind in (("started", "commit"), ("pending", "rollback")):
+        await repo.create_step(
+            owner_subject="alice",
+            run_id="run",
+            step_id=step,
+            attempt=1,
+            kind="request_commit",
+        )
+        await repo.insert_action(
+            owner_subject="alice",
+            run_id="run",
+            step_id=step,
+            attempt=1,
+            action_kind=action_kind,
+            payload={},
+            retry_class="not_started",
+            effect_class="write",
+        )
+    claimed = await repo.claim_action("worker")
+    await repo.mark_dispatch_started(claimed["action_id"], "worker")
+    result = await repo.cancel_run(
+        owner_subject="alice",
+        run_id="run",
+        expected_state="running",
+        expected_version=1,
+    )
+    assert result["state"] == "waiting_for_recovery"
+    states = {
+        action["action_kind"]: action["state"]
+        for action in await repo.list_actions("alice", "run")
+    }
+    assert states == {"commit": "started", "rollback": "cancelled"}
+    assert await repo.claim_action("other") is None
+
+
+@pytest.mark.asyncio
+async def test_conflicting_duplicate_action_completion_is_rejected(repo):
+    await _run(repo)
+    await repo.transition_run(
+        owner_subject="alice",
+        run_id="run",
+        expected_state="created",
+        expected_version=0,
+        target="running",
+    )
+    await repo.create_step(
+        owner_subject="alice",
+        run_id="run",
+        step_id="action",
+        attempt=1,
+        kind="query",
+    )
+    action, _ = await repo.insert_action(
+        owner_subject="alice",
+        run_id="run",
+        step_id="action",
+        attempt=1,
+        action_kind="query",
+        payload={},
+        retry_class="read",
+    )
+    await repo.claim_action("worker")
+    expected = {"value": 1}
+    await repo.complete_action(
+        action["action_id"],
+        "worker",
+        expected,
+        child_ref={"idempotency_key": action["idempotency_key"]},
+    )
+    duplicate = await repo.complete_action(
+        action["action_id"],
+        "worker",
+        expected,
+        child_ref={"idempotency_key": action["idempotency_key"]},
+    )
+    assert duplicate["result"] == expected
+    with pytest.raises(RepositoryConflict, match="workflow_action_conflict"):
+        await repo.complete_action(
+            action["action_id"],
+            "worker",
+            {"value": 2},
+            child_ref={"idempotency_key": action["idempotency_key"]},
+        )

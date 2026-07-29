@@ -23,6 +23,13 @@ class Port:
 @pytest.mark.asyncio
 async def test_runner_completes_pure_and_write_actions(repo):
     await _run(repo)
+    await repo.transition_run(
+        owner_subject="alice",
+        run_id="run",
+        expected_state="created",
+        expected_version=0,
+        target="running",
+    )
     for step, effect in (("plan", "read"), ("commit", "write")):
         await repo.create_step(
             owner_subject="alice",
@@ -43,6 +50,13 @@ async def test_runner_completes_pure_and_write_actions(repo):
 @pytest.mark.asyncio
 async def test_runner_read_error_fails_but_write_error_is_recovery(repo):
     await _run(repo)
+    await repo.transition_run(
+        owner_subject="alice",
+        run_id="run",
+        expected_state="created",
+        expected_version=0,
+        target="running",
+    )
     await repo.create_step(
         owner_subject="alice",
         run_id="run",
@@ -52,7 +66,6 @@ async def test_runner_read_error_fails_but_write_error_is_recovery(repo):
     )
     await repo.insert_action(owner_subject="alice", run_id="run", step_id="read", attempt=1, action_kind="query", payload={}, retry_class="read")
     assert await WorkflowRunner(repo, Port(error=RuntimeError("read")), worker_id="read").run_once()
-    await repo.transition_run(owner_subject="alice", run_id="run", expected_state="created", expected_version=0, target="running")
     await repo.create_step(
         owner_subject="alice",
         run_id="run",
@@ -68,6 +81,13 @@ async def test_runner_read_error_fails_but_write_error_is_recovery(repo):
 @pytest.mark.asyncio
 async def test_restart_reconciles_started_write_without_redispatch(repo):
     await _run(repo)
+    await repo.transition_run(
+        owner_subject="alice",
+        run_id="run",
+        expected_state="created",
+        expected_version=0,
+        target="running",
+    )
     await repo.create_step(
         owner_subject="alice",
         run_id="run",
@@ -80,4 +100,44 @@ async def test_restart_reconciles_started_write_without_redispatch(repo):
     await repo.mark_dispatch_started(action["action_id"], "old")
     port = Port(reconciled={"state": "succeeded", "job_id": "j"})
     await WorkflowRunner(repo, port, worker_id="new").reconcile_restart()
+    assert port.calls == []
+
+
+@pytest.mark.asyncio
+async def test_restart_reconciles_preview_child_without_redispatch(repo):
+    await _run(repo)
+    await repo.transition_run(
+        owner_subject="alice",
+        run_id="run",
+        expected_state="created",
+        expected_version=0,
+        target="running",
+    )
+    await repo.create_step(
+        owner_subject="alice",
+        run_id="run",
+        step_id="preview",
+        attempt=1,
+        kind="preview_program",
+    )
+    action, _ = await repo.insert_action(
+        owner_subject="alice",
+        run_id="run",
+        step_id="preview",
+        attempt=1,
+        action_kind="preview",
+        payload={"snapshot_id": "snapshot-a"},
+        retry_class="read",
+    )
+    await repo.claim_action("old")
+    await repo.mark_dispatch_started(action["action_id"], "old")
+    port = Port(
+        reconciled={
+            "state": "succeeded",
+            "preview_id": "preview-a",
+        }
+    )
+    await WorkflowRunner(repo, port, worker_id="new").reconcile_restart()
+    reconciled = (await repo.list_actions("alice", "run"))[0]
+    assert reconciled["state"] == "completed"
     assert port.calls == []

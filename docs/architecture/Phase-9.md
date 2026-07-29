@@ -1705,11 +1705,16 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   transitions, CAS/idempotency, event ordering, action lease/reclaim,
   started-write recovery, waits, runner reconciliation, and the three pure
   reference workflow fixtures.
-- The focused suite was rerun after public facade and Portal integration:
-  **41 passed**. This is simulated/unit evidence only.
+- The focused suite was rerun after the PR review hardening:
+  **50 passed**. It includes clean-runner bootstrap, atomic run/DAG failure
+  injection, durable public preview/commit outbox dispatch, lost-response
+  control replay, wait-resolution crash recovery, read-only write-control
+  denial, mid-run revocation, cancellation of dispatchable actions,
+  conflicting duplicate completion, and restart reconciliation. This is
+  simulated/unit evidence only.
 - Full post-integration regression results:
   - root Python: **414 passed, 1 skipped**;
-  - Gateway: **271 passed**;
+  - Gateway: **280 passed**;
   - contracts: **130 passed**;
   - Desktop Agent: **142 passed**;
   - Managed .NET: **72 passed**;
@@ -1735,13 +1740,16 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
 - The cleanup reference workflow remains read-only. Write workflows reuse the
   existing Phase 6--8 prepare/preview/commit services and never synthesize an
   approval.
+- Public preview and commit effects are now persisted and executed through the
+  workflow outbox runner. The workflow stores the Phase 7 intent identity and
+  reconciles existing approval/job/receipt state through recovery, validation,
+  and terminal completion; it does not create a second CAD execution path.
 - This evidence does **not** claim public OAuth/ChatGPT end-to-end operation or
   a live AutoCAD Mechanical 2025 R25 workflow run.
-- The public orchestration path does not yet durably reconcile an approved
-  Phase 7 commit through job/recovery, validation, and terminal workflow
-  completion. It fails closed at the approval/retry boundary, but restart and
-  reconnect acceptance for that post-approval path is therefore unproven.
+- A local live attempt built the Phase 8 R25 Managed Host and installed the
+  unsigned current-user lab bundle, but an unrelated DeskIn UAC prompt blocked
+  safe desktop automation before `drawing33.dwg` and the Phase 9 acceptance
+  sequence could run. No live success claim is made from that attempt.
 - Status: **NO-GO for Phase 9 Engineering GO and Customer Pilot** until the
-  post-approval durable lifecycle is completed and live R25 evidence records
-  auto-dimension, plate creation, cleanup audit, restart, and reconnect without
-  duplicate effects.
+  live R25 evidence records auto-dimension, plate creation, cleanup audit,
+  restart, and reconnect without duplicate effects.

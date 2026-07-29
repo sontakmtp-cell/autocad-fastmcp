@@ -36,11 +36,14 @@ DeviceResolver = Callable[[str, str], Awaitable[dict[str, Any]]]
 SnapshotResolver = Callable[[str, str, str], Awaitable[dict[str, Any]]]
 ProgramRevisionResolver = Callable[[str, str, int], Awaitable[dict[str, Any]]]
 WritePreviewExecutor = Callable[
-    [str, str, str, str, dict[str, Any], str],
+    [str, str, str, str, dict[str, Any], str, tuple[str, ...]],
     Awaitable[dict[str, Any]],
 ]
 CommitRequestExecutor = Callable[
-    [str, str, str], Awaitable[dict[str, Any]]
+    [str, str, str, tuple[str, ...]], Awaitable[dict[str, Any]]
+]
+CommitStatusResolver = Callable[
+    [str, str], Awaitable[dict[str, Any]]
 ]
 
 
@@ -68,6 +71,8 @@ class WorkflowApplicationService:
         program_revision_resolver: ProgramRevisionResolver | None = None,
         write_preview_executor: WritePreviewExecutor | None = None,
         commit_request_executor: CommitRequestExecutor | None = None,
+        action_runner: Any | None = None,
+        commit_status_resolver: CommitStatusResolver | None = None,
     ) -> None:
         self.repository = repository
         self.catalog_repository = catalog_repository
@@ -83,10 +88,221 @@ class WorkflowApplicationService:
         self.program_revision_resolver = program_revision_resolver
         self.write_preview_executor = write_preview_executor
         self.commit_request_executor = commit_request_executor
+        self.action_runner = action_runner
+        self.commit_status_resolver = commit_status_resolver
 
     def initialize_catalog(self) -> None:
         if self.catalog_enabled:
             self.catalog_repository.import_catalog(self.catalog)
+
+    async def reconcile_restart(self) -> None:
+        if self.action_runner is None:
+            return
+        await self.action_runner.reconcile_restart()
+        for run in await self.repository.list_nonterminal_runs():
+            try:
+                self._require_continuation_allowed(run)
+            except WorkflowServiceError:
+                await self.repository.security_revoke_run(
+                    owner_subject=run["owner_subject"], run_id=run["run_id"]
+                )
+                continue
+            actions = await self.repository.list_actions(
+                run["owner_subject"], run["run_id"]
+            )
+            completed = {
+                action["action_kind"]: action
+                for action in actions
+                if action["state"] == "completed"
+            }
+            if (
+                run["state"] == "running"
+                and "preview" in completed
+            ):
+                manifest = self._published_manifest(
+                    run["skill_id"], run["skill_version"]
+                )
+                await self._advance_write_preview(
+                    owner_subject=run["owner_subject"],
+                    run=run,
+                    manifest=manifest,
+                    snapshot={},
+                    inputs=run["inputs"],
+                    idempotency_key=run["idempotency_key"],
+                    scopes=tuple(completed["preview"]["payload"]["scopes"]),
+                )
+            run = await self.repository.get_run(
+                run["owner_subject"], run["run_id"]
+            )
+            if (
+                run
+                and run["state"] == "running"
+                and "commit" in completed
+            ):
+                payload = completed["commit"]["payload"]
+                await self._request_commit(
+                    owner_subject=run["owner_subject"],
+                    run=run,
+                    preview_id=str(payload["preview_id"]),
+                    idempotency_key=completed["commit"][
+                        "idempotency_key"
+                    ],
+                    scopes=tuple(payload["scopes"]),
+                )
+            run = await self.repository.get_run(
+                run["owner_subject"], run["run_id"]
+            )
+            if (
+                run
+                and run["state"]
+                in {"waiting_for_trusted_approval", "waiting_for_job"}
+            ):
+                await self._reconcile_commit_status(run)
+
+    async def maintenance_once(self) -> None:
+        if self.action_runner is None:
+            return
+        for _ in range(64):
+            if not await self.action_runner.run_once():
+                break
+        await self.reconcile_restart()
+
+    async def _reconcile_commit_status(self, run: dict[str, Any]) -> None:
+        if self.commit_status_resolver is None:
+            return
+        steps = {
+            step["step_id"]: step
+            for step in await self.repository.list_steps(
+                run["owner_subject"], run["run_id"]
+            )
+        }
+        commit = steps.get("commit")
+        intent = ((commit or {}).get("output_ref") or {}).get("result") or {}
+        intent_id = intent.get("intent_id")
+        if not isinstance(intent_id, str):
+            return
+        status = await self.commit_status_resolver(
+            run["owner_subject"], intent_id
+        )
+        state = status.get("state")
+        if state in {"awaiting_approval", "ready"}:
+            return
+        if state in {"queued", "dispatched", "acknowledged", "running"}:
+            if run["state"] == "waiting_for_trusted_approval":
+                await self.repository.resolve_open_waits_system(
+                    owner_subject=run["owner_subject"],
+                    run_id=run["run_id"],
+                    reason="approval_released",
+                )
+                waiting = await self.repository.transition_run(
+                    owner_subject=run["owner_subject"],
+                    run_id=run["run_id"],
+                    expected_state=run["state"],
+                    expected_version=run["state_version"],
+                    target="waiting_for_job",
+                    current_step_id="commit",
+                    event_type="commit_job_released",
+                )
+                await self.repository.create_wait(
+                    owner_subject=run["owner_subject"],
+                    run_id=run["run_id"],
+                    step_id="commit",
+                    wait_kind="job",
+                    expected_state_version=waiting["state_version"],
+                    response_schema={
+                        "type": "object",
+                        "additionalProperties": False,
+                        "properties": {},
+                    },
+                )
+            return
+        if state in {"outcome_unknown", "reconnect_pending"}:
+            if run["state"] != "waiting_for_recovery":
+                await self.repository.resolve_open_waits_system(
+                    owner_subject=run["owner_subject"],
+                    run_id=run["run_id"],
+                    reason="commit_recovery_required",
+                )
+                await self.repository.transition_run(
+                    owner_subject=run["owner_subject"],
+                    run_id=run["run_id"],
+                    expected_state=run["state"],
+                    expected_version=run["state_version"],
+                    target="waiting_for_recovery",
+                    current_step_id="commit",
+                    event_type="commit_recovery_required",
+                )
+            return
+        if state != "succeeded":
+            await self.repository.mark_run_needs_attention(
+                owner_subject=run["owner_subject"],
+                run_id=run["run_id"],
+                reason=f"commit_{state or 'status_missing'}",
+            )
+            return
+        await self.repository.resolve_open_waits_system(
+            owner_subject=run["owner_subject"],
+            run_id=run["run_id"],
+            reason="commit_succeeded",
+        )
+        if commit["state"] == "waiting":
+            commit = await self.repository.transition_step(
+                owner_subject=run["owner_subject"],
+                run_id=run["run_id"],
+                step_id="commit",
+                attempt=1,
+                expected_state="waiting",
+                expected_version=commit["state_version"],
+                target="succeeded",
+                output_ref={"result": status},
+            )
+        current = await self.repository.get_run(
+            run["owner_subject"], run["run_id"]
+        )
+        if current["state"] in {
+            "waiting_for_trusted_approval",
+            "waiting_for_job",
+        }:
+            current = await self.repository.transition_run(
+                owner_subject=run["owner_subject"],
+                run_id=run["run_id"],
+                expected_state=current["state"],
+                expected_version=current["state_version"],
+                target="running",
+                current_step_id="validate",
+                event_type="commit_succeeded",
+            )
+        for step_id in ("validate", "finish"):
+            steps = {
+                step["step_id"]: step
+                for step in await self.repository.list_steps(
+                    run["owner_subject"], run["run_id"]
+                )
+            }
+            if steps[step_id]["state"] == "pending":
+                await self._ready_step(
+                    run["owner_subject"], run["run_id"], step_id
+                )
+            if steps[step_id]["state"] != "succeeded":
+                await self._complete_ready_step(
+                    run["owner_subject"],
+                    run["run_id"],
+                    step_id,
+                    {"result": status},
+                )
+        current = await self.repository.get_run(
+            run["owner_subject"], run["run_id"]
+        )
+        if current["state"] == "running":
+            await self.repository.transition_run(
+                owner_subject=run["owner_subject"],
+                run_id=run["run_id"],
+                expected_state="running",
+                expected_version=current["state_version"],
+                target="succeeded",
+                current_step_id="finish",
+                event_type="workflow_succeeded",
+            )
 
     async def list_skills(
         self,
@@ -244,6 +460,26 @@ class WorkflowApplicationService:
             "planner_registry_hash": planner_hash,
         }
         try:
+            materialized_steps = [
+                {
+                    "step_id": step.step_id,
+                    "attempt": 1,
+                    "kind": step.kind,
+                    "input_ref": {
+                        key: (
+                            value.model_dump(mode="json")
+                            if hasattr(value, "model_dump")
+                            else value
+                        )
+                        for key, value in step.input_bindings.items()
+                    },
+                }
+                for step in workflow.steps
+            ]
+            first = sorted(
+                (step for step in workflow.steps if not step.depends_on),
+                key=lambda step: step.step_id,
+            )[0]
             run, replay = await self.repository.create_run(
                 owner_subject=owner_subject,
                 actor_issuer="opaque-owner-key/1",
@@ -263,46 +499,10 @@ class WorkflowApplicationService:
                 initial_document_revision=(
                     str(snapshot["document_revision"]) if snapshot else None
                 ),
+                steps=materialized_steps,
+                first_step_id=first.step_id,
             )
             if not replay:
-                for step in workflow.steps:
-                    await self.repository.create_step(
-                        owner_subject=owner_subject,
-                        run_id=run["run_id"],
-                        step_id=step.step_id,
-                        attempt=1,
-                        kind=step.kind,
-                        input_ref={
-                            key: (
-                                value.model_dump(mode="json")
-                                if hasattr(value, "model_dump")
-                                else value
-                            )
-                            for key, value in step.input_bindings.items()
-                        },
-                    )
-                first = sorted(
-                    (step for step in workflow.steps if not step.depends_on),
-                    key=lambda step: step.step_id,
-                )[0]
-                await self.repository.transition_step(
-                    owner_subject=owner_subject,
-                    run_id=run["run_id"],
-                    step_id=first.step_id,
-                    attempt=1,
-                    expected_state="pending",
-                    expected_version=0,
-                    target="ready",
-                )
-                run = await self.repository.transition_run(
-                    owner_subject=owner_subject,
-                    run_id=run["run_id"],
-                    expected_state="created",
-                    expected_version=0,
-                    target="running",
-                    current_step_id=first.step_id,
-                    event_type="started",
-                )
                 if manifest.skill_id == "drawing.cleanup-audit":
                     run = await self._advance_cleanup_audit(
                         owner_subject=owner_subject,
@@ -315,10 +515,11 @@ class WorkflowApplicationService:
                         owner_subject=owner_subject,
                         run=run,
                         manifest=manifest,
-                        snapshot=snapshot or {},
-                        inputs=inputs,
-                        idempotency_key=idempotency_key,
-                    )
+                    snapshot=snapshot or {},
+                    inputs=inputs,
+                    idempotency_key=idempotency_key,
+                    scopes=scopes,
+                )
             return self._run_response(run, replay=replay)
         except RepositoryConflict as error:
             raise WorkflowServiceError(str(error)) from error
@@ -370,6 +571,7 @@ class WorkflowApplicationService:
         expected_state_version: int,
         idempotency_key: str,
         payload: dict[str, Any] | None = None,
+        scopes: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         if action not in _CONTROL_ACTIONS:
             raise WorkflowServiceError("invalid_request")
@@ -377,9 +579,52 @@ class WorkflowApplicationService:
         run = await self.repository.get_run(owner_subject, run_id)
         if run is None:
             raise WorkflowServiceError("not_found")
-        if run["state_version"] != expected_state_version:
-            raise WorkflowServiceError("stale_workflow_state")
         try:
+            manifest = self.catalog.resolve(
+                run["skill_id"], run["skill_version"]
+            )
+            continuation_status = self.catalog_repository.get_status(
+                run["skill_id"], run["skill_version"]
+            )
+        except (CatalogError, CatalogLifecycleError) as error:
+            raise WorkflowServiceError("not_found") from error
+        if continuation_status in {"security_revoked", "withdrawn"}:
+            await self.repository.security_revoke_run(
+                owner_subject=owner_subject, run_id=run_id
+            )
+            raise WorkflowServiceError(
+                "skill_security_revoked"
+                if continuation_status == "security_revoked"
+                else "skill_withdrawn"
+            )
+        if (
+            "autocad.write" in manifest.required_scopes
+            and action != "cancel"
+            and "autocad.write" not in scopes
+        ):
+            raise WorkflowServiceError("insufficient_scope")
+        try:
+            command, replay = await self.repository.begin_control_command(
+                owner_subject=owner_subject,
+                run_id=run_id,
+                action=action,
+                expected_state_version=expected_state_version,
+                idempotency_key=idempotency_key,
+                payload=payload or {},
+            )
+            if replay and command["state"] == "completed":
+                return command["result"]
+
+            async def finish(value: dict[str, Any]) -> dict[str, Any]:
+                await self.repository.complete_control_command(
+                    owner_subject=owner_subject,
+                    idempotency_key=idempotency_key,
+                    result=value,
+                )
+                return value
+
+            if replay and run["state_version"] != expected_state_version:
+                return await finish(self._run_response(run))
             if action == "cancel":
                 result = await self.repository.cancel_run(
                     owner_subject=owner_subject,
@@ -387,35 +632,43 @@ class WorkflowApplicationService:
                     expected_state=run["state"],
                     expected_version=expected_state_version,
                 )
-                return self._run_response(result)
+                return await finish(self._run_response(result))
             if action == "submit_input":
                 wait = await self.repository.current_wait(owner_subject, run_id)
+                if wait is None and replay:
+                    wait = await self.repository.wait_resolved_by_command(
+                        owner_subject, run_id, idempotency_key
+                    )
                 if wait is None or wait["wait_kind"] != "user_input":
                     raise WorkflowServiceError("invalid_workflow_state")
                 response = payload or {}
                 _validate_schema(wait["response_schema"], response)
-                await self.repository.resolve_wait(
-                    owner_subject=owner_subject,
-                    run_id=run_id,
-                    wait_id=wait["wait_id"],
-                    expected_state_version=expected_state_version,
-                    response_schema_digest=wait["response_schema_digest"],
-                    response=response,
-                    idempotency_key=idempotency_key,
-                )
+                if wait.get("resolution") is None:
+                    await self.repository.resolve_wait(
+                        owner_subject=owner_subject,
+                        run_id=run_id,
+                        wait_id=wait["wait_id"],
+                        expected_state_version=expected_state_version,
+                        response_schema_digest=wait["response_schema_digest"],
+                        response=response,
+                        idempotency_key=idempotency_key,
+                    )
                 if run["skill_id"] == "drawing.cleanup-audit":
                     result = await self._finish_cleanup_audit(
                         owner_subject=owner_subject, run=run
                     )
-                    return self._run_response(result)
+                    return await finish(self._run_response(result))
                 if run["skill_id"] == "mechanical.auto-dimension-overall":
                     result = await self._request_auto_dimension_commit(
                         owner_subject=owner_subject,
                         run=run,
                         idempotency_key=idempotency_key,
+                        scopes=scopes,
                     )
-                    return self._run_response(result)
+                    return await finish(self._run_response(result))
             elif action == "attach_program_revision":
+                if run["state"] != "waiting_for_program_revision":
+                    raise WorkflowServiceError("invalid_workflow_state")
                 if self.program_revision_resolver is None or not isinstance(
                     payload, dict
                 ):
@@ -429,6 +682,8 @@ class WorkflowApplicationService:
                 )
             elif action == "retry_safe_step":
                 raise WorkflowServiceError("feature_disabled")
+            elif action == "resume" and run["state"] != "paused":
+                raise WorkflowServiceError("invalid_workflow_state")
             result = await self.repository.transition_run(
                 owner_subject=owner_subject,
                 run_id=run_id,
@@ -438,7 +693,7 @@ class WorkflowApplicationService:
                 current_step_id=run.get("current_step_id"),
                 event_type=action,
             )
-            return self._run_response(result)
+            return await finish(self._run_response(result))
         except RepositoryConflict as error:
             raise WorkflowServiceError(str(error)) from error
 
@@ -556,18 +811,62 @@ class WorkflowApplicationService:
         snapshot: dict[str, Any],
         inputs: dict[str, Any],
         idempotency_key: str,
+        scopes: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         if self.write_preview_executor is None:
             raise WorkflowServiceError("feature_disabled")
         try:
-            output = await self.write_preview_executor(
-                owner_subject,
-                manifest.skill_id,
-                run["device_id"],
-                run["initial_snapshot_id"],
-                inputs,
-                idempotency_key,
-            )
+            if self.action_runner is None:
+                output = await self.write_preview_executor(
+                    owner_subject,
+                    manifest.skill_id,
+                    run["device_id"],
+                    run["initial_snapshot_id"],
+                    inputs,
+                    idempotency_key,
+                    scopes,
+                )
+            else:
+                await self.repository.insert_action(
+                    owner_subject=owner_subject,
+                    run_id=run["run_id"],
+                    step_id="preview",
+                    attempt=1,
+                    action_kind="preview",
+                    payload={
+                        "owner_subject": owner_subject,
+                        "skill_id": manifest.skill_id,
+                        "skill_version": manifest.version,
+                        "device_id": run["device_id"],
+                        "snapshot_id": run["initial_snapshot_id"],
+                        "inputs": inputs,
+                        "scopes": list(scopes),
+                    },
+                    retry_class="read",
+                    effect_class="read",
+                )
+                await self.action_runner.run_once()
+                action = next(
+                    item
+                    for item in await self.repository.list_actions(
+                        owner_subject, run["run_id"]
+                    )
+                    if item["action_kind"] == "preview"
+                )
+                if action["state"] != "completed" or not isinstance(
+                    action.get("result"), dict
+                ):
+                    if action.get("error_code") in {
+                        "skill_security_revoked",
+                        "skill_withdrawn",
+                    }:
+                        return await self.repository.security_revoke_run(
+                            owner_subject=owner_subject, run_id=run["run_id"]
+                        )
+                    return await self.repository.get_run(
+                        owner_subject, run["run_id"]
+                    )
+                output = action["result"]
         except Exception as error:
             raise WorkflowServiceError(
                 getattr(error, "code", "backend_error")
@@ -584,6 +883,8 @@ class WorkflowApplicationService:
                     owner_subject, run["run_id"]
                 )
             }
+            if steps[step_id]["state"] == "succeeded":
+                continue
             if steps[step_id]["state"] == "pending":
                 await self._ready_step(owner_subject, run["run_id"], step_id)
             await self._complete_ready_step(
@@ -643,6 +944,7 @@ class WorkflowApplicationService:
             run=run,
             preview_id=str(output["preview"]["preview_id"]),
             idempotency_key=f"{idempotency_key}:commit",
+            scopes=scopes,
         )
 
     async def _request_auto_dimension_commit(
@@ -651,6 +953,7 @@ class WorkflowApplicationService:
         owner_subject: str,
         run: dict[str, Any],
         idempotency_key: str,
+        scopes: tuple[str, ...],
     ) -> dict[str, Any]:
         steps = {
             step["step_id"]: step
@@ -684,6 +987,7 @@ class WorkflowApplicationService:
             run=running,
             preview_id=preview["preview_id"],
             idempotency_key=idempotency_key,
+            scopes=scopes,
         )
 
     async def _request_commit(
@@ -693,23 +997,68 @@ class WorkflowApplicationService:
         run: dict[str, Any],
         preview_id: str,
         idempotency_key: str,
+        scopes: tuple[str, ...] = (),
     ) -> dict[str, Any]:
         if self.commit_request_executor is None:
             raise WorkflowServiceError("feature_disabled")
-        await self._ready_step(owner_subject, run["run_id"], "commit")
-        commit_step = await self.repository.transition_step(
-            owner_subject=owner_subject,
-            run_id=run["run_id"],
-            step_id="commit",
-            attempt=1,
-            expected_state="ready",
-            expected_version=1,
-            target="running",
-        )
-        try:
-            intent = await self.commit_request_executor(
-                owner_subject, preview_id, idempotency_key
+        self._require_continuation_allowed(run)
+        steps = {
+            step["step_id"]: step
+            for step in await self.repository.list_steps(
+                owner_subject, run["run_id"]
             )
+        }
+        commit_step = steps["commit"]
+        if commit_step["state"] == "pending":
+            await self._ready_step(owner_subject, run["run_id"], "commit")
+            commit_step = await self.repository.transition_step(
+                owner_subject=owner_subject,
+                run_id=run["run_id"],
+                step_id="commit",
+                attempt=1,
+                expected_state="ready",
+                expected_version=1,
+                target="running",
+            )
+        elif commit_step["state"] != "running":
+            raise WorkflowServiceError("invalid_workflow_state")
+        try:
+            if self.action_runner is None:
+                intent = await self.commit_request_executor(
+                    owner_subject, preview_id, idempotency_key, scopes
+                )
+            else:
+                await self.repository.insert_action(
+                    owner_subject=owner_subject,
+                    run_id=run["run_id"],
+                    step_id="commit",
+                    attempt=1,
+                    action_kind="commit",
+                    payload={
+                        "owner_subject": owner_subject,
+                        "skill_id": run["skill_id"],
+                        "skill_version": run["skill_version"],
+                        "preview_id": preview_id,
+                        "scopes": list(scopes),
+                    },
+                    retry_class="not_started",
+                    effect_class="write",
+                )
+                await self.action_runner.run_once()
+                action = next(
+                    item
+                    for item in await self.repository.list_actions(
+                        owner_subject, run["run_id"]
+                    )
+                    if item["action_kind"] == "commit"
+                )
+                if action["state"] != "completed" or not isinstance(
+                    action.get("result"), dict
+                ):
+                    return await self.repository.get_run(
+                        owner_subject, run["run_id"]
+                    )
+                intent = action["result"]
         except Exception as error:
             raise WorkflowServiceError(
                 getattr(error, "code", "backend_error")
@@ -746,6 +1095,18 @@ class WorkflowApplicationService:
             },
         )
         return waiting
+
+    def _require_continuation_allowed(self, run: dict[str, Any]) -> None:
+        try:
+            status = self.catalog_repository.get_status(
+                run["skill_id"], run["skill_version"]
+            )
+        except CatalogLifecycleError as error:
+            raise WorkflowServiceError("not_found") from error
+        if status == "security_revoked":
+            raise WorkflowServiceError("skill_security_revoked")
+        if status == "withdrawn":
+            raise WorkflowServiceError("skill_withdrawn")
 
     async def _finish_cleanup_audit(
         self, *, owner_subject: str, run: dict[str, Any]

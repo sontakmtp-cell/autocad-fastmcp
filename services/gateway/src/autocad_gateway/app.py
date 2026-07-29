@@ -1317,6 +1317,7 @@ def build_mcp_server(
                 owner_subject=principal.subject, run_id=run_id, action=action,
                 expected_state_version=expected_state_version,
                 idempotency_key=idempotency_key, payload=payload,
+                scopes=principal.scopes,
             )), correlation_id)
 
     async def _call_cad_observe(

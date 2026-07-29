@@ -7,7 +7,7 @@
   migration/repository, workflow state/runner, public FastMCP facade, Portal
   views, feature-flag composition, and Phase 6--8 service adapters.
 - Threat model: [`phase9-threat-model.md`](phase9-threat-model.md).
-- Tests: `python scripts/test-phase9-conformance.py` — **41 passed**. Full
+- Tests: `python scripts/test-phase9-conformance.py` — **50 passed**. Full
   regression and Phase 8 conformance results are recorded in
   [`Phase-9.md`](../architecture/Phase-9.md).
 
@@ -23,7 +23,7 @@ families:
 | Arbitrary code/path/URL/plugin/tool execution | Strict contracts reject execution-shaped fields and forbidden step kinds; pure planner module has no I/O imports. | Covered by unit tests; no execution sink found. |
 | Catalog tampering/default drift | Fixed-root asset digest verification, release digest verification, immutable version/definition records, and run pins. | Covered by unit and public-resource tests. |
 | Cross-owner workflow access | Run mutation/read methods include `owner_subject` lookup and cross-owner test returns the safe `not_found` conflict. | Simulated repository coverage only. |
-| Duplicate/replayed CAD effect | CAS action claim, durable dispatch-start record, deterministic keys, no reclaim of started write, and `outcome_unknown` to recovery. | Simulated repository/runner coverage only. |
+| Duplicate/replayed CAD effect | Atomic run/DAG initialization, CAS action claim, durable dispatch-start/child identity, conflicting-terminal rejection, no reclaim of started write, cancellation of unstarted actions, and `outcome_unknown` to recovery. | Covered by failure-injection, restart, cancellation, and duplicate-completion tests. |
 | Approval/risk/capability injection | Contract tests reject trusted/execution-shaped extras; the public facade cannot approve, and commit requests use the existing Phase 7 service. | Covered by unit/public-surface tests; live evidence pending. |
 | Delete/topology/LT/mixed checkpoints | Reference assets use audit-only cleanup and bounded create workflows; no new Agent/Host contract. | Static asset review only. |
 
@@ -31,13 +31,13 @@ families:
 
 This is not a final Phase 9 Engineering GO. Owner-safe `not_found`, the bounded
 four-tool surface, rejection of approval/trusted fields, policy/capability
-checks, and default-off flags have automated coverage. The implementation still
-lacks durable post-approval reconciliation from the existing Phase 7 commit
-through job/recovery, validation, and terminal workflow completion. Current
-behavior fails closed, but restart/reconnect and no-duplicate-effect acceptance
-for that path remain release blockers.
+checks, default-off flags, atomic run creation, idempotent control replay,
+revocation during continuation, public preview/commit outbox dispatch, and
+durable post-approval reconciliation through existing Phase 7
+intent/job/receipt state have automated coverage. Restart/reconnect and
+no-duplicate-effect acceptance still require live R25 evidence.
 
 Portal unit/E2E tests pass, but no live AutoCAD or public OAuth/ChatGPT claim is
-made here. Until the durable lifecycle and required live evidence exist, all
-Phase 9 feature flags remain default-off and the status is **NO-GO for
-Engineering GO / Customer Pilot**.
+made here. Until the required live evidence exists, all Phase 9 feature flags
+remain default-off and the status is **NO-GO for Engineering GO / Customer
+Pilot**.

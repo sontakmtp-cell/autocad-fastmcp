@@ -91,9 +91,10 @@ async def test_migrations_are_current_and_owner_filters_fail_closed(repository):
         6,
         7,
         8,
-        9,
-        10,
-    }
+            9,
+            10,
+            11,
+        }
     assert repository.database.migrations_valid is True
     assert repository.database.verify_migration_state() is True
     assert [item["device_id"] for item in await repository.list_devices("owner")] == [
