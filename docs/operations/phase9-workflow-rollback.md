@@ -33,3 +33,24 @@ with explicit LINE/LWPOLYLINE targets; plate pattern with bounded variables and
 repeat; cleanup audit with unchanged drawing; preview before approval; receipt,
 validation, and eligible rollback; restart/reconnect; and no duplicate effect
 on replay. A headless result is not live R25 acceptance.
+
+## Evidence recorded on 2026-07-29
+
+- [`phase9-live-r25-effect-path-20260729.json`](../architecture/evidence/phase9-live-r25-effect-path-20260729.json)
+  records signed lab R25 preview/commit/validate/rollback drills for
+  auto-dimension (`46 -> 48 -> 46`) and plate creation
+  (`46 -> 55 -> 46`), plus a cleanup audit with an unchanged document
+  revision.
+- [`phase9-live-r25-host-restart-20260729.json`](../architecture/evidence/phase9-live-r25-host-restart-20260729.json)
+  records a manual Save/close/reopen cycle that restored revision
+  `7348076429262431`, receipt
+  `AUTOCAD_MCP_PHASE8_337b9e601d42747fdd96f770da61505c` and checkpoint
+  `AUTOCAD_MCP_PHASE8_CP_5ab618f311da37915addc729cb7d60c1`; rollback
+  validation passed, the entity count returned from `48` to `46`, and every
+  baseline entity handle/fingerprint pair was restored.
+
+These artifacts prove the existing Host effect/recovery path only. A live
+Phase 9 Gateway workflow across Gateway restart, Agent reconnect and replay
+with stable action/job/intent identities is still required. Cleanup report
+retrieval across a Gateway restart and public OAuth/ChatGPT operation also
+remain unverified. Keep all Phase 9 flags default-off.

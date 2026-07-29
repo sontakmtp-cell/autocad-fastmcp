@@ -1722,12 +1722,35 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   - root Python: **414 passed, 1 skipped**;
   - Gateway: **317 passed**;
   - contracts: **130 passed**;
-  - Desktop Agent: **142 passed**;
-  - Managed .NET: **72 passed**;
+  - Desktop Agent: **144 passed**;
+  - Managed .NET: **74 passed**;
   - Portal unit: **35 passed**;
   - Portal E2E: **10 passed**;
   - Phase 8 conformance: **39 passed** plus **22** Host contract tests.
 - Portal production build completed successfully.
+
+### Live R25 evidence
+
+- [`phase9-live-r25-effect-path-20260729.json`](evidence/phase9-live-r25-effect-path-20260729.json)
+  records a signed, lab-only AutoCAD Mechanical 2025 R25 run on
+  `drawing33.dwg`. The auto-dimension reference plan preserved the drawing
+  during preview, committed two dimensions (`46 -> 48` entities), validated
+  its receipt/checkpoint and rolled back to `46`. The plate reference plan
+  committed nine create-only entities (`46 -> 55`) and rolled back to `46`.
+  The cleanup reference planner remained read-only, left the document revision
+  unchanged and returned a bounded duplicate report.
+- [`phase9-live-r25-host-restart-20260729.json`](evidence/phase9-live-r25-host-restart-20260729.json)
+  records the separately rebuilt signed lab Host. After the operator saved and
+  closed AutoCAD, reopening the DWG restored the exact committed document
+  revision and durable receipt/checkpoint. Rollback then removed exactly the
+  two created dimensions (`48 -> 46`), validation passed, and all 46 baseline
+  entity handle/fingerprint pairs matched the pre-commit snapshot.
+- The live run found and fixed two R25 defects before the retained pass:
+  entity snapshots lacked bounded LINE/CIRCLE/LWPOLYLINE geometry, and
+  document revisions did not survive a save/restart. It also corrected the
+  acceptance harness to read the receipt-query result envelope. Failed
+  drawings were retained separately outside the repository; the committed
+  artifacts above contain only the successful retests.
 
 ### Security and operational evidence
 
@@ -1739,7 +1762,7 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   documents default-off rollout, security revocation, recovery-first handling
   for unknown writes, and the retained-artifact live checklist.
 
-### Unverified / not an acceptance claim
+### Remaining unverified / not an acceptance claim
 
 - The public surface exposes only the four bounded workflow tools and
   catalog/run resources. No per-skill tool was added.
@@ -1750,12 +1773,16 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   workflow outbox runner. The workflow stores the Phase 7 intent identity and
   reconciles existing approval/job/receipt state through recovery, validation,
   and terminal completion; it does not create a second CAD execution path.
-- This evidence does **not** claim public OAuth/ChatGPT end-to-end operation or
-  a live AutoCAD Mechanical 2025 R25 workflow run.
-- A local live attempt built the Phase 8 R25 Managed Host and installed the
-  unsigned current-user lab bundle, but an unrelated DeskIn UAC prompt blocked
-  safe desktop automation before `drawing33.dwg` and the Phase 9 acceptance
-  sequence could run. No live success claim is made from that attempt.
+- The retained live artifacts exercise the three Phase 9 reference planners
+  through the existing Phase 8 preview/approval/commit/validate/rollback
+  effect path. They do **not** claim a live public Phase 9 Gateway workflow
+  run, Gateway restart, Agent reconnect, or public OAuth/ChatGPT end-to-end
+  operation.
+- The current Agent is paired to the existing remote Gateway, while this
+  worktree has no approved local `phase9_workflow` identity/pairing profile or
+  live operator harness. Re-pairing the production Agent or deploying this
+  unmerged branch was not performed.
 - Status: **NO-GO for Phase 9 Engineering GO and Customer Pilot** until the
-  live R25 evidence records auto-dimension, plate creation, cleanup audit,
-  restart, and reconnect without duplicate effects.
+  live Gateway evidence records a durable workflow run across Gateway restart
+  and Agent reconnect, including stable child identities and no duplicate CAD
+  effect. Public OAuth/ChatGPT remains a separate unverified claim.

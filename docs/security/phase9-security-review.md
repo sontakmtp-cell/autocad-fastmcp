@@ -7,7 +7,7 @@
   migration/repository, workflow state/runner, public FastMCP facade, Portal
   views, feature-flag composition, and Phase 6--8 service adapters.
 - Threat model: [`phase9-threat-model.md`](phase9-threat-model.md).
-- Tests: `python scripts/test-phase9-conformance.py` — **84 passed**. Full
+- Tests: `python scripts/test-phase9-conformance.py` — **87 passed**. Full
   regression and Phase 8 conformance results are recorded in
   [`Phase-9.md`](../architecture/Phase-9.md).
 
@@ -23,8 +23,8 @@ families:
 | Arbitrary code/path/URL/plugin/tool execution | Strict contracts reject execution-shaped fields and forbidden step kinds; pure planner module has no I/O imports. | Covered by unit tests; no execution sink found. |
 | Catalog tampering/default drift | Fixed-root asset digest verification, release digest verification, immutable version/definition records, and run pins. | Covered by unit and public-resource tests. |
 | Cross-owner workflow access | Run mutation/read methods include `owner_subject` lookup and cross-owner test returns the safe `not_found` conflict. | Simulated repository coverage only. |
-| Duplicate/replayed CAD effect | Atomic run/DAG initialization, deterministic step-driven replay/startup healing, missing-wait repair, durable started-control continuation, CAS action claim, durable dispatch-start/child identity, distinct reconciliation envelopes, conflicting-terminal rejection, no reclaim of started write, cancellation of unstarted actions, and `outcome_unknown` recovery through Phase 7 approval/job/receipt plus validate/finish truth. | Covered by failure-injection, real-port restart, repeated reconciliation, cancellation, and duplicate-completion tests. |
-| Approval/risk/capability injection | Contract tests reject trusted/execution-shaped extras; the public facade cannot approve, and commit requests use the existing Phase 7 service. | Covered by unit/public-surface tests; live evidence pending. |
+| Duplicate/replayed CAD effect | Atomic run/DAG initialization, deterministic step-driven replay/startup healing, missing-wait repair, durable started-control continuation, CAS action claim, durable dispatch-start/child identity, distinct reconciliation envelopes, conflicting-terminal rejection, no reclaim of started write, cancellation of unstarted actions, and `outcome_unknown` recovery through Phase 7 approval/job/receipt plus validate/finish truth. | Covered by failure-injection and repeated reconciliation tests. Live Host save/restart restored the exact receipt/checkpoint and rolled back one auto-dimension effect without duplication; live Gateway restart and Agent reconnect remain pending. |
+| Approval/risk/capability injection | Contract tests reject trusted/execution-shaped extras; the public facade cannot approve, and commit requests use the existing Phase 7 service. | Covered by unit/public-surface tests. The signed R25 lab run exercised the Phase 8 effect path; public OAuth/ChatGPT authorization remains pending. |
 | Delete/topology/LT/mixed checkpoints | Reference assets use audit-only cleanup and bounded create workflows; no new Agent/Host contract. | Static asset review only. |
 
 ## Residual risk and required final checks
@@ -34,10 +34,18 @@ four-tool surface, rejection of approval/trusted fields, policy/capability
 checks, default-off flags, atomic run creation, idempotent control replay,
 revocation during continuation, public preview/commit outbox dispatch, and
 durable post-approval reconciliation through existing Phase 7
-intent/job/receipt state have automated coverage. Restart/reconnect and
-no-duplicate-effect acceptance still require live R25 evidence.
+intent/job/receipt state have automated coverage. The retained R25 evidence
+proves direct Host receipt/checkpoint recovery after a manual save, AutoCAD
+restart and rollback. It does not prove a live Phase 9 Gateway restart, Agent
+reconnect, durable action/outbox transport or public workflow replay.
 
-Portal unit/E2E tests pass, but no live AutoCAD or public OAuth/ChatGPT claim is
-made here. Until the required live evidence exists, all Phase 9 feature flags
+Portal unit/E2E tests and the bounded signed-R25 effect-path drills pass, but no
+public OAuth/ChatGPT claim is made here. Until the missing Gateway
+restart/Agent reconnect/no-duplicate evidence exists, all Phase 9 feature flags
 remain default-off and the status is **NO-GO for Engineering GO / Customer
 Pilot**.
+
+The local revision sidecar is availability/recovery evidence under the existing
+trusted Windows-user boundary, not a hostile-tamper control. Invalid JSON,
+document/fingerprint mismatch or DWG hash mismatch fails closed; sidecar I/O
+failure is isolated from AutoCAD Save and simply disables revision restoration.

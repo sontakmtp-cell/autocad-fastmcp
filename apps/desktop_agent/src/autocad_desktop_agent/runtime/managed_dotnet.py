@@ -335,6 +335,73 @@ class ManagedDotNetCadReadPort:
             return CadPortResult(False, error_code=code)
         return CadPortResult(True, payload=value)
 
+    async def entity_snapshot(self, *, limit: int = 512) -> CadPortResult:
+        try:
+            handshake = await self._ensure_handshake()
+            entities: list[dict[str, Any]] = []
+            cursor = 0
+            revision: dict[str, Any] | None = None
+            document_id = handshake.get("active_document_id")
+            while len(entities) < limit:
+                arguments: dict[str, Any] = {
+                    "cursor": cursor,
+                    "limit": min(200, limit - len(entities)),
+                    "max_scan": 20_000,
+                    "space": "model",
+                    "types": ["LINE", "CIRCLE", "LWPOLYLINE"],
+                }
+                if revision is not None:
+                    arguments["expected_revision"] = revision["revision"]
+                page = await self._command(
+                    "entity.snapshot.page",
+                    document_id=document_id,
+                    arguments=arguments,
+                )
+                page_revision = page.get("revision")
+                page_entities = page.get("entities")
+                if (
+                    not isinstance(page_revision, dict)
+                    or not isinstance(page_revision.get("revision"), int)
+                    or not isinstance(page_entities, list)
+                ):
+                    raise RuntimeError("protocol_mismatch")
+                if revision is None:
+                    revision = page_revision
+                elif page_revision["revision"] != revision["revision"]:
+                    raise RuntimeError("active_document_changed")
+                entities.extend(page_entities)
+                next_cursor = page.get("next_cursor")
+                if next_cursor is None:
+                    return CadPortResult(
+                        True,
+                        payload={
+                            **page,
+                            "revision": revision,
+                            "entities": entities,
+                            "returned_count": len(entities),
+                            "scan_truncated": False,
+                        },
+                    )
+                if not isinstance(next_cursor, int) or next_cursor <= cursor:
+                    raise RuntimeError("protocol_mismatch")
+                cursor = next_cursor
+            return CadPortResult(
+                True,
+                payload={
+                    **page,
+                    "revision": revision,
+                    "entities": entities,
+                    "returned_count": len(entities),
+                    "next_cursor": cursor,
+                    "scan_truncated": True,
+                },
+            )
+        except Exception as error:
+            code = self._safe_error(error)
+            if code in {"managed_host_unavailable", "session_rejected"}:
+                self._handshake = None
+            return CadPortResult(False, error_code=code)
+
     def manifest(self, probe: RuntimeProbe) -> CapabilityManifest:
         if self._handshake is None:
             raise RuntimeError("managed_host_unavailable")

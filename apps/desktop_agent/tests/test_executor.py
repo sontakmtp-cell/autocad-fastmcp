@@ -46,6 +46,38 @@ class ReadPort:
         )
 
 
+class DetailReadPort(ReadPort):
+    async def entity_snapshot(self):
+        return Result(
+            True,
+            {
+                "document_id": "document-1",
+                "database_fingerprint": "database-1",
+                "revision": {"revision": 7},
+                "scan_truncated": False,
+                "entities": [
+                    {
+                        "handle": "2A",
+                        "type": "LINE",
+                        "layer": "0",
+                        "space": "model",
+                        "bounds": {"min": [0, 0, 0], "max": [10, 5, 0]},
+                        "geometry": {"start": [0, 0], "end": [10, 5]},
+                        "geometry_truncated": False,
+                        "fingerprint": "sha256:" + "b" * 64,
+                    }
+                ],
+            },
+        )
+
+
+class TruncatedDetailReadPort(DetailReadPort):
+    async def entity_snapshot(self):
+        result = await super().entity_snapshot()
+        result.payload["scan_truncated"] = True
+        return result
+
+
 def command(**changes):
     payload = {
         "observation_level": "summary",
@@ -76,6 +108,56 @@ async def test_executor_returns_summary_only_without_full_path():
     assert snapshot["entities"] == []
     assert snapshot["revision_evidence"]["commit_safe"] is False
     assert port.health_calls == port.drawing_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_executor_returns_commit_safe_managed_detail_snapshot():
+    port = DetailReadPort()
+    cmd = command(
+        payload={
+            "observation_level": "detail",
+            "include_preview_image": False,
+            "package": PACKAGE,
+        }
+    )
+    cmd = cmd.model_copy(update={"payload_hash": canonical_payload_hash(cmd.payload)})
+
+    snapshot = (
+        await DrawingInfoExecutor(port, PACKAGE, "0.1.0").execute(cmd)
+    )["snapshot"]
+
+    assert snapshot["document_revision"] == "7"
+    assert snapshot["drawing"]["document_id"] == "document-1"
+    assert snapshot["entities"][0]["geometry"] == {
+        "start": [0, 0],
+        "end": [10, 5],
+    }
+    assert snapshot["revision_evidence"] == {
+        "revision_schema": "cad.revision/1",
+        "revision_strength": "database_object_fingerprint",
+        "commit_safe": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_executor_never_marks_truncated_detail_commit_safe():
+    cmd = command(
+        payload={
+            "observation_level": "detail",
+            "include_preview_image": False,
+            "package": PACKAGE,
+        }
+    )
+    cmd = cmd.model_copy(update={"payload_hash": canonical_payload_hash(cmd.payload)})
+
+    snapshot = (
+        await DrawingInfoExecutor(
+            TruncatedDetailReadPort(), PACKAGE, "0.1.0"
+        ).execute(cmd)
+    )["snapshot"]
+
+    assert snapshot["entity_summary"]["truncated"] is True
+    assert snapshot["revision_evidence"]["commit_safe"] is False
 
 
 @pytest.mark.asyncio
