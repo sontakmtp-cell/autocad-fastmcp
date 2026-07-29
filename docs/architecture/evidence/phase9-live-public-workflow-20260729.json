@@ -1,0 +1,109 @@
+{
+  "schema_version": "cad.phase9-live-public-workflow/1",
+  "created_at": "2026-07-29T16:14:20+00:00",
+  "drawing": "drawing33.dwg",
+  "gateway": "https://cad.kythuatvang.com/mcp",
+  "release": "/opt/autocad-mcp/releases/20260729T1900-phase9-livefix",
+  "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+  "document_id": "doc-5f7ace4316b601749ae3981e",
+  "workflow": {
+    "run_id": "wfr:1ac343e54a5746d8b7c190b322351ef5",
+    "skill_id": "mechanical.plate-hole-pattern",
+    "skill_version": "1.0.0",
+    "workflow_digest": "sha256:92d93bed1169675e9058ac44a465827c6c510e50b95671419292cba3341d9efb",
+    "intent_id": "intent-5d3422a92f8774c3398e4b219c75e685e3568d1a",
+    "job_id": "job-4c2021b84ed75a4fbfeb3d49ee0853a18c7b50d4",
+    "receipt_id": "AUTOCAD_MCP_PHASE8_26ff7705e164972a2f63f08768bf44b5",
+    "receipt_digest": "sha256:8e7776425ecb03794e735f8e955cb6a81f10d7759f0ce612ff269f97d95338d8",
+    "effect_identity_digest": "sha256:0370b1c52ae6cab522751864552e10b567aa55dce446c2edd45c422054ecaa52",
+    "checkpoint_id": "AUTOCAD_MCP_PHASE8_CP_6aa1d5b7e4b1f713c851c21f86c65a2a",
+    "checkpoint_digest": "sha256:6fa49072de43c1b5561324fd4ec46f858ed0309cbaab878a17eeffb5e91bff05",
+    "document_revision_before": "7419413270066304",
+    "document_revision_after": "7419413270066305",
+    "created_entity_count": 9,
+    "duplicate": false,
+    "state": "succeeded",
+    "steps": {
+      "pure": "succeeded",
+      "prepare": "succeeded",
+      "preview": "succeeded",
+      "commit": "succeeded",
+      "job": "succeeded",
+      "validate": "succeeded",
+      "finish": "succeeded"
+    }
+  },
+  "gateway_restart": {
+    "service": "autocad-mcp-phase4.service",
+    "main_pid_before": 157127,
+    "main_pid_after": 158007,
+    "agent_session_before": "session-4e4af000-3a24-4718-bff6-3bf50221a2a1",
+    "agent_session_after": "session-dba32eb6-c6a7-4a9f-ab08-f75cceadc4d5",
+    "workflow_state_after_restart": "succeeded",
+    "workflow_step_states_after_restart": {
+      "commit": "succeeded",
+      "job": "succeeded",
+      "validate": "succeeded",
+      "finish": "succeeded"
+    }
+  },
+  "post_restart_observation": {
+    "snapshot_id": "snapshot-command-f00ecfab-4863-44b9-8fa7-856b0ecc96c4",
+    "document_revision": "7419413270066305",
+    "layer": "PHASE9_LIVE_ACCEPTANCE_4",
+    "query_total": 7,
+    "observable_entity_ids": [
+      "A51",
+      "A52",
+      "A53",
+      "A54",
+      "A55",
+      "A56",
+      "A57"
+    ],
+    "note": "The detail snapshot allowlist observes one LWPOLYLINE and six CIRCLE entities; the two committed DIMENSION entities are retained in the receipt.",
+    "duplicate_effect_observed": false
+  },
+  "defects_found_and_retested": [
+    {
+      "code": "approval_binding_mismatch",
+      "root_cause": "The Agent generated a new Host command id instead of forwarding the approved Gateway command id.",
+      "retest": "The final public workflow committed with the exact approved command binding."
+    },
+    {
+      "code": "effect_identity_mismatch",
+      "root_cause": "Python and the R25 Host serialized the approval expiry timestamp at different fractional-second precision.",
+      "retest": "The final receipt effect identity matched and the workflow completed."
+    },
+    {
+      "code": "cad_query_invalid_request",
+      "root_cause": "The public entity projection rejected four valid internal Agent fields.",
+      "retest": "The public cad_query returned all seven observable entities after restart."
+    },
+    {
+      "code": "workflow_job_step_pending",
+      "root_cause": "Post-commit reconciliation completed validate and finish without terminalizing the declared wait_job step.",
+      "retest": "Every declared step in the final workflow is succeeded before and after Gateway restart."
+    }
+  ],
+  "automated_retest": {
+    "phase9_conformance": "90 passed",
+    "gateway": "322 passed",
+    "root_python": "414 passed, 1 skipped",
+    "contracts": "132 passed",
+    "phase8_conformance": "39 passed",
+    "host_contracts": "23 passed"
+  },
+  "claims": {
+    "public_oauth_scoped_gateway_workflow": true,
+    "trusted_portal_approval": true,
+    "live_r25_commit": true,
+    "gateway_restart": true,
+    "agent_reconnect": true,
+    "stable_child_identity": true,
+    "duplicate_cad_effect": false,
+    "chatgpt_agent_end_to_end": false,
+    "customer_pilot": false
+  },
+  "success": true
+}

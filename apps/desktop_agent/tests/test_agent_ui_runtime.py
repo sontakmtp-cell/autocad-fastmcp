@@ -17,6 +17,7 @@ from autocad_desktop_agent.config import AgentConfig, RuntimeMode
 from autocad_desktop_agent.executor import DrawingInfoExecutor
 from autocad_desktop_agent.runtime.broker import RuntimeBroker
 from autocad_desktop_agent.runtime.managed_dotnet import (
+    CadPortResult,
     ManagedDotNetCadReadPort,
     NamedPipeJsonTransport,
     ReloadingManagedDotNetCadReadPort,
@@ -33,6 +34,15 @@ PACKAGE = {
     "version": "3.3-c1",
     "sha256": "a" * 64,
 }
+
+
+def test_managed_host_preserves_safe_preview_mismatch():
+    assert ManagedDotNetCadReadPort._safe_error(
+        RuntimeError("preview_mismatch")
+    ) == "preview_mismatch"
+    assert ManagedDotNetCadReadPort._safe_error(
+        RuntimeError("approval_binding_mismatch")
+    ) == "approval_binding_mismatch"
 
 
 class HostTransport:
@@ -52,6 +62,10 @@ class HostTransport:
         self.public_truncated = public_truncated
         self.calls: list[str] = []
         self.requests: list[dict] = []
+        self.closed = False
+
+    def close(self):
+        self.closed = True
 
     async def request(self, request):
         if self.crash:
@@ -80,9 +94,14 @@ class HostTransport:
                 "release_year": 2025,
                 "series": "R25.0",
                 "active_document_id": "doc-1",
+                "phase8_host_evidence": {
+                    "operation_registry_version": "cad.operation-registry/1",
+                    "operation_registry_hash": f"sha256:{'b' * 64}",
+                },
                 "capabilities": [
                     "host.health",
                     "observe.summary",
+                    "entity.snapshot.v2",
                     "cad.program.preview",
                     "cad.program.commit",
                     "cad.program.validate",
@@ -228,10 +247,14 @@ async def test_managed_adapter_handshake_health_and_summary_are_bounded():
     probe = await adapter.probe()
     health = await adapter.health()
     drawing = await adapter.drawing_info()
+    manifest = adapter.manifest(probe)
 
     assert probe.available is True
     assert probe.product == "AutoCAD Mechanical"
     assert health.ok is True
+    assert "entity.snapshot.v2" in manifest.cad_products[0].capabilities
+    assert manifest.registry_version == "cad.operation-registry/1"
+    assert manifest.operation_registry_hash == f"sha256:{'b' * 64}"
     assert drawing.payload["document_name"].endswith("mat-bich.dwg")
     assert drawing.payload["truncated"] is False
     assert "layers_truncated" not in drawing.payload
@@ -269,6 +292,61 @@ async def test_managed_adapter_sends_typed_program_once():
     deadline_at = transport.requests[-1]["deadline_at"]
     assert deadline_at.endswith("+00:00")
     assert len(deadline_at.split(".", 1)[1].split("+", 1)[0]) == 7
+
+
+async def test_managed_adapter_binds_phase8_plan_document_in_host_envelope():
+    transport = HostTransport()
+    adapter = ManagedDotNetCadReadPort(
+        transport,
+        session_secret=SECRET,
+        agent_version="0.1.0",
+        expected_host_family="R25",
+    )
+
+    result = await adapter.program_command(
+        "program_preview",
+        arguments={
+            "execution_plan": {
+                "schema_version": "cad.execution-plan/1",
+                "document_id": "doc-phase8",
+            },
+            "capability_evidence": [],
+        },
+        deadline_at=(
+            datetime.now(timezone.utc) + timedelta(minutes=1)
+        ).isoformat(),
+    )
+
+    assert result.ok is True
+    assert transport.requests[-1]["payload"]["document_id"] == "doc-phase8"
+
+
+async def test_managed_adapter_binds_approved_command_id_in_host_envelope():
+    transport = HostTransport()
+    adapter = ManagedDotNetCadReadPort(
+        transport,
+        session_secret=SECRET,
+        agent_version="0.1.0",
+        expected_host_family="R25",
+    )
+
+    result = await adapter.program_command(
+        "program_commit",
+        arguments={
+            "execution_plan": {
+                "schema_version": "cad.execution-plan/1",
+                "document_id": "doc-phase8",
+            },
+            "approval_binding": {"command_id": "command-approved"},
+            "capability_evidence": [],
+        },
+        deadline_at=(
+            datetime.now(timezone.utc) + timedelta(minutes=1)
+        ).isoformat(),
+    )
+
+    assert result.ok is True
+    assert transport.requests[-1]["command_id"] == "command-approved"
 
 
 async def test_executor_reports_managed_primary_without_requiring_lisp_host_fields():
@@ -505,6 +583,28 @@ async def test_reloading_adapter_discovers_host_started_after_agent(tmp_path):
     assert (await adapter.health()).ok is True
 
 
+async def test_reloading_adapter_forwards_entity_snapshot_limit(tmp_path):
+    bootstrap = tmp_path / "managed-host-r25.json"
+    bootstrap.write_text('{"generation": 1}', encoding="utf-8")
+    calls: list[int] = []
+
+    class SnapshotAdapter:
+        async def entity_snapshot(self, *, limit: int):
+            calls.append(limit)
+            return CadPortResult(True, payload={"entities": []})
+
+    adapter = ReloadingManagedDotNetCadReadPort(
+        bootstrap,
+        agent_version="0.1.0",
+        adapter_factory=lambda _path: SnapshotAdapter(),
+    )
+
+    result = await adapter.entity_snapshot(limit=37)
+
+    assert result.ok is True
+    assert calls == [37]
+
+
 async def test_reloading_adapter_uses_rotated_bootstrap_after_host_restart(tmp_path):
     bootstrap = tmp_path / "managed-host-r25.json"
     bootstrap.write_text('{"generation": 1}', encoding="utf-8")
@@ -534,6 +634,7 @@ async def test_reloading_adapter_uses_rotated_bootstrap_after_host_restart(tmp_p
 
     assert (await adapter.probe()).available is True
     assert loaded == [first, transports[-1]]
+    assert first.closed is True
 
 
 async def test_named_pipe_timeout_aborts_stall_and_reconnects():

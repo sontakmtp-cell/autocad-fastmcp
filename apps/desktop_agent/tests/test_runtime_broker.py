@@ -153,6 +153,35 @@ def test_invalid_feature_flag_fails_closed(monkeypatch):
         AgentConfig.from_env()
 
 
+def test_phase8_operation_pack_versions_accept_contract_separator(monkeypatch):
+    monkeypatch.setenv("AUTOCAD_AGENT_GATEWAY_WS_URL", "wss://gateway.example/agent/ws")
+    monkeypatch.setenv("AUTOCAD_AGENT_DEVICE_ID", "device-a")
+    monkeypatch.setenv("AUTOCAD_AGENT_PACKAGE_SHA256", "a" * 64)
+    monkeypatch.setenv(
+        "AUTOCAD_MCP_OPERATION_PACK_ALLOWLIST",
+        "compiler.core/1,create-equivalent/1,transform.exact/1",
+    )
+
+    config = AgentConfig.from_env()
+
+    assert config.operation_pack_allowlist == frozenset(
+        {"compiler.core/1", "create-equivalent/1", "transform.exact/1"}
+    )
+
+
+def test_operation_pack_allowlist_rejects_path_like_values(monkeypatch):
+    monkeypatch.setenv("AUTOCAD_AGENT_GATEWAY_WS_URL", "wss://gateway.example/agent/ws")
+    monkeypatch.setenv("AUTOCAD_AGENT_DEVICE_ID", "device-a")
+    monkeypatch.setenv("AUTOCAD_AGENT_PACKAGE_SHA256", "a" * 64)
+    monkeypatch.setenv("AUTOCAD_MCP_OPERATION_PACK_ALLOWLIST", "compiler/../escape")
+
+    with pytest.raises(
+        ValueError,
+        match="AUTOCAD_MCP_OPERATION_PACK_ALLOWLIST contains a malformed operation pack",
+    ):
+        AgentConfig.from_env()
+
+
 def test_phase6_write_flags_fail_closed(monkeypatch):
     monkeypatch.setenv("AUTOCAD_AGENT_GATEWAY_WS_URL", "wss://gateway.example/agent/ws")
     monkeypatch.setenv("AUTOCAD_AGENT_DEVICE_ID", "device-a")
@@ -209,6 +238,61 @@ async def test_write_selection_is_exact_r25_and_never_falls_back():
             required_capability="cad.program.commit",
             write_lock_enabled=True,
         )
+
+
+async def test_phase8_selection_uses_the_pinned_host_registry() -> None:
+    managed = FakeAdapter("managed_dotnet", program=True)
+    config = _config(
+        runtime_mode=RuntimeMode.AUTO,
+        managed_host_enabled=True,
+        program_v0_enabled=True,
+        managed_write_enabled=True,
+        phase6_allowed_device_ids=frozenset({"device-a"}),
+        program_policy_version="phase8-policy/1",
+    )
+    host_registry_hash = f"sha256:{'b' * 64}"
+    original_manifest = managed.manifest(await managed.probe())
+    phase8_manifest = original_manifest.model_copy(
+        update={
+            "registry_version": "cad.operation-registry/1",
+            "operation_registry_hash": host_registry_hash,
+            "cad_products": [
+                original_manifest.cad_products[0].model_copy(
+                    update={
+                        "capabilities": [
+                            *original_manifest.cad_products[0].capabilities,
+                            "cad.program.v1.compile",
+                        ]
+                    }
+                )
+            ],
+        }
+    )
+    managed.manifest = lambda probe: phase8_manifest
+    binding = SimpleNamespace(
+        execution_plan_digest=f"sha256:{'1' * 64}",
+        runtime_id="managed_dotnet",
+        runtime_role="primary",
+        host_family="R25",
+        host_version="0.2.0",
+        package_id="autocad.managed_host.r25",
+        package_version="0.2.0",
+        package_hash=f"sha256:{'a' * 64}",
+        capability_manifest_hash=(
+            f"sha256:{canonical_capability_manifest_hash(phase8_manifest)}"
+        ),
+        operation_registry_version="cad.operation-registry/1",
+        operation_registry_hash=host_registry_hash,
+        policy_version="phase8-policy/1",
+    )
+
+    selection = await RuntimeBroker(config, [managed]).select_write_runtime(
+        binding,
+        required_capability="cad.program.v1.compile",
+        write_lock_enabled=True,
+    )
+
+    assert selection.manifest.operation_registry_hash == host_registry_hash
 
 
 async def test_write_selection_rejects_lock_and_binding_changes():

@@ -38,7 +38,7 @@ const intent: ExecutionIntent = {
   intent_digest: digest("a"),
   created_at: "2026-07-27T08:00:00.000Z",
   expires_at: "2099-07-27T08:10:00.000Z",
-  consent_id: "consent-a-0001",
+  consent_id: null,
   released_job_id: null,
 };
 const consent: Consent = {

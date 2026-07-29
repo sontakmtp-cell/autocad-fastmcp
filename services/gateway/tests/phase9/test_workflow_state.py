@@ -12,6 +12,7 @@ from autocad_gateway.workflows.state import (
 def test_terminal_run_is_immutable_and_illegal_transition_is_rejected():
     validate_run_transition("created", "running")
     validate_run_transition("running", "waiting_for_trusted_approval")
+    validate_run_transition("waiting_for_trusted_approval", "waiting_for_recovery")
     with pytest.raises(InvalidWorkflowTransition):
         validate_run_transition("succeeded", "running")
     with pytest.raises(InvalidWorkflowTransition):

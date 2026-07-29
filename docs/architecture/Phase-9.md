@@ -1705,8 +1705,8 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   transitions, CAS/idempotency, event ordering, action lease/reclaim,
   started-write recovery, waits, runner reconciliation, and the three pure
   reference workflow fixtures.
-- The focused suite was rerun after the fourth PR review hardening:
-  **87 passed**. It includes clean-runner bootstrap, atomic run/DAG failure
+- The focused suite was rerun after the live public-workflow fixes:
+  **90 passed**. It includes clean-runner bootstrap, atomic run/DAG failure
   injection, durable public preview/commit outbox dispatch, lost-response
   control replay, wait-resolution crash recovery, read-only write-control
   denial, mid-run revocation, cancellation of dispatchable actions,
@@ -1720,13 +1720,13 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   redispatch. This is simulated/unit evidence only.
 - Full post-integration regression results:
   - root Python: **414 passed, 1 skipped**;
-  - Gateway: **317 passed**;
-  - contracts: **130 passed**;
+  - Gateway: **322 passed**;
+  - contracts: **132 passed**;
   - Desktop Agent: **144 passed**;
   - Managed .NET: **74 passed**;
   - Portal unit: **35 passed**;
   - Portal E2E: **10 passed**;
-  - Phase 8 conformance: **39 passed** plus **22** Host contract tests.
+  - Phase 8 conformance: **39 passed** plus **23** Host contract tests.
 - Portal production build completed successfully.
 
 ### Live R25 evidence
@@ -1745,6 +1745,14 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   revision and durable receipt/checkpoint. Rollback then removed exactly the
   two created dimensions (`48 -> 46`), validation passed, and all 46 baseline
   entity handle/fingerprint pairs matched the pre-commit snapshot.
+- [`phase9-live-public-workflow-20260729.json`](evidence/phase9-live-public-workflow-20260729.json)
+  records a scoped public-OAuth Phase 9 workflow through discovery, template
+  rendering, prepare, preview, trusted Portal approval, commit, job wait,
+  receipt validation and finish. All declared steps reached `succeeded`. A
+  subsequent Gateway restart produced a new Agent session; the durable run,
+  child intent/job/receipt identities and document revision remained stable,
+  while a fresh public `cad_query` returned the same seven observable plate
+  entities and no duplicate effect.
 - The live run found and fixed two R25 defects before the retained pass:
   entity snapshots lacked bounded LINE/CIRCLE/LWPOLYLINE geometry, and
   document revisions did not survive a save/restart. It also corrected the
@@ -1762,7 +1770,7 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   documents default-off rollout, security revocation, recovery-first handling
   for unknown writes, and the retained-artifact live checklist.
 
-### Remaining unverified / not an acceptance claim
+### Acceptance boundary and remaining unverified claims
 
 - The public surface exposes only the four bounded workflow tools and
   catalog/run resources. No per-skill tool was added.
@@ -1773,16 +1781,17 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   workflow outbox runner. The workflow stores the Phase 7 intent identity and
   reconciles existing approval/job/receipt state through recovery, validation,
   and terminal completion; it does not create a second CAD execution path.
-- The retained live artifacts exercise the three Phase 9 reference planners
-  through the existing Phase 8 preview/approval/commit/validate/rollback
-  effect path. They do **not** claim a live public Phase 9 Gateway workflow
-  run, Gateway restart, Agent reconnect, or public OAuth/ChatGPT end-to-end
-  operation.
-- The current Agent is paired to the existing remote Gateway, while this
-  worktree has no approved local `phase9_workflow` identity/pairing profile or
-  live operator harness. Re-pairing the production Agent or deploying this
-  unmerged branch was not performed.
-- Status: **NO-GO for Phase 9 Engineering GO and Customer Pilot** until the
-  live Gateway evidence records a durable workflow run across Gateway restart
-  and Agent reconnect, including stable child identities and no duplicate CAD
-  effect. Public OAuth/ChatGPT remains a separate unverified claim.
+- The retained live artifacts now cover the three Phase 9 reference planners
+  through the existing Phase 8 effect path and one complete public Phase 9
+  Gateway write workflow using scoped public OAuth and trusted Portal approval.
+  They also cover Gateway restart, Agent reconnect, stable child identities,
+  public observe/query and no duplicate CAD effect.
+- The final live fixes preserve the execution boundary: the Agent forwards the
+  exact approved command identity and canonical approval timestamp to the Host;
+  it does not gain approval authority or execute skill/template content.
+- This does **not** claim a ChatGPT Agent-to-AutoCAD end-to-end run. Customer
+  Pilot remains a separate gate.
+- Status: the previous live-evidence blocker for **Phase 9 Engineering GO is
+  cleared technically**. Formal GO remains pending until these final code,
+  security-review and evidence changes are committed to PR 13. Customer Pilot
+  remains **NO-GO**.

@@ -1,5 +1,278 @@
 {
   "$defs": {
+    "ExecutionBindingV1": {
+      "additionalProperties": false,
+      "properties": {
+        "runtime_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Runtime Id",
+          "type": "string"
+        },
+        "runtime_role": {
+          "const": "primary",
+          "title": "Runtime Role",
+          "type": "string"
+        },
+        "host_family": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Host Family",
+          "type": "string"
+        },
+        "host_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Host Version",
+          "type": "string"
+        },
+        "package_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Package Id",
+          "type": "string"
+        },
+        "package_version": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Package Version",
+          "type": "string"
+        },
+        "package_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Hash",
+          "type": "string"
+        },
+        "capability_manifest_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Manifest Hash",
+          "type": "string"
+        },
+        "operation_registry_version": {
+          "pattern": "^\\S{1,256}$",
+          "title": "Operation Registry Version",
+          "type": "string"
+        },
+        "operation_registry_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Registry Hash",
+          "type": "string"
+        },
+        "policy_version": {
+          "pattern": "^\\S{1,256}$",
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "rollout_policy_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Rollout Policy Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": "cad.execution-binding/1",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "compile_only",
+            "preview",
+            "commit"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "source_schema_version": {
+          "const": "cad.program/1.0",
+          "title": "Source Schema Version",
+          "type": "string"
+        },
+        "source_registry_version": {
+          "enum": [
+            "cad.program/1.0-create-core",
+            "cad.program/1.0-phase8-core"
+          ],
+          "title": "Source Registry Version",
+          "type": "string"
+        },
+        "source_program_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Source Program Id",
+          "type": "string"
+        },
+        "source_program_revision": {
+          "minimum": 1,
+          "title": "Source Program Revision",
+          "type": "integer"
+        },
+        "source_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Digest",
+          "type": "string"
+        },
+        "compiler_id": {
+          "const": "autocad-mcp.gateway.cad-program-v1",
+          "title": "Compiler Id",
+          "type": "string"
+        },
+        "compiler_version": {
+          "const": "1.1.0",
+          "title": "Compiler Version",
+          "type": "string"
+        },
+        "compiler_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Compiler Digest",
+          "type": "string"
+        },
+        "compiler_package_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Compiler Package Hash",
+          "type": "string"
+        },
+        "plan_schema_version": {
+          "const": "cad.execution-plan/1",
+          "title": "Plan Schema Version",
+          "type": "string"
+        },
+        "execution_plan_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Execution Plan Digest",
+          "type": "string"
+        },
+        "expansion_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Expansion Digest",
+          "type": "string"
+        },
+        "effect_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Effect Manifest Digest",
+          "type": "string"
+        },
+        "target_refs_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Target Refs Digest",
+          "type": "string"
+        },
+        "validation_profiles_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Validation Profiles Digest",
+          "type": "string"
+        },
+        "checkpoint_strategy_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Checkpoint Strategy Digest",
+          "type": "string"
+        },
+        "hard_budgets_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Hard Budgets Digest",
+          "type": "string"
+        },
+        "device_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Device Id",
+          "type": "string"
+        },
+        "document_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Document Id",
+          "type": "string"
+        },
+        "source_snapshot_id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+          "title": "Source Snapshot Id",
+          "type": "string"
+        },
+        "document_revision": {
+          "pattern": "^\\S{1,256}$",
+          "title": "Document Revision",
+          "type": "string"
+        },
+        "preview_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preview Id"
+        },
+        "preview_expires_at": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "minLength": 20,
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Preview Expires At"
+        },
+        "receipt_id": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Receipt Id"
+        },
+        "execution_binding_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Execution Binding Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runtime_id",
+        "runtime_role",
+        "host_family",
+        "host_version",
+        "package_id",
+        "package_version",
+        "package_hash",
+        "capability_manifest_hash",
+        "operation_registry_version",
+        "operation_registry_hash",
+        "policy_version",
+        "rollout_policy_digest",
+        "schema_version",
+        "action",
+        "source_schema_version",
+        "source_registry_version",
+        "source_program_id",
+        "source_program_revision",
+        "source_digest",
+        "compiler_id",
+        "compiler_version",
+        "compiler_digest",
+        "compiler_package_hash",
+        "plan_schema_version",
+        "execution_plan_digest",
+        "expansion_digest",
+        "effect_manifest_digest",
+        "target_refs_digest",
+        "validation_profiles_digest",
+        "checkpoint_strategy_digest",
+        "hard_budgets_digest",
+        "device_id",
+        "document_id",
+        "source_snapshot_id",
+        "document_revision",
+        "execution_binding_digest"
+      ],
+      "title": "ExecutionBindingV1",
+      "type": "object"
+    },
     "HostCheckpointEntity": {
       "additionalProperties": false,
       "properties": {
@@ -597,7 +870,15 @@
       "type": "string"
     },
     "binding": {
-      "$ref": "#/$defs/ProgramExecutionBinding"
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ProgramExecutionBinding"
+        },
+        {
+          "$ref": "#/$defs/ExecutionBindingV1"
+        }
+      ],
+      "title": "Binding"
     },
     "result": {
       "anyOf": [
@@ -609,6 +890,10 @@
         },
         {
           "$ref": "#/$defs/ProgramValidateResult"
+        },
+        {
+          "additionalProperties": true,
+          "type": "object"
         },
         {
           "type": "null"
@@ -668,6 +953,15 @@
           },
           "status": {
             "const": "succeeded"
+          },
+          "binding": {
+            "properties": {
+              "schema_version": {
+                "not": {
+                  "const": "cad.execution-binding/1"
+                }
+              }
+            }
           }
         },
         "required": [
@@ -694,6 +988,15 @@
           },
           "status": {
             "const": "succeeded"
+          },
+          "binding": {
+            "properties": {
+              "schema_version": {
+                "not": {
+                  "const": "cad.execution-binding/1"
+                }
+              }
+            }
           }
         },
         "required": [
@@ -720,6 +1023,15 @@
           },
           "status": {
             "const": "succeeded"
+          },
+          "binding": {
+            "properties": {
+              "schema_version": {
+                "not": {
+                  "const": "cad.execution-binding/1"
+                }
+              }
+            }
           }
         },
         "required": [

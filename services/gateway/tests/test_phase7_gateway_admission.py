@@ -919,6 +919,7 @@ async def test_portal_api_enforces_owner_origin_csrf_and_recent_auth(phase7):
             public_origin="https://cad.example",
             stateless_http=True,
             allowed_hosts=("testserver",),
+            allowed_origins=("http://127.0.0.1:3000",),
             program_v0_enabled=True,
             managed_write_enabled=True,
             phase6_allowed_device_ids=(DEVICE,),
@@ -928,8 +929,13 @@ async def test_portal_api_enforces_owner_origin_csrf_and_recent_auth(phase7):
         ),
     )
 
-    def token(subject: str, *, auth_time: int) -> str:
+    def token(subject: str, *, auth_time: int, namespaced: bool = False) -> str:
         now = int(time.time())
+        auth_time_claim = (
+            "https://cad.kythuatvang.com/auth_time"
+            if namespaced
+            else "auth_time"
+        )
         return jwt.encode(
             {
                 "sub": subject,
@@ -937,7 +943,7 @@ async def test_portal_api_enforces_owner_origin_csrf_and_recent_auth(phase7):
                 "aud": audience,
                 "iat": now,
                 "exp": now + 600,
-                "auth_time": auth_time,
+                auth_time_claim: auth_time,
                 "scope": "autocad.read autocad.write",
             },
             private_pem,
@@ -1005,8 +1011,8 @@ async def test_portal_api_enforces_owner_origin_csrf_and_recent_auth(phase7):
             path + "/approve",
             json=body,
             headers={
-                "Authorization": f"Bearer {token('owner-a', auth_time=int(time.time()))}",
-                "Origin": "https://cad.example",
+                "Authorization": f"Bearer {token('owner-a', auth_time=int(time.time()), namespaced=True)}",
+                "Origin": "http://127.0.0.1:3000",
                 "X-CSRF-Token": body["challenge_nonce"],
             },
         )

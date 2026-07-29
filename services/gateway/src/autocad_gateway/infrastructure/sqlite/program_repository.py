@@ -379,7 +379,14 @@ class ProgramRepository:
                 validate_bounded_json(result)
                 if len(canonical_json(result).encode("utf-8")) > MAX_RESULT_BYTES:
                     raise RepositoryConflict("program_result_invalid")
-                self._materialize(conn, row, result)
+                payload = json.loads(row["payload_json"])
+                binding = payload.get("binding")
+                if not (
+                    isinstance(binding, dict)
+                    and binding.get("schema_version")
+                    == "cad.execution-binding/1"
+                ):
+                    self._materialize(conn, row, result)
             if terminal_hook is not None:
                 terminal_hook(conn, row)
             now = utc_now()

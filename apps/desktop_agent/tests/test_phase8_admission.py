@@ -25,6 +25,7 @@ from autocad_desktop_agent.executor import AgentExecutionError
 from autocad_desktop_agent.phase8_admission import (
     Phase8AdmissionPolicy,
     Phase8PlanAdmission,
+    _host_timestamp,
 )
 from autocad_desktop_agent.program_executor import (
     DocumentWriteSerializer,
@@ -37,6 +38,13 @@ _CAPABILITIES = (
     "cad.program.v1.compile",
     "cad.program.v1.execute.create",
 )
+
+
+def test_effect_identity_uses_managed_host_round_trip_timestamp() -> None:
+    assert (
+        _host_timestamp("2030-01-02T03:04:05.123456+00:00")
+        == "2030-01-02T03:04:05.1234560+00:00"
+    )
 
 
 def _digest(domain: str, value: dict) -> str:
@@ -341,7 +349,11 @@ def test_real_compiler_preview_is_verified_and_only_sealed_plan_is_dispatched() 
         verified,
     )
     assert arguments == {
-        "execution_plan": plan.model_dump(mode="json", exclude_none=True)
+        "execution_plan": plan.model_dump(mode="json", exclude_none=True),
+        "capability_evidence": [
+            item.model_dump(mode="json", exclude_none=True)
+            for item in evidence
+        ],
     }
     assert "program" not in arguments
     assert "execution_binding" not in arguments
@@ -360,6 +372,38 @@ def test_real_compiler_preview_is_verified_and_only_sealed_plan_is_dispatched() 
         command_kind="program_preview",
     )
     assert result["drawing_unchanged"] is True
+
+
+def test_non_entity_compile_evidence_accepts_the_all_scope() -> None:
+    plan, binding, evidence, expires_at = _preview_artifacts()
+    values = [item.model_dump(mode="json") for item in evidence]
+    compile_value = next(
+        item
+        for item in values
+        if item["capability_key"] == "cad.program.v1.compile"
+    )
+    compile_value["entity_type"] = "ALL"
+    compile_value["evidence_digest"] = canonical_phase8_capability_evidence_digest(
+        compile_value
+    )
+
+    verified = _admission().verify(
+        plan,
+        binding=binding,
+        command_kind="program_preview",
+        approval_binding=None,
+        capability_states={key: "preview_only" for key in _CAPABILITIES},
+        server_capability_evidence=values,
+        device_id="device-1",
+        preview_id="preview-1",
+        preview_expires_at=expires_at,
+    )
+
+    assert any(
+        item["capability_key"] == "cad.program.v1.compile"
+        and item["entity_type"] == "ALL"
+        for item in verified.capability_evidence
+    )
 
 
 async def test_program_executor_accepts_typed_phase8_command_and_dispatches_no_source() -> None:
@@ -432,7 +476,11 @@ async def test_program_executor_accepts_typed_phase8_command_and_dispatches_no_s
     ).execute(command, write_lock_enabled=True)
     assert result["drawing_unchanged"] is True
     assert adapter.arguments == {
-        "execution_plan": plan.model_dump(mode="json", exclude_none=True)
+        "execution_plan": plan.model_dump(mode="json", exclude_none=True),
+        "capability_evidence": [
+            item.model_dump(mode="json", exclude_none=True)
+            for item in evidence
+        ],
     }
     assert "program" not in adapter.arguments
     assert "execution_binding" not in adapter.arguments
@@ -649,6 +697,14 @@ def test_commit_requires_exact_phase7_binding_effect_identity_and_replay_key() -
         **common,
     )
     assert verified.effect_identity_digest is not None
+    assert verified.host_arguments() == {
+        "execution_plan": plan.model_dump(mode="json", exclude_none=True),
+        "approval_binding": approval.model_dump(mode="json"),
+        "capability_evidence": [
+            item.model_dump(mode="json", exclude_none=True)
+            for item in evidence
+        ],
+    }
 
     changed_key = dict(common)
     changed_key["idempotency_key"] = "idem-replayed"
@@ -769,6 +825,7 @@ async def test_program_and_rollback_share_one_document_write_lane() -> None:
 
 def test_managed_manifest_phase8_capability_filter_is_positive_allowlist() -> None:
     allowed = ManagedDotNetCadReadPort._phase8_capability_allowed
+    assert allowed("cad.program.v1.compile")
     assert allowed("cad.op.copy.line.v1")
     assert allowed("cad.op.move.circle.v1")
     assert allowed("cad.rollback.checkpoint.v2.lwpolyline")

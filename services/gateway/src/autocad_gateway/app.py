@@ -2857,10 +2857,13 @@ def create_app(
             return context
         owner, issuer, subject, claims = context
         origin = request.headers.get("origin")
+        allowed_origins = (config.public_origin, *config.allowed_origins)
         if (
             not origin
-            or not config.public_origin
-            or not _origin_matches(origin, config.public_origin)
+            or not any(
+                allowed and _origin_matches(origin, allowed)
+                for allowed in allowed_origins
+            )
         ):
             return JSONResponse({"error": "origin_forbidden"}, status_code=403)
         try:
@@ -2884,7 +2887,10 @@ def create_app(
                 nonce=body.challenge_nonce,
                 actor_issuer=issuer,
                 actor_subject=subject,
-                auth_time=claims.get("auth_time"),
+                auth_time=claims.get(
+                    "auth_time",
+                    claims.get("https://cad.kythuatvang.com/auth_time"),
+                ),
             )
         except GatewayError as error:
             return phase7_http_error(error)

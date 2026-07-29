@@ -94,6 +94,7 @@ class Phase8AdmissionPolicy:
 class VerifiedPhase8Plan:
     plan: dict[str, Any]
     approval_binding: dict[str, Any] | None
+    capability_evidence: tuple[dict[str, Any], ...]
     execution_plan_digest: str
     effect_manifest_digest: str
     target_refs_digest: str
@@ -108,7 +109,10 @@ class VerifiedPhase8Plan:
     def host_arguments(self) -> dict[str, Any]:
         """Forward only sealed execution authority, never CAD Program source."""
 
-        result: dict[str, Any] = {"execution_plan": self.plan}
+        result: dict[str, Any] = {
+            "execution_plan": self.plan,
+            "capability_evidence": list(self.capability_evidence),
+        }
         if self.approval_binding is not None:
             result["approval_binding"] = self.approval_binding
         return result
@@ -230,6 +234,10 @@ class Phase8PlanAdmission:
             plan=plan_value,
             approval_binding=(
                 None if approval is None else approval.model_dump(mode="json")
+            ),
+            capability_evidence=tuple(
+                item.model_dump(mode="json", exclude_none=True)
+                for item in evidence
             ),
             execution_plan_digest=parsed_plan.execution_plan_digest,
             effect_manifest_digest=parsed_plan.effect_manifest_digest,
@@ -453,12 +461,21 @@ class Phase8PlanAdmission:
                 or item.package_hash != pins.package_hash
                 or item.capability_manifest_hash != pins.capability_manifest_hash
                 or item.operation_registry_hash != pins.operation_registry_hash
-                or item.entity_type not in entity_types
                 or item.package_signature_verified is not True
             ):
                 raise AgentExecutionError("capability_missing")
             expected_entity = _capability_entity_type(item.capability_key)
-            if expected_entity is not None and item.entity_type != expected_entity:
+            if (
+                expected_entity is None
+                and item.entity_type != "ALL"
+                and item.entity_type not in entity_types
+            ) or (
+                expected_entity is not None
+                and (
+                    item.entity_type != expected_entity
+                    or item.entity_type not in entity_types
+                )
+            ):
                 raise AgentExecutionError("capability_missing")
             pack = item.operation_pack
             if (
@@ -565,7 +582,7 @@ class Phase8PlanAdmission:
                 "document_revision_before": plan.expected_document_revision,
                 "preview_id": binding.preview_id,
                 "preview_digest": approval.preview_digest,
-                "preview_expires_at": binding.preview_expires_at,
+                "preview_expires_at": _host_timestamp(binding.preview_expires_at),
                 "receipt_id": binding.receipt_id,
                 "checkpoint_strategy_digest": plan.checkpoint_strategy_digest,
                 "operation_packs": list(operation_packs),
@@ -630,6 +647,14 @@ def _timestamp(value: Any, code: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise AgentExecutionError(code)
     return parsed.astimezone(timezone.utc)
+
+
+def _host_timestamp(value: str) -> str:
+    parsed = _timestamp(value, "approval_binding_mismatch")
+    return parsed.isoformat(timespec="microseconds").replace(
+        "+00:00",
+        "0+00:00",
+    )
 
 
 def _capability_entity_type(capability: str) -> str | None:

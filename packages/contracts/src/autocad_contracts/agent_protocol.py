@@ -1340,7 +1340,12 @@ class ProgramValidateResult(AgentModel):
 
 
 ProgramResultPayload: TypeAlias = Annotated[
-    Union[ProgramPreviewResult, ProgramCommitResult, ProgramValidateResult],
+    Union[
+        ProgramPreviewResult,
+        ProgramCommitResult,
+        ProgramValidateResult,
+        dict[str, Any],
+    ],
     Field(union_mode="left_to_right"),
 ]
 
@@ -1356,7 +1361,7 @@ class ProgramResultMessage(AgentEnvelope):
     kind: Literal["program_preview", "program_commit", "program_validate"]
     status: Literal["succeeded", "failed", "cancelled", "outcome_unknown"]
     payload_hash: str = Field(pattern=_SHA256_PATTERN)
-    binding: ProgramExecutionBinding
+    binding: "ProgramExecutionBinding | ExecutionBindingV1"
     result: ProgramResultPayload | None = None
     error_code: str | None = Field(default=None, max_length=64)
     error_message: str | None = Field(default=None, max_length=MAX_MESSAGE_TEXT)
@@ -1364,13 +1369,19 @@ class ProgramResultMessage(AgentEnvelope):
     @model_validator(mode="after")
     def _terminal_fields_match_status_and_kind(self) -> "ProgramResultMessage":
         if self.status == "succeeded":
-            expected = {
-                "program_preview": ProgramPreviewResult,
-                "program_commit": ProgramCommitResult,
-                "program_validate": ProgramValidateResult,
-            }[self.kind]
+            expected = (
+                dict
+                if isinstance(self.binding, ExecutionBindingV1)
+                else {
+                    "program_preview": ProgramPreviewResult,
+                    "program_commit": ProgramCommitResult,
+                    "program_validate": ProgramValidateResult,
+                }[self.kind]
+            )
             if not isinstance(self.result, expected):
                 raise ValueError("successful program result payload does not match kind")
+            if expected is dict and self.kind == "program_validate":
+                raise ValueError("Phase 8 binding cannot be used for program_validate")
             if self.error_code is not None or self.error_message is not None:
                 raise ValueError("successful result cannot include error fields")
         elif self.result is not None:
@@ -1485,7 +1496,7 @@ class ReconcileResultMessage(AgentEnvelope):
         "rollback_commit",
         "rollback_validate",
     ] | None = None
-    binding: ProgramExecutionBinding | None = None
+    binding: "ProgramExecutionBinding | ExecutionBindingV1 | None" = None
 
     @model_validator(mode="after")
     def _reconcile_fields_match_status(self) -> "ReconcileResultMessage":
@@ -1742,6 +1753,13 @@ def agent_program_result_json_schema() -> dict[str, Any]:
                 "properties": {
                     "kind": {"const": kind},
                     "status": {"const": "succeeded"},
+                    "binding": {
+                        "properties": {
+                            "schema_version": {
+                                "not": {"const": "cad.execution-binding/1"}
+                            }
+                        }
+                    },
                 },
                 "required": ["kind", "status"],
             },
@@ -1811,5 +1829,7 @@ from .phase8_contracts import (
 
 HelloMessage.model_rebuild()
 ProgramCommandMessage.model_rebuild()
+ProgramResultMessage.model_rebuild()
 RollbackCommandMessage.model_rebuild()
 RollbackResultMessage.model_rebuild()
+ReconcileResultMessage.model_rebuild()

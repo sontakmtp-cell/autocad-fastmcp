@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from autocad_contracts import (
     ProgramCommandMessage,
     ProgramResultMessage,
+    ReconcileResultMessage,
     agent_program_command_json_schema,
     agent_program_result_json_schema,
     agent_rollback_json_schema,
@@ -190,6 +191,66 @@ def phase8_command(kind: str) -> dict:
             "receipt_id": receipt_id,
         }
     return value
+
+
+def test_phase8_terminal_reconcile_accepts_the_exact_execution_binding() -> None:
+    binding_value = phase8_command("program_preview")["binding"]
+    parsed = parse_agent_message(
+        ReconcileResultMessage(
+            protocol_version="cad.agent/2",
+            session_id="session-001",
+            device_id="device-001",
+            job_id="job-phase8-001",
+            command_id="command-phase8-001",
+            sequence=2,
+            status="terminal",
+            payload_hash="1" * 64,
+            result_status="failed",
+            error_code="agent_restarted",
+            kind="program_preview",
+            binding=binding_value,
+        ).model_dump(mode="json")
+    )
+
+    assert isinstance(parsed, ReconcileResultMessage)
+    assert parsed.binding.execution_plan_digest == binding_value["execution_plan_digest"]
+
+
+def test_phase8_preview_result_round_trips_exact_binding_and_host_evidence() -> None:
+    binding_value = phase8_command("program_preview")["binding"]
+    result = {
+        "execution_plan_digest": binding_value["execution_plan_digest"],
+        "effect_manifest_digest": binding_value["effect_manifest_digest"],
+        "target_refs_digest": binding_value["target_refs_digest"],
+        "hard_budgets_digest": binding_value["hard_budgets_digest"],
+        "rollout_policy_digest": "sha256:" + "7" * 64,
+        "preview_digest": "sha256:" + "8" * 64,
+        "planned_entities": [],
+        "transaction_aborted": True,
+        "drawing_unchanged": True,
+    }
+    parsed = parse_agent_message(
+        {
+            "protocol_version": "cad.agent/2",
+            "message_type": "result",
+            "message_id": "message-result-phase8-001",
+            "session_id": "session-001",
+            "device_id": "device-001",
+            "job_id": "job-phase8-001",
+            "command_id": "command-phase8-001",
+            "sequence": 2,
+            "issued_at": "2026-07-26T01:00:30+00:00",
+            "kind": "program_preview",
+            "status": "succeeded",
+            "payload_hash": "1" * 64,
+            "binding": binding_value,
+            "result": result,
+        }
+    )
+
+    assert isinstance(parsed, ProgramResultMessage)
+    assert parsed.binding.execution_plan_digest == binding_value["execution_plan_digest"]
+    assert parsed.result == result
 
 
 @pytest.mark.parametrize("kind", ["program_preview", "program_commit", "program_validate"])

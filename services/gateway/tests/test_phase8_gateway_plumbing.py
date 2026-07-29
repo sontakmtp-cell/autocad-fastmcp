@@ -20,6 +20,7 @@ from autocad_gateway.infrastructure.sqlite.database import SqliteDatabase
 from autocad_gateway.infrastructure.sqlite.phase7_repository import Phase7Repository
 from autocad_gateway.infrastructure.sqlite.phase8_repository import Phase8Repository
 from autocad_gateway.infrastructure.sqlite.repositories import RepositoryConflict
+from autocad_gateway.phase7_admission import _phase8_receipt_id
 from autocad_gateway.phase8_contract_adapter import CompiledProgram
 from autocad_gateway.phase8_gateway import (
     Phase8FeatureFlags,
@@ -61,6 +62,12 @@ EFFECT_SUMMARY = (
         "summary": "Create one bounded drawing entity.",
     },
 )
+
+
+def test_phase8_receipt_uses_the_host_namespace():
+    assert _phase8_receipt_id("preview-001") == (
+        "AUTOCAD_MCP_PHASE8_e3e78279e01c532929adc6d8515a6b83"
+    )
 
 
 def feature_flags(**updates) -> Phase8FeatureFlags:

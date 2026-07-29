@@ -283,7 +283,8 @@ def test_desktop_admission_consumes_canonical_wire_artifacts():
 
     assert admitted.execution_plan_digest == plan.execution_plan_digest
     assert admitted.host_arguments() == {
-        "execution_plan": plan.model_dump(mode="json", exclude_none=True)
+        "execution_plan": plan.model_dump(mode="json", exclude_none=True),
+        "capability_evidence": evidence,
     }
 
 

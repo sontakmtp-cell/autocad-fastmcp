@@ -75,7 +75,12 @@ from .skills.catalog_repository import SkillCatalogRepository
 from .workflows.service import WorkflowApplicationService
 from .workflows.runner import WorkflowRunner
 from .phase8_gateway import Phase8FeatureFlags, Phase8GatewayService
-from .phase8_contract_adapter import Phase8CompilerPort, Phase8RevisionPort
+from .phase8_contract_adapter import (
+    COMPILER_CORE_OPERATION_PACK,
+    CREATE_EQUIVALENT_OPERATION_PACK,
+    Phase8CompilerPort,
+    Phase8RevisionPort,
+)
 
 
 PHASE3_OWNER = "phase3-fixture-user"
@@ -529,6 +534,19 @@ class DurableGatewayServices:
             if fresh and self.phase8_gateway is not None
             else set()
         )
+        if (
+            fresh
+            and self.phase8_gateway is not None
+            and device_id in self.program_service.allowed_device_ids
+            and self.phase8_gateway.flags.source_enabled
+            and self.phase8_gateway.flags.compiler_enabled
+            and self.phase8_gateway.flags.create_pack_enabled
+            and {
+                COMPILER_CORE_OPERATION_PACK,
+                CREATE_EQUIVALENT_OPERATION_PACK,
+            }.issubset(operation_packs)
+        ):
+            operation_packs.add("cad.program/1.0-create-core")
         return {
             "capabilities": capabilities,
             "operation_packs": operation_packs,
@@ -624,12 +642,36 @@ class DurableGatewayServices:
             principal,
             f"workflow-{run_key}-preview",
         )
+        preview_job = await self.repository.get_job(
+            owner_subject, preview.job_id
+        )
+        if preview_job is None:
+            raise GatewayError("preview_unavailable")
+        try:
+            completed_preview = await self.job_service.wait_for_existing_job(
+                preview_job,
+                owner_subject=owner_subject,
+                correlation_id=f"workflow-{run_key}-preview",
+            )
+        except DurableJobError as error:
+            raise GatewayError(
+                self._safe_job_error_code(error.code)
+            ) from None
+        if completed_preview["state"] != "succeeded" or not isinstance(
+            completed_preview.get("result"), dict
+        ):
+            raise GatewayError(
+                completed_preview.get("error_code") or "job_in_progress"
+            )
+        preview_value = preview.model_dump(mode="json")
+        preview_value["state"] = "succeeded"
+        preview_value["validation"] = completed_preview["result"]
         return {
             "observe": observe_result,
             "query": query_result,
             "pure": program,
             "prepare": prepared.model_dump(mode="json"),
-            "preview": preview.model_dump(mode="json"),
+            "preview": preview_value,
         }
 
     async def _phase9_commit_request(
@@ -640,14 +682,18 @@ class DurableGatewayServices:
         scopes: tuple[str, ...],
     ) -> dict[str, Any]:
         key = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:24]
-        value = await self.commit_program(
-            CadCommitInput(
-                preview_id=preview_id,
-                idempotency_key=f"wf-{key}-commit",
-            ),
-            Principal(subject=owner_subject, scopes=scopes),
-            f"workflow-{key}-commit",
-        )
+        try:
+            value = await self.commit_program(
+                CadCommitInput(
+                    preview_id=preview_id,
+                    idempotency_key=f"wf-{key}-commit",
+                ),
+                Principal(subject=owner_subject, scopes=scopes),
+                f"workflow-{key}-commit",
+            )
+        except GatewayError:
+            logger.exception("Phase 9 commit request failed")
+            raise
         result = value.model_dump(mode="json")
         if result.get("admission_status") not in {
             "approval_required",
@@ -725,6 +771,19 @@ class DurableGatewayServices:
             "job_id": job_id,
         }
         if job["state"] == "succeeded" and self.program_repository is not None:
+            binding = job.get("payload", {}).get("binding")
+            if (
+                isinstance(binding, dict)
+                and binding.get("schema_version")
+                == "cad.execution-binding/1"
+                and isinstance(job.get("result"), dict)
+                and isinstance(job["result"].get("receipt_id"), str)
+            ):
+                return {
+                    **result,
+                    "receipt_id": job["result"]["receipt_id"],
+                    "receipt": job["result"],
+                }
             receipt = await self.program_repository.get_receipt_by_job(
                 owner_subject, job_id
             )
@@ -938,9 +997,37 @@ class DurableGatewayServices:
             or not isinstance(job.get("result"), dict)
         ):
             raise GatewayError("preview_unavailable")
+        value = job["result"]
+        plan = await self.phase8_repository.get_plan(
+            owner_subject, preview["plan_id"]
+        )
+        if plan is None:
+            raise GatewayError("preview_unavailable")
+        entities = value.get("planned_entities")
+        if not isinstance(entities, list):
+            entities = [
+                *(value.get("created_outputs") or []),
+                *(value.get("modified_entities") or []),
+            ]
         try:
-            result = ProgramPreviewResult.model_validate(job["result"])
-        except (TypeError, ValueError):
+            result = ProgramPreviewResult(
+                preview_id=preview["preview_id"],
+                preview_digest=value["preview_digest"],
+                expires_at=preview["expires_at"],
+                planned_operation_count=len(plan["plan"]["operations"]),
+                planned_entity_count=len(entities),
+                planned_layer_count=len(
+                    {
+                        item["layer"]
+                        for item in entities
+                        if isinstance(item, dict)
+                        and isinstance(item.get("layer"), str)
+                    }
+                ),
+                transaction_aborted=value["transaction_aborted"],
+                drawing_unchanged=value["drawing_unchanged"],
+            )
+        except (KeyError, TypeError, ValueError):
             raise GatewayError("preview_unavailable") from None
         if (
             result.preview_id != preview["preview_id"]
@@ -1333,9 +1420,9 @@ class DurableGatewayServices:
                 ).encode("utf-8")
             ).hexdigest()[:48]
         )
-        expires_at = (
-            datetime.now(timezone.utc) + timedelta(seconds=120)
-        ).isoformat()
+        now = datetime.now(timezone.utc)
+        expires_at = (now + timedelta(minutes=10)).isoformat()
+        deadline_at = (now + timedelta(seconds=120)).isoformat()
         binding = build_execution_binding_v1(
             plan["plan"],
             action="preview",
@@ -1361,7 +1448,7 @@ class DurableGatewayServices:
                 effect_class="write",
                 payload=payload,
                 idempotency_key=key,
-                deadline_at=expires_at,
+                deadline_at=deadline_at,
             )
             preview, duplicate = await self.phase8_repository.create_preview(
                 owner_subject=principal.subject,
@@ -1478,6 +1565,20 @@ class DurableGatewayServices:
         current_pins: dict[str, str],
         action: str,
     ) -> dict[str, Any]:
+        manifest = connection.capability_manifest
+        reported_capabilities = tuple(
+            capability
+            for product in (manifest or {}).get("cad_products", [])
+            if isinstance(product, dict)
+            and isinstance(product.get("runtime"), dict)
+            and product["runtime"].get("id") == current_pins["runtime_id"]
+            and product["runtime"].get("host_family")
+            == current_pins["host_family"]
+            and product["runtime"].get("package_hash")
+            == current_pins["package_hash"]
+            for capability in product.get("capabilities", [])
+            if isinstance(capability, str)
+        )
         try:
             return await self.phase8_gateway.admit(
                 owner_subject=principal.subject,
@@ -1485,7 +1586,7 @@ class DurableGatewayServices:
                 plan_id=plan["plan_id"],
                 action=action,
                 cohort="lab",
-                reported_capabilities=tuple(connection.capabilities),
+                reported_capabilities=reported_capabilities,
                 current_runtime_pins=current_pins,
             )
         except RepositoryConflict as error:
@@ -1869,7 +1970,10 @@ class DurableGatewayServices:
             correlation_id=correlation_id,
             snapshot_id=request.snapshot_id,
             document_revision=snapshot["document_revision"],
-            entities=[CadEntity.model_validate(copy.deepcopy(entity)) for entity in page],
+            entities=[
+                CadEntity.model_validate(copy.deepcopy(entity), extra="ignore")
+                for entity in page
+            ],
             total=len(selected),
             next_cursor=next_cursor,
             resource_uri=f"cad://snapshots/{request.snapshot_id}/entities",

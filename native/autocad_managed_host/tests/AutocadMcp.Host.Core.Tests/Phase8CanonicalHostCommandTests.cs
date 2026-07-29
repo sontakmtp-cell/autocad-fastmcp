@@ -85,6 +85,30 @@ public sealed class Phase8CanonicalHostCommandTests
     }
 
     [Fact]
+    public void Parser_AcceptsRfc3339TimestampsWithSixFractionalDigits()
+    {
+        using var vector = LoadVector();
+        var plan = vector.RootElement.GetProperty("plan");
+        var now = DateTimeOffset.UtcNow;
+        var arguments = Arguments(plan, now);
+        var evidence = arguments["capability_evidence"]![0]!.AsObject();
+        evidence["issued_at"] = now.AddMinutes(-1)
+            .ToString("yyyy-MM-dd'T'HH:mm:ss.ffffffK");
+        evidence["valid_until"] = now.AddMinutes(10)
+            .ToString("yyyy-MM-dd'T'HH:mm:ss.ffffffK");
+        RehashEvidence(evidence);
+
+        using var document = JsonDocument.Parse(arguments.ToJsonString());
+        var command = Phase8CanonicalHostCommandParser.Parse(
+            "cad.program.preview",
+            document.RootElement,
+            Runtime(plan),
+            now);
+
+        Assert.NotEmpty(command.CapabilityEvidence);
+    }
+
+    [Fact]
     public void Commit_RequiresExactCanonicalApprovalAndLabCommitEvidence()
     {
         using var vector = LoadVector();

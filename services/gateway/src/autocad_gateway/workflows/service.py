@@ -902,7 +902,7 @@ class WorkflowApplicationService:
             )
         if current["state"] != "running":
             return current
-        for step_id in ("validate", "finish"):
+        for step_id in ("job", "validate", "finish"):
             await self._complete_step_idempotently(
                 owner_subject,
                 run_id,

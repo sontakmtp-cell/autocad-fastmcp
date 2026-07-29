@@ -408,6 +408,7 @@ class ManagedDotNetCadReadPort:
         handshake = self._handshake
         allowed = {
             "observe.summary",
+            "entity.snapshot.v2",
             "cad.program.preview",
             "cad.program.commit",
             "cad.program.validate",
@@ -422,11 +423,14 @@ class ManagedDotNetCadReadPort:
             for capability in handshake["capabilities"]
             if capability in allowed or self._phase8_capability_allowed(capability)
         ]
+        registry_version, registry_hash = self._operation_registry_binding(
+            handshake
+        )
         return CapabilityManifest.model_validate(
             {
                 "schema_version": "cad.capability/1",
-                "registry_version": "cad.program/0.2",
-                "operation_registry_hash": operation_registry_digest(),
+                "registry_version": registry_version,
+                "operation_registry_hash": registry_hash,
                 "cad_products": [
                     {
                         "product": probe.product or handshake["product"],
@@ -475,6 +479,32 @@ class ManagedDotNetCadReadPort:
             )
         }
 
+    def close(self) -> None:
+        close = getattr(self._transport, "close", None)
+        if callable(close):
+            close()
+
+    @staticmethod
+    def _operation_registry_binding(
+        handshake: dict[str, Any],
+    ) -> tuple[str, str]:
+        evidence = handshake.get("phase8_host_evidence")
+        if evidence is None:
+            return "cad.program/0.2", operation_registry_digest()
+        if not isinstance(evidence, dict):
+            raise RuntimeError("protocol_mismatch")
+        version = evidence.get("operation_registry_version")
+        digest = evidence.get("operation_registry_hash")
+        if (
+            version != "cad.operation-registry/1"
+            or not isinstance(digest, str)
+            or len(digest) != 71
+            or not digest.startswith("sha256:")
+            or any(character not in "0123456789abcdef" for character in digest[7:])
+        ):
+            raise RuntimeError("protocol_mismatch")
+        return version, digest
+
     @staticmethod
     def _phase8_capability_allowed(capability: str) -> bool:
         denied = {
@@ -493,6 +523,7 @@ class ManagedDotNetCadReadPort:
         if capability in {
             "cad.program.v1.preview",
             "cad.program.v1.commit",
+            "cad.program.v1.compile",
             "cad.program.v1.validate",
         }:
             return True
@@ -544,6 +575,8 @@ class ManagedDotNetCadReadPort:
             await self._ensure_handshake()
             host_arguments = dict(arguments)
             execution_binding = host_arguments.get("execution_binding")
+            execution_plan = host_arguments.get("execution_plan")
+            approval_binding = host_arguments.get("approval_binding")
             if kind not in {
                 "program_preview",
                 "program_commit",
@@ -553,6 +586,8 @@ class ManagedDotNetCadReadPort:
             document_id = (
                 execution_binding.get("document_id")
                 if isinstance(execution_binding, dict)
+                else execution_plan.get("document_id")
+                if isinstance(execution_plan, dict)
                 else None
             )
             result = await self._command(
@@ -560,6 +595,12 @@ class ManagedDotNetCadReadPort:
                 arguments=host_arguments,
                 document_id=document_id,
                 deadline_at=deadline_at,
+                command_id=(
+                    approval_binding.get("command_id")
+                    if kind == "program_commit"
+                    and isinstance(approval_binding, dict)
+                    else None
+                ),
             )
         except Exception as error:
             code = self._safe_error(error)
@@ -622,6 +663,7 @@ class ManagedDotNetCadReadPort:
         arguments: dict[str, Any],
         document_id: str | None = None,
         deadline_at: str | None = None,
+        command_id: str | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "operation_id": operation_id,
@@ -631,7 +673,12 @@ class ManagedDotNetCadReadPort:
         if document_id is not None:
             payload["document_id"] = document_id
         response = await self._transport.request(
-            self._envelope("command", payload, deadline_at=deadline_at)
+            self._envelope(
+                "command",
+                payload,
+                deadline_at=deadline_at,
+                command_id=command_id,
+            )
         )
         value = self._validate_response(response, expected_type="result")
         if value.get("operation_id") != operation_id:
@@ -661,8 +708,9 @@ class ManagedDotNetCadReadPort:
         payload: dict[str, Any],
         *,
         deadline_at: str | None = None,
+        command_id: str | None = None,
     ) -> dict[str, Any]:
-        command_id = f"{message_type}-{uuid.uuid4().hex}"
+        command_id = command_id or f"{message_type}-{uuid.uuid4().hex}"
         if deadline_at is None:
             deadline = datetime.now(timezone.utc) + timedelta(seconds=10)
         else:
@@ -732,6 +780,8 @@ class ManagedDotNetCadReadPort:
             "document_changed",
             "stale_snapshot",
             "program_invalid",
+            "preview_mismatch",
+            "approval_binding_mismatch",
             "preview_required",
             "runtime_changed",
             "duplicate_payload_mismatch",
@@ -807,6 +857,9 @@ class ReloadingManagedDotNetCadReadPort:
     async def drawing_info(self) -> CadPortResult:
         return await self._call_with_reload("drawing_info")
 
+    async def entity_snapshot(self, *, limit: int = 512) -> CadPortResult:
+        return await self._call_with_reload("entity_snapshot", limit=limit)
+
     async def program_command(
         self,
         kind: str,
@@ -843,14 +896,18 @@ class ReloadingManagedDotNetCadReadPort:
             return {}
         return self._adapter.phase8_capability_states()
 
-    async def _call_with_reload(self, operation: str) -> CadPortResult:
+    async def _call_with_reload(
+        self,
+        operation: str,
+        **kwargs: Any,
+    ) -> CadPortResult:
         for attempt in range(2):
             try:
                 adapter = self._current_adapter(force=attempt > 0)
             except (OSError, ValueError):
                 self._clear_adapter()
                 return CadPortResult(False, error_code="managed_host_unavailable")
-            result = await getattr(adapter, operation)()
+            result = await getattr(adapter, operation)(**kwargs)
             if result.error_code not in {
                 "managed_host_unavailable",
                 "session_rejected",
@@ -871,6 +928,7 @@ class ReloadingManagedDotNetCadReadPort:
             or self._adapter is None
             or bootstrap_hash != self._bootstrap_hash
         ):
+            self._clear_adapter()
             self._adapter = self._adapter_factory(self._bootstrap_path)
             self._bootstrap_hash = bootstrap_hash
         return self._adapter
@@ -883,5 +941,9 @@ class ReloadingManagedDotNetCadReadPort:
         )
 
     def _clear_adapter(self) -> None:
+        adapter = self._adapter
         self._adapter = None
         self._bootstrap_hash = None
+        close = getattr(adapter, "close", None)
+        if callable(close):
+            close()

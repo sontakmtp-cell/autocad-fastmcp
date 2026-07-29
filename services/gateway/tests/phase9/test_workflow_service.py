@@ -1,11 +1,18 @@
 import hashlib
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 from autocad_gateway.durable_services import (
     DurableGatewayServices,
     _Phase9ActionPort,
 )
+from autocad_gateway.phase8_contract_adapter import (
+    COMPILER_CORE_OPERATION_PACK,
+    CREATE_EQUIVALENT_OPERATION_PACK,
+)
+from autocad_gateway.phase8_gateway import Phase8FeatureFlags
 from autocad_gateway.infrastructure.sqlite.database import SqliteDatabase
 from autocad_gateway.infrastructure.sqlite.phase9_repository import Phase9Repository
 from autocad_gateway.skills.catalog import SkillCatalog
@@ -17,6 +24,155 @@ from autocad_gateway.workflows.service import (
 )
 
 CATALOG_ROOT = Path(__file__).resolve().parents[4] / "packages" / "skill_catalog"
+
+
+@pytest.mark.asyncio
+async def test_phase9_device_context_maps_bounded_create_registry_pack():
+    gateway = object.__new__(DurableGatewayServices)
+    connection = SimpleNamespace()
+    gateway._require_device = AsyncMock(
+        return_value={"capabilities": {"observe"}}
+    )
+    gateway.registry = SimpleNamespace(
+        get=AsyncMock(return_value=connection),
+        is_current_and_fresh=AsyncMock(return_value=True),
+    )
+    gateway.is_phase8 = True
+    gateway.phase8_gateway = SimpleNamespace(
+        flags=Phase8FeatureFlags(
+            source_enabled=True,
+            compiler_enabled=True,
+            create_pack_enabled=True,
+            operation_pack_allowlist=(
+                COMPILER_CORE_OPERATION_PACK,
+                CREATE_EQUIVALENT_OPERATION_PACK,
+            ),
+        )
+    )
+    gateway.program_service = SimpleNamespace(allowed_device_ids={"device-a"})
+
+    context = await gateway._phase9_device_context("owner-a", "device-a")
+
+    assert "cad.program.v1.compile" in context["capabilities"]
+    assert "cad.program/1.0-create-core" in context["operation_packs"]
+    assert all(
+        marker not in pack
+        for pack in context["operation_packs"]
+        for marker in ("delete", "topology")
+    )
+
+    gateway.program_service.allowed_device_ids = {"other-device"}
+    disallowed = await gateway._phase9_device_context("owner-a", "device-a")
+    assert "cad.program/1.0-create-core" not in disallowed["operation_packs"]
+
+
+@pytest.mark.asyncio
+async def test_phase8_admission_uses_pinned_runtime_manifest_capabilities():
+    gateway = object.__new__(DurableGatewayServices)
+    gateway.phase8_gateway = SimpleNamespace(admit=AsyncMock(return_value={}))
+    pins = {
+        "runtime_id": "managed_dotnet",
+        "host_family": "R25",
+        "package_hash": "sha256:" + "1" * 64,
+    }
+    connection = SimpleNamespace(
+        capabilities=("program_preview", "program_commit"),
+        capability_manifest={
+            "cad_products": [
+                {
+                    "runtime": {
+                        "id": "managed_dotnet",
+                        "host_family": "R25",
+                        "package_hash": pins["package_hash"],
+                    },
+                    "capabilities": [
+                        "cad.program.v1.compile",
+                        "cad.program.v1.preview",
+                    ],
+                },
+                {
+                    "runtime": {
+                        "id": "file_ipc",
+                        "host_family": "LT",
+                        "package_hash": "sha256:" + "2" * 64,
+                    },
+                    "capabilities": ["cad.op.delete.line.v1"],
+                },
+            ]
+        },
+    )
+
+    await gateway._phase8_admit(
+        principal=SimpleNamespace(subject="owner-a"),
+        plan={"plan": {"device_id": "device-a"}, "plan_id": "plan-a"},
+        connection=connection,
+        current_pins=pins,
+        action="preview",
+    )
+
+    assert gateway.phase8_gateway.admit.await_args.kwargs[
+        "reported_capabilities"
+    ] == ("cad.program.v1.compile", "cad.program.v1.preview")
+
+
+@pytest.mark.asyncio
+async def test_phase9_write_preview_waits_for_preview_job():
+    gateway = object.__new__(DurableGatewayServices)
+    gateway._phase9_snapshot = AsyncMock(
+        return_value={
+            "document_id": "document-a",
+            "document_revision": "revision-a",
+            "entities": [],
+        }
+    )
+    gateway.prepare_program = AsyncMock(
+        return_value=SimpleNamespace(
+            program_id="program-a",
+            program_revision=1,
+            model_dump=lambda **_: {"program_id": "program-a"},
+        )
+    )
+    gateway.preview_program = AsyncMock(
+        return_value=SimpleNamespace(
+            job_id="job-a",
+            model_dump=lambda **_: {
+                "job_id": "job-a",
+                "state": "queued",
+                "validation": None,
+            },
+        )
+    )
+    preview_job = {"job_id": "job-a", "state": "queued"}
+    gateway.repository = SimpleNamespace(
+        get_job=AsyncMock(return_value=preview_job)
+    )
+    gateway.job_service = SimpleNamespace(
+        wait_for_existing_job=AsyncMock(
+            return_value={
+                "job_id": "job-a",
+                "state": "succeeded",
+                "result": {"preview_digest": "sha256:" + "3" * 64},
+            }
+        )
+    )
+
+    result = await gateway._phase9_write_preview(
+        "owner-a",
+        "mechanical.plate-hole-pattern",
+        "device-a",
+        "snapshot-a",
+        _plate_inputs(),
+        "workflow-preview-a",
+        ("autocad.write",),
+    )
+
+    assert result["preview"]["state"] == "succeeded"
+    assert result["preview"]["validation"]["preview_digest"].endswith("3" * 64)
+    gateway.job_service.wait_for_existing_job.assert_awaited_once_with(
+        preview_job,
+        owner_subject="owner-a",
+        correlation_id=gateway.preview_program.await_args.args[2],
+    )
 
 
 @pytest.fixture
@@ -455,6 +611,7 @@ async def test_write_workflow_reuses_preview_and_trusted_approval_ports(tmp_path
     await value.maintenance_once()
     completed = await value.get("owner-a", result["run_id"])
     assert completed["run"]["state"] == "succeeded"
+    assert all(step["state"] == "succeeded" for step in completed["steps"])
     await database.close()
 
 

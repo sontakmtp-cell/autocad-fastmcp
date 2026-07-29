@@ -453,7 +453,10 @@ class GatewayServices:
             correlation_id=correlation_id,
             snapshot_id=snapshot.snapshot_id,
             document_revision=snapshot.document_revision,
-            entities=[CadEntity.model_validate(copy.deepcopy(entity)) for entity in page],
+            entities=[
+                CadEntity.model_validate(copy.deepcopy(entity), extra="ignore")
+                for entity in page
+            ],
             total=len(selected),
             next_cursor=next_cursor,
             resource_uri=resource_uri,

@@ -19,7 +19,6 @@ export function buildConsentDecision(
     || consent.intent_id !== intent.intent_id
     || consent.intent_version !== intent.intent_version
     || consent.intent_digest !== intent.intent_digest
-    || intent.consent_id !== consent.consent_id
   ) {
     throw new Error("SESSION_RECORD_MISMATCH");
   }
