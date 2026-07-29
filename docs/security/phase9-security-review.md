@@ -7,7 +7,7 @@
   migration/repository, workflow state/runner, public FastMCP facade, Portal
   views, feature-flag composition, and Phase 6--8 service adapters.
 - Threat model: [`phase9-threat-model.md`](phase9-threat-model.md).
-- Tests: `python scripts/test-phase9-conformance.py` — **83 passed**. Full
+- Tests: `python scripts/test-phase9-conformance.py` — **84 passed**. Full
   regression and Phase 8 conformance results are recorded in
   [`Phase-9.md`](../architecture/Phase-9.md).
 

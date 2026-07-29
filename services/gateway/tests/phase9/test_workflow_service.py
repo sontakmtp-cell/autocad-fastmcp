@@ -1016,6 +1016,7 @@ async def test_auto_dimension_restart_heals_missing_user_wait_once(
 @pytest.mark.parametrize(
     "crash_window",
     [
+        "after_command_started",
         "after_resolve_wait",
         "after_review_succeeded",
         "after_run_commit",
@@ -1039,11 +1040,20 @@ async def test_auto_dimension_submit_input_recovers_each_crash_window(
         scopes=("autocad.read", "autocad.write"),
     )
     crashed = False
+    original_begin = service.repository.begin_control_command
     original_resolve = service.repository.resolve_wait
     original_step = service.repository.transition_step
     original_run = service.repository.transition_run
     original_insert = service.repository.insert_action
     original_run_once = service.action_runner.run_once
+
+    async def begin_control_command(**kwargs):
+        nonlocal crashed
+        result = await original_begin(**kwargs)
+        if crash_window == "after_command_started" and not crashed:
+            crashed = True
+            raise RuntimeError(crash_window)
+        return result
 
     async def resolve_wait(**kwargs):
         nonlocal crashed
@@ -1097,6 +1107,9 @@ async def test_auto_dimension_submit_input_recovers_each_crash_window(
             raise RuntimeError(crash_window)
         return await original_run_once()
 
+    monkeypatch.setattr(
+        service.repository, "begin_control_command", begin_control_command
+    )
     monkeypatch.setattr(service.repository, "resolve_wait", resolve_wait)
     monkeypatch.setattr(service.repository, "transition_step", transition_step)
     monkeypatch.setattr(service.repository, "transition_run", transition_run)

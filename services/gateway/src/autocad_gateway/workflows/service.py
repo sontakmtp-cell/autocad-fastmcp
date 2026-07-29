@@ -736,7 +736,14 @@ class WorkflowApplicationService:
         command = await self.repository.started_control_command(
             run["owner_subject"], run["run_id"], "submit_input"
         )
-        if command is not None and run["state"] != "running":
+        resolved = (
+            await self.repository.wait_resolved_by_command(
+                run["owner_subject"], run["run_id"], command["idempotency_key"]
+            )
+            if command is not None
+            else None
+        )
+        if command is not None and resolved is not None and run["state"] != "running":
             await self.repository.complete_control_command(
                 owner_subject=run["owner_subject"],
                 idempotency_key=command["idempotency_key"],

@@ -1706,7 +1706,7 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   started-write recovery, waits, runner reconciliation, and the three pure
   reference workflow fixtures.
 - The focused suite was rerun after the third PR review hardening:
-  **83 passed**. It includes clean-runner bootstrap, atomic run/DAG failure
+  **84 passed**. It includes clean-runner bootstrap, atomic run/DAG failure
   injection, durable public preview/commit outbox dispatch, lost-response
   control replay, wait-resolution crash recovery, read-only write-control
   denial, mid-run revocation, cancellation of dispatchable actions,
@@ -1718,7 +1718,7 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   artifacts. This is simulated/unit evidence only.
 - Full post-integration regression results:
   - root Python: **414 passed, 1 skipped**;
-  - Gateway: **313 passed**;
+  - Gateway: **314 passed**;
   - contracts: **130 passed**;
   - Desktop Agent: **142 passed**;
   - Managed .NET: **72 passed**;
