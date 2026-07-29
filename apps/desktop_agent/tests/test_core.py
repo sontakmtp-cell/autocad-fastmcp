@@ -6,6 +6,7 @@ import json
 import sqlite3
 import threading
 import time
+from types import SimpleNamespace
 
 import pytest
 from autocad_contracts import (
@@ -165,6 +166,18 @@ class ProgramExecutor:
         if self.error:
             raise AgentExecutionError(self.error)
         return self.result
+
+
+def test_phase8_binding_uses_sealed_plan_digests_for_agent_diagnostics() -> None:
+    execution_digest, program_digest = AgentCore._program_binding_digests(
+        SimpleNamespace(
+            execution_plan_digest=f"sha256:{'a' * 64}",
+            source_digest=f"sha256:{'b' * 64}",
+        )
+    )
+
+    assert execution_digest == f"sha256:{'a' * 64}"
+    assert program_digest == f"sha256:{'b' * 64}"
 
 
 def make_command(core):

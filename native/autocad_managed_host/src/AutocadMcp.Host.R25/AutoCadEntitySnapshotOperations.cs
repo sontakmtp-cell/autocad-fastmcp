@@ -203,10 +203,46 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
         layer = Bound(entity.Layer, 255),
         space,
         bounds = TryGetBounds(entity),
+        geometry = TryGetGeometry(entity),
+        geometry_truncated = entity is Polyline polyline &&
+            polyline.NumberOfVertices > 4096,
         fingerprint = Phase8ManagedOperationPack.EntityFingerprint(
             entity,
             transaction)
     };
+
+    private static object? TryGetGeometry(Entity entity)
+    {
+        try
+        {
+            return entity switch
+            {
+                Line line => new
+                {
+                    start = new[] { line.StartPoint.X, line.StartPoint.Y },
+                    end = new[] { line.EndPoint.X, line.EndPoint.Y }
+                },
+                Circle circle => new
+                {
+                    center = new[] { circle.Center.X, circle.Center.Y },
+                    radius = circle.Radius
+                },
+                Polyline polyline when polyline.NumberOfVertices <= 4096 => new
+                {
+                    points = Enumerable.Range(0, polyline.NumberOfVertices)
+                        .Select(index => polyline.GetPoint2dAt(index))
+                        .Select(point => new[] { point.X, point.Y })
+                        .ToArray(),
+                    closed = polyline.Closed
+                },
+                _ => null
+            };
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception)
+        {
+            return null;
+        }
+    }
 
     private static string GetEntityType(Entity entity) =>
         entity.GetRXClass().DxfName ?? entity.GetType().Name;

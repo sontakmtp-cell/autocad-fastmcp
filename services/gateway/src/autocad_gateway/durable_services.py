@@ -10,6 +10,7 @@ import logging
 import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from autocad_contracts import (
@@ -17,6 +18,10 @@ from autocad_contracts import (
     ProgramPreviewResult,
     build_execution_binding_v1,
     normalize_sha256_digest,
+)
+from cad_core.phase9_workflows import (
+    plan_auto_dimension_overall,
+    render_plate_hole_pattern,
 )
 
 from .application.job_service import DurableJobError, DurableJobService
@@ -37,9 +42,12 @@ from .contracts import (
     CadQueryInput,
     CadQueryOutput,
     CadPrepareProgramV1ConflictOutput,
+    CadPrepareProgramInput,
     CadPrepareProgramV1Output,
     CadPrepareProgramV1RevisionRequest,
     CadPreviewOutput,
+    CadPreviewInput,
+    CadCommitInput,
     DeviceInfo,
     DeviceInfoC1,
     ExecutionEvidence,
@@ -61,13 +69,89 @@ from .phase7_admission import Phase7AdmissionPolicy, Phase7AdmissionService
 from .phase7_recovery import Phase7RecoveryService
 from .infrastructure.sqlite.phase7_repository import Phase7Repository
 from .infrastructure.sqlite.phase8_repository import Phase8Repository
+from .infrastructure.sqlite.phase9_repository import Phase9Repository
+from .skills.catalog import SkillCatalog
+from .skills.catalog_repository import SkillCatalogRepository
+from .workflows.service import WorkflowApplicationService
+from .workflows.runner import WorkflowRunner
 from .phase8_gateway import Phase8FeatureFlags, Phase8GatewayService
-from .phase8_contract_adapter import Phase8CompilerPort, Phase8RevisionPort
+from .phase8_contract_adapter import (
+    COMPILER_CORE_OPERATION_PACK,
+    CREATE_EQUIVALENT_OPERATION_PACK,
+    Phase8CompilerPort,
+    Phase8RevisionPort,
+)
 
 
 PHASE3_OWNER = "phase3-fixture-user"
 PHASE3_CAPABILITIES = ["observe", "query"]
 logger = logging.getLogger(__name__)
+
+
+class _Phase9ActionPort:
+    def __init__(
+        self,
+        preview: Any,
+        commit: Any,
+        catalog_repository: Any,
+        reconcile_lookup: Any | None = None,
+    ) -> None:
+        self.preview = preview
+        self.commit = commit
+        self.catalog_repository = catalog_repository
+        self.reconcile_lookup = reconcile_lookup
+
+    async def preflight(
+        self, action_kind: str, payload: dict[str, Any]
+    ) -> None:
+        del action_kind
+        status = self.catalog_repository.get_status(
+            payload["skill_id"], payload["skill_version"]
+        )
+        if status in {"security_revoked", "withdrawn"}:
+            raise GatewayError(
+                "skill_security_revoked"
+                if status == "security_revoked"
+                else "skill_withdrawn"
+            )
+
+    async def dispatch(
+        self, action_kind: str, payload: dict[str, Any], *, idempotency_key: str
+    ) -> dict[str, Any]:
+        await self.preflight(action_kind, payload)
+        if action_kind == "preview":
+            return await self.preview(
+                payload["owner_subject"],
+                payload["skill_id"],
+                payload["device_id"],
+                payload["snapshot_id"],
+                payload["inputs"],
+                idempotency_key,
+                tuple(payload["scopes"]),
+            )
+        if action_kind == "commit":
+            return await self.commit(
+                payload["owner_subject"],
+                payload["preview_id"],
+                idempotency_key,
+                tuple(payload["scopes"]),
+            )
+        raise GatewayError("workflow_action_invalid")
+
+    async def reconcile(
+        self,
+        action_kind: str,
+        child_ref: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any] | None:
+        if self.reconcile_lookup is None:
+            return None
+        return await self.reconcile_lookup(
+            action_kind,
+            child_ref,
+            idempotency_key=idempotency_key,
+        )
 
 _SAFE_JOB_ERROR_CODES = frozenset(
     {
@@ -135,20 +219,31 @@ class DurableGatewayServices:
         phase8_feature_flags: Phase8FeatureFlags | None = None,
         phase8_compiler: Phase8CompilerPort | None = None,
         phase8_revision_adapter: Phase8RevisionPort | None = None,
+        phase9_enabled: bool = False,
+        phase9_catalog_enabled: bool = False,
+        phase9_public_tools_enabled: bool = False,
+        phase9_write_enabled: bool = False,
+        phase9_policy_epoch: int = 0,
+        phase9_catalog_root: str | None = None,
+        phase9_skill_allowlist: tuple[str, ...] = (),
+        phase9_enabled_skills: tuple[str, ...] = (),
     ) -> None:
         self.database = database
         self.registry = registry
         self.repository = SqliteRepository(database)
-        self.is_phase7 = profile in {"phase7_c2", "phase8_program"}
+        self.is_phase7 = profile in {"phase7_c2", "phase8_program", "phase9_workflow"}
         self.is_phase6 = profile in {
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         }
-        self.is_phase8 = profile == "phase8_program"
+        self.is_phase8 = profile in {"phase8_program", "phase9_workflow"}
+        self.is_phase9 = profile == "phase9_workflow"
         self.program_repository = ProgramRepository(database) if self.is_phase6 else None
         self.phase7_repository = Phase7Repository(database) if self.is_phase7 else None
         self.phase8_repository = Phase8Repository(database) if self.is_phase6 else None
+        self.phase9_repository = Phase9Repository(database) if self.is_phase9 else None
         self.phase8_gateway = (
             Phase8GatewayService(
                 self.phase8_repository,
@@ -188,6 +283,7 @@ class DurableGatewayServices:
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         }:
             self.agent_authenticator = FixtureDeviceAuthenticator(self.device_tokens)
         self.owner_subject = owner_subject
@@ -198,12 +294,14 @@ class DurableGatewayServices:
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         }
         self.is_phase5_identity = profile in {
             "phase5_identity",
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         }
         self.required_package = dict(required_package or {})
         self.display_name = display_name
@@ -261,6 +359,33 @@ class DurableGatewayServices:
                 else None
             )
         self.phase6_direct_commit_lab_enabled = phase6_direct_commit_lab_enabled
+        self.workflow_service = None
+        if self.is_phase9 and phase9_catalog_root:
+            catalog = SkillCatalog.from_fixed_package_root(Path(phase9_catalog_root))
+            phase9_catalog_repository = SkillCatalogRepository(database)
+            phase9_runner = WorkflowRunner(
+                self.phase9_repository,
+                _Phase9ActionPort(
+                    self._phase9_write_preview,
+                    self._phase9_commit_request,
+                    phase9_catalog_repository,
+                    self._phase9_reconcile_action,
+                ),
+                worker_id="phase9-gateway",
+            )
+            self.workflow_service = WorkflowApplicationService(
+                self.phase9_repository, phase9_catalog_repository, catalog,
+                enabled=phase9_enabled and phase9_public_tools_enabled, catalog_enabled=phase9_catalog_enabled,
+                policy_epoch=phase9_policy_epoch, write_enabled=phase9_write_enabled,
+                allowlist=set(phase9_skill_allowlist),
+                enabled_skills=set(phase9_enabled_skills),
+                device_resolver=self._phase9_device_context,
+                snapshot_resolver=self._phase9_snapshot,
+                write_preview_executor=self._phase9_write_preview,
+                commit_request_executor=self._phase9_commit_request,
+                action_runner=phase9_runner,
+                commit_status_resolver=self._phase9_commit_status,
+            )
 
     async def _phase7_rollback_preview_provider(
         self,
@@ -358,6 +483,9 @@ class DurableGatewayServices:
         if self._initialized:
             return
         await self.database.open()
+        if self.workflow_service is not None:
+            self.workflow_service.initialize_catalog()
+            await self.workflow_service.reconcile_restart()
         await self.repository.mark_sessions_disconnected()
         for device_id in self.device_tokens:
             await self.repository.seed_device(
@@ -385,6 +513,289 @@ class DurableGatewayServices:
         self._maintenance_error = None
         self._maintenance_task = asyncio.create_task(self._maintenance_loop())
         self._maintenance_task.add_done_callback(self._maintenance_done)
+
+    async def _phase9_device_context(
+        self, owner_subject: str, device_id: str
+    ) -> dict[str, Any]:
+        device = await self._require_device(
+            device_id,
+            Principal(subject=owner_subject, scopes=("autocad.read",)),
+        )
+        connection = await self.registry.get(device_id)
+        fresh = bool(
+            connection is not None
+            and await self.registry.is_current_and_fresh(connection)
+        )
+        capabilities = set(device.get("capabilities", ()))
+        if fresh and self.is_phase8:
+            capabilities.add("cad.program.v1.compile")
+        operation_packs = (
+            set(self.phase8_gateway.flags.operation_pack_allowlist)
+            if fresh and self.phase8_gateway is not None
+            else set()
+        )
+        if (
+            fresh
+            and self.phase8_gateway is not None
+            and device_id in self.program_service.allowed_device_ids
+            and self.phase8_gateway.flags.source_enabled
+            and self.phase8_gateway.flags.compiler_enabled
+            and self.phase8_gateway.flags.create_pack_enabled
+            and {
+                COMPILER_CORE_OPERATION_PACK,
+                CREATE_EQUIVALENT_OPERATION_PACK,
+            }.issubset(operation_packs)
+        ):
+            operation_packs.add("cad.program/1.0-create-core")
+        return {
+            "capabilities": capabilities,
+            "operation_packs": operation_packs,
+            "runtime_release_verified": fresh and self.is_phase8,
+            "capability_evidence_verified": fresh,
+            "identity_generation": 1,
+        }
+
+    async def _phase9_snapshot(
+        self, owner_subject: str, device_id: str, snapshot_id: str
+    ) -> dict[str, Any]:
+        snapshot = await self.repository.get_snapshot(owner_subject, snapshot_id)
+        if snapshot is None or snapshot.get("device_id") != device_id:
+            raise GatewayError("not_found")
+        value = dict(snapshot)
+        value["document_id"] = self.program_service._snapshot_document_id(snapshot)
+        return value
+
+    async def _phase9_write_preview(
+        self,
+        owner_subject: str,
+        skill_id: str,
+        device_id: str,
+        snapshot_id: str,
+        inputs: dict[str, Any],
+        idempotency_key: str,
+        scopes: tuple[str, ...],
+    ) -> dict[str, Any]:
+        snapshot = await self._phase9_snapshot(
+            owner_subject, device_id, snapshot_id
+        )
+        run_key = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:24]
+        context = {
+            "run_id": run_key,
+            "device_id": device_id,
+            "source_snapshot_id": snapshot_id,
+            "document_id": snapshot["document_id"],
+            "expected_document_revision": snapshot["document_revision"],
+        }
+        entities = snapshot.get("entities") or []
+        if skill_id == "mechanical.auto-dimension-overall":
+            requested = set(inputs["entity_ids"])
+            selected = [
+                entity
+                for entity in entities
+                if entity.get("entity_id") in requested
+            ]
+            if {entity.get("entity_id") for entity in selected} != requested:
+                raise GatewayError("not_found")
+            program = plan_auto_dimension_overall(
+                context,
+                selected,
+                {
+                    "profile": inputs["profile"],
+                    "offset": inputs["offset"],
+                    "target_layer": inputs["layer"],
+                },
+            )
+            observe_result = {
+                "snapshot_id": snapshot_id,
+                "document_revision": snapshot["document_revision"],
+            }
+            query_result = {
+                "entity_ids": sorted(requested),
+                "entity_count": len(selected),
+            }
+        elif skill_id == "mechanical.plate-hole-pattern":
+            program = render_plate_hole_pattern(context, inputs)
+            observe_result = {}
+            query_result = {}
+        else:
+            raise GatewayError("not_found")
+        principal = Principal(subject=owner_subject, scopes=scopes)
+        prepare_request = CadPrepareProgramInput(
+            device_id=device_id,
+            source_snapshot_id=snapshot_id,
+            operations=program["operations"],
+            idempotency_key=f"wf-{run_key}-prepare",
+        )
+        prepared = await self.prepare_program(
+            prepare_request,
+            principal,
+            f"workflow-{run_key}-prepare",
+            schema_version="cad.program/1.0",
+            program_v1_source=program,
+        )
+        preview = await self.preview_program(
+            CadPreviewInput(
+                program_id=prepared.program_id,
+                program_revision=prepared.program_revision,
+                idempotency_key=f"wf-{run_key}-preview",
+            ),
+            principal,
+            f"workflow-{run_key}-preview",
+        )
+        preview_job = await self.repository.get_job(
+            owner_subject, preview.job_id
+        )
+        if preview_job is None:
+            raise GatewayError("preview_unavailable")
+        try:
+            completed_preview = await self.job_service.wait_for_existing_job(
+                preview_job,
+                owner_subject=owner_subject,
+                correlation_id=f"workflow-{run_key}-preview",
+            )
+        except DurableJobError as error:
+            raise GatewayError(
+                self._safe_job_error_code(error.code)
+            ) from None
+        if completed_preview["state"] != "succeeded" or not isinstance(
+            completed_preview.get("result"), dict
+        ):
+            raise GatewayError(
+                completed_preview.get("error_code") or "job_in_progress"
+            )
+        preview_value = preview.model_dump(mode="json")
+        preview_value["state"] = "succeeded"
+        preview_value["validation"] = completed_preview["result"]
+        return {
+            "observe": observe_result,
+            "query": query_result,
+            "pure": program,
+            "prepare": prepared.model_dump(mode="json"),
+            "preview": preview_value,
+        }
+
+    async def _phase9_commit_request(
+        self,
+        owner_subject: str,
+        preview_id: str,
+        idempotency_key: str,
+        scopes: tuple[str, ...],
+    ) -> dict[str, Any]:
+        key = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:24]
+        try:
+            value = await self.commit_program(
+                CadCommitInput(
+                    preview_id=preview_id,
+                    idempotency_key=f"wf-{key}-commit",
+                ),
+                Principal(subject=owner_subject, scopes=scopes),
+                f"workflow-{key}-commit",
+            )
+        except GatewayError:
+            logger.exception("Phase 9 commit request failed")
+            raise
+        result = value.model_dump(mode="json")
+        if result.get("admission_status") not in {
+            "approval_required",
+            "released",
+            "current_job",
+            "receipt",
+        }:
+            raise GatewayError("backend_error")
+        return result
+
+    async def _phase9_reconcile_action(
+        self,
+        action_kind: str,
+        child_ref: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any] | None:
+        payload = child_ref.get("payload")
+        if (
+            action_kind != "commit"
+            or not isinstance(payload, dict)
+            or self.phase7_repository is None
+        ):
+            return None
+        owner_subject = payload.get("owner_subject")
+        if not isinstance(owner_subject, str):
+            return None
+        child_key = (
+            "wf-"
+            + hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:24]
+            + "-commit"
+        )
+        intent_id = child_ref.get("intent_id") or self._phase7_stable_id(
+            "intent", owner_subject, child_key
+        )
+        intent = await self.phase7_repository.get_intent(
+            owner_subject, str(intent_id)
+        )
+        if intent is None or intent.get("idempotency_key") != child_key:
+            return None
+        result = {
+            "state": intent["state"],
+            "admission_status": (
+                "current_job"
+                if intent["state"] == "released"
+                else "approval_required"
+            ),
+            "intent_id": intent["intent_id"],
+            "consent_id": intent.get("consent_id"),
+            "job_id": intent.get("released_job_id"),
+        }
+        return {"state": "succeeded", "result": result}
+
+    async def _phase9_commit_status(
+        self, owner_subject: str, intent_id: str
+    ) -> dict[str, Any]:
+        if self.phase7_repository is None:
+            raise GatewayError("feature_disabled")
+        intent = await self.phase7_repository.get_intent(
+            owner_subject, intent_id
+        )
+        if intent is None:
+            raise GatewayError("not_found")
+        if intent["state"] != "released":
+            return {"state": intent["state"], "intent_id": intent_id}
+        job_id = intent.get("released_job_id")
+        if not isinstance(job_id, str):
+            return {"state": "outcome_unknown", "intent_id": intent_id}
+        job = await self.repository.get_job(owner_subject, job_id)
+        if job is None:
+            return {"state": "outcome_unknown", "intent_id": intent_id}
+        result = {
+            "state": job["state"],
+            "intent_id": intent_id,
+            "job_id": job_id,
+        }
+        if job["state"] == "succeeded" and self.program_repository is not None:
+            binding = job.get("payload", {}).get("binding")
+            if (
+                isinstance(binding, dict)
+                and binding.get("schema_version")
+                == "cad.execution-binding/1"
+                and isinstance(job.get("result"), dict)
+                and isinstance(job["result"].get("receipt_id"), str)
+            ):
+                return {
+                    **result,
+                    "receipt_id": job["result"]["receipt_id"],
+                    "receipt": job["result"],
+                }
+            receipt = await self.program_repository.get_receipt_by_job(
+                owner_subject, job_id
+            )
+            if receipt is None:
+                return {**result, "state": "outcome_unknown"}
+            result.update(
+                {
+                    "receipt_id": receipt["receipt_id"],
+                    "receipt": receipt,
+                }
+            )
+        return result
 
     async def commit_program(
         self, request: Any, principal: Principal, correlation_id: str
@@ -586,9 +997,37 @@ class DurableGatewayServices:
             or not isinstance(job.get("result"), dict)
         ):
             raise GatewayError("preview_unavailable")
+        value = job["result"]
+        plan = await self.phase8_repository.get_plan(
+            owner_subject, preview["plan_id"]
+        )
+        if plan is None:
+            raise GatewayError("preview_unavailable")
+        entities = value.get("planned_entities")
+        if not isinstance(entities, list):
+            entities = [
+                *(value.get("created_outputs") or []),
+                *(value.get("modified_entities") or []),
+            ]
         try:
-            result = ProgramPreviewResult.model_validate(job["result"])
-        except (TypeError, ValueError):
+            result = ProgramPreviewResult(
+                preview_id=preview["preview_id"],
+                preview_digest=value["preview_digest"],
+                expires_at=preview["expires_at"],
+                planned_operation_count=len(plan["plan"]["operations"]),
+                planned_entity_count=len(entities),
+                planned_layer_count=len(
+                    {
+                        item["layer"]
+                        for item in entities
+                        if isinstance(item, dict)
+                        and isinstance(item.get("layer"), str)
+                    }
+                ),
+                transaction_aborted=value["transaction_aborted"],
+                drawing_unchanged=value["drawing_unchanged"],
+            )
+        except (KeyError, TypeError, ValueError):
             raise GatewayError("preview_unavailable") from None
         if (
             result.preview_id != preview["preview_id"]
@@ -981,9 +1420,9 @@ class DurableGatewayServices:
                 ).encode("utf-8")
             ).hexdigest()[:48]
         )
-        expires_at = (
-            datetime.now(timezone.utc) + timedelta(seconds=120)
-        ).isoformat()
+        now = datetime.now(timezone.utc)
+        expires_at = (now + timedelta(minutes=10)).isoformat()
+        deadline_at = (now + timedelta(seconds=120)).isoformat()
         binding = build_execution_binding_v1(
             plan["plan"],
             action="preview",
@@ -1009,7 +1448,7 @@ class DurableGatewayServices:
                 effect_class="write",
                 payload=payload,
                 idempotency_key=key,
-                deadline_at=expires_at,
+                deadline_at=deadline_at,
             )
             preview, duplicate = await self.phase8_repository.create_preview(
                 owner_subject=principal.subject,
@@ -1126,6 +1565,20 @@ class DurableGatewayServices:
         current_pins: dict[str, str],
         action: str,
     ) -> dict[str, Any]:
+        manifest = connection.capability_manifest
+        reported_capabilities = tuple(
+            capability
+            for product in (manifest or {}).get("cad_products", [])
+            if isinstance(product, dict)
+            and isinstance(product.get("runtime"), dict)
+            and product["runtime"].get("id") == current_pins["runtime_id"]
+            and product["runtime"].get("host_family")
+            == current_pins["host_family"]
+            and product["runtime"].get("package_hash")
+            == current_pins["package_hash"]
+            for capability in product.get("capabilities", [])
+            if isinstance(capability, str)
+        )
         try:
             return await self.phase8_gateway.admit(
                 owner_subject=principal.subject,
@@ -1133,7 +1586,7 @@ class DurableGatewayServices:
                 plan_id=plan["plan_id"],
                 action=action,
                 cohort="lab",
-                reported_capabilities=tuple(connection.capabilities),
+                reported_capabilities=reported_capabilities,
                 current_runtime_pins=current_pins,
             )
         except RepositoryConflict as error:
@@ -1203,6 +1656,8 @@ class DurableGatewayServices:
             ):
                 await self.job_service.handle_disconnect(connection.device_id)
         await self.job_service.sweep_deadlines()
+        if self.workflow_service is not None:
+            await self.workflow_service.maintenance_once()
 
     def _maintenance_done(self, task: asyncio.Task[None]) -> None:
         if task.cancelled():
@@ -1266,6 +1721,8 @@ class DurableGatewayServices:
                 },
             )
         await self.job_service.handle_connected(connection)
+        if self.workflow_service is not None:
+            await self.workflow_service.maintenance_once()
 
     async def on_agent_heartbeat(self, connection: Any, message: Any) -> None:
         phase6_state_present = bool(
@@ -1513,7 +1970,10 @@ class DurableGatewayServices:
             correlation_id=correlation_id,
             snapshot_id=request.snapshot_id,
             document_revision=snapshot["document_revision"],
-            entities=[CadEntity.model_validate(copy.deepcopy(entity)) for entity in page],
+            entities=[
+                CadEntity.model_validate(copy.deepcopy(entity), extra="ignore")
+                for entity in page
+            ],
             total=len(selected),
             next_cursor=next_cursor,
             resource_uri=f"cad://snapshots/{request.snapshot_id}/entities",

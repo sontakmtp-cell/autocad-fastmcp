@@ -28,6 +28,10 @@ import {
   type ProgramReceipt,
   type ProgramRevision,
   type ProgramValidation,
+  workflowDetailSchema,
+  workflowRunSchema,
+  type WorkflowDetail,
+  type WorkflowRun,
 } from "./contracts";
 import { portalEnv } from "./env";
 import type { PortalSession } from "./session";
@@ -131,6 +135,14 @@ export class GatewayClient {
       `/api/portal/v1/jobs/${encodeURIComponent(parseOpaqueId(jobId))}`,
       phase6JobSchema,
     );
+  }
+
+  async listWorkflows(): Promise<WorkflowRun[]> {
+    return this.request("/api/portal/v1/workflows", z.object({ runs: z.array(workflowRunSchema) }).strict()).then((value) => value.runs);
+  }
+
+  async getWorkflow(runId: string): Promise<WorkflowDetail> {
+    return this.request(`/api/portal/v1/workflows/${encodeURIComponent(parseOpaqueId(runId))}`, workflowDetailSchema);
   }
 
   async getIntent(intentId: string): Promise<ExecutionIntent> {

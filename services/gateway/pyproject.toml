@@ -7,6 +7,7 @@ dependencies = [
     "autocad-mcp",
     "autocad-cad-core==0.1.0",
     "autocad-contracts==0.2.0",
+    "autocad-skill-catalog==0.1.0",
     "fastmcp==3.4.4",
     "httpx>=0.27,<1.0",
     "PyJWT[crypto]>=2.11.0,<3.0",
@@ -32,6 +33,7 @@ packages = ["src/autocad_gateway"]
 autocad-mcp = { path = "../..", editable = false }
 autocad-cad-core = { path = "../../packages/cad_core", editable = false }
 autocad-contracts = { path = "../../packages/contracts", editable = false }
+autocad-skill-catalog = { path = "../../packages/skill_catalog", editable = false }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

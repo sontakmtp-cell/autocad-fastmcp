@@ -10,13 +10,13 @@ import autocad_gateway.app as gateway_app
 from autocad_contracts import (
     Phase8CapabilityEvidence,
     ProgramCommandMessage,
-    ProgramPreviewResult,
+    ProgramResultMessage,
     build_execution_binding_v1,
     canonical_capability_hash,
     canonical_phase8_capability_evidence_digest,
     program_command_payload_hash,
 )
-from autocad_gateway.application.job_service import DurableJobService
+from autocad_gateway.application.job_service import DurableJobError, DurableJobService
 from autocad_gateway.app import GatewayConfig, build_mcp_server
 from autocad_gateway.composition import build_services
 from autocad_gateway.contracts import CadPrepareProgramInput, Principal
@@ -612,16 +612,11 @@ async def test_public_prepare_patch_and_rebase_rematerialize_move_target(
             command_id=preview_job["command_id"],
             payload_hash=preview_job["payload_hash"],
             target="succeeded",
-            result=ProgramPreviewResult(
-                preview_id=preview_id,
-                preview_digest=preview_digest,
-                expires_at=preview_expires_at,
-                planned_operation_count=1,
-                planned_entity_count=0,
-                planned_layer_count=0,
-                transaction_aborted=True,
-                drawing_unchanged=True,
-            ).model_dump(mode="json"),
+            result={
+                "preview_digest": preview_digest,
+                "transaction_aborted": True,
+                "drawing_unchanged": True,
+            },
         )
         intent_raw = intent_value(
             "phase8-public-release",
@@ -1169,5 +1164,42 @@ async def test_phase8_preview_dispatches_as_typed_program_command_without_source
         assert command.approval_binding is None
         assert "program" not in socket.messages[-1]
         assert program_command_payload_hash(command) == job["payload_hash"]
+        result = {
+            "execution_plan_digest": command.binding.execution_plan_digest,
+            "effect_manifest_digest": command.binding.effect_manifest_digest,
+            "target_refs_digest": command.binding.target_refs_digest,
+            "hard_budgets_digest": command.binding.hard_budgets_digest,
+            "rollout_policy_digest": compiled.plan["execution_pins"][
+                "rollout_policy_digest"
+            ],
+            "preview_digest": _sha("4"),
+            "planned_entities": [],
+            "transaction_aborted": True,
+            "drawing_unchanged": True,
+        }
+        message = ProgramResultMessage(
+            session_id=connection.session_id,
+            device_id=connection.device_id,
+            job_id=job["job_id"],
+            command_id=job["command_id"],
+            sequence=2,
+            kind="program_preview",
+            status="succeeded",
+            payload_hash=job["payload_hash"],
+            binding=command.binding,
+            result=result,
+        )
+        service._validate_program_result_binding(job, message)
+        assert service._normalize_program_result(job, message) == result
+        invalid = message.model_copy(
+            update={
+                "result": {
+                    **result,
+                    "execution_plan_digest": _sha("9"),
+                }
+            }
+        )
+        with pytest.raises(DurableJobError, match="binding_mismatch"):
+            service._normalize_program_result(job, invalid)
     finally:
         await database.close()

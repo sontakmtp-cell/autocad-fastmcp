@@ -82,6 +82,7 @@ from .services import (
     GatewayServices,
     LOCAL_SUBJECT,
 )
+from .workflows.service import WorkflowServiceError
 
 
 CorrelationIdFactory = Callable[[], str]
@@ -103,6 +104,11 @@ _SAFE_JOB_STATES = frozenset(
         "needs_attention",
     }
 )
+
+
+async def _async_value(value: Any) -> Any:
+    """Adapt a bounded synchronous catalog read to the async facade."""
+    return value
 
 
 @dataclass(frozen=True)
@@ -129,6 +135,7 @@ class GatewayConfig:
         "phase6_program",
         "phase7_c2",
         "phase8_program",
+        "phase9_workflow",
     ] = "local"
     db_path: str | None = None
     fixture_tokens: tuple[tuple[str, str], ...] = ()
@@ -183,6 +190,15 @@ class GatewayConfig:
     phase8_operation_registry_version: str = "cad.program/1.0-create-core"
     phase8_operation_registry_hash: str | None = None
     phase8_policy_version: str = "phase8-policy/1"
+    phase9_skill_catalog_enabled: bool = False
+    phase9_workflow_engine_enabled: bool = False
+    phase9_public_workflow_tools_enabled: bool = False
+    phase9_auto_dimension_skill_enabled: bool = False
+    phase9_cleanup_audit_skill_enabled: bool = False
+    phase9_plate_pattern_skill_enabled: bool = False
+    phase9_write_workflows_enabled: bool = False
+    phase9_skill_allowlist: tuple[str, ...] = ()
+    phase9_policy_epoch: int = 0
 
     @classmethod
     def from_env(cls) -> "GatewayConfig":
@@ -274,7 +290,7 @@ class GatewayConfig:
                 os.environ.get(
                     (
                         "AUTOCAD_MCP_PHASE7_DB_PATH"
-                        if profile in {"phase7_c2", "phase8_program"}
+                        if profile in {"phase7_c2", "phase8_program", "phase9_workflow"}
                         else "AUTOCAD_MCP_PHASE6_DB_PATH"
                     ),
                     os.environ.get(
@@ -285,7 +301,7 @@ class GatewayConfig:
                         ),
                     ),
                 ).strip()
-                if profile in {"phase6_program", "phase7_c2", "phase8_program"}
+                if profile in {"phase6_program", "phase7_c2", "phase8_program", "phase9_workflow"}
                 else (
                     os.environ.get(
                         "AUTOCAD_MCP_PHASE5_DB_PATH",
@@ -462,6 +478,15 @@ class GatewayConfig:
             phase8_policy_version=os.environ.get(
                 "AUTOCAD_MCP_PHASE8_POLICY_VERSION", "phase8-policy/1"
             ).strip(),
+            phase9_skill_catalog_enabled=os.environ.get("AUTOCAD_MCP_PHASE9_SKILL_CATALOG_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase9_workflow_engine_enabled=os.environ.get("AUTOCAD_MCP_PHASE9_WORKFLOW_ENGINE_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase9_public_workflow_tools_enabled=os.environ.get("AUTOCAD_MCP_PHASE9_PUBLIC_WORKFLOW_TOOLS_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase9_auto_dimension_skill_enabled=os.environ.get("AUTOCAD_MCP_PHASE9_AUTO_DIMENSION_SKILL_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase9_cleanup_audit_skill_enabled=os.environ.get("AUTOCAD_MCP_PHASE9_CLEANUP_AUDIT_SKILL_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase9_plate_pattern_skill_enabled=os.environ.get("AUTOCAD_MCP_PHASE9_PLATE_PATTERN_SKILL_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase9_write_workflows_enabled=os.environ.get("AUTOCAD_MCP_PHASE9_WRITE_WORKFLOWS_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase9_skill_allowlist=tuple(item.strip() for item in os.environ.get("AUTOCAD_MCP_PHASE9_SKILL_ALLOWLIST", "").split(",") if item.strip()),
+            phase9_policy_epoch=int(os.environ.get("AUTOCAD_MCP_PHASE9_POLICY_EPOCH", "0")),
         )
         return config.validate()
 
@@ -510,10 +535,11 @@ class GatewayConfig:
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         }:
             raise ValueError(
                 "profile must be local, phase3_poc, phase4_c1, phase5_identity, "
-                "phase6_program, phase7_c2 or phase8_program"
+                "phase6_program, phase7_c2, phase8_program or phase9_workflow"
             )
         if not 1 <= self.stale_after_seconds <= 3600:
             raise ValueError("stale_after_seconds must be between 1 and 3600")
@@ -566,6 +592,7 @@ class GatewayConfig:
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         }:
             required = {
                 "db_path": self.db_path,
@@ -676,11 +703,11 @@ class GatewayConfig:
                 raise ValueError("Phase 8 rollout policy digest is invalid")
         elif self.phase8_rollout_policy_epoch < 0:
             raise ValueError("Phase 8 rollout policy epoch is invalid")
-        if self.profile == "phase8_program":
+        if self.profile in {"phase8_program", "phase9_workflow"}:
             if not self.phase7_c2_enabled:
-                raise ValueError("phase8_program requires the Phase 7 C2 master flag")
+                raise ValueError(f"{self.profile} requires the Phase 7 C2 master flag")
             if not self.program_v1_source_enabled or not self.program_v1_compiler_enabled:
-                raise ValueError("phase8_program requires Program v1 source and compiler")
+                raise ValueError(f"{self.profile} requires Program v1 source and compiler")
             trusted = {
                 "compiler package hash": self.phase8_compiler_package_hash,
                 "runtime ID": self.phase8_runtime_id,
@@ -697,7 +724,7 @@ class GatewayConfig:
             missing = [name for name, value in trusted.items() if not value]
             if missing:
                 raise ValueError(
-                    "phase8_program requires trusted " + ", ".join(missing)
+                    f"{self.profile} requires trusted " + ", ".join(missing)
                 )
             for name in (
                 "phase8_compiler_package_hash",
@@ -716,6 +743,18 @@ class GatewayConfig:
                     )
                 ):
                     raise ValueError(f"{name} must be a canonical SHA-256 digest")
+        if self.phase9_public_workflow_tools_enabled and not (
+            self.profile == "phase9_workflow" and self.phase9_skill_catalog_enabled
+            and self.phase9_workflow_engine_enabled
+        ):
+            raise ValueError("Phase 9 public workflow tools require the Phase 9 catalog and engine")
+        if self.phase9_write_workflows_enabled and not (
+            self.phase9_workflow_engine_enabled and self.managed_write_enabled
+            and self.phase7_c2_enabled and self.trusted_approval_enabled
+        ):
+            raise ValueError("Phase 9 write workflows require existing managed approval gates")
+        if self.phase9_policy_epoch < 0:
+            raise ValueError("Phase 9 policy epoch is invalid")
         return self
 
     @property
@@ -983,6 +1022,7 @@ def _principal(
         "phase6_program",
         "phase7_c2",
         "phase8_program",
+        "phase9_workflow",
     }:
         issuer = token.claims.get("iss")
         if not isinstance(issuer, str) or not issuer:
@@ -1102,6 +1142,11 @@ def build_mcp_server(
     phase4 = bool(getattr(services, "is_phase4", False))
     phase6 = bool(getattr(services, "is_phase6", False))
     phase7 = bool(getattr(services, "is_phase7", False))
+    workflow_service = getattr(services, "workflow_service", None)
+    phase9_catalog = bool(getattr(services, "is_phase9", False)) and bool(
+        getattr(workflow_service, "catalog_enabled", False)
+    )
+    phase9 = phase9_catalog and bool(getattr(workflow_service, "enabled", False))
     write_auth_check = require_scopes("autocad.write") if auth is not None else None
     mcp = FastMCP(
         name=(
@@ -1160,6 +1205,125 @@ def build_mcp_server(
             correlation_id,
         )
         return result.model_dump(mode="json")
+
+    if phase9:
+        async def _workflow_call(operation: Any) -> Any:
+            try:
+                return await operation()
+            except WorkflowServiceError as error:
+                raise GatewayError(str(error)) from error
+
+        @mcp.tool(name="cad_list_skills", title="List first-party CAD skills",
+                  description="List bounded first-party workflow skills; no skill is an MCP tool.",
+                  annotations=_tool_annotations(idempotent=True), auth=auth_check)
+        async def cad_list_skills(
+            device_id: str | None = None,
+            query: str | None = None,
+            domain: str | None = None,
+            tags: list[str] | None = None,
+            required_support: str | None = None,
+            cursor: int = 0,
+            limit: int = 20,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
+            del ctx
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            result = await _run(
+                lambda: _workflow_call(
+                    lambda: workflow_service.list_skills(
+                        owner_subject=principal.subject,
+                        device_id=device_id,
+                        query=query,
+                        domain=domain,
+                        tags=tuple(tags or ()),
+                        required_support=required_support,
+                        cursor=cursor,
+                        limit=limit,
+                    )
+                ),
+                correlation_id,
+            )
+            return {
+                "contract_version": "cad.mcp/1.6",
+                "correlation_id": correlation_id,
+                **result,
+            }
+
+        @mcp.tool(name="cad_start_workflow", title="Start a CAD workflow",
+                  description="Start one owner-scoped, digest-pinned workflow run.",
+                  annotations=_tool_annotations(idempotent=False, read_only=False), auth=auth_check)
+        async def cad_start_workflow(
+            skill_id: str,
+            device_id: str,
+            inputs: dict[str, Any],
+            idempotency_key: str,
+            skill_version: str | None = None,
+            source_snapshot_id: str | None = None,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
+            del ctx
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            return await _run(lambda: _workflow_call(lambda: workflow_service.start(
+                owner_subject=principal.subject, actor_subject=principal.subject, skill_id=skill_id,
+                version=skill_version, device_id=device_id,
+                source_snapshot_id=source_snapshot_id, inputs=inputs,
+                idempotency_key=idempotency_key,
+                scopes=principal.scopes)), correlation_id)
+
+        @mcp.tool(name="cad_get_workflow", title="Get a CAD workflow",
+                  description="Read one owner-scoped workflow run and bounded timeline.",
+                  annotations=_tool_annotations(idempotent=True), auth=auth_check)
+        async def cad_get_workflow(
+            run_id: str,
+            event_cursor: int = 0,
+            event_limit: int = 50,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
+            del ctx
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            return await _run(lambda: _workflow_call(lambda: workflow_service.get(
+                principal.subject, run_id, event_cursor=event_cursor,
+                event_limit=event_limit,
+            )), correlation_id)
+
+        @mcp.tool(
+            name="cad_control_workflow",
+            title="Control a CAD workflow",
+            description=(
+                "Submit bounded input, resume or cancel. "
+                "Approval is intentionally unavailable here."
+            ),
+            annotations=_tool_annotations(idempotent=False, read_only=False),
+            auth=auth_check,
+        )
+        async def cad_control_workflow(
+            run_id: str,
+            action: Literal[
+                "submit_input",
+                "resume",
+                "cancel",
+            ],
+            expected_state_version: int,
+            idempotency_key: str,
+            payload: dict[str, Any] | None = None,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
+            del ctx
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            return await _run(lambda: _workflow_call(lambda: workflow_service.control(
+                owner_subject=principal.subject, run_id=run_id, action=action,
+                expected_state_version=expected_state_version,
+                idempotency_key=idempotency_key, payload=payload,
+                scopes=principal.scopes,
+            )), correlation_id)
 
     async def _call_cad_observe(
         request: CadObserveInput | CadObserveInputDurable,
@@ -1952,6 +2116,119 @@ def build_mcp_server(
                 phase7_admission.read_rollback_receipt, receipt_id
             )
 
+    if phase9_catalog:
+        async def _phase9_resource_call(operation: Any) -> Any:
+            try:
+                return await operation()
+            except WorkflowServiceError as error:
+                raise GatewayError(str(error)) from error
+
+        @mcp.resource(
+            "cad://skills", name="CAD skill catalog",
+            description="Read bounded first-party skill summaries.",
+            mime_type="application/json", auth=auth_check,
+        )
+        async def skills_resource() -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(
+                lambda: _phase9_resource_call(
+                    lambda: workflow_service.list_skills(
+                        owner_subject=principal.subject, limit=50
+                    )
+                ),
+                correlation_id,
+            )
+            return ResourceResult([ResourceContent(
+                content=json.dumps(value, sort_keys=True),
+                mime_type="application/json",
+            )])
+
+        @mcp.resource(
+            "cad://workflows/{run_id}", name="CAD workflow run",
+            description="Read a bounded owner-scoped workflow run and timeline.",
+            mime_type="application/json", auth=auth_check,
+        )
+        async def workflow_resource(run_id: str) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(lambda: _phase9_resource_call(lambda: workflow_service.get(principal.subject, run_id)), correlation_id)
+            return ResourceResult([ResourceContent(content=json.dumps(value, sort_keys=True), mime_type="application/json")])
+
+        @mcp.resource(
+            "cad://skills/{skill_id}/versions/{version}/guide", name="CAD skill guide",
+            description="Read non-executable first-party skill guidance.", mime_type="text/markdown", auth=auth_check,
+        )
+        async def skill_guide_resource(skill_id: str, version: str) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            value = await _run(lambda: _phase9_resource_call(lambda: _async_value(workflow_service.read_guide(skill_id, version))), correlation_id)
+            return ResourceResult([ResourceContent(content=value, mime_type="text/markdown")])
+
+        @mcp.resource(
+            "cad://skills/{skill_id}/versions/{version}/manifest",
+            name="CAD skill manifest",
+            description="Read one immutable first-party skill manifest.",
+            mime_type="application/json", auth=auth_check,
+        )
+        async def skill_manifest_resource(
+            skill_id: str, version: str
+        ) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            value = await _run(
+                lambda: _phase9_resource_call(
+                    lambda: _async_value(
+                        workflow_service.read_manifest(skill_id, version)
+                    )
+                ),
+                correlation_id,
+            )
+            return ResourceResult([ResourceContent(
+                content=value, mime_type="application/json"
+            )])
+
+        @mcp.resource(
+            "cad://workflows/{run_id}/events",
+            name="CAD workflow events",
+            description="Read bounded ordered workflow events.",
+            mime_type="application/json", auth=auth_check,
+        )
+        async def workflow_events_resource(run_id: str) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(
+                lambda: _phase9_resource_call(
+                    lambda: workflow_service.get(principal.subject, run_id)
+                ),
+                correlation_id,
+            )
+            return ResourceResult([ResourceContent(
+                content=json.dumps({"events": value["events"]}, sort_keys=True),
+                mime_type="application/json",
+            )])
+
+        @mcp.resource(
+            "cad://workflows/{run_id}/report",
+            name="CAD workflow report",
+            description="Read the bounded workflow result/report when available.",
+            mime_type="application/json", auth=auth_check,
+        )
+        async def workflow_report_resource(run_id: str) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(
+                lambda: _phase9_resource_call(
+                    lambda: workflow_service.get(principal.subject, run_id)
+                ),
+                correlation_id,
+            )
+            report = value["run"].get("result")
+            if report is None:
+                raise GatewayError("not_found")
+            return ResourceResult([ResourceContent(
+                content=json.dumps(report, sort_keys=True),
+                mime_type="application/json",
+            )])
+
     @mcp.prompt(
         name="plan_cad_change",
         title="Plan a CAD change",
@@ -2016,6 +2293,7 @@ def create_app(
         "phase6_program",
         "phase7_c2",
         "phase8_program",
+        "phase9_workflow",
     } and auth is None:
         raise ValueError(f"{config.profile} requires OAuth authentication")
     if stateless_http is not None:
@@ -2579,10 +2857,13 @@ def create_app(
             return context
         owner, issuer, subject, claims = context
         origin = request.headers.get("origin")
+        allowed_origins = (config.public_origin, *config.allowed_origins)
         if (
             not origin
-            or not config.public_origin
-            or not _origin_matches(origin, config.public_origin)
+            or not any(
+                allowed and _origin_matches(origin, allowed)
+                for allowed in allowed_origins
+            )
         ):
             return JSONResponse({"error": "origin_forbidden"}, status_code=403)
         try:
@@ -2606,7 +2887,10 @@ def create_app(
                 nonce=body.challenge_nonce,
                 actor_issuer=issuer,
                 actor_subject=subject,
-                auth_time=claims.get("auth_time"),
+                auth_time=claims.get(
+                    "auth_time",
+                    claims.get("https://cad.kythuatvang.com/auth_time"),
+                ),
             )
         except GatewayError as error:
             return phase7_http_error(error)
@@ -2629,6 +2913,28 @@ def create_app(
     async def portal_phase7_deny(request: Request) -> JSONResponse:
         return await portal_phase7_decide(request, "denied")
 
+    async def portal_phase9_workflows(request: Request) -> JSONResponse:
+        context = await phase7_portal_context(request, required_scope="autocad.read")
+        if isinstance(context, JSONResponse):
+            return context
+        owner, _, _, _ = context
+        try:
+            value = await services.workflow_service.list_runs(owner, limit=100)
+        except WorkflowServiceError:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        return phase6_portal_response(value)
+
+    async def portal_phase9_workflow(request: Request) -> JSONResponse:
+        context = await phase7_portal_context(request, required_scope="autocad.read")
+        if isinstance(context, JSONResponse):
+            return context
+        owner, _, _, _ = context
+        try:
+            value = await services.workflow_service.get(owner, request.path_params["run_id"])
+        except WorkflowServiceError:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        return phase6_portal_response(value)
+
     @asynccontextmanager
     async def lifespan(app: Starlette):
         await services.initialize()
@@ -2650,6 +2956,7 @@ def create_app(
         "phase6_program",
         "phase7_c2",
         "phase8_program",
+        "phase9_workflow",
     }:
         routes.extend(
             [
@@ -2714,7 +3021,7 @@ def create_app(
                 Route("/identity/device/revoke", device_revoke, methods=["POST"]),
             ]
         )
-    if config.profile in {"phase6_program", "phase7_c2", "phase8_program"}:
+    if config.profile in {"phase6_program", "phase7_c2", "phase8_program", "phase9_workflow"}:
         routes.extend(
             [
                 Route(
@@ -2749,7 +3056,7 @@ def create_app(
                 ),
             ]
         )
-    if config.profile in {"phase7_c2", "phase8_program"}:
+    if config.profile in {"phase7_c2", "phase8_program", "phase9_workflow"}:
         routes.extend(
             [
                 Route(
@@ -2774,6 +3081,11 @@ def create_app(
                 ),
             ]
         )
+    if config.profile == "phase9_workflow" and config.phase9_skill_catalog_enabled:
+        routes.extend([
+            Route("/api/portal/v1/workflows", portal_phase9_workflows, methods=["GET"]),
+            Route("/api/portal/v1/workflows/{run_id:str}", portal_phase9_workflow, methods=["GET"]),
+        ])
     routes.append(Mount("/", app=mcp_app))
     outer_app: Any = Starlette(
         routes=routes,

@@ -122,7 +122,8 @@ class CadEntity(StrictModel):
     entity_id: str
     entity_type: str
     layer: str
-    geometry: dict[str, Any] = Field(default_factory=dict)
+    geometry: dict[str, Any] | None = None
+    geometry_truncated: bool = False
 
 
 class CadObserveOutput(StrictModel):
@@ -147,8 +148,17 @@ class CadObserveOutputDurable(CadObserveOutput):
 
 class RevisionEvidence(StrictModel):
     revision_schema: Literal["cad.revision/1"] = "cad.revision/1"
-    revision_strength: Literal["summary_only"] = "summary_only"
-    commit_safe: Literal[False] = False
+    revision_strength: Literal[
+        "summary_only",
+        "database_object_fingerprint",
+    ] = "summary_only"
+    commit_safe: bool = False
+
+    @model_validator(mode="after")
+    def validate_strength(self) -> "RevisionEvidence":
+        if self.revision_strength == "summary_only" and self.commit_safe:
+            raise ValueError("summary-only revision evidence cannot be commit-safe")
+        return self
 
 
 class ExecutionEvidence(StrictModel):

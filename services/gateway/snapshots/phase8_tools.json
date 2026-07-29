@@ -9,13 +9,13 @@
     "name": "cad_observe",
     "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": false, "openWorldHint": false},
     "input_schema_sha256": "396c4c9ac16413dbc26af13ed82c8f8db0e1b1c96ff31e731ed701fa8ece00a4",
-    "output_schema_sha256": "81b8d179f8cf099572f0d9ae78b6d8d1796b2b093c251729ed37462b7ae48989"
+    "output_schema_sha256": "7a77aeeb513a4d4061cba43dd15be61696ba9e7e4477f2894c5b9e132cc13009"
   },
   {
     "name": "cad_query",
     "annotations": {"readOnlyHint": true, "destructiveHint": false, "idempotentHint": true, "openWorldHint": false},
     "input_schema_sha256": "26e5f25f4bb5197f068a0bde512136021d4d552002e590aef4f99b1e604af948",
-    "output_schema_sha256": "f2a613bf544025354646a44f3c31abc24e013aad0111d61f26d4890bdff870b9"
+    "output_schema_sha256": "31986d51d126115b5cf10a4f32ac2c5de28d48f7a647af52711ea41b11fcc500"
   },
   {
     "name": "cad_get_job",

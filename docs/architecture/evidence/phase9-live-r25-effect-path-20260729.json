@@ -1,0 +1,671 @@
+{
+  "schema_version": "cad.phase9-live-r25-e2e/1",
+  "created_at": "2026-07-29T05:38:04.1503800+00:00",
+  "drawing": "drawing33.dwg",
+  "profile": "signed-r25-lab",
+  "package_signature": {
+    "signed": true,
+    "lab_only": true,
+    "certificate_thumbprint": "A8D8F13F906B1A216EFE2A1EEFE89AFA9376A5F2",
+    "timestamped": false
+  },
+  "host_evidence": {
+    "schema_version": "cad.host-capability-evidence/1",
+    "runtime_id": "managed_dotnet",
+    "runtime_role": "primary",
+    "host_family": "R25",
+    "host_version": "0.8.0",
+    "package_id": "autocad.managed_host.r25",
+    "package_version": "0.8.0",
+    "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94",
+    "operation_registry_version": "cad.operation-registry/1",
+    "operation_registry_hash": "sha256:1b840d43a4872322882f4443c07fb0f0b238cbb1d122cbefb4fe7e59097024a5",
+    "host_evidence_digest": "sha256:f029230095127113c5c291ca7ab725d6ef900785b1b68f800ad1d6766518ea05"
+  },
+  "capability_manifest_hash": "sha256:2266a92a2f3481cdb309280632371a968f61dcfc4d1295b1878ea456735af15e",
+  "planner_registry_digest": "sha256:3194127f4bf1797ea2581f0d37e3794c8e782f81c15e52834c64306ef069a099",
+  "template_registry_digest": "sha256:e067bdbd50454b8327cc2b9fbdd2c23da32377f47f10146131dac23b6d2c507e",
+  "write_workflows": [
+    {
+      "skill_id": "mechanical.auto-dimension-overall",
+      "source_digest": "sha256:c18d87fb8ef961d3d6b389a921ad819e8c9d763b7c0d0e8ec32f8991a3e89edf",
+      "execution_plan_digest": "sha256:88d1f757a75ffd3c4ade3e1bb70f7b16f536fec2eed13b62c55121daf3dccf4b",
+      "effect_manifest_digest": "sha256:7e62b0ae7ae20a3c7daf44ab3dc36718ad28dc21ccda5404014b56044420aebf",
+      "required_capabilities": [
+        "cad.program.v1.compile"
+      ],
+      "preview_revision_unchanged": true,
+      "entity_count_before": 46,
+      "entity_count_after_commit": 48,
+      "entity_count_after_rollback": 46,
+      "expected_entity_delta": 2,
+      "preview": {
+        "command_id": "command-d0d5040f8950400986db5200645ddb98",
+        "status": "succeeded",
+        "result": {
+          "preview_digest": "sha256:0bb8cabd88422410bb25760c524c7250b3b9c6fc552513e4ef7d5720af503e0e",
+          "planned_entities": [
+            {
+              "operation_id": "overall_width",
+              "entity_id": "655",
+              "entity_type": "DIMENSION",
+              "layer": "DIM",
+              "fingerprint": "sha256:9c82104e0f4ca5020d60348403990b481222e8c9d082cf7371b2a1e1ed9b049a"
+            },
+            {
+              "operation_id": "overall_height",
+              "entity_id": "662",
+              "entity_type": "DIMENSION",
+              "layer": "DIM",
+              "fingerprint": "sha256:55da5d867ecb0b93395a550f9004e7de54f69d8ee3af928b77cd3afc7c9f76e0"
+            }
+          ],
+          "transaction_aborted": true,
+          "drawing_unchanged": true,
+          "execution_plan_digest": "sha256:88d1f757a75ffd3c4ade3e1bb70f7b16f536fec2eed13b62c55121daf3dccf4b",
+          "effect_manifest_digest": "sha256:7e62b0ae7ae20a3c7daf44ab3dc36718ad28dc21ccda5404014b56044420aebf",
+          "target_refs_digest": "sha256:629627f4b174ce6878fa9c8ecb1ad5ad1056ddb7266dedc7eea0827b4185a270",
+          "hard_budgets_digest": "sha256:f3b3c8ad9a0d6fce9c43c9d36412474b14e58c3b85ac7b3361c31be145e8729b",
+          "rollout_policy_digest": "sha256:e4068556eb31661746a5839212b42660c3faf9f8481388e0052c0fb08dcaa6dd"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      },
+      "commit": {
+        "command_id": "command-0f77fd0623f04190a35b09c181587e2c",
+        "status": "succeeded",
+        "result": {
+          "receipt_id": "AUTOCAD_MCP_PHASE8_56024c799a834711275634d6a109c769",
+          "receipt_digest": "sha256:9ebfcf3af6dd9a996622e87f1913dd040659c7e76c2b6ffb2de9ec44ede0bfea",
+          "effect_identity_digest": "sha256:9f830d7b71aa08286d6ec94d65e202b8cc480dc62e4f28f90ba9d1c134f415b5",
+          "document_revision_before": "4149931295030846",
+          "document_revision_after": "4149931295030847",
+          "created_entities": [
+            {
+              "operation_id": "overall_width",
+              "entity_id": "689",
+              "entity_type": "DIMENSION",
+              "layer": "DIM",
+              "fingerprint": "sha256:9c82104e0f4ca5020d60348403990b481222e8c9d082cf7371b2a1e1ed9b049a"
+            },
+            {
+              "operation_id": "overall_height",
+              "entity_id": "696",
+              "entity_type": "DIMENSION",
+              "layer": "DIM",
+              "fingerprint": "sha256:55da5d867ecb0b93395a550f9004e7de54f69d8ee3af928b77cd3afc7c9f76e0"
+            }
+          ],
+          "checkpoint": {
+            "schema_version": "cad.rollback.checkpoint/1-created-entities",
+            "id": "AUTOCAD_MCP_PHASE8_CP_12cf0e068ec0bc9ba3b20958698c34e9",
+            "digest": "sha256:7899c4a44969297deaf8e384121d75044f5c87025d8d200ef6bccad4f43ec098"
+          },
+          "duplicate": false,
+          "milestone": "effect_and_receipt_committed",
+          "execution_plan_digest": "sha256:88d1f757a75ffd3c4ade3e1bb70f7b16f536fec2eed13b62c55121daf3dccf4b",
+          "effect_manifest_digest": "sha256:7e62b0ae7ae20a3c7daf44ab3dc36718ad28dc21ccda5404014b56044420aebf",
+          "target_refs_digest": "sha256:629627f4b174ce6878fa9c8ecb1ad5ad1056ddb7266dedc7eea0827b4185a270",
+          "hard_budgets_digest": "sha256:f3b3c8ad9a0d6fce9c43c9d36412474b14e58c3b85ac7b3361c31be145e8729b",
+          "rollout_policy_digest": "sha256:e4068556eb31661746a5839212b42660c3faf9f8481388e0052c0fb08dcaa6dd"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      },
+      "receipt_query": {
+        "command_id": "command-5704178c9feb4b579a88a6d1b2a252f5",
+        "status": "succeeded",
+        "result": {
+          "found": true,
+          "receipt_id": "AUTOCAD_MCP_PHASE8_56024c799a834711275634d6a109c769",
+          "receipt_digest": "sha256:9ebfcf3af6dd9a996622e87f1913dd040659c7e76c2b6ffb2de9ec44ede0bfea",
+          "execution_plan_digest": "sha256:88d1f757a75ffd3c4ade3e1bb70f7b16f536fec2eed13b62c55121daf3dccf4b",
+          "effect_manifest_digest": "sha256:7e62b0ae7ae20a3c7daf44ab3dc36718ad28dc21ccda5404014b56044420aebf",
+          "effect_identity_digest": "sha256:9f830d7b71aa08286d6ec94d65e202b8cc480dc62e4f28f90ba9d1c134f415b5",
+          "document_id": "doc-5f7ace4316b601749ae3981e",
+          "document_revision_after": "4149931295030847",
+          "rollback_eligible": true,
+          "checkpoint_id": "AUTOCAD_MCP_PHASE8_CP_12cf0e068ec0bc9ba3b20958698c34e9",
+          "checkpoint_digest": "sha256:7899c4a44969297deaf8e384121d75044f5c87025d8d200ef6bccad4f43ec098"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      },
+      "checkpoint_query": {
+        "command_id": "command-77de6acbfe81468cab6e6d04d110cbff",
+        "status": "succeeded",
+        "result": {
+          "found": true,
+          "schema_version": "cad.rollback.checkpoint/1-created-entities",
+          "checkpoint_id": "AUTOCAD_MCP_PHASE8_CP_12cf0e068ec0bc9ba3b20958698c34e9",
+          "checkpoint_digest": "sha256:7899c4a44969297deaf8e384121d75044f5c87025d8d200ef6bccad4f43ec098",
+          "receipt_id": "AUTOCAD_MCP_PHASE8_56024c799a834711275634d6a109c769",
+          "effect_identity_digest": "sha256:9f830d7b71aa08286d6ec94d65e202b8cc480dc62e4f28f90ba9d1c134f415b5",
+          "execution_plan_digest": "sha256:88d1f757a75ffd3c4ade3e1bb70f7b16f536fec2eed13b62c55121daf3dccf4b",
+          "effect_manifest_digest": "sha256:7e62b0ae7ae20a3c7daf44ab3dc36718ad28dc21ccda5404014b56044420aebf",
+          "document_id": "doc-5f7ace4316b601749ae3981e",
+          "document_revision_before": "4149931295030846",
+          "document_revision_after": "4149931295030847",
+          "created_entity_count": 2
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      },
+      "rollback_preview": {
+        "command_id": "command-ac5a58acf7f54d6d9c6aeb2321d825a5",
+        "status": "succeeded",
+        "result": {
+          "rollback_plan_id": "rollback-auto-20260729053757",
+          "rollback_plan_digest": "sha256:814c3d3e8d48fd88d42b12769c4dd2f809f181f17eaca3fc9c3cb5e014b7e66f",
+          "checkpoint_id": "AUTOCAD_MCP_PHASE8_CP_12cf0e068ec0bc9ba3b20958698c34e9",
+          "checkpoint_digest": "sha256:7899c4a44969297deaf8e384121d75044f5c87025d8d200ef6bccad4f43ec098",
+          "checkpoint_schema": "cad.rollback.checkpoint/1-created-entities",
+          "document_revision": "4149931295030847",
+          "conflict_count": 0,
+          "can_commit": true,
+          "expires_at": "2026-07-29T06:07:59.0443680+00:00",
+          "drawing_unchanged": true
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      },
+      "rollback_commit": {
+        "command_id": "command-126341273355430881a2d0fadd846c5c",
+        "status": "succeeded",
+        "result": {
+          "rollback_receipt_id": "AUTOCAD_MCP_PHASE8_RB_a144add8a1cc02756bbc806633303cd3",
+          "receipt_digest": "sha256:3ba9b68057cddda67f9dcc2124bc6b11fa37947165ad00ffa9a659052791aa4c",
+          "checkpoint_id": "AUTOCAD_MCP_PHASE8_CP_12cf0e068ec0bc9ba3b20958698c34e9",
+          "checkpoint_digest": "sha256:7899c4a44969297deaf8e384121d75044f5c87025d8d200ef6bccad4f43ec098",
+          "execution_plan_digest": "sha256:88d1f757a75ffd3c4ade3e1bb70f7b16f536fec2eed13b62c55121daf3dccf4b",
+          "effect_manifest_digest": "sha256:7e62b0ae7ae20a3c7daf44ab3dc36718ad28dc21ccda5404014b56044420aebf",
+          "document_revision_before": "4149931295030847",
+          "document_revision_after": "4149931295030848",
+          "removed_entities": [
+            {
+              "operation_id": "overall_width",
+              "entity_id": "689",
+              "entity_type": "DIMENSION",
+              "layer": "DIM",
+              "fingerprint": "sha256:9c82104e0f4ca5020d60348403990b481222e8c9d082cf7371b2a1e1ed9b049a"
+            },
+            {
+              "operation_id": "overall_height",
+              "entity_id": "696",
+              "entity_type": "DIMENSION",
+              "layer": "DIM",
+              "fingerprint": "sha256:55da5d867ecb0b93395a550f9004e7de54f69d8ee3af928b77cd3afc7c9f76e0"
+            }
+          ],
+          "duplicate": false,
+          "milestone": "rollback_effect_and_receipt_committed"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      },
+      "rollback_validation": {
+        "command_id": "command-49f9ec3df4a44dbfb8cb1974d3b1d88e",
+        "status": "succeeded",
+        "result": {
+          "rollback_receipt_id": "AUTOCAD_MCP_PHASE8_RB_a144add8a1cc02756bbc806633303cd3",
+          "valid": true,
+          "failures": [],
+          "checkpoint_id": "AUTOCAD_MCP_PHASE8_CP_12cf0e068ec0bc9ba3b20958698c34e9",
+          "checkpoint_digest": "sha256:7899c4a44969297deaf8e384121d75044f5c87025d8d200ef6bccad4f43ec098",
+          "execution_plan_digest": "sha256:88d1f757a75ffd3c4ade3e1bb70f7b16f536fec2eed13b62c55121daf3dccf4b",
+          "effect_manifest_digest": "sha256:7e62b0ae7ae20a3c7daf44ab3dc36718ad28dc21ccda5404014b56044420aebf",
+          "document_revision_after": "4149931295030848"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      }
+    },
+    {
+      "skill_id": "mechanical.plate-hole-pattern",
+      "source_digest": "sha256:997069f3a2ecdb4575239e1021ab578811a6d62fe322a3b770e1d5b4f3989072",
+      "execution_plan_digest": "sha256:38a834dc7f7ae3c06e32ea2b74e96fcf469695299fb97a204541fa7b3e10098c",
+      "effect_manifest_digest": "sha256:897711c4d2b60fd62c3f04e410982353552ed3935fa917833d0d57f873da7f70",
+      "required_capabilities": [
+        "cad.program.v1.compile"
+      ],
+      "preview_revision_unchanged": true,
+      "entity_count_before": 46,
+      "entity_count_after_commit": 55,
+      "entity_count_after_rollback": 46,
+      "expected_entity_delta": 9,
+      "preview": {
+        "command_id": "command-6608e79f050646dabb42e73d31d331e6",
+        "status": "succeeded",
+        "result": {
+          "preview_digest": "sha256:b4df03cc6b8665844f15fbf3fc870d8dcd74f1d28054e6fae32ed2223004dbaa",
+          "planned_entities": [
+            {
+              "operation_id": "plate_outline",
+              "entity_id": "6B9",
+              "entity_type": "LWPOLYLINE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:0fe7483211a133453f4e6adbaef5e6757ff1ac9dc3d343184c722a137929db1d"
+            },
+            {
+              "operation_id": "hole.r000c000",
+              "entity_id": "6BA",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:843ae4ba442cd93c6e3d31c5f5650efd666a8244c8141d3170c137fa5638cca1"
+            },
+            {
+              "operation_id": "hole.r000c001",
+              "entity_id": "6BB",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:1442664555cb1127647eb87da1027b377a02dad08bf60b0079dfacd7309ed63b"
+            },
+            {
+              "operation_id": "hole.r000c002",
+              "entity_id": "6BC",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:547ff9d630d57d49062da77811af66adc9a0eec56ad88176cb6d44764667b5ad"
+            },
+            {
+              "operation_id": "hole.r001c000",
+              "entity_id": "6BD",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:a91b02b2898e961d3595068ecb2b23ac178825b99ca660f47d07ba6ef7c74f73"
+            },
+            {
+              "operation_id": "hole.r001c001",
+              "entity_id": "6BE",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:30db2e04104ab00ad7aaa56e4a2ea9dc503c8496cd705840d5a7c49370b403ed"
+            },
+            {
+              "operation_id": "hole.r001c002",
+              "entity_id": "6BF",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:3289b5e2f4f5f2d6dc3f1f0635ba8c858537781ecb8fd873aae7e54190ebbcf4"
+            },
+            {
+              "operation_id": "plate_width",
+              "entity_id": "6C0",
+              "entity_type": "DIMENSION",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:a112e3482572fcc7d0dfc056a60f13afa3a9f36785a8849aabcad3ebddbc1550"
+            },
+            {
+              "operation_id": "plate_height",
+              "entity_id": "6CD",
+              "entity_type": "DIMENSION",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:6b77174f452bd1713f90e44190d0d472fd30cc4e5dcfb5d9bf9371e60bbcd4a9"
+            }
+          ],
+          "transaction_aborted": true,
+          "drawing_unchanged": true,
+          "execution_plan_digest": "sha256:38a834dc7f7ae3c06e32ea2b74e96fcf469695299fb97a204541fa7b3e10098c",
+          "effect_manifest_digest": "sha256:897711c4d2b60fd62c3f04e410982353552ed3935fa917833d0d57f873da7f70",
+          "target_refs_digest": "sha256:629627f4b174ce6878fa9c8ecb1ad5ad1056ddb7266dedc7eea0827b4185a270",
+          "hard_budgets_digest": "sha256:f3b3c8ad9a0d6fce9c43c9d36412474b14e58c3b85ac7b3361c31be145e8729b",
+          "rollout_policy_digest": "sha256:e4068556eb31661746a5839212b42660c3faf9f8481388e0052c0fb08dcaa6dd"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      },
+      "commit": {
+        "command_id": "command-610f3bc1bf5a4b60b2343250e5164c37",
+        "status": "succeeded",
+        "result": {
+          "receipt_id": "AUTOCAD_MCP_PHASE8_124d4ac4ff127d24f4efb61bfcc5fd89",
+          "receipt_digest": "sha256:c7c5062d8bc8434d5c8b2954c1bdab72c2a8e62c978b219569aa322c7f03ab27",
+          "effect_identity_digest": "sha256:6703670021e8169e1067d22d6bbc2f7d0a206dfea5c203e1dfd4d053b7ef5f0a",
+          "document_revision_before": "4149931295030848",
+          "document_revision_after": "4149931295030849",
+          "created_entities": [
+            {
+              "operation_id": "plate_outline",
+              "entity_id": "6FD",
+              "entity_type": "LWPOLYLINE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:0fe7483211a133453f4e6adbaef5e6757ff1ac9dc3d343184c722a137929db1d"
+            },
+            {
+              "operation_id": "hole.r000c000",
+              "entity_id": "6FE",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:843ae4ba442cd93c6e3d31c5f5650efd666a8244c8141d3170c137fa5638cca1"
+            },
+            {
+              "operation_id": "hole.r000c001",
+              "entity_id": "6FF",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:1442664555cb1127647eb87da1027b377a02dad08bf60b0079dfacd7309ed63b"
+            },
+            {
+              "operation_id": "hole.r000c002",
+              "entity_id": "700",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:547ff9d630d57d49062da77811af66adc9a0eec56ad88176cb6d44764667b5ad"
+            },
+            {
+              "operation_id": "hole.r001c000",
+              "entity_id": "701",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:a91b02b2898e961d3595068ecb2b23ac178825b99ca660f47d07ba6ef7c74f73"
+            },
+            {
+              "operation_id": "hole.r001c001",
+              "entity_id": "702",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:30db2e04104ab00ad7aaa56e4a2ea9dc503c8496cd705840d5a7c49370b403ed"
+            },
+            {
+              "operation_id": "hole.r001c002",
+              "entity_id": "703",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:3289b5e2f4f5f2d6dc3f1f0635ba8c858537781ecb8fd873aae7e54190ebbcf4"
+            },
+            {
+              "operation_id": "plate_width",
+              "entity_id": "704",
+              "entity_type": "DIMENSION",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:a112e3482572fcc7d0dfc056a60f13afa3a9f36785a8849aabcad3ebddbc1550"
+            },
+            {
+              "operation_id": "plate_height",
+              "entity_id": "711",
+              "entity_type": "DIMENSION",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:6b77174f452bd1713f90e44190d0d472fd30cc4e5dcfb5d9bf9371e60bbcd4a9"
+            }
+          ],
+          "checkpoint": {
+            "schema_version": "cad.rollback.checkpoint/1-created-entities",
+            "id": "AUTOCAD_MCP_PHASE8_CP_6bc9a591445856ff67028e358ae3941d",
+            "digest": "sha256:c31e642bc97cd63f604adb1592dd00f437cd7e51e77c3a301664f76663ab2c91"
+          },
+          "duplicate": false,
+          "milestone": "effect_and_receipt_committed",
+          "execution_plan_digest": "sha256:38a834dc7f7ae3c06e32ea2b74e96fcf469695299fb97a204541fa7b3e10098c",
+          "effect_manifest_digest": "sha256:897711c4d2b60fd62c3f04e410982353552ed3935fa917833d0d57f873da7f70",
+          "target_refs_digest": "sha256:629627f4b174ce6878fa9c8ecb1ad5ad1056ddb7266dedc7eea0827b4185a270",
+          "hard_budgets_digest": "sha256:f3b3c8ad9a0d6fce9c43c9d36412474b14e58c3b85ac7b3361c31be145e8729b",
+          "rollout_policy_digest": "sha256:e4068556eb31661746a5839212b42660c3faf9f8481388e0052c0fb08dcaa6dd"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      },
+      "receipt_query": {
+        "command_id": "command-a000cfc26e834bedb29d466219a054b1",
+        "status": "succeeded",
+        "result": {
+          "found": true,
+          "receipt_id": "AUTOCAD_MCP_PHASE8_124d4ac4ff127d24f4efb61bfcc5fd89",
+          "receipt_digest": "sha256:c7c5062d8bc8434d5c8b2954c1bdab72c2a8e62c978b219569aa322c7f03ab27",
+          "execution_plan_digest": "sha256:38a834dc7f7ae3c06e32ea2b74e96fcf469695299fb97a204541fa7b3e10098c",
+          "effect_manifest_digest": "sha256:897711c4d2b60fd62c3f04e410982353552ed3935fa917833d0d57f873da7f70",
+          "effect_identity_digest": "sha256:6703670021e8169e1067d22d6bbc2f7d0a206dfea5c203e1dfd4d053b7ef5f0a",
+          "document_id": "doc-5f7ace4316b601749ae3981e",
+          "document_revision_after": "4149931295030849",
+          "rollback_eligible": true,
+          "checkpoint_id": "AUTOCAD_MCP_PHASE8_CP_6bc9a591445856ff67028e358ae3941d",
+          "checkpoint_digest": "sha256:c31e642bc97cd63f604adb1592dd00f437cd7e51e77c3a301664f76663ab2c91"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      },
+      "checkpoint_query": {
+        "command_id": "command-0898b0385bc64cdf840f68a472c52b4e",
+        "status": "succeeded",
+        "result": {
+          "found": true,
+          "schema_version": "cad.rollback.checkpoint/1-created-entities",
+          "checkpoint_id": "AUTOCAD_MCP_PHASE8_CP_6bc9a591445856ff67028e358ae3941d",
+          "checkpoint_digest": "sha256:c31e642bc97cd63f604adb1592dd00f437cd7e51e77c3a301664f76663ab2c91",
+          "receipt_id": "AUTOCAD_MCP_PHASE8_124d4ac4ff127d24f4efb61bfcc5fd89",
+          "effect_identity_digest": "sha256:6703670021e8169e1067d22d6bbc2f7d0a206dfea5c203e1dfd4d053b7ef5f0a",
+          "execution_plan_digest": "sha256:38a834dc7f7ae3c06e32ea2b74e96fcf469695299fb97a204541fa7b3e10098c",
+          "effect_manifest_digest": "sha256:897711c4d2b60fd62c3f04e410982353552ed3935fa917833d0d57f873da7f70",
+          "document_id": "doc-5f7ace4316b601749ae3981e",
+          "document_revision_before": "4149931295030848",
+          "document_revision_after": "4149931295030849",
+          "created_entity_count": 9
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      },
+      "rollback_preview": {
+        "command_id": "command-234310440192498fa01d35e17ca68b87",
+        "status": "succeeded",
+        "result": {
+          "rollback_plan_id": "rollback-plate-20260729053757",
+          "rollback_plan_digest": "sha256:950ff47ec6d1d0510f9ce9d6a2dbb6a358668d0d2829c6a76dabd8afecedc084",
+          "checkpoint_id": "AUTOCAD_MCP_PHASE8_CP_6bc9a591445856ff67028e358ae3941d",
+          "checkpoint_digest": "sha256:c31e642bc97cd63f604adb1592dd00f437cd7e51e77c3a301664f76663ab2c91",
+          "checkpoint_schema": "cad.rollback.checkpoint/1-created-entities",
+          "document_revision": "4149931295030849",
+          "conflict_count": 0,
+          "can_commit": true,
+          "expires_at": "2026-07-29T06:08:02.1354950+00:00",
+          "drawing_unchanged": true
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      },
+      "rollback_commit": {
+        "command_id": "command-a64f88578a5448cdaeb88108c93f5c27",
+        "status": "succeeded",
+        "result": {
+          "rollback_receipt_id": "AUTOCAD_MCP_PHASE8_RB_a98dc92c88b9c1ac6aa3306b0e03fe25",
+          "receipt_digest": "sha256:4d71071dbb4078f3a85e14c4335004636300de21135d105a9d635b2f6039c4ff",
+          "checkpoint_id": "AUTOCAD_MCP_PHASE8_CP_6bc9a591445856ff67028e358ae3941d",
+          "checkpoint_digest": "sha256:c31e642bc97cd63f604adb1592dd00f437cd7e51e77c3a301664f76663ab2c91",
+          "execution_plan_digest": "sha256:38a834dc7f7ae3c06e32ea2b74e96fcf469695299fb97a204541fa7b3e10098c",
+          "effect_manifest_digest": "sha256:897711c4d2b60fd62c3f04e410982353552ed3935fa917833d0d57f873da7f70",
+          "document_revision_before": "4149931295030849",
+          "document_revision_after": "4149931295030850",
+          "removed_entities": [
+            {
+              "operation_id": "plate_outline",
+              "entity_id": "6FD",
+              "entity_type": "LWPOLYLINE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:0fe7483211a133453f4e6adbaef5e6757ff1ac9dc3d343184c722a137929db1d"
+            },
+            {
+              "operation_id": "hole.r000c000",
+              "entity_id": "6FE",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:843ae4ba442cd93c6e3d31c5f5650efd666a8244c8141d3170c137fa5638cca1"
+            },
+            {
+              "operation_id": "hole.r000c001",
+              "entity_id": "6FF",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:1442664555cb1127647eb87da1027b377a02dad08bf60b0079dfacd7309ed63b"
+            },
+            {
+              "operation_id": "hole.r000c002",
+              "entity_id": "700",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:547ff9d630d57d49062da77811af66adc9a0eec56ad88176cb6d44764667b5ad"
+            },
+            {
+              "operation_id": "hole.r001c000",
+              "entity_id": "701",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:a91b02b2898e961d3595068ecb2b23ac178825b99ca660f47d07ba6ef7c74f73"
+            },
+            {
+              "operation_id": "hole.r001c001",
+              "entity_id": "702",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:30db2e04104ab00ad7aaa56e4a2ea9dc503c8496cd705840d5a7c49370b403ed"
+            },
+            {
+              "operation_id": "hole.r001c002",
+              "entity_id": "703",
+              "entity_type": "CIRCLE",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:3289b5e2f4f5f2d6dc3f1f0635ba8c858537781ecb8fd873aae7e54190ebbcf4"
+            },
+            {
+              "operation_id": "plate_width",
+              "entity_id": "704",
+              "entity_type": "DIMENSION",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:a112e3482572fcc7d0dfc056a60f13afa3a9f36785a8849aabcad3ebddbc1550"
+            },
+            {
+              "operation_id": "plate_height",
+              "entity_id": "711",
+              "entity_type": "DIMENSION",
+              "layer": "PHASE9_LIVE",
+              "fingerprint": "sha256:6b77174f452bd1713f90e44190d0d472fd30cc4e5dcfb5d9bf9371e60bbcd4a9"
+            }
+          ],
+          "duplicate": false,
+          "milestone": "rollback_effect_and_receipt_committed"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      },
+      "rollback_validation": {
+        "command_id": "command-5d12a98da00e4618a0ce56ab07d5f330",
+        "status": "succeeded",
+        "result": {
+          "rollback_receipt_id": "AUTOCAD_MCP_PHASE8_RB_a98dc92c88b9c1ac6aa3306b0e03fe25",
+          "valid": true,
+          "failures": [],
+          "checkpoint_id": "AUTOCAD_MCP_PHASE8_CP_6bc9a591445856ff67028e358ae3941d",
+          "checkpoint_digest": "sha256:c31e642bc97cd63f604adb1592dd00f437cd7e51e77c3a301664f76663ab2c91",
+          "execution_plan_digest": "sha256:38a834dc7f7ae3c06e32ea2b74e96fcf469695299fb97a204541fa7b3e10098c",
+          "effect_manifest_digest": "sha256:897711c4d2b60fd62c3f04e410982353552ed3935fa917833d0d57f873da7f70",
+          "document_revision_after": "4149931295030850"
+        },
+        "runtime_evidence": {
+          "runtime_id": "managed_dotnet",
+          "runtime_role": "primary",
+          "host_family": "R25",
+          "host_version": "0.8.0",
+          "package_hash": "sha256:8ea0c0211c230c721311f169d96e576e56eb7232376ccd4b999b040d9ee07b94"
+        }
+      }
+    }
+  ],
+  "cleanup_audit": {
+    "report": {
+      "schema_version": "cad.cleanup-audit-report/1",
+      "source_snapshot_id": "snapshot-cleanup-20260729053757-4149931295030850",
+      "document_revision": "4149931295030850",
+      "duplicate_groups": [
+        [
+          "430",
+          "455",
+          "473",
+          "476",
+          "49C"
+        ]
+      ],
+      "degenerate_entity_ids": [],
+      "unsupported_entity_summary": {},
+      "layer_anomalies": [],
+      "tiny_entity_ids": [],
+      "dimension_style_summary": {},
+      "truncated": false,
+      "effect": "none",
+      "duplicate_rule": "geometry_only_across_layers",
+      "report_digest": "sha256:a42f29e86644d59d12ef1981ebacdc885a2e9ebebce19b873c6baa7f3471a831"
+    },
+    "revision_before": "4149931295030850",
+    "revision_after": "4149931295030850"
+  },
+  "live_checks": {
+    "reference_planners_and_phase8_effect_path": true,
+    "preview_approval_commit_validate_rollback": true,
+    "cleanup_read_only": true,
+    "durable_gateway_workflow_engine": false,
+    "gateway_restart_and_agent_reconnect": false
+  },
+  "phase9_engineering_go": false,
+  "success": true
+}

@@ -1545,11 +1545,7 @@ class Phase7Repository:
             and phase8_preview["result_json"] is not None
         ):
             result = json.loads(phase8_preview["result_json"])
-            phase8_matches = (
-                result.get("preview_id") == record.preview_id
-                and result.get("preview_digest") == record.preview_digest
-                and result.get("expires_at") == record.preview_expires_at
-            )
+            phase8_matches = result.get("preview_digest") == record.preview_digest
         if device is None or (
             not (legacy_program is not None and legacy_preview is not None)
             and not phase8_matches

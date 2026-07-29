@@ -538,7 +538,7 @@ public static class Phase8CanonicalHostCommandParser
             }
         }
         Digest(pins, "capability_manifest_hash");
-        Identifier(pins, "policy_version");
+        BoundedString(pins, "policy_version", 64);
         Digest(pins, "rollout_policy_digest");
     }
 
@@ -826,12 +826,18 @@ public static class Phase8CanonicalHostCommandParser
     private static DateTimeOffset Timestamp(JsonElement parent, string property)
     {
         var value = BoundedString(parent, property, 64);
+        var hasExplicitOffset =
+            value.EndsWith('Z') ||
+            (value.Length >= 6 &&
+             (value[^6] == '+' || value[^6] == '-') &&
+             value[^3] == ':');
         if (!DateTimeOffset.TryParseExact(
                 value,
-                ["O", "yyyy-MM-dd'T'HH:mm:ssK"],
+                "yyyy-MM-dd'T'HH:mm:ss.FFFFFFFK",
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.None,
-                out var parsed))
+                out var parsed) ||
+            !hasExplicitOffset)
         {
             throw Invalid($"{property} must be a timezone-aware timestamp.");
         }

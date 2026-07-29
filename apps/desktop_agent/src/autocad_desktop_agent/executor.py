@@ -113,7 +113,7 @@ class ReadCommandExecutor:
     def validate_command(self, command: CommandMessage) -> None:
         if command.kind != "observe" or command.effect_class != "read":
             raise AgentExecutionError("capability_missing")
-        if command.payload.get("observation_level") != "summary":
+        if command.payload.get("observation_level") not in {"summary", "detail"}:
             raise AgentExecutionError("capability_missing")
         if command.payload.get("include_preview_image") is not False:
             raise AgentExecutionError("capability_missing")
@@ -234,6 +234,10 @@ class ReadCommandExecutor:
             port, selection = await self._select_port()
         except Exception as error:
             raise AgentExecutionError(getattr(error, "code", "backend_error")) from error
+        detail = command.payload["observation_level"] == "detail"
+        entity_snapshot = getattr(port, "entity_snapshot", None)
+        if detail and not callable(entity_snapshot):
+            raise AgentExecutionError("capability_missing")
         health = await port.health()
         if not health.ok:
             raise AgentExecutionError(self._safe_code(health.error_code))
@@ -241,12 +245,38 @@ class ReadCommandExecutor:
         if not result.ok or not isinstance(result.payload, dict):
             raise AgentExecutionError(self._safe_code(result.error_code))
         runtime = getattr(selection, "evidence", None)
+        managed_dotnet = getattr(runtime, "id", None) == "managed_dotnet"
         summary = self._validate_summary(
             result.payload,
-            require_compatibility_package=(
-                selection is None or getattr(runtime, "id", None) != "managed_dotnet"
-            ),
+            require_compatibility_package=not managed_dotnet,
         )
+        detail_payload: dict[str, Any] | None = None
+        if detail:
+            summary_revision = None
+            if managed_dotnet:
+                revision = result.payload.get("revision")
+                if (
+                    not isinstance(revision, dict)
+                    or isinstance(revision.get("revision"), bool)
+                    or not isinstance(revision.get("revision"), int)
+                    or revision["revision"] <= 0
+                ):
+                    raise AgentExecutionError("protocol_mismatch")
+                summary_revision = revision["revision"]
+            detail_result = (
+                await entity_snapshot(expected_revision=summary_revision)
+                if summary_revision is not None
+                else await entity_snapshot()
+            )
+            if not detail_result.ok or not isinstance(detail_result.payload, dict):
+                raise AgentExecutionError(self._safe_code(detail_result.error_code))
+            detail_payload = detail_result.payload
+            if (
+                summary_revision is not None
+                and detail_payload.get("revision", {}).get("revision")
+                != summary_revision
+            ):
+                raise AgentExecutionError("active_document_changed")
         revision_source = {
             "document_name": summary["document_name"],
             "entity_count": summary["entity_count"],
@@ -254,18 +284,73 @@ class ReadCommandExecutor:
             "layer_count": summary["layer_count"],
             "truncated": summary["truncated"],
         }
-        revision = hashlib.sha256(canonical_json(revision_source).encode("utf-8")).hexdigest()
+        revision = (
+            str(detail_payload["revision"]["revision"])
+            if detail_payload is not None
+            else hashlib.sha256(
+                canonical_json(revision_source).encode("utf-8")
+            ).hexdigest()
+        )
+        entities = (
+            [
+                {
+                    "entity_id": str(entity["handle"]),
+                    "entity_type": str(entity["type"]).upper(),
+                    "layer": str(entity["layer"]),
+                    "space": str(entity.get("space", "model")),
+                    "bounds": entity.get("bounds"),
+                    "geometry": entity.get("geometry"),
+                    "geometry_truncated": bool(
+                        entity.get("geometry_truncated", False)
+                    ),
+                    "fingerprint": str(entity["fingerprint"]),
+                }
+                for entity in detail_payload["entities"]
+            ]
+            if detail_payload is not None
+            else []
+        )
         snapshot = {
             "snapshot_id": f"snapshot-{command.command_id}",
             "document_revision": revision,
-            "observation_level": "summary",
-            "drawing": summary,
-            "entity_summary": {"entity_count": summary["entity_count"], "detail_available": False},
-            "entities": [],
+            "observation_level": command.payload["observation_level"],
+            "drawing": {
+                **summary,
+                **(
+                    {
+                        "document_id": detail_payload["document_id"],
+                        "database_fingerprint": detail_payload[
+                            "database_fingerprint"
+                        ],
+                    }
+                    if detail_payload is not None
+                    else {}
+                ),
+            },
+            "entity_summary": {
+                "entity_count": (
+                    len(entities) if detail_payload is not None
+                    else summary["entity_count"]
+                ),
+                "detail_available": detail_payload is not None,
+                **(
+                    {"truncated": bool(detail_payload.get("scan_truncated"))}
+                    if detail_payload is not None
+                    else {}
+                ),
+            },
+            "entities": entities,
             "revision_evidence": {
                 "revision_schema": "cad.revision/1",
-                "revision_strength": "summary_only",
-                "commit_safe": False,
+                "revision_strength": (
+                    "database_object_fingerprint"
+                    if detail_payload is not None
+                    else "summary_only"
+                ),
+                "commit_safe": (
+                    detail_payload is not None
+                    and not bool(detail_payload.get("scan_truncated"))
+                ),
             },
         }
         return {

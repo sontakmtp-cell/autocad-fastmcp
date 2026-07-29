@@ -134,6 +134,7 @@ dependencies = [
     { name = "autocad-cad-core" },
     { name = "autocad-contracts" },
     { name = "autocad-mcp" },
+    { name = "autocad-skill-catalog" },
     { name = "fastmcp" },
     { name = "httpx" },
     { name = "pyjwt", extra = ["crypto"] },
@@ -153,6 +154,7 @@ requires-dist = [
     { name = "autocad-cad-core", directory = "../../packages/cad_core" },
     { name = "autocad-contracts", directory = "../../packages/contracts" },
     { name = "autocad-mcp", directory = "../../" },
+    { name = "autocad-skill-catalog", directory = "../../packages/skill_catalog" },
     { name = "fastmcp", specifier = "==3.4.4" },
     { name = "httpx", specifier = ">=0.27,<1.0" },
     { name = "pyjwt", extras = ["crypto"], specifier = ">=2.11.0,<3.0" },
@@ -199,6 +201,11 @@ dev = [
     { name = "pytest", specifier = ">=7.0" },
     { name = "pytest-asyncio", specifier = ">=0.21" },
 ]
+
+[[package]]
+name = "autocad-skill-catalog"
+version = "0.1.0"
+source = { directory = "../../packages/skill_catalog" }
 
 [[package]]
 name = "backports-asyncio-runner"

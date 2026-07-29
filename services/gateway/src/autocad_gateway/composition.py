@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from skill_catalog import package_root as skill_catalog_package_root
 from typing import Any
 
 from .app import GatewayConfig
@@ -41,6 +42,7 @@ def build_services(config: GatewayConfig) -> Any:
         "phase6_program",
         "phase7_c2",
         "phase8_program",
+        "phase9_workflow",
     }:
         tokens = fixture_token_map(config)
         phase4 = config.profile == "phase4_c1"
@@ -50,6 +52,7 @@ def build_services(config: GatewayConfig) -> Any:
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         }
         services = DurableGatewayServices(
             SqliteDatabase(Path(config.db_path or "")),
@@ -67,7 +70,7 @@ def build_services(config: GatewayConfig) -> Any:
             allowed_write_device_ids=config.phase6_allowed_device_ids,
             program_policy_version=(
                 config.phase8_policy_version
-                if config.profile == "phase8_program"
+                if config.profile in {"phase8_program", "phase9_workflow"}
                 else config.phase6_policy_version
             ),
             phase7_c2_enabled=config.phase7_c2_enabled,
@@ -159,13 +162,38 @@ def build_services(config: GatewayConfig) -> Any:
                         ),
                     )
                 )
-                if config.profile == "phase8_program"
+                if config.profile in {"phase8_program", "phase9_workflow"}
                 else None
             ),
             phase8_revision_adapter=(
                 AutocadContractsPhase8Revision()
-                if config.profile == "phase8_program"
+                if config.profile in {"phase8_program", "phase9_workflow"}
                 else None
+            ),
+            phase9_enabled=config.phase9_workflow_engine_enabled,
+            phase9_catalog_enabled=config.phase9_skill_catalog_enabled,
+            phase9_public_tools_enabled=config.phase9_public_workflow_tools_enabled,
+            phase9_write_enabled=config.phase9_write_workflows_enabled,
+            phase9_policy_epoch=config.phase9_policy_epoch,
+            phase9_catalog_root=str(skill_catalog_package_root()),
+            phase9_skill_allowlist=config.phase9_skill_allowlist,
+            phase9_enabled_skills=tuple(
+                skill_id
+                for skill_id, enabled in (
+                    (
+                        "mechanical.auto-dimension-overall",
+                        config.phase9_auto_dimension_skill_enabled,
+                    ),
+                    (
+                        "drawing.cleanup-audit",
+                        config.phase9_cleanup_audit_skill_enabled,
+                    ),
+                    (
+                        "mechanical.plate-hole-pattern",
+                        config.phase9_plate_pattern_skill_enabled,
+                    ),
+                )
+                if enabled
             ),
         )
         if config.profile in {
@@ -173,6 +201,7 @@ def build_services(config: GatewayConfig) -> Any:
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         }:
             services.identity = Phase5IdentityService(services.database, services.registry)
             services.agent_authenticator = PairedDeviceAuthenticator(services.identity)
@@ -205,6 +234,7 @@ def build_human_auth(config: GatewayConfig) -> Any | None:
         "phase6_program",
         "phase7_c2",
         "phase8_program",
+        "phase9_workflow",
     }:
         return None
     return build_phase4_auth(
@@ -217,10 +247,12 @@ def build_human_auth(config: GatewayConfig) -> Any | None:
             "phase6_program",
             "phase7_c2",
             "phase8_program",
+            "phase9_workflow",
         },
         include_write=config.profile in {
             "phase6_program",
             "phase7_c2",
             "phase8_program",
-        },
+            "phase9_workflow",
+        }
     )

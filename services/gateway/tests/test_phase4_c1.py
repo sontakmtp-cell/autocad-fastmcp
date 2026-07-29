@@ -23,6 +23,7 @@ from autocad_gateway.contracts import (
     CadQueryInput,
     PHASE4_CONTRACT_VERSION,
     Principal,
+    RevisionEvidence,
 )
 from autocad_gateway.durable_services import DurableGatewayServices
 from autocad_gateway.application.job_service import DurableJobService
@@ -279,6 +280,93 @@ async def test_phase4_summary_evidence_and_query_fail_closed(tmp_path):
             managed_result, managed_snapshot
         )
         is None
+    )
+    managed_detail = copy.deepcopy(managed_snapshot)
+    managed_detail["observation_level"] = "detail"
+    managed_detail["document_revision"] = "7348076429262433"
+    managed_detail["drawing"].update(
+        {
+            "document_id": "doc-live-1",
+            "database_fingerprint": "{F1D66D07-A4F1-124E-A004-B5D05E6C6541}",
+        }
+    )
+    managed_detail["entity_summary"] = {
+        "entity_count": 1,
+        "detail_available": True,
+        "truncated": False,
+    }
+    managed_detail["entities"] = [
+        {
+            "entity_id": "1A",
+            "entity_type": "LINE",
+            "layer": "0",
+            "space": "model",
+            "bounds": {"min": [0, 0, 0], "max": [1, 1, 0]},
+            "geometry": {"start": [0, 0], "end": [1, 1]},
+            "geometry_truncated": False,
+            "fingerprint": f"sha256:{'b' * 64}",
+        }
+    ]
+    managed_detail["revision_evidence"] = {
+        "revision_schema": "cad.revision/1",
+        "revision_strength": "database_object_fingerprint",
+        "commit_safe": True,
+    }
+    managed_detail_result = copy.deepcopy(managed_result)
+    managed_detail_result["snapshot"] = managed_detail
+    assert (
+        service.job_service._validate_c1_observation(
+            managed_detail_result,
+            managed_detail,
+        )
+        is None
+    )
+    assert RevisionEvidence.model_validate(
+        managed_detail["revision_evidence"]
+    ).commit_safe
+
+    compatibility_detail = copy.deepcopy(managed_detail_result)
+    for key in ("runtime", "degraded", "degradation_reason"):
+        compatibility_detail["execution_evidence"].pop(key)
+    assert (
+        service.job_service._validate_c1_observation(
+            compatibility_detail,
+            managed_detail,
+        )
+        == "backend_error"
+    )
+
+    truncated_detail = copy.deepcopy(managed_detail)
+    truncated_detail["entity_summary"]["truncated"] = True
+    truncated_detail["revision_evidence"]["commit_safe"] = False
+    truncated_result = copy.deepcopy(managed_detail_result)
+    truncated_result["snapshot"] = truncated_detail
+    assert (
+        service.job_service._validate_c1_observation(
+            truncated_result,
+            truncated_detail,
+        )
+        is None
+    )
+    truncated_detail["revision_evidence"]["commit_safe"] = True
+    assert (
+        service.job_service._validate_c1_observation(
+            truncated_result,
+            truncated_detail,
+        )
+        == "backend_error"
+    )
+
+    mismatched_count = copy.deepcopy(managed_detail)
+    mismatched_count["entity_summary"]["entity_count"] = 2
+    mismatched_result = copy.deepcopy(managed_detail_result)
+    mismatched_result["snapshot"] = mismatched_count
+    assert (
+        service.job_service._validate_c1_observation(
+            mismatched_result,
+            mismatched_count,
+        )
+        == "backend_error"
     )
     with pytest.raises(GatewayError) as captured:
         await service.query(CadQueryInput(snapshot_id="snapshot-c1"), principal, "corr-query")

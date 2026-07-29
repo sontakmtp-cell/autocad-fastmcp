@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
 from datetime import datetime, timezone
 from pathlib import PureWindowsPath
@@ -1182,35 +1183,7 @@ class DurableJobService:
             and phase8_binding.get("schema_version")
             == "cad.execution-binding/1"
         ):
-            plan = payload["execution_plan"]
-            pins = plan["execution_pins"]
-            return {
-                "program_digest": plan["source_digest"],
-                "execution_digest": phase8_binding[
-                    "execution_binding_digest"
-                ],
-                "document_id": plan["document_id"],
-                "document_revision": plan[
-                    "expected_document_revision"
-                ],
-                "runtime_id": pins["runtime_id"],
-                "runtime_role": pins["runtime_role"],
-                "host_family": pins["host_family"],
-                "host_version": pins["host_version"],
-                "package_id": pins["package_id"],
-                "package_version": pins["package_version"],
-                "package_hash": pins["package_hash"],
-                "capability_manifest_hash": pins[
-                    "capability_manifest_hash"
-                ],
-                "operation_registry_version": pins[
-                    "operation_registry_version"
-                ],
-                "operation_registry_hash": pins[
-                    "operation_registry_hash"
-                ],
-                "policy_version": pins["policy_version"],
-            }
+            return phase8_binding
         execution = job["payload"]["execution"]
         pins = execution["pins"]
         return {
@@ -1271,13 +1244,50 @@ class DurableJobService:
     ) -> dict[str, Any] | None:
         if message.result is None:
             return None
-        value = message.result.model_dump(mode="json")
+        value = (
+            message.result
+            if isinstance(message.result, dict)
+            else message.result.model_dump(mode="json")
+        )
         binding = job["payload"].get("binding")
         if (
             isinstance(binding, dict)
             and binding.get("schema_version")
             == "cad.execution-binding/1"
         ):
+            plan = job["payload"]["execution_plan"]
+            expected = {
+                "execution_plan_digest": binding["execution_plan_digest"],
+                "effect_manifest_digest": binding["effect_manifest_digest"],
+                "target_refs_digest": binding["target_refs_digest"],
+                "hard_budgets_digest": binding["hard_budgets_digest"],
+                "rollout_policy_digest": plan["execution_pins"][
+                    "rollout_policy_digest"
+                ],
+            }
+            if any(value.get(field) != exact for field, exact in expected.items()):
+                raise DurableJobError(
+                    "binding_mismatch",
+                    job_id=job["job_id"],
+                    job_state=job["state"],
+                )
+            if message.kind == "program_preview":
+                valid = (
+                    value.get("transaction_aborted") is True
+                    and value.get("drawing_unchanged") is True
+                    and isinstance(value.get("preview_digest"), str)
+                )
+            else:
+                valid = (
+                    value.get("receipt_id") == binding.get("receipt_id")
+                    and value.get("milestone") == "effect_and_receipt_committed"
+                )
+            if not valid:
+                raise DurableJobError(
+                    "binding_mismatch",
+                    job_id=job["job_id"],
+                    job_state=job["state"],
+                )
             return value
         execution = job["payload"]["execution"]
         if message.kind == "program_preview":
@@ -1385,13 +1395,29 @@ class DurableJobService:
         agent_version = evidence.get("agent_version")
         if not isinstance(agent_version, str) or not 1 <= len(agent_version) <= 64:
             return "backend_error"
-        if set(revision) != {"revision_schema", "revision_strength", "commit_safe"} or revision != {
-            "revision_schema": "cad.revision/1",
-            "revision_strength": "summary_only",
-            "commit_safe": False,
-        }:
+        managed_dotnet = runtime is not None and runtime.id == "managed_dotnet"
+        observation_level = snapshot.get("observation_level")
+        if observation_level == "detail":
+            return self._validate_c1_detail_observation(
+                snapshot,
+                revision=revision,
+                drawing=drawing,
+                summary=summary,
+                managed_dotnet=managed_dotnet,
+            )
+        if observation_level != "summary":
             return "backend_error"
-        if snapshot.get("observation_level") != "summary" or snapshot.get("entities") != []:
+        if (
+            set(revision)
+            != {"revision_schema", "revision_strength", "commit_safe"}
+            or revision
+            != {
+                "revision_schema": "cad.revision/1",
+                "revision_strength": "summary_only",
+                "commit_safe": False,
+            }
+            or snapshot.get("entities") != []
+        ):
             return "backend_error"
         document_revision = snapshot.get("document_revision")
         if not isinstance(document_revision, str) or re.fullmatch(r"[0-9a-f]{64}", document_revision) is None:
@@ -1414,7 +1440,6 @@ class DurableJobService:
             "layer_count",
             "truncated",
         }
-        managed_dotnet = runtime is not None and runtime.id == "managed_dotnet"
         if set(drawing) != (
             managed_drawing_keys if managed_dotnet else compatibility_drawing_keys
         ):
@@ -1451,6 +1476,164 @@ class DurableJobService:
         ):
             return "backend_error"
         return None
+
+    @classmethod
+    def _validate_c1_detail_observation(
+        cls,
+        snapshot: dict[str, Any],
+        *,
+        revision: dict[str, Any],
+        drawing: dict[str, Any],
+        summary: dict[str, Any],
+        managed_dotnet: bool,
+    ) -> str | None:
+        entities = snapshot.get("entities")
+        truncated = summary.get("truncated")
+        if (
+            not managed_dotnet
+            or set(revision)
+            != {"revision_schema", "revision_strength", "commit_safe"}
+            or revision.get("revision_schema") != "cad.revision/1"
+            or revision.get("revision_strength")
+            != "database_object_fingerprint"
+            or not isinstance(revision.get("commit_safe"), bool)
+            or not isinstance(truncated, bool)
+            or revision["commit_safe"] is truncated
+            or not isinstance(entities, list)
+            or len(entities) > 512
+            or summary
+            != {
+                "entity_count": len(entities),
+                "detail_available": True,
+                "truncated": truncated,
+            }
+            or any(not cls._valid_c1_detail_entity(entity) for entity in entities)
+        ):
+            return "backend_error"
+        document_revision = snapshot.get("document_revision")
+        if (
+            not isinstance(document_revision, str)
+            or re.fullmatch(r"[1-9][0-9]{0,18}", document_revision) is None
+        ):
+            return "backend_error"
+        if set(drawing) != {
+            "document_id",
+            "document_name",
+            "database_fingerprint",
+            "entity_count",
+            "layers",
+            "layer_count",
+            "truncated",
+        }:
+            return "backend_error"
+        document_id = drawing.get("document_id")
+        database_fingerprint = drawing.get("database_fingerprint")
+        document_name = drawing.get("document_name")
+        layers = drawing.get("layers")
+        entity_count = drawing.get("entity_count")
+        layer_count = drawing.get("layer_count")
+        if (
+            not isinstance(document_id, str)
+            or re.fullmatch(r"doc-[A-Za-z0-9._-]{1,124}", document_id) is None
+            or not isinstance(database_fingerprint, str)
+            or not 1 <= len(database_fingerprint) <= 128
+            or not isinstance(document_name, str)
+            or not document_name
+            or len(document_name) > 255
+            or PureWindowsPath(document_name).name != document_name
+            or "/" in document_name
+            or not isinstance(layers, list)
+            or len(layers) > 256
+            or any(not isinstance(item, str) or len(item) > 255 for item in layers)
+            or isinstance(entity_count, bool)
+            or not isinstance(entity_count, int)
+            or entity_count < len(entities)
+            or isinstance(layer_count, bool)
+            or not isinstance(layer_count, int)
+            or layer_count < len(layers)
+            or not isinstance(drawing.get("truncated"), bool)
+        ):
+            return "backend_error"
+        return None
+
+    @classmethod
+    def _valid_c1_detail_entity(cls, entity: Any) -> bool:
+        if not isinstance(entity, dict) or set(entity) != {
+            "entity_id",
+            "entity_type",
+            "layer",
+            "space",
+            "bounds",
+            "geometry",
+            "geometry_truncated",
+            "fingerprint",
+        }:
+            return False
+        entity_type = entity.get("entity_type")
+        geometry = entity.get("geometry")
+        if (
+            not isinstance(entity.get("entity_id"), str)
+            or re.fullmatch(r"[0-9A-Fa-f]{1,32}", entity["entity_id"]) is None
+            or entity_type not in {"LINE", "CIRCLE", "LWPOLYLINE"}
+            or not isinstance(entity.get("layer"), str)
+            or len(entity["layer"]) > 255
+            or entity.get("space") != "model"
+            or not isinstance(entity.get("geometry_truncated"), bool)
+            or not isinstance(entity.get("fingerprint"), str)
+            or re.fullmatch(r"sha256:[0-9a-f]{64}", entity["fingerprint"]) is None
+            or not cls._valid_c1_bounds(entity.get("bounds"))
+        ):
+            return False
+        if geometry is None:
+            return True
+        if not isinstance(geometry, dict):
+            return False
+        if entity_type == "LINE":
+            return set(geometry) == {"start", "end"} and all(
+                cls._valid_c1_point(geometry.get(key), 2)
+                for key in ("start", "end")
+            )
+        if entity_type == "CIRCLE":
+            radius = geometry.get("radius")
+            return (
+                set(geometry) == {"center", "radius"}
+                and cls._valid_c1_point(geometry.get("center"), 2)
+                and cls._valid_c1_number(radius)
+                and radius > 0
+            )
+        points = geometry.get("points")
+        return (
+            set(geometry) == {"points", "closed"}
+            and isinstance(points, list)
+            and len(points) <= 4096
+            and all(cls._valid_c1_point(point, 2) for point in points)
+            and isinstance(geometry.get("closed"), bool)
+        )
+
+    @classmethod
+    def _valid_c1_bounds(cls, bounds: Any) -> bool:
+        return bounds is None or (
+            isinstance(bounds, dict)
+            and set(bounds) == {"min", "max"}
+            and cls._valid_c1_point(bounds.get("min"), 3)
+            and cls._valid_c1_point(bounds.get("max"), 3)
+        )
+
+    @classmethod
+    def _valid_c1_point(cls, value: Any, size: int) -> bool:
+        return (
+            isinstance(value, list)
+            and len(value) == size
+            and all(cls._valid_c1_number(item) for item in value)
+        )
+
+    @staticmethod
+    def _valid_c1_number(value: Any) -> bool:
+        return (
+            not isinstance(value, bool)
+            and isinstance(value, (int, float))
+            and math.isfinite(value)
+        )
 
     async def _fail_payload(self, job: dict[str, Any]) -> None:
         target = "needs_attention" if job["state"] == "outcome_unknown" else "failed"

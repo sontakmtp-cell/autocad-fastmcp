@@ -337,8 +337,10 @@ async def test_phase6_migration_is_additive_and_has_owner_scoped_records(phase6)
         6,
         7,
         8,
-        9,
-    }
+            9,
+            10,
+            11,
+        }
 
 
 async def test_prepare_requires_scope_never_dispatches_and_is_owner_scoped(phase6):

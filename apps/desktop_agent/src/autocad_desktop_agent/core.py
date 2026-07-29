@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import inspect
 import json
+import logging
 import uuid
 from collections.abc import Callable
 from contextlib import suppress
@@ -64,6 +65,8 @@ from .program_executor import (
     ProgramCommandExecutor,
     RollbackCommandExecutor,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AgentCore:
@@ -383,6 +386,14 @@ class AgentCore:
                 if isinstance(exc, websockets.exceptions.ConnectionClosed):
                     frame = exc.rcvd or exc.sent
                     close_code = frame.code if frame is not None else None
+                logger.warning(
+                    "Agent session reconnecting after %s: %s "
+                    "(stage=%s, close_code=%s)",
+                    type(exc).__name__,
+                    exc,
+                    diagnostic_stage,
+                    close_code,
+                )
                 if close_code == 4403:
                     self._last_ids["safe_error_code"] = "credential_revoked"
                     self.approval_store.invalidate_pending()
@@ -601,7 +612,7 @@ class AgentCore:
                         server_connected=False,
                         support_code="C1-PKG-003",
                     )
-                raise RuntimeError("Gateway rejected Agent compatibility")
+                raise RuntimeError(f"gateway_error:{message.code}")
 
     async def _handle_approval_request(
         self,
@@ -849,12 +860,15 @@ class AgentCore:
         )
         self._current_command_id = command.command_id
         support_id = f"P6-{command.command_id[-12:]}"
+        execution_digest, program_digest = self._program_binding_digests(
+            command.binding
+        )
         self._last_ids.update(
             command_id=command.command_id,
             job_id=command.job_id,
             correlation_id=command.correlation_id,
-            execution_digest=command.binding.execution_digest,
-            program_digest=command.binding.program_digest,
+            execution_digest=execution_digest,
+            program_digest=program_digest,
         )
         self._publish(
             runtime_state=RuntimeState.BUSY_REMOTE,
@@ -1457,6 +1471,12 @@ class AgentCore:
             "write_lock_disabled": RuntimeState.READY,
             "paused_by_user": RuntimeState.PAUSED,
         }.get(code, RuntimeState.INCOMPATIBLE)
+
+    @staticmethod
+    def _program_binding_digests(binding: Any) -> tuple[str, str]:
+        if hasattr(binding, "execution_plan_digest"):
+            return binding.execution_plan_digest, binding.source_digest
+        return binding.execution_digest, binding.program_digest
 
     def _publish_program_rejection(
         self,

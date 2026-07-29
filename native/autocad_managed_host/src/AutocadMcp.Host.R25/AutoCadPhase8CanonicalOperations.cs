@@ -1293,14 +1293,24 @@ internal sealed class AutoCadPhase8CanonicalOperations(
             !string.Equals(
                 entity.Layer,
                 expected.Layer,
-                StringComparison.OrdinalIgnoreCase) ||
-            AutoCadProgramOperations.EntityFingerprint(entity, transaction) !=
-                expected.Fingerprint)
+                StringComparison.OrdinalIgnoreCase))
         {
             throw new ProtocolValidationException(
                 "rollback_conflict",
                 "Created entity changed after canonical Phase 8 commit.");
         }
+        var fingerprint =
+            AutoCadProgramOperations.EntityFingerprint(entity, transaction);
+        if (fingerprint != expected.Fingerprint && entity is not Dimension)
+        {
+            throw new ProtocolValidationException(
+                "rollback_conflict",
+                "Created entity changed after canonical Phase 8 commit.");
+        }
+        // AutoCAD regenerates a new dimension block after commit, changing
+        // extents/text position without a separate document revision. Both
+        // rollback callers have already pinned the exact post-commit revision,
+        // type, layer, ownership, and dependency boundary before reaching here.
         var blocks = (BlockTable)transaction.GetObject(
             database.BlockTableId,
             OpenMode.ForRead);

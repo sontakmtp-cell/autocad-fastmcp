@@ -63,6 +63,11 @@ def _stable_id(prefix: str, *parts: str) -> str:
     return f"{prefix}-{sha256(material).hexdigest()[:40]}"
 
 
+def _phase8_receipt_id(preview_id: str) -> str:
+    digest = sha256(preview_id.encode("utf-8")).hexdigest()[:32]
+    return f"AUTOCAD_MCP_PHASE8_{digest}"
+
+
 @dataclass(frozen=True)
 class Phase7AdmissionPolicy:
     phase7_c2_enabled: bool = False
@@ -181,7 +186,7 @@ class Phase7AdmissionService:
             datetime.fromisoformat(preview["expires_at"]),
             created_at + timedelta(minutes=10),
         )
-        receipt_id = canonical_receipt_id(preview["preview_id"])
+        receipt_id = _phase8_receipt_id(preview["preview_id"])
         commit_binding = build_execution_binding_v1(
             plan["plan"],
             action="commit",
@@ -1811,7 +1816,8 @@ class Phase7AdmissionService:
     def _require_phase7(self) -> None:
         if (
             not self.policy.phase7_c2_enabled
-            or self.policy.profile not in {"phase7_c2", "phase8_program"}
+            or self.policy.profile
+            not in {"phase7_c2", "phase8_program", "phase9_workflow"}
         ):
             raise GatewayError("feature_disabled")
 

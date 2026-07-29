@@ -145,7 +145,10 @@ class RuntimeBroker:
         )
         if (
             manifest_registry_hash != binding.operation_registry_hash
-            or manifest_registry_hash != operation_registry_digest()
+            or (
+                not hasattr(binding, "execution_plan_digest")
+                and manifest_registry_hash != operation_registry_digest()
+            )
         ):
             raise RuntimeSelectionError("registry_mismatch")
         required = {required_capability, *required_capabilities}

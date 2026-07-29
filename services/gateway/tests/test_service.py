@@ -4,12 +4,54 @@ import pytest
 from pydantic import ValidationError
 
 from autocad_gateway.contracts import (
+    CadEntity,
     CadListDevicesInput,
     CadObserveInput,
     CadQueryInput,
     Principal,
 )
 from autocad_gateway.services import GatewayError, LOCAL_SUBJECT
+
+
+def test_public_entity_projection_accepts_richer_agent_entity():
+    entity = CadEntity.model_validate(
+        {
+            "entity_id": "1A",
+            "entity_type": "LINE",
+            "layer": "0",
+            "geometry": {"start": [0, 0], "end": [1, 1]},
+            "space": "model",
+            "bounds": {"min": [0, 0, 0], "max": [1, 1, 0]},
+            "geometry_truncated": False,
+            "fingerprint": f"sha256:{'a' * 64}",
+        },
+        extra="ignore",
+    )
+
+    assert entity.model_dump() == {
+        "entity_id": "1A",
+        "entity_type": "LINE",
+        "layer": "0",
+        "geometry": {"start": [0, 0], "end": [1, 1]},
+        "geometry_truncated": False,
+    }
+
+
+def test_public_entity_projection_preserves_unavailable_geometry():
+    entity = CadEntity.model_validate(
+        {
+            "entity_id": "2A",
+            "entity_type": "LWPOLYLINE",
+            "layer": "0",
+            "geometry": None,
+            "geometry_truncated": True,
+            "fingerprint": f"sha256:{'b' * 64}",
+        },
+        extra="ignore",
+    )
+
+    assert entity.geometry is None
+    assert entity.geometry_truncated is True
 
 
 @pytest.mark.asyncio

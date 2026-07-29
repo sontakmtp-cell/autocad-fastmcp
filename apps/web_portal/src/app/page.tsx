@@ -16,6 +16,7 @@ export default async function HomePage() {
         <div className="flex flex-wrap gap-3">
           <Link className="button primary" href="/devices">Xem thiết bị</Link>
           <Link className="button secondary" href="/pair">Liên kết thiết bị</Link>
+          <Link className="button secondary" href="/workflows">Workflow runs</Link>
         </div>
       ) : (
         <Link className="button primary" href="/login">Đăng nhập</Link>

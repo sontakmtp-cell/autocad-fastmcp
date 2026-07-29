@@ -48,7 +48,13 @@ def _env_operation_packs(name: str) -> frozenset[str]:
     raw = os.environ.get(name, "")
     values = frozenset(item.strip() for item in raw.split(",") if item.strip())
     if any(
-        re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", item) is None
+        re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}"
+            r"|[A-Za-z0-9][A-Za-z0-9._-]{0,62}/"
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}",
+            item,
+        )
+        is None
         for item in values
     ):
         raise ValueError(f"{name} contains a malformed operation pack")
