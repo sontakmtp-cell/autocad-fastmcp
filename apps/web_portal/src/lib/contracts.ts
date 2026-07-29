@@ -314,7 +314,14 @@ export const workflowRunSchema = z.object({
   pins: z.record(z.string(), z.unknown()), inputs: z.record(z.string(), z.unknown()),
 }).passthrough();
 export const workflowEventSchema = z.object({ sequence: z.number().int().positive(), event_type: z.string().min(1).max(128), created_at: utcTimestamp, payload: z.record(z.string(), z.unknown()) }).passthrough();
-export const workflowDetailSchema = z.object({ run: workflowRunSchema, events: z.array(workflowEventSchema).max(50) }).strict();
+export const workflowDetailSchema = z.object({
+  run: workflowRunSchema,
+  steps: z.array(z.record(z.string(), z.unknown())).max(64),
+  current_wait: z.record(z.string(), z.unknown()).nullable(),
+  required_next_action: z.string().max(64).nullable(),
+  events: z.array(workflowEventSchema).max(100),
+  resource_uri: z.string().min(1).max(256),
+}).strict();
 
 export type Device = z.infer<typeof deviceSchema>;
 export type Pairing = z.infer<typeof pairingSchema>;

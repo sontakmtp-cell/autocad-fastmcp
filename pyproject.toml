@@ -39,3 +39,4 @@ packages = ["src/autocad_mcp"]
 testpaths = ["tests"]
 norecursedirs = ["tests/phase8"]
 asyncio_mode = "auto"
+markers = ["phase3: tests for the opt-in durable Gateway and simulated Agent"]

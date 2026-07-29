@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from skill_catalog import package_root as skill_catalog_package_root
 from typing import Any
 
 from .app import GatewayConfig
@@ -174,7 +175,26 @@ def build_services(config: GatewayConfig) -> Any:
             phase9_public_tools_enabled=config.phase9_public_workflow_tools_enabled,
             phase9_write_enabled=config.phase9_write_workflows_enabled,
             phase9_policy_epoch=config.phase9_policy_epoch,
-            phase9_catalog_root=str(Path(__file__).resolve().parents[4] / "packages" / "skill_catalog"),
+            phase9_catalog_root=str(skill_catalog_package_root()),
+            phase9_skill_allowlist=config.phase9_skill_allowlist,
+            phase9_enabled_skills=tuple(
+                skill_id
+                for skill_id, enabled in (
+                    (
+                        "mechanical.auto-dimension-overall",
+                        config.phase9_auto_dimension_skill_enabled,
+                    ),
+                    (
+                        "drawing.cleanup-audit",
+                        config.phase9_cleanup_audit_skill_enabled,
+                    ),
+                    (
+                        "mechanical.plate-hole-pattern",
+                        config.phase9_plate_pattern_skill_enabled,
+                    ),
+                )
+                if enabled
+            ),
         )
         if config.profile in {
             "phase5_identity",

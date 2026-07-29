@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from autocad_gateway.infrastructure.sqlite.database import SqliteDatabase, new_id, utc_now
+from .catalog import SkillCatalog
 
 
 class CatalogLifecycleError(ValueError):
@@ -22,6 +23,16 @@ _TRANSITIONS = {
 class SkillCatalogRepository:
     def __init__(self, database: SqliteDatabase) -> None:
         self.database = database
+
+    def import_catalog(self, catalog: SkillCatalog) -> None:
+        """Import the fixed release after migrations are open; never from request paths."""
+        for manifest_model in catalog.list():
+            workflow_model = catalog.workflow_for(manifest_model)
+            self.import_version(
+                manifest_model.model_dump(mode="json"),
+                workflow_model.model_dump(mode="json"),
+                release_digest=catalog.release_digest,
+            )
 
     def import_version(
         self, manifest: dict[str, Any], workflow: dict[str, Any], *, release_digest: str, channel: str = "default"

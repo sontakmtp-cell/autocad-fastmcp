@@ -24,7 +24,9 @@ def main() -> int:
     )
     command = [
         "uv", "run", "--project", "services/gateway", "--group", "test",
-        "python", "-m", "pytest", "-q", *TARGETS,
+        "python", "-m", "pytest", "-q",
+        "--basetemp=.pytest_cache/phase9-conformance",
+        *TARGETS,
     ]
     return subprocess.run(command, cwd=ROOT, env=environment, check=False).returncode
 

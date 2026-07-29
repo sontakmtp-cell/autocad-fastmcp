@@ -172,6 +172,58 @@ class Phase9Repository:
             row = conn.execute("SELECT * FROM workflow_runs WHERE owner_subject=? AND run_id=?", (owner_subject, run_id)).fetchone()
         return self._run(row) if row else None
 
+    async def list_runs(
+        self, owner_subject: str, *, cursor: int = 0, limit: int = 50
+    ) -> list[dict[str, Any]]:
+        if cursor < 0 or not 1 <= limit <= 100:
+            raise RepositoryConflict("invalid_request")
+        with self.database.read_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM workflow_runs WHERE owner_subject=? "
+                "ORDER BY created_at DESC,run_id DESC LIMIT ? OFFSET ?",
+                (owner_subject, limit, cursor),
+            ).fetchall()
+        return [self._run(row) for row in rows]
+
+    async def list_steps(
+        self, owner_subject: str, run_id: str
+    ) -> list[dict[str, Any]]:
+        if await self.get_run(owner_subject, run_id) is None:
+            raise RepositoryConflict("not_found")
+        with self.database.read_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM workflow_steps WHERE run_id=? "
+                "ORDER BY created_at,step_id,attempt",
+                (run_id,),
+            ).fetchall()
+        return [self._step(row) for row in rows]
+
+    async def list_actions(
+        self, owner_subject: str, run_id: str
+    ) -> list[dict[str, Any]]:
+        if await self.get_run(owner_subject, run_id) is None:
+            raise RepositoryConflict("not_found")
+        with self.database.read_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM workflow_actions WHERE run_id=? "
+                "ORDER BY created_at,action_id",
+                (run_id,),
+            ).fetchall()
+        return [self._action(row) for row in rows]
+
+    async def current_wait(
+        self, owner_subject: str, run_id: str
+    ) -> dict[str, Any] | None:
+        if await self.get_run(owner_subject, run_id) is None:
+            raise RepositoryConflict("not_found")
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM workflow_waits WHERE run_id=? AND resolved_at IS NULL "
+                "ORDER BY created_at DESC LIMIT 1",
+                (run_id,),
+            ).fetchone()
+        return self._wait(row) if row is not None else None
+
     async def transition_run(self, *, owner_subject: str, run_id: str, expected_state: str,
                              expected_version: int, target: str, current_step_id: str | None = None,
                              event_type: str = "state") -> dict[str, Any]:
@@ -425,13 +477,22 @@ class Phase9Repository:
         conn.execute("INSERT INTO workflow_events(event_id,run_id,sequence,event_type,payload_json,created_at) VALUES(?,?,?,?,?,?)",(new_id('wfe'),run_id,sequence,event_type,_json(payload,65_536),utc_now()))
     @staticmethod
     def _run(row: Any) -> dict[str, Any]:
-        value=dict(row); value['pins']=json.loads(value.pop('pins_json')); value['inputs']=json.loads(value.pop('inputs_json')); value['state_version']=int(value['state_version']); return value
+        value=dict(row)
+        value['pins']=json.loads(value.pop('pins_json'))
+        value['inputs']=json.loads(value.pop('inputs_json'))
+        value['result']=json.loads(value.pop('result_json')) if value.get('result_json') else None
+        value['error']=json.loads(value.pop('error_json')) if value.get('error_json') else None
+        value['state_version']=int(value['state_version'])
+        return value
     @staticmethod
     def _action(row: Any) -> dict[str, Any]:
         value=dict(row); value['payload']=json.loads(value.pop('payload_json')); value['result']=json.loads(value.pop('result_json')) if value.get('result_json') else None; value['child_ref']=json.loads(value.pop('child_ref_json')) if value.get('child_ref_json') else None; return value
     @staticmethod
     def _wait(row: Any) -> dict[str, Any]:
-        value=dict(row); value['response_schema']=json.loads(value.pop('response_schema_json')); return value
+        value=dict(row)
+        value['response_schema']=json.loads(value.pop('response_schema_json'))
+        value['resolution']=json.loads(value.pop('resolution_json')) if value.get('resolution_json') else None
+        return value
     @staticmethod
     def _event(row: Any) -> dict[str, Any]:
         value=dict(row); value['sequence']=int(value['sequence']); value['payload']=json.loads(value.pop('payload_json')); return value

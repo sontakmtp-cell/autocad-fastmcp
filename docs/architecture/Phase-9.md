@@ -1705,12 +1705,18 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   transitions, CAS/idempotency, event ordering, action lease/reclaim,
   started-write recovery, waits, runner reconciliation, and the three pure
   reference workflow fixtures.
-- The focused suite was run on the implementation branch before public facade
-  integration: **35 passed**, with one pre-existing unregistered
-  `pytest.mark.phase3` warning. This is simulated/unit evidence only.
-- Phase 0--8 regression and Phase 8 conformance are maintained as separate
-  release gates. Their recorded baseline results must be rerun after final
-  integration; they are not implied by the focused Phase 9 suite.
+- The focused suite was rerun after public facade and Portal integration:
+  **41 passed**. This is simulated/unit evidence only.
+- Full post-integration regression results:
+  - root Python: **414 passed, 1 skipped**;
+  - Gateway: **271 passed**;
+  - contracts: **130 passed**;
+  - Desktop Agent: **142 passed**;
+  - Managed .NET: **72 passed**;
+  - Portal unit: **35 passed**;
+  - Portal E2E: **10 passed**;
+  - Phase 8 conformance: **39 passed** plus **22** Host contract tests.
+- Portal production build completed successfully.
 
 ### Security and operational evidence
 
@@ -1724,9 +1730,18 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
 
 ### Unverified / not an acceptance claim
 
-- This evidence does **not** claim public OAuth/ChatGPT end-to-end operation,
-  Portal UI acceptance, or a live AutoCAD Mechanical 2025 R25 workflow run.
-- Engineering GO remains blocked until final public surface/Portal integration,
-  full regression, a completed Phase 9 security review with no high/critical
-  blocker, and live R25 evidence for both write workflows plus unchanged
-  cleanup audit are recorded.
+- The public surface exposes only the four bounded workflow tools and
+  catalog/run resources. No per-skill tool was added.
+- The cleanup reference workflow remains read-only. Write workflows reuse the
+  existing Phase 6--8 prepare/preview/commit services and never synthesize an
+  approval.
+- This evidence does **not** claim public OAuth/ChatGPT end-to-end operation or
+  a live AutoCAD Mechanical 2025 R25 workflow run.
+- The public orchestration path does not yet durably reconcile an approved
+  Phase 7 commit through job/recovery, validation, and terminal workflow
+  completion. It fails closed at the approval/retry boundary, but restart and
+  reconnect acceptance for that post-approval path is therefore unproven.
+- Status: **NO-GO for Phase 9 Engineering GO and Customer Pilot** until the
+  post-approval durable lifecycle is completed and live R25 evidence records
+  auto-dimension, plate creation, cleanup audit, restart, and reconnect without
+  duplicate effects.

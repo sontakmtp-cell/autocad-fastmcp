@@ -1022,6 +1022,7 @@ def _principal(
         "phase6_program",
         "phase7_c2",
         "phase8_program",
+        "phase9_workflow",
     }:
         issuer = token.claims.get("iss")
         if not isinstance(issuer, str) or not issuer:
@@ -1141,9 +1142,11 @@ def build_mcp_server(
     phase4 = bool(getattr(services, "is_phase4", False))
     phase6 = bool(getattr(services, "is_phase6", False))
     phase7 = bool(getattr(services, "is_phase7", False))
-    phase9 = bool(getattr(services, "is_phase9", False)) and bool(
-        getattr(getattr(services, "workflow_service", None), "enabled", False)
+    workflow_service = getattr(services, "workflow_service", None)
+    phase9_catalog = bool(getattr(services, "is_phase9", False)) and bool(
+        getattr(workflow_service, "catalog_enabled", False)
     )
+    phase9 = phase9_catalog and bool(getattr(workflow_service, "enabled", False))
     write_auth_check = require_scopes("autocad.write") if auth is not None else None
     mcp = FastMCP(
         name=(
@@ -1204,8 +1207,6 @@ def build_mcp_server(
         return result.model_dump(mode="json")
 
     if phase9:
-        workflow_service = services.workflow_service
-
         async def _workflow_call(operation: Any) -> Any:
             try:
                 return await operation()
@@ -1215,45 +1216,108 @@ def build_mcp_server(
         @mcp.tool(name="cad_list_skills", title="List first-party CAD skills",
                   description="List bounded first-party workflow skills; no skill is an MCP tool.",
                   annotations=_tool_annotations(idempotent=True), auth=auth_check)
-        async def cad_list_skills(*, ctx: Context) -> dict[str, Any]:
+        async def cad_list_skills(
+            device_id: str | None = None,
+            query: str | None = None,
+            domain: str | None = None,
+            tags: list[str] | None = None,
+            required_support: str | None = None,
+            cursor: int = 0,
+            limit: int = 20,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
             del ctx
             correlation_id = current_correlation_id(make_correlation_id)
-            result = await _run(lambda: _workflow_call(lambda: _async_value(workflow_service.list_skills())), correlation_id)
-            return {"contract_version": "cad.mcp/1.6", "correlation_id": correlation_id, "skills": result}
+            principal = _principal(auth, services, correlation_id)
+            result = await _run(
+                lambda: _workflow_call(
+                    lambda: workflow_service.list_skills(
+                        owner_subject=principal.subject,
+                        device_id=device_id,
+                        query=query,
+                        domain=domain,
+                        tags=tuple(tags or ()),
+                        required_support=required_support,
+                        cursor=cursor,
+                        limit=limit,
+                    )
+                ),
+                correlation_id,
+            )
+            return {
+                "contract_version": "cad.mcp/1.6",
+                "correlation_id": correlation_id,
+                **result,
+            }
 
         @mcp.tool(name="cad_start_workflow", title="Start a CAD workflow",
                   description="Start one owner-scoped, digest-pinned workflow run.",
                   annotations=_tool_annotations(idempotent=False, read_only=False), auth=auth_check)
-        async def cad_start_workflow(skill_id: str, device_id: str, inputs: dict[str, Any],
-                                     idempotency_key: str, version: str | None = None, *, ctx: Context) -> dict[str, Any]:
+        async def cad_start_workflow(
+            skill_id: str,
+            device_id: str,
+            inputs: dict[str, Any],
+            idempotency_key: str,
+            skill_version: str | None = None,
+            source_snapshot_id: str | None = None,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
             del ctx
             correlation_id = current_correlation_id(make_correlation_id)
             principal = _principal(auth, services, correlation_id)
             return await _run(lambda: _workflow_call(lambda: workflow_service.start(
                 owner_subject=principal.subject, actor_subject=principal.subject, skill_id=skill_id,
-                version=version, device_id=device_id, inputs=inputs, idempotency_key=idempotency_key,
+                version=skill_version, device_id=device_id,
+                source_snapshot_id=source_snapshot_id, inputs=inputs,
+                idempotency_key=idempotency_key,
                 scopes=principal.scopes)), correlation_id)
 
         @mcp.tool(name="cad_get_workflow", title="Get a CAD workflow",
                   description="Read one owner-scoped workflow run and bounded timeline.",
                   annotations=_tool_annotations(idempotent=True), auth=auth_check)
-        async def cad_get_workflow(run_id: str, event_cursor: int = 0, *, ctx: Context) -> dict[str, Any]:
+        async def cad_get_workflow(
+            run_id: str,
+            event_cursor: int = 0,
+            event_limit: int = 50,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
             del ctx
             correlation_id = current_correlation_id(make_correlation_id)
             principal = _principal(auth, services, correlation_id)
-            return await _run(lambda: _workflow_call(lambda: workflow_service.get(principal.subject, run_id, event_cursor=event_cursor)), correlation_id)
+            return await _run(lambda: _workflow_call(lambda: workflow_service.get(
+                principal.subject, run_id, event_cursor=event_cursor,
+                event_limit=event_limit,
+            )), correlation_id)
 
         @mcp.tool(name="cad_control_workflow", title="Control a CAD workflow",
                   description="Submit bounded input, attach a revision, resume, retry a safe step or cancel. Approval is intentionally unavailable here.",
                   annotations=_tool_annotations(idempotent=False, read_only=False), auth=auth_check)
-        async def cad_control_workflow(run_id: str, action: Literal["submit_input", "attach_program_revision", "resume", "retry_safe_step", "cancel"],
-                                       expected_state: str, expected_state_version: int, idempotency_key: str, *, ctx: Context) -> dict[str, Any]:
+        async def cad_control_workflow(
+            run_id: str,
+            action: Literal[
+                "submit_input",
+                "attach_program_revision",
+                "resume",
+                "retry_safe_step",
+                "cancel",
+            ],
+            expected_state_version: int,
+            idempotency_key: str,
+            payload: dict[str, Any] | None = None,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
             del ctx
             correlation_id = current_correlation_id(make_correlation_id)
             principal = _principal(auth, services, correlation_id)
             return await _run(lambda: _workflow_call(lambda: workflow_service.control(
                 owner_subject=principal.subject, run_id=run_id, action=action,
-                expected_state=expected_state, expected_state_version=expected_state_version)), correlation_id)
+                expected_state_version=expected_state_version,
+                idempotency_key=idempotency_key, payload=payload,
+            )), correlation_id)
 
     async def _call_cad_observe(
         request: CadObserveInput | CadObserveInputDurable,
@@ -2046,7 +2110,34 @@ def build_mcp_server(
                 phase7_admission.read_rollback_receipt, receipt_id
             )
 
-    if phase9:
+    if phase9_catalog:
+        async def _phase9_resource_call(operation: Any) -> Any:
+            try:
+                return await operation()
+            except WorkflowServiceError as error:
+                raise GatewayError(str(error)) from error
+
+        @mcp.resource(
+            "cad://skills", name="CAD skill catalog",
+            description="Read bounded first-party skill summaries.",
+            mime_type="application/json", auth=auth_check,
+        )
+        async def skills_resource() -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(
+                lambda: _phase9_resource_call(
+                    lambda: workflow_service.list_skills(
+                        owner_subject=principal.subject, limit=50
+                    )
+                ),
+                correlation_id,
+            )
+            return ResourceResult([ResourceContent(
+                content=json.dumps(value, sort_keys=True),
+                mime_type="application/json",
+            )])
+
         @mcp.resource(
             "cad://workflows/{run_id}", name="CAD workflow run",
             description="Read a bounded owner-scoped workflow run and timeline.",
@@ -2055,17 +2146,82 @@ def build_mcp_server(
         async def workflow_resource(run_id: str) -> ResourceResult:
             correlation_id = current_correlation_id(make_correlation_id)
             principal = _principal(auth, services, correlation_id)
-            value = await _run(lambda: _workflow_call(lambda: workflow_service.get(principal.subject, run_id)), correlation_id)
+            value = await _run(lambda: _phase9_resource_call(lambda: workflow_service.get(principal.subject, run_id)), correlation_id)
             return ResourceResult([ResourceContent(content=json.dumps(value, sort_keys=True), mime_type="application/json")])
 
         @mcp.resource(
             "cad://skills/{skill_id}/versions/{version}/guide", name="CAD skill guide",
-            description="Read non-executable first-party skill guidance.", mime_type="application/json", auth=auth_check,
+            description="Read non-executable first-party skill guidance.", mime_type="text/markdown", auth=auth_check,
         )
         async def skill_guide_resource(skill_id: str, version: str) -> ResourceResult:
             correlation_id = current_correlation_id(make_correlation_id)
-            value = await _run(lambda: _workflow_call(lambda: _async_value(workflow_service.read_guide(skill_id, version))), correlation_id)
-            return ResourceResult([ResourceContent(content=value, mime_type="application/json")])
+            value = await _run(lambda: _phase9_resource_call(lambda: _async_value(workflow_service.read_guide(skill_id, version))), correlation_id)
+            return ResourceResult([ResourceContent(content=value, mime_type="text/markdown")])
+
+        @mcp.resource(
+            "cad://skills/{skill_id}/versions/{version}/manifest",
+            name="CAD skill manifest",
+            description="Read one immutable first-party skill manifest.",
+            mime_type="application/json", auth=auth_check,
+        )
+        async def skill_manifest_resource(
+            skill_id: str, version: str
+        ) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            value = await _run(
+                lambda: _phase9_resource_call(
+                    lambda: _async_value(
+                        workflow_service.read_manifest(skill_id, version)
+                    )
+                ),
+                correlation_id,
+            )
+            return ResourceResult([ResourceContent(
+                content=value, mime_type="application/json"
+            )])
+
+        @mcp.resource(
+            "cad://workflows/{run_id}/events",
+            name="CAD workflow events",
+            description="Read bounded ordered workflow events.",
+            mime_type="application/json", auth=auth_check,
+        )
+        async def workflow_events_resource(run_id: str) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(
+                lambda: _phase9_resource_call(
+                    lambda: workflow_service.get(principal.subject, run_id)
+                ),
+                correlation_id,
+            )
+            return ResourceResult([ResourceContent(
+                content=json.dumps({"events": value["events"]}, sort_keys=True),
+                mime_type="application/json",
+            )])
+
+        @mcp.resource(
+            "cad://workflows/{run_id}/report",
+            name="CAD workflow report",
+            description="Read the bounded workflow result/report when available.",
+            mime_type="application/json", auth=auth_check,
+        )
+        async def workflow_report_resource(run_id: str) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(
+                lambda: _phase9_resource_call(
+                    lambda: workflow_service.get(principal.subject, run_id)
+                ),
+                correlation_id,
+            )
+            report = value["run"].get("result")
+            if report is None:
+                raise GatewayError("not_found")
+            return ResourceResult([ResourceContent(
+                content=json.dumps(report, sort_keys=True),
+                mime_type="application/json",
+            )])
 
     @mcp.prompt(
         name="plan_cad_change",
@@ -2749,17 +2905,11 @@ def create_app(
         if isinstance(context, JSONResponse):
             return context
         owner, _, _, _ = context
-        with services.database.read_connection() as connection:
-            rows = connection.execute(
-                "SELECT run_id,skill_id,skill_version,state,state_version,current_step_id,device_id,created_at,updated_at,pins_json,inputs_json "
-                "FROM workflow_runs WHERE owner_subject=? ORDER BY updated_at DESC,run_id DESC LIMIT 100", (owner,)
-            ).fetchall()
-        runs = []
-        for row in rows:
-            value = dict(row)
-            value["pins"] = json.loads(value.pop("pins_json")); value["inputs"] = json.loads(value.pop("inputs_json"))
-            runs.append(value)
-        return phase6_portal_response({"runs": runs})
+        try:
+            value = await services.workflow_service.list_runs(owner, limit=100)
+        except WorkflowServiceError:
+            return JSONResponse({"error": "not_found"}, status_code=404)
+        return phase6_portal_response(value)
 
     async def portal_phase9_workflow(request: Request) -> JSONResponse:
         context = await phase7_portal_context(request, required_scope="autocad.read")

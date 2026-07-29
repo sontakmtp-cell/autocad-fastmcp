@@ -36,8 +36,9 @@ class CatalogSnapshot:
 class SkillCatalog:
     """A catalog loaded from trusted release bytes, never caller-selected paths."""
 
-    def __init__(self, snapshot: CatalogSnapshot) -> None:
+    def __init__(self, snapshot: CatalogSnapshot, *, package_root: Path | None = None) -> None:
         self._snapshot = snapshot
+        self._package_root = package_root
 
     @classmethod
     def from_fixed_package_root(cls, package_root: Path) -> "SkillCatalog":
@@ -70,7 +71,9 @@ class SkillCatalog:
         bundle = dict(bundle)
         bundle.pop("assets", None)
         bundle["release_digest"] = expected_release
-        return cls.from_release_bundle(bundle)
+        catalog = cls.from_release_bundle(bundle)
+        catalog._package_root = root
+        return catalog
 
     @classmethod
     def from_release_bundle(cls, bundle: dict[str, Any]) -> "SkillCatalog":
@@ -129,6 +132,31 @@ class SkillCatalog:
 
     def list(self) -> Iterable[SkillManifest]:
         return tuple(self._snapshot.manifests[key] for key in sorted(self._snapshot.manifests))
+
+    def workflow_for(self, manifest: SkillManifest) -> WorkflowDefinition:
+        reference = manifest.workflow_definition
+        workflow = self._snapshot.workflows.get((reference.workflow_id, reference.version))
+        if workflow is None or workflow.definition_digest != reference.digest:
+            raise CatalogError("skill workflow reference is unavailable")
+        return workflow
+
+    def read_guide(self, skill_id: str, version: str) -> str:
+        manifest = self.resolve(skill_id, version)
+        if self._package_root is None:
+            raise CatalogError("catalog guide is unavailable")
+        path = (
+            self._package_root
+            / "skills"
+            / manifest.skill_id
+            / manifest.version
+            / "guide.md"
+        ).resolve()
+        if self._package_root not in path.parents or not path.is_file():
+            raise CatalogError("catalog guide is unavailable")
+        content = path.read_text(encoding="utf-8")
+        if len(content.encode("utf-8")) > 65_536:
+            raise CatalogError("catalog guide is too large")
+        return content
 
     def continuation_decision(self, publication_status: str, *, before_effect: bool) -> str:
         """Apply a durable publication status supplied by SkillCatalogRepository."""

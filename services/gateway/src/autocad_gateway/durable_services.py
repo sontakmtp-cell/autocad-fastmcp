@@ -19,6 +19,10 @@ from autocad_contracts import (
     build_execution_binding_v1,
     normalize_sha256_digest,
 )
+from cad_core.phase9_workflows import (
+    plan_auto_dimension_overall,
+    render_plate_hole_pattern,
+)
 
 from .application.job_service import DurableJobError, DurableJobService
 from .domain.jobs import InvalidJobTransition
@@ -38,9 +42,12 @@ from .contracts import (
     CadQueryInput,
     CadQueryOutput,
     CadPrepareProgramV1ConflictOutput,
+    CadPrepareProgramInput,
     CadPrepareProgramV1Output,
     CadPrepareProgramV1RevisionRequest,
     CadPreviewOutput,
+    CadPreviewInput,
+    CadCommitInput,
     DeviceInfo,
     DeviceInfoC1,
     ExecutionEvidence,
@@ -146,6 +153,8 @@ class DurableGatewayServices:
         phase9_write_enabled: bool = False,
         phase9_policy_epoch: int = 0,
         phase9_catalog_root: str | None = None,
+        phase9_skill_allowlist: tuple[str, ...] = (),
+        phase9_enabled_skills: tuple[str, ...] = (),
     ) -> None:
         self.database = database
         self.registry = registry
@@ -285,6 +294,13 @@ class DurableGatewayServices:
                 self.phase9_repository, SkillCatalogRepository(database), catalog,
                 enabled=phase9_enabled and phase9_public_tools_enabled, catalog_enabled=phase9_catalog_enabled,
                 policy_epoch=phase9_policy_epoch, write_enabled=phase9_write_enabled,
+                allowlist=set(phase9_skill_allowlist),
+                enabled_skills=set(phase9_enabled_skills),
+                device_resolver=self._phase9_device_context,
+                snapshot_resolver=self._phase9_snapshot,
+                program_revision_resolver=self._phase9_program_revision,
+                write_preview_executor=self._phase9_write_preview,
+                commit_request_executor=self._phase9_commit_request,
             )
 
     async def _phase7_rollback_preview_provider(
@@ -383,6 +399,8 @@ class DurableGatewayServices:
         if self._initialized:
             return
         await self.database.open()
+        if self.workflow_service is not None:
+            self.workflow_service.initialize_catalog()
         await self.repository.mark_sessions_disconnected()
         for device_id in self.device_tokens:
             await self.repository.seed_device(
@@ -410,6 +428,166 @@ class DurableGatewayServices:
         self._maintenance_error = None
         self._maintenance_task = asyncio.create_task(self._maintenance_loop())
         self._maintenance_task.add_done_callback(self._maintenance_done)
+
+    async def _phase9_device_context(
+        self, owner_subject: str, device_id: str
+    ) -> dict[str, Any]:
+        device = await self._require_device(
+            device_id,
+            Principal(subject=owner_subject, scopes=("autocad.read", "autocad.write")),
+        )
+        connection = await self.registry.get(device_id)
+        fresh = bool(
+            connection is not None
+            and await self.registry.is_current_and_fresh(connection)
+        )
+        capabilities = set(device.get("capabilities", ()))
+        if fresh and self.is_phase8:
+            capabilities.add("cad.program.v1.compile")
+        operation_packs = (
+            set(self.phase8_gateway.flags.operation_pack_allowlist)
+            if fresh and self.phase8_gateway is not None
+            else set()
+        )
+        return {
+            "capabilities": capabilities,
+            "operation_packs": operation_packs,
+            "runtime_release_verified": fresh and self.is_phase8,
+            "capability_evidence_verified": fresh,
+            "identity_generation": 1,
+        }
+
+    async def _phase9_snapshot(
+        self, owner_subject: str, device_id: str, snapshot_id: str
+    ) -> dict[str, Any]:
+        snapshot = await self.repository.get_snapshot(owner_subject, snapshot_id)
+        if snapshot is None or snapshot.get("device_id") != device_id:
+            raise GatewayError("not_found")
+        value = dict(snapshot)
+        value["document_id"] = self.program_service._snapshot_document_id(snapshot)
+        return value
+
+    async def _phase9_program_revision(
+        self, owner_subject: str, program_id: str, revision: int
+    ) -> dict[str, Any]:
+        if self.phase8_repository is None:
+            raise GatewayError("feature_disabled")
+        value = await self.phase8_repository.get_revision(
+            owner_subject, program_id, revision
+        )
+        if value is None:
+            raise GatewayError("not_found")
+        return value
+
+    async def _phase9_write_preview(
+        self,
+        owner_subject: str,
+        skill_id: str,
+        device_id: str,
+        snapshot_id: str,
+        inputs: dict[str, Any],
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        snapshot = await self._phase9_snapshot(
+            owner_subject, device_id, snapshot_id
+        )
+        run_key = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:24]
+        context = {
+            "run_id": run_key,
+            "device_id": device_id,
+            "source_snapshot_id": snapshot_id,
+            "document_id": snapshot["document_id"],
+            "expected_document_revision": snapshot["document_revision"],
+        }
+        entities = snapshot.get("entities") or []
+        if skill_id == "mechanical.auto-dimension-overall":
+            requested = set(inputs["entity_ids"])
+            selected = [
+                entity
+                for entity in entities
+                if entity.get("entity_id") in requested
+            ]
+            if {entity.get("entity_id") for entity in selected} != requested:
+                raise GatewayError("not_found")
+            program = plan_auto_dimension_overall(
+                context,
+                selected,
+                {
+                    "profile": inputs["profile"],
+                    "offset": inputs["offset"],
+                    "target_layer": inputs["layer"],
+                },
+            )
+            observe_result = {
+                "snapshot_id": snapshot_id,
+                "document_revision": snapshot["document_revision"],
+            }
+            query_result = {
+                "entity_ids": sorted(requested),
+                "entity_count": len(selected),
+            }
+        elif skill_id == "mechanical.plate-hole-pattern":
+            program = render_plate_hole_pattern(context, inputs)
+            observe_result = {}
+            query_result = {}
+        else:
+            raise GatewayError("not_found")
+        principal = Principal(
+            subject=owner_subject, scopes=("autocad.read", "autocad.write")
+        )
+        prepare_request = CadPrepareProgramInput(
+            device_id=device_id,
+            source_snapshot_id=snapshot_id,
+            operations=program["operations"],
+            idempotency_key=f"wf-{run_key}-prepare",
+        )
+        prepared = await self.prepare_program(
+            prepare_request,
+            principal,
+            f"workflow-{run_key}-prepare",
+            schema_version="cad.program/1.0",
+            program_v1_source=program,
+        )
+        preview = await self.preview_program(
+            CadPreviewInput(
+                program_id=prepared.program_id,
+                program_revision=prepared.program_revision,
+                idempotency_key=f"wf-{run_key}-preview",
+            ),
+            principal,
+            f"workflow-{run_key}-preview",
+        )
+        return {
+            "observe": observe_result,
+            "query": query_result,
+            "pure": program,
+            "prepare": prepared.model_dump(mode="json"),
+            "preview": preview.model_dump(mode="json"),
+        }
+
+    async def _phase9_commit_request(
+        self, owner_subject: str, preview_id: str, idempotency_key: str
+    ) -> dict[str, Any]:
+        key = hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:24]
+        value = await self.commit_program(
+            CadCommitInput(
+                preview_id=preview_id,
+                idempotency_key=f"wf-{key}-commit",
+            ),
+            Principal(
+                subject=owner_subject, scopes=("autocad.read", "autocad.write")
+            ),
+            f"workflow-{key}-commit",
+        )
+        result = value.model_dump(mode="json")
+        if result.get("admission_status") not in {
+            "approval_required",
+            "released",
+            "current_job",
+            "receipt",
+        }:
+            raise GatewayError("backend_error")
+        return result
 
     async def commit_program(
         self, request: Any, principal: Principal, correlation_id: str

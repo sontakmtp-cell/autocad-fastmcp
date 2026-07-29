@@ -92,6 +92,7 @@ async def test_migrations_are_current_and_owner_filters_fail_closed(repository):
         7,
         8,
         9,
+        10,
     }
     assert repository.database.migrations_valid is True
     assert repository.database.verify_migration_state() is True
