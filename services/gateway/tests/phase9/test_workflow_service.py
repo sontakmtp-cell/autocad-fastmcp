@@ -4,6 +4,7 @@ import pytest
 
 from autocad_gateway.infrastructure.sqlite.database import SqliteDatabase
 from autocad_gateway.infrastructure.sqlite.phase9_repository import Phase9Repository
+from autocad_gateway.durable_services import _Phase9ActionPort
 from autocad_gateway.skills.catalog import SkillCatalog
 from autocad_gateway.skills.catalog_repository import SkillCatalogRepository
 from autocad_gateway.workflows.service import (
@@ -72,6 +73,33 @@ def _cleanup_inputs() -> dict:
         "layer": "0",
         "page_size": 50,
         "max_candidates": 20,
+    }
+
+
+def _plate_inputs() -> dict:
+    return {
+        "source_snapshot_id": "snapshot-a",
+        "document_revision": "revision-a",
+        "layer": "MECH",
+        "width": 100.0,
+        "height": 60.0,
+        "hole_diameter": 8.0,
+        "rows": 2,
+        "columns": 3,
+        "margin_x": 10.0,
+        "margin_y": 10.0,
+        "include_overall_dimensions": True,
+    }
+
+
+async def _write_device(owner: str, device: str) -> dict:
+    assert (owner, device) == ("owner-a", "device-a")
+    return {
+        "capabilities": {"cad.program.v1.compile"},
+        "operation_packs": {"cad.program/1.0-create-core"},
+        "runtime_release_verified": True,
+        "capability_evidence_verified": True,
+        "identity_generation": 1,
     }
 
 
@@ -284,7 +312,7 @@ async def test_write_workflow_reuses_preview_and_trusted_approval_ports(tmp_path
         async def reconcile(self, action_kind, child_ref, *, idempotency_key):
             return {
                 "state": "succeeded",
-                **await self.dispatch(
+                "result": await self.dispatch(
                     action_kind,
                     child_ref["payload"],
                     idempotency_key=idempotency_key,
@@ -360,6 +388,425 @@ async def test_write_workflow_reuses_preview_and_trusted_approval_ports(tmp_path
     await value.maintenance_once()
     completed = await value.get("owner-a", result["run_id"])
     assert completed["run"]["state"] == "succeeded"
+    await database.close()
+
+
+@pytest.mark.asyncio
+async def test_exact_start_replay_resumes_after_atomic_create_commit(
+    service, monkeypatch
+):
+    original = service._resume_run
+
+    async def crash_after_create(*args, **kwargs):
+        raise RuntimeError("crash_after_create")
+
+    monkeypatch.setattr(service, "_resume_run", crash_after_create)
+    with pytest.raises(RuntimeError, match="crash_after_create"):
+        await service.start(
+            owner_subject="owner-a",
+            actor_subject="owner-a",
+            skill_id="drawing.cleanup-audit",
+            version=None,
+            device_id="device-a",
+            source_snapshot_id="snapshot-a",
+            inputs=_cleanup_inputs(),
+            idempotency_key="crash-after-create",
+            scopes=("autocad.read",),
+        )
+    run = (await service.repository.list_nonterminal_runs())[0]
+    steps = await service.repository.list_steps("owner-a", run["run_id"])
+    assert run["state"] == "running"
+    assert next(step for step in steps if step["step_id"] == "query")[
+        "state"
+    ] == "ready"
+
+    monkeypatch.setattr(service, "_resume_run", original)
+    replay = await service.start(
+        owner_subject="owner-a",
+        actor_subject="owner-a",
+        skill_id="drawing.cleanup-audit",
+        version=None,
+        device_id="device-a",
+        source_snapshot_id="snapshot-a",
+        inputs=_cleanup_inputs(),
+        idempotency_key="crash-after-create",
+        scopes=("autocad.read",),
+    )
+    assert replay["replayed"] is True
+    assert replay["state"] == "waiting_for_user"
+
+
+@pytest.mark.asyncio
+async def test_startup_resumes_first_ready_step_without_an_action(
+    service, monkeypatch
+):
+    original = service._resume_run
+
+    async def crash_after_create(*args, **kwargs):
+        raise RuntimeError("crash_after_create")
+
+    monkeypatch.setattr(service, "_resume_run", crash_after_create)
+    with pytest.raises(RuntimeError):
+        await service.start(
+            owner_subject="owner-a",
+            actor_subject="owner-a",
+            skill_id="drawing.cleanup-audit",
+            version=None,
+            device_id="device-a",
+            source_snapshot_id="snapshot-a",
+            inputs=_cleanup_inputs(),
+            idempotency_key="startup-first-ready",
+            scopes=("autocad.read",),
+        )
+
+    class IdleRunner:
+        async def reconcile_restart(self):
+            return 0
+
+    monkeypatch.setattr(service, "_resume_run", original)
+    service.action_runner = IdleRunner()
+    await service.reconcile_restart()
+    run = (await service.repository.list_nonterminal_runs())[0]
+    assert run["state"] == "waiting_for_user"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("step_id", "target"),
+    [
+        ("query", "running"),
+        ("query", "succeeded"),
+        ("pure", "ready"),
+        ("pure", "running"),
+        ("pure", "succeeded"),
+        ("report", "ready"),
+        ("report", "running"),
+        ("report", "succeeded"),
+        ("review", "ready"),
+        ("review", "running"),
+        ("review", "waiting"),
+    ],
+)
+async def test_cleanup_replay_heals_each_partial_step(
+    service, monkeypatch, step_id, target
+):
+    original = service.repository.transition_step
+    crashed = False
+
+    async def crash_after_transition(**kwargs):
+        nonlocal crashed
+        result = await original(**kwargs)
+        if (
+            not crashed
+            and kwargs["step_id"] == step_id
+            and kwargs["target"] == target
+        ):
+            crashed = True
+            raise RuntimeError(f"crash_{step_id}_{target}")
+        return result
+
+    monkeypatch.setattr(
+        service.repository, "transition_step", crash_after_transition
+    )
+    with pytest.raises(RuntimeError):
+        await service.start(
+            owner_subject="owner-a",
+            actor_subject="owner-a",
+            skill_id="drawing.cleanup-audit",
+            version=None,
+            device_id="device-a",
+            source_snapshot_id="snapshot-a",
+            inputs=_cleanup_inputs(),
+            idempotency_key=f"cleanup-{step_id}-{target}",
+            scopes=("autocad.read",),
+        )
+    replay = await service.start(
+        owner_subject="owner-a",
+        actor_subject="owner-a",
+        skill_id="drawing.cleanup-audit",
+        version=None,
+        device_id="device-a",
+        source_snapshot_id="snapshot-a",
+        inputs=_cleanup_inputs(),
+        idempotency_key=f"cleanup-{step_id}-{target}",
+        scopes=("autocad.read",),
+    )
+    assert replay["state"] == "waiting_for_user"
+    events = await service.repository.list_events(
+        "owner-a", replay["run_id"], limit=100
+    )
+    assert sum(event["event_type"] == "wait_created" for event in events) == 1
+
+
+@pytest.mark.asyncio
+async def test_cleanup_restart_finishes_after_review_transition(service):
+    started = await service.start(
+        owner_subject="owner-a",
+        actor_subject="owner-a",
+        skill_id="drawing.cleanup-audit",
+        version=None,
+        device_id="device-a",
+        source_snapshot_id="snapshot-a",
+        inputs=_cleanup_inputs(),
+        idempotency_key="cleanup-finish-crash",
+        scopes=("autocad.read",),
+    )
+    wait = await service.repository.current_wait("owner-a", started["run_id"])
+    await service.repository.resolve_wait(
+        owner_subject="owner-a",
+        run_id=started["run_id"],
+        wait_id=wait["wait_id"],
+        expected_state_version=started["state_version"],
+        response_schema_digest=wait["response_schema_digest"],
+        response={"decision": "continue"},
+        idempotency_key="cleanup-finish-control",
+    )
+    review = next(
+        step
+        for step in await service.repository.list_steps(
+            "owner-a", started["run_id"]
+        )
+        if step["step_id"] == "review"
+    )
+    await service.repository.transition_step(
+        owner_subject="owner-a",
+        run_id=started["run_id"],
+        step_id="review",
+        attempt=1,
+        expected_state="waiting",
+        expected_version=review["state_version"],
+        target="succeeded",
+        output_ref=review["output_ref"],
+    )
+
+    class IdleRunner:
+        async def reconcile_restart(self):
+            return 0
+
+    service.action_runner = IdleRunner()
+    await service.reconcile_restart()
+    assert (
+        await service.repository.get_run("owner-a", started["run_id"])
+    )["state"] == "succeeded"
+
+
+@pytest.mark.asyncio
+async def test_write_replay_inserts_missing_first_preview_action(
+    tmp_path, monkeypatch
+):
+    database = SqliteDatabase(tmp_path / "preview-replay.sqlite")
+    await database.open()
+    catalog = SkillCatalog.from_fixed_package_root(CATALOG_ROOT)
+    catalog_repository = SkillCatalogRepository(database)
+    repository = Phase9Repository(database)
+
+    class Port:
+        async def dispatch(self, action_kind, payload, *, idempotency_key):
+            if action_kind == "preview":
+                return {
+                    "pure": {},
+                    "prepare": {},
+                    "preview": {"preview_id": "preview-a"},
+                }
+            return {
+                "state": "awaiting_approval",
+                "admission_status": "approval_required",
+                "intent_id": "intent-a",
+            }
+
+        async def reconcile(self, action_kind, child_ref, *, idempotency_key):
+            return None
+
+    value = WorkflowApplicationService(
+        repository,
+        catalog_repository,
+        catalog,
+        enabled=True,
+        catalog_enabled=True,
+        policy_epoch=9,
+        write_enabled=True,
+        enabled_skills={"mechanical.plate-hole-pattern"},
+        device_resolver=_write_device,
+        snapshot_resolver=lambda owner, device, snapshot: _snapshot(
+            owner, device, snapshot
+        ),
+        write_preview_executor=lambda *args: None,
+        commit_request_executor=lambda *args: None,
+        action_runner=WorkflowRunner(repository, Port(), worker_id="worker"),
+    )
+    value.initialize_catalog()
+    original = repository.insert_action
+    crashed = False
+
+    async def crash_before_preview(**kwargs):
+        nonlocal crashed
+        if kwargs["action_kind"] == "preview" and not crashed:
+            crashed = True
+            raise RuntimeError("crash_before_preview_insert")
+        return await original(**kwargs)
+
+    monkeypatch.setattr(repository, "insert_action", crash_before_preview)
+    with pytest.raises(WorkflowServiceError, match="backend_error"):
+        await value.start(
+            owner_subject="owner-a",
+            actor_subject="owner-a",
+            skill_id="mechanical.plate-hole-pattern",
+            version="1.0.0",
+            device_id="device-a",
+            source_snapshot_id="snapshot-a",
+            inputs=_plate_inputs(),
+            idempotency_key="preview-replay",
+            scopes=("autocad.read", "autocad.write"),
+        )
+    replay = await value.start(
+        owner_subject="owner-a",
+        actor_subject="owner-a",
+        skill_id="mechanical.plate-hole-pattern",
+        version="1.0.0",
+        device_id="device-a",
+        source_snapshot_id="snapshot-a",
+        inputs=_plate_inputs(),
+        idempotency_key="preview-replay",
+        scopes=("autocad.read", "autocad.write"),
+    )
+    assert replay["replayed"] is True
+    assert replay["state"] == "waiting_for_trusted_approval"
+    actions = await repository.list_actions("owner-a", replay["run_id"])
+    assert [action["action_kind"] for action in actions] == [
+        "preview",
+        "commit",
+    ]
+    await database.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("phase7_status", "expected_state", "expected_wait"),
+    [
+        (
+            {
+                "state": "awaiting_approval",
+                "intent_id": "intent-a",
+            },
+            "waiting_for_trusted_approval",
+            "trusted_approval",
+        ),
+        (
+            {
+                "state": "running",
+                "intent_id": "intent-a",
+                "job_id": "job-a",
+            },
+            "waiting_for_job",
+            "job",
+        ),
+        (
+            {
+                "state": "succeeded",
+                "intent_id": "intent-a",
+                "job_id": "job-a",
+                "receipt_id": "receipt-a",
+            },
+            "succeeded",
+            None,
+        ),
+    ],
+)
+async def test_real_action_port_recovers_commit_from_waiting_for_recovery(
+    tmp_path, phase7_status, expected_state, expected_wait
+):
+    database = SqliteDatabase(tmp_path / f"recovery-{expected_state}.sqlite")
+    await database.open()
+    catalog = SkillCatalog.from_fixed_package_root(CATALOG_ROOT)
+    catalog_repository = SkillCatalogRepository(database)
+    repository = Phase9Repository(database)
+    durable_intents = {}
+    creations = 0
+
+    async def preview(*args):
+        return {
+            "pure": {},
+            "prepare": {},
+            "preview": {"preview_id": "preview-a"},
+        }
+
+    async def commit(owner, preview_id, idempotency_key, scopes):
+        nonlocal creations
+        assert (owner, preview_id) == ("owner-a", "preview-a")
+        if idempotency_key not in durable_intents:
+            creations += 1
+            durable_intents[idempotency_key] = {
+                "state": "awaiting_approval",
+                "admission_status": "approval_required",
+                "intent_id": "intent-a",
+            }
+            raise RuntimeError("crash_after_intent_creation")
+        return durable_intents[idempotency_key]
+
+    async def commit_status(owner, intent_id):
+        assert (owner, intent_id) == ("owner-a", "intent-a")
+        return phase7_status
+
+    port = _Phase9ActionPort(preview, commit, catalog_repository)
+    value = WorkflowApplicationService(
+        repository,
+        catalog_repository,
+        catalog,
+        enabled=True,
+        catalog_enabled=True,
+        policy_epoch=9,
+        write_enabled=True,
+        enabled_skills={"mechanical.plate-hole-pattern"},
+        device_resolver=_write_device,
+        snapshot_resolver=lambda owner, device, snapshot: _snapshot(
+            owner, device, snapshot
+        ),
+        write_preview_executor=preview,
+        commit_request_executor=commit,
+        action_runner=WorkflowRunner(repository, port, worker_id="worker"),
+        commit_status_resolver=commit_status,
+    )
+    value.initialize_catalog()
+    started = await value.start(
+        owner_subject="owner-a",
+        actor_subject="owner-a",
+        skill_id="mechanical.plate-hole-pattern",
+        version="1.0.0",
+        device_id="device-a",
+        source_snapshot_id="snapshot-a",
+        inputs=_plate_inputs(),
+        idempotency_key=f"recover-{expected_state}",
+        scopes=("autocad.read", "autocad.write"),
+    )
+    assert started["state"] == "waiting_for_recovery"
+
+    await value.reconcile_restart()
+    first = await value.get("owner-a", started["run_id"])
+    assert first["run"]["state"] == expected_state
+    assert (
+        first["current_wait"]["wait_kind"]
+        if first["current_wait"] is not None
+        else None
+    ) == expected_wait
+    action_count = len(
+        await repository.list_actions("owner-a", started["run_id"])
+    )
+    event_count = len(
+        await repository.list_events(
+            "owner-a", started["run_id"], limit=100
+        )
+    )
+
+    await value.reconcile_restart()
+    second = await value.get("owner-a", started["run_id"])
+    assert second["run"]["state"] == expected_state
+    assert len(await repository.list_actions("owner-a", started["run_id"])) == action_count
+    assert len(
+        await repository.list_events(
+            "owner-a", started["run_id"], limit=100
+        )
+    ) == event_count
+    assert creations == 1
     await database.close()
 
 

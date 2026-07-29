@@ -28,7 +28,7 @@ _RUN_TRANSITIONS = {
     "waiting_for_program_revision": frozenset({"running", "paused", "cancelled", "failed", "needs_attention"}),
     "waiting_for_trusted_approval": frozenset({"waiting_for_job", "running", "paused", "cancelled", "failed", "needs_attention"}),
     "waiting_for_job": frozenset({"running", "waiting_for_recovery", "paused", "succeeded", "failed", "needs_attention"}),
-    "waiting_for_recovery": frozenset({"running", "waiting_for_job", "paused", "succeeded", "failed", "needs_attention"}),
+    "waiting_for_recovery": frozenset({"running", "waiting_for_trusted_approval", "waiting_for_job", "paused", "succeeded", "failed", "needs_attention"}),
     "paused": frozenset({"running", "cancelled", "failed", "needs_attention"}),
     "succeeded": frozenset(), "failed": frozenset(), "cancelled": frozenset(), "needs_attention": frozenset(),
 }

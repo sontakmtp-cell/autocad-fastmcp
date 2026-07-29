@@ -98,7 +98,7 @@ async def test_restart_reconciles_started_write_without_redispatch(repo):
     action, _ = await repo.insert_action(owner_subject="alice", run_id="run", step_id="write", attempt=1, action_kind="commit", payload={}, retry_class="not_started", effect_class="write")
     await repo.claim_action("old")
     await repo.mark_dispatch_started(action["action_id"], "old")
-    port = Port(reconciled={"state": "succeeded", "job_id": "j"})
+    port = Port(reconciled={"state": "succeeded", "result": {"job_id": "j"}})
     await WorkflowRunner(repo, port, worker_id="new").reconcile_restart()
     assert port.calls == []
 
@@ -134,7 +134,7 @@ async def test_restart_reconciles_preview_child_without_redispatch(repo):
     port = Port(
         reconciled={
             "state": "succeeded",
-            "preview_id": "preview-a",
+            "result": {"preview_id": "preview-a"},
         }
     )
     await WorkflowRunner(repo, port, worker_id="new").reconcile_restart()

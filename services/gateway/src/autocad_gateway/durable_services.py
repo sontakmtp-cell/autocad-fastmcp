@@ -139,7 +139,7 @@ class _Phase9ActionPort:
         result = await self.dispatch(
             action_kind, payload, idempotency_key=idempotency_key
         )
-        return {"state": "succeeded", **result}
+        return {"state": "succeeded", "result": result}
 
 _SAFE_JOB_ERROR_CODES = frozenset(
     {

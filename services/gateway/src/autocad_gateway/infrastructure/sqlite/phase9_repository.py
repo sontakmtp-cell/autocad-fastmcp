@@ -680,13 +680,16 @@ class Phase9Repository:
         state = outcome.get("state")
         if state not in {"succeeded", "failed", "needs_attention", "outcome_unknown"}:
             raise RepositoryConflict("reconcile_outcome_invalid")
+        result = outcome.get("result")
+        if result is not None and not isinstance(result, dict):
+            raise RepositoryConflict("reconcile_outcome_invalid")
         with self.database.transaction() as conn:
             row = conn.execute("SELECT * FROM workflow_actions WHERE action_id=?", (action_id,)).fetchone()
             if row is None: raise RepositoryConflict("not_found")
             if str(row["state"]) not in {"started", "outcome_unknown"}: return self._action(row)
             now = utc_now()
             action_state = "completed" if state == "succeeded" else ("outcome_unknown" if state == "outcome_unknown" else "failed")
-            conn.execute("UPDATE workflow_actions SET state=?,child_state=?,result_json=?,updated_at=? WHERE action_id=?", (action_state,state,_json(outcome),now,action_id))
+            conn.execute("UPDATE workflow_actions SET state=?,child_state=?,result_json=?,updated_at=? WHERE action_id=?", (action_state,state,_json(result) if result is not None else None,now,action_id))
             if state in {"failed", "needs_attention"}:
                 conn.execute("UPDATE workflow_runs SET state='needs_attention',state_version=state_version+1,updated_at=? WHERE run_id=? AND state NOT IN ('succeeded','failed','cancelled','needs_attention')", (now,row["run_id"]))
             self._append_event(conn,str(row["run_id"]),"action_reconciled",{"action_id":action_id,"child_state":state})
@@ -699,6 +702,15 @@ class Phase9Repository:
             if run is None: raise RepositoryConflict("not_found")
             if int(run['state_version']) != expected_state_version: raise RepositoryConflict("stale_workflow_state")
             wait_id=new_id('wfw'); schema_json=_json(response_schema,65_536)
+            existing=conn.execute("SELECT * FROM workflow_waits WHERE run_id=? AND step_id=? AND wait_kind=? AND resolved_at IS NULL ORDER BY created_at DESC LIMIT 1",(run_id,step_id,wait_kind)).fetchone()
+            if existing is not None:
+                if (
+                    int(existing["expected_state_version"]) == expected_state_version
+                    and str(existing["response_schema_digest"]) == _digest(response_schema)
+                    and existing["expires_at"] == expires_at
+                ):
+                    return self._wait(existing)
+                raise RepositoryConflict("workflow_wait_conflict")
             conn.execute("INSERT INTO workflow_waits(wait_id,run_id,step_id,wait_kind,expected_state_version,response_schema_json,response_schema_digest,expires_at,resolved_at,resolution_json,created_at) VALUES(?,?,?,?,?,?,?,?,NULL,NULL,?)",(wait_id,run_id,step_id,wait_kind,expected_state_version,schema_json,_digest(response_schema),expires_at,utc_now()))
             self._append_event(conn,run_id,"wait_created",{"wait_id":wait_id,"expected_state_version":expected_state_version})
             row=conn.execute("SELECT * FROM workflow_waits WHERE wait_id=?",(wait_id,)).fetchone()
