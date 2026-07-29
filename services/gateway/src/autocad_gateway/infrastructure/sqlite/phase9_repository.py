@@ -689,7 +689,21 @@ class Phase9Repository:
             if str(row["state"]) not in {"started", "outcome_unknown"}: return self._action(row)
             now = utc_now()
             action_state = "completed" if state == "succeeded" else ("outcome_unknown" if state == "outcome_unknown" else "failed")
-            conn.execute("UPDATE workflow_actions SET state=?,child_state=?,result_json=?,updated_at=? WHERE action_id=?", (action_state,state,_json(result) if result is not None else None,now,action_id))
+            child_ref = json.loads(row["child_ref_json"]) if row["child_ref_json"] else {}
+            if result is not None:
+                for key in (
+                    "program_id",
+                    "program_revision",
+                    "preview_id",
+                    "intent_id",
+                    "consent_id",
+                    "job_id",
+                    "receipt_id",
+                    "recovery_id",
+                ):
+                    if result.get(key) is not None:
+                        child_ref[key] = result[key]
+            conn.execute("UPDATE workflow_actions SET state=?,child_state=?,result_json=?,child_ref_json=?,updated_at=? WHERE action_id=?", (action_state,state,_json(result) if result is not None else None,_json(child_ref) if child_ref else None,now,action_id))
             if state in {"failed", "needs_attention"}:
                 conn.execute("UPDATE workflow_runs SET state='needs_attention',state_version=state_version+1,updated_at=? WHERE run_id=? AND state NOT IN ('succeeded','failed','cancelled','needs_attention')", (now,row["run_id"]))
             self._append_event(conn,str(row["run_id"]),"action_reconciled",{"action_id":action_id,"child_state":state})

@@ -788,6 +788,14 @@ async def test_real_action_port_recovers_commit_from_waiting_for_recovery(
         if first["current_wait"] is not None
         else None
     ) == expected_wait
+    commit_action = next(
+        action
+        for action in await repository.list_actions(
+            "owner-a", started["run_id"]
+        )
+        if action["action_kind"] == "commit"
+    )
+    assert commit_action["child_ref"]["intent_id"] == "intent-a"
     action_count = len(
         await repository.list_actions("owner-a", started["run_id"])
     )
