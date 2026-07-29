@@ -1,7 +1,11 @@
+import hashlib
 from pathlib import Path
 
 import pytest
-from autocad_gateway.durable_services import _Phase9ActionPort
+from autocad_gateway.durable_services import (
+    DurableGatewayServices,
+    _Phase9ActionPort,
+)
 from autocad_gateway.infrastructure.sqlite.database import SqliteDatabase
 from autocad_gateway.infrastructure.sqlite.phase9_repository import Phase9Repository
 from autocad_gateway.skills.catalog import SkillCatalog
@@ -112,7 +116,9 @@ def _auto_dimension_inputs() -> dict:
     }
 
 
-async def _auto_dimension_service(tmp_path, *, commit_status=None):
+async def _auto_dimension_service(
+    tmp_path, *, commit_status=None, fail_preview=False
+):
     database = SqliteDatabase(tmp_path / "auto-dimension.sqlite")
     await database.open()
     catalog = SkillCatalog.from_fixed_package_root(CATALOG_ROOT)
@@ -124,6 +130,8 @@ async def _auto_dimension_service(tmp_path, *, commit_status=None):
         async def dispatch(self, action_kind, payload, *, idempotency_key):
             calls[action_kind] += 1
             if action_kind == "preview":
+                if fail_preview:
+                    raise RuntimeError("preview_unavailable")
                 return {
                     "observe": {"snapshot_id": "snapshot-a"},
                     "query": {"entities": []},
@@ -806,7 +814,21 @@ async def test_real_action_port_recovers_commit_from_waiting_for_recovery(
         assert (owner, intent_id) == ("owner-a", "intent-a")
         return phase7_status
 
-    port = _Phase9ActionPort(preview, commit, catalog_repository)
+    async def reconcile_lookup(
+        action_kind, child_ref, *, idempotency_key
+    ):
+        assert action_kind == "commit"
+        assert isinstance(child_ref["payload"], dict)
+        result = durable_intents.get(idempotency_key)
+        return (
+            {"state": "succeeded", "result": result}
+            if result is not None
+            else None
+        )
+
+    port = _Phase9ActionPort(
+        preview, commit, catalog_repository, reconcile_lookup
+    )
     value = WorkflowApplicationService(
         repository,
         catalog_repository,
@@ -874,6 +896,139 @@ async def test_real_action_port_recovers_commit_from_waiting_for_recovery(
         )
     ) == event_count
     assert creations == 1
+    await database.close()
+
+
+@pytest.mark.asyncio
+async def test_revoked_started_write_is_reconciled_once_without_redispatch(
+    tmp_path,
+):
+    database = SqliteDatabase(tmp_path / "revoked-reconcile.sqlite")
+    await database.open()
+    catalog = SkillCatalog.from_fixed_package_root(CATALOG_ROOT)
+    catalog_repository = SkillCatalogRepository(database)
+    repository = Phase9Repository(database)
+    children = {}
+    calls = {"dispatch": 0, "lookup": 0}
+
+    async def preview(*args):
+        return {
+            "pure": {},
+            "prepare": {},
+            "preview": {"preview_id": "preview-a"},
+        }
+
+    async def commit(owner, preview_id, idempotency_key, scopes):
+        assert (owner, preview_id) == ("owner-a", "preview-a")
+        calls["dispatch"] += 1
+        child_key = (
+            "wf-"
+            + hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:24]
+            + "-commit"
+        )
+        intent_id = DurableGatewayServices._phase7_stable_id(
+            "intent", owner, child_key
+        )
+        children[intent_id] = {
+            "state": "awaiting_approval",
+            "intent_id": intent_id,
+            "idempotency_key": child_key,
+            "consent_id": None,
+            "released_job_id": None,
+        }
+        raise RuntimeError("crash_after_intent")
+
+    class _IntentRepository:
+        async def get_intent(self, owner_subject, intent_id):
+            assert owner_subject == "owner-a"
+            return children.get(intent_id)
+
+    lookup_service = object.__new__(DurableGatewayServices)
+    lookup_service.phase7_repository = _IntentRepository()
+
+    async def reconcile_lookup(action_kind, child_ref, *, idempotency_key):
+        calls["lookup"] += 1
+        return await lookup_service._phase9_reconcile_action(
+            action_kind,
+            child_ref,
+            idempotency_key=idempotency_key,
+        )
+
+    port = _Phase9ActionPort(
+        preview, commit, catalog_repository, reconcile_lookup
+    )
+    service = WorkflowApplicationService(
+        repository,
+        catalog_repository,
+        catalog,
+        enabled=True,
+        catalog_enabled=True,
+        policy_epoch=9,
+        write_enabled=True,
+        enabled_skills={"mechanical.plate-hole-pattern"},
+        device_resolver=_write_device,
+        snapshot_resolver=lambda owner, device, snapshot: _snapshot(
+            owner, device, snapshot
+        ),
+        write_preview_executor=preview,
+        commit_request_executor=commit,
+        action_runner=WorkflowRunner(repository, port, worker_id="worker"),
+    )
+    service.initialize_catalog()
+    started = await service.start(
+        owner_subject="owner-a",
+        actor_subject="owner-a",
+        skill_id="mechanical.plate-hole-pattern",
+        version="1.0.0",
+        device_id="device-a",
+        source_snapshot_id="snapshot-a",
+        inputs=_plate_inputs(),
+        idempotency_key="revoked-reconcile",
+        scopes=("autocad.read", "autocad.write"),
+    )
+    assert started["state"] == "waiting_for_recovery"
+    await repository.create_wait(
+        owner_subject="owner-a",
+        run_id=started["run_id"],
+        step_id="commit",
+        wait_kind="recovery",
+        expected_state_version=started["state_version"],
+        response_schema={
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {},
+        },
+    )
+    catalog_repository.transition(
+        "mechanical.plate-hole-pattern",
+        "1.0.0",
+        "published",
+        "security_revoked",
+        "security-operator",
+    )
+
+    await service.reconcile_restart()
+    first = await service.get("owner-a", started["run_id"])
+    assert first["run"]["state"] == "needs_attention"
+    assert first["current_wait"] is None
+    assert first["required_next_action"] is None
+    action = next(
+        item
+        for item in await repository.list_actions("owner-a", started["run_id"])
+        if item["action_kind"] == "commit"
+    )
+    assert action["state"] == "completed"
+    assert action["result"]["intent_id"] in children
+    event_count = len(
+        await repository.list_events("owner-a", started["run_id"], limit=100)
+    )
+
+    await service.reconcile_restart()
+    assert calls == {"dispatch": 1, "lookup": 1}
+    assert len(children) == 1
+    assert len(
+        await repository.list_events("owner-a", started["run_id"], limit=100)
+    ) == event_count
     await database.close()
 
 
@@ -1009,6 +1164,33 @@ async def test_auto_dimension_restart_heals_missing_user_wait_once(
         "owner-a", run["run_id"], limit=100
     )
     assert sum(event["event_type"] == "wait_created" for event in events) == 1
+    await database.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_preview_reaches_actionable_terminal_state(tmp_path):
+    database, service, calls = await _auto_dimension_service(
+        tmp_path, fail_preview=True
+    )
+    started = await service.start(
+        owner_subject="owner-a",
+        actor_subject="owner-a",
+        skill_id="mechanical.auto-dimension-overall",
+        version="1.0.0",
+        device_id="device-a",
+        source_snapshot_id="snapshot-a",
+        inputs=_auto_dimension_inputs(),
+        idempotency_key="failed-preview",
+        scopes=("autocad.read", "autocad.write"),
+    )
+    assert started["state"] == "needs_attention"
+    await service.maintenance_once()
+    await service.maintenance_once()
+    run = await service.repository.get_run("owner-a", started["run_id"])
+    actions = await service.repository.list_actions("owner-a", started["run_id"])
+    assert run["state"] == "needs_attention"
+    assert actions[0]["state"] == "failed"
+    assert calls == {"preview": 1, "commit": 0}
     await database.close()
 
 

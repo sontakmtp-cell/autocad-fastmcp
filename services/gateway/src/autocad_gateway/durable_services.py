@@ -84,10 +84,17 @@ logger = logging.getLogger(__name__)
 
 
 class _Phase9ActionPort:
-    def __init__(self, preview: Any, commit: Any, catalog_repository: Any) -> None:
+    def __init__(
+        self,
+        preview: Any,
+        commit: Any,
+        catalog_repository: Any,
+        reconcile_lookup: Any | None = None,
+    ) -> None:
         self.preview = preview
         self.commit = commit
         self.catalog_repository = catalog_repository
+        self.reconcile_lookup = reconcile_lookup
 
     async def preflight(
         self, action_kind: str, payload: dict[str, Any]
@@ -133,13 +140,13 @@ class _Phase9ActionPort:
         *,
         idempotency_key: str,
     ) -> dict[str, Any] | None:
-        payload = child_ref.get("payload")
-        if not isinstance(payload, dict):
+        if self.reconcile_lookup is None:
             return None
-        result = await self.dispatch(
-            action_kind, payload, idempotency_key=idempotency_key
+        return await self.reconcile_lookup(
+            action_kind,
+            child_ref,
+            idempotency_key=idempotency_key,
         )
-        return {"state": "succeeded", "result": result}
 
 _SAFE_JOB_ERROR_CODES = frozenset(
     {
@@ -357,6 +364,7 @@ class DurableGatewayServices:
                     self._phase9_write_preview,
                     self._phase9_commit_request,
                     phase9_catalog_repository,
+                    self._phase9_reconcile_action,
                 ),
                 worker_id="phase9-gateway",
             )
@@ -368,7 +376,6 @@ class DurableGatewayServices:
                 enabled_skills=set(phase9_enabled_skills),
                 device_resolver=self._phase9_device_context,
                 snapshot_resolver=self._phase9_snapshot,
-                program_revision_resolver=self._phase9_program_revision,
                 write_preview_executor=self._phase9_write_preview,
                 commit_request_executor=self._phase9_commit_request,
                 action_runner=phase9_runner,
@@ -540,18 +547,6 @@ class DurableGatewayServices:
         value["document_id"] = self.program_service._snapshot_document_id(snapshot)
         return value
 
-    async def _phase9_program_revision(
-        self, owner_subject: str, program_id: str, revision: int
-    ) -> dict[str, Any]:
-        if self.phase8_repository is None:
-            raise GatewayError("feature_disabled")
-        value = await self.phase8_repository.get_revision(
-            owner_subject, program_id, revision
-        )
-        if value is None:
-            raise GatewayError("not_found")
-        return value
-
     async def _phase9_write_preview(
         self,
         owner_subject: str,
@@ -662,6 +657,49 @@ class DurableGatewayServices:
         }:
             raise GatewayError("backend_error")
         return result
+
+    async def _phase9_reconcile_action(
+        self,
+        action_kind: str,
+        child_ref: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any] | None:
+        payload = child_ref.get("payload")
+        if (
+            action_kind != "commit"
+            or not isinstance(payload, dict)
+            or self.phase7_repository is None
+        ):
+            return None
+        owner_subject = payload.get("owner_subject")
+        if not isinstance(owner_subject, str):
+            return None
+        child_key = (
+            "wf-"
+            + hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:24]
+            + "-commit"
+        )
+        intent_id = child_ref.get("intent_id") or self._phase7_stable_id(
+            "intent", owner_subject, child_key
+        )
+        intent = await self.phase7_repository.get_intent(
+            owner_subject, str(intent_id)
+        )
+        if intent is None or intent.get("idempotency_key") != child_key:
+            return None
+        result = {
+            "state": intent["state"],
+            "admission_status": (
+                "current_job"
+                if intent["state"] == "released"
+                else "approval_required"
+            ),
+            "intent_id": intent["intent_id"],
+            "consent_id": intent.get("consent_id"),
+            "job_id": intent.get("released_job_id"),
+        }
+        return {"state": "succeeded", "result": result}
 
     async def _phase9_commit_status(
         self, owner_subject: str, intent_id: str

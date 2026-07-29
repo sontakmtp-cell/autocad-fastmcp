@@ -294,7 +294,7 @@ class WorkflowRun(Phase9Model):
     initial_snapshot_id: str | None = Field(default=None, pattern=_ID)
     initial_document_id: str | None = Field(default=None, pattern=_ID)
     initial_document_revision: str | None = Field(default=None, max_length=512)
-    state: Literal["created", "running", "waiting_for_user", "waiting_for_program_revision", "waiting_for_trusted_approval", "waiting_for_job", "waiting_for_recovery", "paused", "succeeded", "failed", "cancelled", "needs_attention"]
+    state: Literal["created", "running", "waiting_for_user", "waiting_for_trusted_approval", "waiting_for_job", "waiting_for_recovery", "paused", "succeeded", "failed", "cancelled", "needs_attention"]
     state_version: int = Field(ge=0)
     current_step_id: str | None = Field(default=None, pattern=_ID)
     child_program_id: str | None = Field(default=None, pattern=_ID)

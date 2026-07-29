@@ -477,28 +477,35 @@ class Phase9Repository:
                 (owner_subject, run_id),
             ).fetchone() is None:
                 raise RepositoryConflict("not_found")
-            rows = conn.execute(
-                "SELECT wait_id FROM workflow_waits "
-                "WHERE run_id=? AND resolved_at IS NULL",
-                (run_id,),
-            ).fetchall()
-            now = utc_now()
-            for row in rows:
-                conn.execute(
-                    "UPDATE workflow_waits SET resolved_at=?,resolution_json=? "
-                    "WHERE wait_id=? AND resolved_at IS NULL",
-                    (
-                        now,
-                        _json({"system": True, "reason": reason}),
-                        row["wait_id"],
-                    ),
-                )
-                self._append_event(
-                    conn,
-                    run_id,
-                    "wait_resolved",
-                    {"wait_id": str(row["wait_id"]), "reason": reason},
-                )
+            count = self._resolve_open_waits(
+                conn, run_id, reason=reason, now=utc_now()
+            )
+        return count
+
+    def _resolve_open_waits(
+        self, conn: Any, run_id: str, *, reason: str, now: str
+    ) -> int:
+        rows = conn.execute(
+            "SELECT wait_id FROM workflow_waits "
+            "WHERE run_id=? AND resolved_at IS NULL",
+            (run_id,),
+        ).fetchall()
+        for row in rows:
+            conn.execute(
+                "UPDATE workflow_waits SET resolved_at=?,resolution_json=? "
+                "WHERE wait_id=? AND resolved_at IS NULL",
+                (
+                    now,
+                    _json({"system": True, "reason": reason}),
+                    row["wait_id"],
+                ),
+            )
+            self._append_event(
+                conn,
+                run_id,
+                "wait_resolved",
+                {"wait_id": str(row["wait_id"]), "reason": reason},
+            )
         return len(rows)
 
     async def transition_run(self, *, owner_subject: str, run_id: str, expected_state: str,
@@ -851,6 +858,9 @@ class Phase9Repository:
                 "AND state IN ('pending','claimed')",
                 (now, run_id),
             )
+            self._resolve_open_waits(
+                conn, run_id, reason="skill_security_revoked", now=now
+            )
             conn.execute(
                 "UPDATE workflow_runs SET state='needs_attention',"
                 "state_version=state_version+1,updated_at=? WHERE run_id=?",
@@ -885,6 +895,9 @@ class Phase9Repository:
                 "lease_expires_at=NULL,updated_at=? WHERE run_id=? "
                 "AND state IN ('pending','claimed')",
                 (now, run_id),
+            )
+            self._resolve_open_waits(
+                conn, run_id, reason=reason, now=now
             )
             conn.execute(
                 "UPDATE workflow_runs SET state='needs_attention',"

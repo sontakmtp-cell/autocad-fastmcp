@@ -594,7 +594,6 @@ Không hỗ trợ Jinja/Python expression tùy ý, include path hoặc dynamic t
 created
 → running
 → waiting_for_user
-→ waiting_for_program_revision
 → waiting_for_trusted_approval
 → waiting_for_job
 → waiting_for_recovery
@@ -767,9 +766,7 @@ Output:
 Bounded discriminated union:
 
 - `submit_input`;
-- `attach_program_revision`;
 - `resume`;
-- `retry_safe_step`;
 - `cancel`.
 
 Requires:
@@ -788,7 +785,10 @@ Cấm actions:
 - `force_commit`;
 - raw handle/checkpoint/consent injection.
 
-`attach_program_revision` chỉ nhận owner-scoped immutable `program_id` + revision đã được tạo qua existing `cad_prepare_program` patch/rebase contract.
+Phase 9 chưa public `attach_program_revision` hoặc `retry_safe_step`. Khi cần
+revision mới, client tạo một workflow run mới từ immutable revision đã được
+chuẩn bị qua existing `cad_prepare_program`; failed action đi tới
+`needs_attention` thay vì quảng bá một retry contract chưa được triển khai.
 
 ### 10.5. Resources
 
@@ -948,9 +948,9 @@ Child job `outcome_unknown`:
 Workflow run không mutate sealed program.
 
 - ChatGPT dùng existing `cad_prepare_program` revision request;
-- `cad_control_workflow.attach_program_revision` pins new immutable revision;
-- workflow invalidates prior preview/intent;
-- re-preview required;
+- ChatGPT tạo workflow run mới để pin immutable revision mới;
+- workflow run cũ không được đổi revision và đi tới terminal/actionable state;
+- workflow run mới bắt buộc preview lại;
 - released/started revisions remain protected.
 
 ---
@@ -1705,8 +1705,8 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   transitions, CAS/idempotency, event ordering, action lease/reclaim,
   started-write recovery, waits, runner reconciliation, and the three pure
   reference workflow fixtures.
-- The focused suite was rerun after the third PR review hardening:
-  **84 passed**. It includes clean-runner bootstrap, atomic run/DAG failure
+- The focused suite was rerun after the fourth PR review hardening:
+  **87 passed**. It includes clean-runner bootstrap, atomic run/DAG failure
   injection, durable public preview/commit outbox dispatch, lost-response
   control replay, wait-resolution crash recovery, read-only write-control
   denial, mid-run revocation, cancellation of dispatchable actions,
@@ -1715,10 +1715,12 @@ Phase 9 hoàn tất khi hệ thống có thể discover một skill first-party,
   action-port reconciliation envelopes, missing user-wait healing, durable
   submit-input continuation across every transition, and repeated recovery
   through approval, job, receipt, validate, and finish without duplicate
-  artifacts. This is simulated/unit evidence only.
+  artifacts, write-scope OAuth metadata, failed-preview terminalization, and
+  two-restart reconciliation after security revocation without write
+  redispatch. This is simulated/unit evidence only.
 - Full post-integration regression results:
   - root Python: **414 passed, 1 skipped**;
-  - Gateway: **314 passed**;
+  - Gateway: **317 passed**;
   - contracts: **130 passed**;
   - Desktop Agent: **142 passed**;
   - Managed .NET: **72 passed**;

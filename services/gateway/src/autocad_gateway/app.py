@@ -1292,16 +1292,21 @@ def build_mcp_server(
                 event_limit=event_limit,
             )), correlation_id)
 
-        @mcp.tool(name="cad_control_workflow", title="Control a CAD workflow",
-                  description="Submit bounded input, attach a revision, resume, retry a safe step or cancel. Approval is intentionally unavailable here.",
-                  annotations=_tool_annotations(idempotent=False, read_only=False), auth=auth_check)
+        @mcp.tool(
+            name="cad_control_workflow",
+            title="Control a CAD workflow",
+            description=(
+                "Submit bounded input, resume or cancel. "
+                "Approval is intentionally unavailable here."
+            ),
+            annotations=_tool_annotations(idempotent=False, read_only=False),
+            auth=auth_check,
+        )
         async def cad_control_workflow(
             run_id: str,
             action: Literal[
                 "submit_input",
-                "attach_program_revision",
                 "resume",
-                "retry_safe_step",
                 "cancel",
             ],
             expected_state_version: int,
@@ -2288,6 +2293,7 @@ def create_app(
         "phase6_program",
         "phase7_c2",
         "phase8_program",
+        "phase9_workflow",
     } and auth is None:
         raise ValueError(f"{config.profile} requires OAuth authentication")
     if stateless_http is not None:

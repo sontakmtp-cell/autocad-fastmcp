@@ -20,9 +20,7 @@ from ..skills.catalog_repository import CatalogLifecycleError, SkillCatalogRepos
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$")
 _CONTROL_ACTIONS = {
     "submit_input",
-    "attach_program_revision",
     "resume",
-    "retry_safe_step",
     "cancel",
 }
 
@@ -33,7 +31,6 @@ class WorkflowServiceError(ValueError):
 
 DeviceResolver = Callable[[str, str], Awaitable[dict[str, Any]]]
 SnapshotResolver = Callable[[str, str, str], Awaitable[dict[str, Any]]]
-ProgramRevisionResolver = Callable[[str, str, int], Awaitable[dict[str, Any]]]
 WritePreviewExecutor = Callable[
     [str, str, str, str, dict[str, Any], str, tuple[str, ...]],
     Awaitable[dict[str, Any]],
@@ -67,7 +64,6 @@ class WorkflowApplicationService:
         enabled_skills: set[str] | None = None,
         device_resolver: DeviceResolver | None = None,
         snapshot_resolver: SnapshotResolver | None = None,
-        program_revision_resolver: ProgramRevisionResolver | None = None,
         write_preview_executor: WritePreviewExecutor | None = None,
         commit_request_executor: CommitRequestExecutor | None = None,
         action_runner: Any | None = None,
@@ -84,7 +80,6 @@ class WorkflowApplicationService:
         self.enabled_skills = enabled_skills or set()
         self.device_resolver = device_resolver
         self.snapshot_resolver = snapshot_resolver
-        self.program_revision_resolver = program_revision_resolver
         self.write_preview_executor = write_preview_executor
         self.commit_request_executor = commit_request_executor
         self.action_runner = action_runner
@@ -623,22 +618,6 @@ class WorkflowApplicationService:
                         scopes=scopes,
                     )
                     return await finish(self._run_response(result))
-            elif action == "attach_program_revision":
-                if run["state"] != "waiting_for_program_revision":
-                    raise WorkflowServiceError("invalid_workflow_state")
-                if self.program_revision_resolver is None or not isinstance(
-                    payload, dict
-                ):
-                    raise WorkflowServiceError("invalid_request")
-                program_id = payload.get("program_id")
-                revision = payload.get("program_revision")
-                if not isinstance(program_id, str) or not isinstance(revision, int):
-                    raise WorkflowServiceError("invalid_request")
-                await self.program_revision_resolver(
-                    owner_subject, program_id, revision
-                )
-            elif action == "retry_safe_step":
-                raise WorkflowServiceError("feature_disabled")
             elif action == "resume" and run["state"] != "paused":
                 raise WorkflowServiceError("invalid_workflow_state")
             result = await self.repository.transition_run(
@@ -1121,6 +1100,15 @@ class WorkflowApplicationService:
                 if action["state"] != "completed" or not isinstance(
                     action.get("result"), dict
                 ):
+                    if action["state"] == "failed":
+                        return await self.repository.mark_run_needs_attention(
+                            owner_subject=owner_subject,
+                            run_id=run["run_id"],
+                            reason=(
+                                "preview_action_failed:"
+                                f"{action.get('error_code') or 'backend_error'}"
+                            ),
+                        )
                     if action.get("error_code") in {
                         "skill_security_revoked",
                         "skill_withdrawn",
@@ -1565,10 +1553,11 @@ class WorkflowApplicationService:
 def _required_next_action(
     run: dict[str, Any], wait: dict[str, Any] | None
 ) -> str | None:
+    if run["state"] in {"succeeded", "failed", "cancelled", "needs_attention"}:
+        return None
     if wait is not None:
         return {
             "user_input": "submit_input",
-            "program_revision": "attach_program_revision",
             "trusted_approval": "approve_in_portal",
             "job": "wait",
             "recovery": "operator_recovery",
@@ -1576,7 +1565,6 @@ def _required_next_action(
     return {
         "running": "wait",
         "waiting_for_user": "submit_input",
-        "waiting_for_program_revision": "attach_program_revision",
         "waiting_for_trusted_approval": "approve_in_portal",
         "waiting_for_job": "wait",
         "waiting_for_recovery": "operator_recovery",

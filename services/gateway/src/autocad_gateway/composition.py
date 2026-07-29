@@ -253,5 +253,9 @@ def build_human_auth(config: GatewayConfig) -> Any | None:
             "phase6_program",
             "phase7_c2",
             "phase8_program",
-        },
+        }
+        or (
+            config.profile == "phase9_workflow"
+            and config.phase9_write_workflows_enabled
+        ),
     )

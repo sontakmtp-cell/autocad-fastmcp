@@ -97,7 +97,7 @@ CREATE TABLE workflow_runs (
     initial_snapshot_id TEXT,
     initial_document_id TEXT,
     initial_document_revision TEXT,
-    state TEXT NOT NULL CHECK (state IN ('created','running','waiting_for_user','waiting_for_program_revision','waiting_for_trusted_approval','waiting_for_job','waiting_for_recovery','paused','succeeded','failed','cancelled','needs_attention')),
+    state TEXT NOT NULL CHECK (state IN ('created','running','waiting_for_user','waiting_for_trusted_approval','waiting_for_job','waiting_for_recovery','paused','succeeded','failed','cancelled','needs_attention')),
     state_version INTEGER NOT NULL DEFAULT 0 CHECK (state_version >= 0),
     current_step_id TEXT,
     result_json TEXT CHECK (result_json IS NULL OR length(result_json) <= 65536),

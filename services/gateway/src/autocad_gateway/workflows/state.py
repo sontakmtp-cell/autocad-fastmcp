@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Literal
 
 RunState = Literal[
-    "created", "running", "waiting_for_user", "waiting_for_program_revision",
+    "created", "running", "waiting_for_user",
     "waiting_for_trusted_approval", "waiting_for_job", "waiting_for_recovery",
     "paused", "succeeded", "failed", "cancelled", "needs_attention",
 ]
@@ -23,9 +23,8 @@ TERMINAL_STEP_STATES = frozenset({"succeeded", "failed", "skipped", "cancelled",
 
 _RUN_TRANSITIONS = {
     "created": frozenset({"running", "cancelled", "failed"}),
-    "running": frozenset({"waiting_for_user", "waiting_for_program_revision", "waiting_for_trusted_approval", "waiting_for_job", "waiting_for_recovery", "paused", "succeeded", "failed", "cancelled", "needs_attention"}),
+    "running": frozenset({"waiting_for_user", "waiting_for_trusted_approval", "waiting_for_job", "waiting_for_recovery", "paused", "succeeded", "failed", "cancelled", "needs_attention"}),
     "waiting_for_user": frozenset({"running", "paused", "cancelled", "failed", "needs_attention"}),
-    "waiting_for_program_revision": frozenset({"running", "paused", "cancelled", "failed", "needs_attention"}),
     "waiting_for_trusted_approval": frozenset({"waiting_for_job", "running", "paused", "cancelled", "failed", "needs_attention"}),
     "waiting_for_job": frozenset({"running", "waiting_for_recovery", "paused", "succeeded", "failed", "needs_attention"}),
     "waiting_for_recovery": frozenset({"running", "waiting_for_trusted_approval", "waiting_for_job", "paused", "succeeded", "failed", "needs_attention"}),
