@@ -10,11 +10,15 @@ from hashlib import sha256
 from typing import Any
 
 from ...workflows.state import (
-    TERMINAL_RUN_STATES, InvalidWorkflowTransition, child_idempotency_key,
-    validate_run_transition, validate_step_transition,
+    TERMINAL_RUN_STATES,
+    InvalidWorkflowTransition,
+    child_idempotency_key,
+    validate_run_transition,
+    validate_step_transition,
 )
 from .database import SqliteDatabase, new_id, utc_now
 from .repositories import RepositoryConflict
+
 
 def _json(value: Any, limit: int = 262_144) -> str:
     try:
@@ -435,6 +439,20 @@ class Phase9Repository:
                 (owner_subject, idempotency_key),
             ).fetchone()
         return self._command(row)
+
+    async def started_control_command(
+        self, owner_subject: str, run_id: str, action: str
+    ) -> dict[str, Any] | None:
+        if await self.get_run(owner_subject, run_id) is None:
+            raise RepositoryConflict("not_found")
+        with self.database.read_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM workflow_control_commands "
+                "WHERE owner_subject=? AND run_id=? AND action=? AND state='started' "
+                "ORDER BY created_at LIMIT 1",
+                (owner_subject, run_id, action),
+            ).fetchone()
+        return self._command(row) if row is not None else None
 
     async def wait_resolved_by_command(
         self, owner_subject: str, run_id: str, idempotency_key: str

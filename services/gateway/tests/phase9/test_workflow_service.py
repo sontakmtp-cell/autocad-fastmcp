@@ -1,18 +1,16 @@
 from pathlib import Path
 
 import pytest
-
+from autocad_gateway.durable_services import _Phase9ActionPort
 from autocad_gateway.infrastructure.sqlite.database import SqliteDatabase
 from autocad_gateway.infrastructure.sqlite.phase9_repository import Phase9Repository
-from autocad_gateway.durable_services import _Phase9ActionPort
 from autocad_gateway.skills.catalog import SkillCatalog
 from autocad_gateway.skills.catalog_repository import SkillCatalogRepository
+from autocad_gateway.workflows.runner import WorkflowRunner
 from autocad_gateway.workflows.service import (
     WorkflowApplicationService,
     WorkflowServiceError,
 )
-from autocad_gateway.workflows.runner import WorkflowRunner
-
 
 CATALOG_ROOT = Path(__file__).resolve().parents[4] / "packages" / "skill_catalog"
 
@@ -101,6 +99,67 @@ async def _write_device(owner: str, device: str) -> dict:
         "capability_evidence_verified": True,
         "identity_generation": 1,
     }
+
+
+def _auto_dimension_inputs() -> dict:
+    return {
+        "source_snapshot_id": "snapshot-a",
+        "document_revision": "revision-a",
+        "layer": "DIM",
+        "entity_ids": ["entity-a"],
+        "profile": "mechanical_mm",
+        "offset": 10.0,
+    }
+
+
+async def _auto_dimension_service(tmp_path, *, commit_status=None):
+    database = SqliteDatabase(tmp_path / "auto-dimension.sqlite")
+    await database.open()
+    catalog = SkillCatalog.from_fixed_package_root(CATALOG_ROOT)
+    catalog_repository = SkillCatalogRepository(database)
+    repository = Phase9Repository(database)
+    calls = {"preview": 0, "commit": 0}
+
+    class Port:
+        async def dispatch(self, action_kind, payload, *, idempotency_key):
+            calls[action_kind] += 1
+            if action_kind == "preview":
+                return {
+                    "observe": {"snapshot_id": "snapshot-a"},
+                    "query": {"entities": []},
+                    "pure": {"semantic_digest": "sha256:" + "1" * 64},
+                    "prepare": {"program_id": "program-a", "program_revision": 1},
+                    "preview": {"preview_id": "preview-a", "state": "succeeded"},
+                }
+            return {
+                "state": "awaiting_approval",
+                "admission_status": "approval_required",
+                "intent_id": "intent-a",
+            }
+
+        async def reconcile(self, action_kind, child_ref, *, idempotency_key):
+            return None
+
+    service = WorkflowApplicationService(
+        repository,
+        catalog_repository,
+        catalog,
+        enabled=True,
+        catalog_enabled=True,
+        policy_epoch=9,
+        write_enabled=True,
+        enabled_skills={"mechanical.auto-dimension-overall"},
+        device_resolver=_write_device,
+        snapshot_resolver=lambda owner, device, snapshot: _snapshot(
+            owner, device, snapshot
+        ),
+        write_preview_executor=lambda *args: None,
+        commit_request_executor=lambda *args: None,
+        action_runner=WorkflowRunner(repository, Port(), worker_id="worker"),
+        commit_status_resolver=commit_status,
+    )
+    service.initialize_catalog()
+    return database, service, calls
 
 
 @pytest.mark.asyncio
@@ -907,4 +966,285 @@ async def test_security_revocation_between_preview_and_commit_fails_closed(
         await value.repository.get_run("owner-a", started["run_id"])
     )["state"] == "needs_attention"
     assert commit_calls == []
+    await database.close()
+
+
+@pytest.mark.asyncio
+async def test_auto_dimension_restart_heals_missing_user_wait_once(
+    tmp_path, monkeypatch
+):
+    database, service, _ = await _auto_dimension_service(tmp_path)
+    original = service.repository.create_wait
+    crashed = False
+
+    async def crash_before_wait(**kwargs):
+        nonlocal crashed
+        if kwargs["wait_kind"] == "user_input" and not crashed:
+            crashed = True
+            raise RuntimeError("crash_before_user_wait")
+        return await original(**kwargs)
+
+    monkeypatch.setattr(service.repository, "create_wait", crash_before_wait)
+    with pytest.raises(RuntimeError, match="crash_before_user_wait"):
+        await service.start(
+            owner_subject="owner-a",
+            actor_subject="owner-a",
+            skill_id="mechanical.auto-dimension-overall",
+            version="1.0.0",
+            device_id="device-a",
+            source_snapshot_id="snapshot-a",
+            inputs=_auto_dimension_inputs(),
+            idempotency_key="missing-user-wait",
+            scopes=("autocad.read", "autocad.write"),
+        )
+    run = (await service.repository.list_nonterminal_runs())[0]
+    assert run["state"] == "waiting_for_user"
+    assert await service.repository.current_wait("owner-a", run["run_id"]) is None
+
+    await service.reconcile_restart()
+    await service.reconcile_restart()
+    detail = await service.get("owner-a", run["run_id"])
+    assert detail["current_wait"]["wait_kind"] == "user_input"
+    events = await service.repository.list_events(
+        "owner-a", run["run_id"], limit=100
+    )
+    assert sum(event["event_type"] == "wait_created" for event in events) == 1
+    await database.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "crash_window",
+    [
+        "after_resolve_wait",
+        "after_review_succeeded",
+        "after_run_commit",
+        "before_commit_action",
+        "after_commit_action_insert",
+    ],
+)
+async def test_auto_dimension_submit_input_recovers_each_crash_window(
+    tmp_path, monkeypatch, crash_window
+):
+    database, service, calls = await _auto_dimension_service(tmp_path)
+    started = await service.start(
+        owner_subject="owner-a",
+        actor_subject="owner-a",
+        skill_id="mechanical.auto-dimension-overall",
+        version="1.0.0",
+        device_id="device-a",
+        source_snapshot_id="snapshot-a",
+        inputs=_auto_dimension_inputs(),
+        idempotency_key=f"submit-{crash_window}",
+        scopes=("autocad.read", "autocad.write"),
+    )
+    crashed = False
+    original_resolve = service.repository.resolve_wait
+    original_step = service.repository.transition_step
+    original_run = service.repository.transition_run
+    original_insert = service.repository.insert_action
+    original_run_once = service.action_runner.run_once
+
+    async def resolve_wait(**kwargs):
+        nonlocal crashed
+        result = await original_resolve(**kwargs)
+        if crash_window == "after_resolve_wait" and not crashed:
+            crashed = True
+            raise RuntimeError(crash_window)
+        return result
+
+    async def transition_step(**kwargs):
+        nonlocal crashed
+        result = await original_step(**kwargs)
+        if (
+            crash_window == "after_review_succeeded"
+            and kwargs["step_id"] == "review"
+            and kwargs["target"] == "succeeded"
+            and not crashed
+        ):
+            crashed = True
+            raise RuntimeError(crash_window)
+        return result
+
+    async def transition_run(**kwargs):
+        nonlocal crashed
+        result = await original_run(**kwargs)
+        if (
+            crash_window == "after_run_commit"
+            and kwargs["target"] == "running"
+            and kwargs["current_step_id"] == "commit"
+            and not crashed
+        ):
+            crashed = True
+            raise RuntimeError(crash_window)
+        return result
+
+    async def insert_action(**kwargs):
+        nonlocal crashed
+        if (
+            crash_window == "before_commit_action"
+            and kwargs["action_kind"] == "commit"
+            and not crashed
+        ):
+            crashed = True
+            raise RuntimeError(crash_window)
+        return await original_insert(**kwargs)
+
+    async def run_once():
+        nonlocal crashed
+        if crash_window == "after_commit_action_insert" and not crashed:
+            crashed = True
+            raise RuntimeError(crash_window)
+        return await original_run_once()
+
+    monkeypatch.setattr(service.repository, "resolve_wait", resolve_wait)
+    monkeypatch.setattr(service.repository, "transition_step", transition_step)
+    monkeypatch.setattr(service.repository, "transition_run", transition_run)
+    monkeypatch.setattr(service.repository, "insert_action", insert_action)
+    monkeypatch.setattr(service.action_runner, "run_once", run_once)
+    control = {
+        "owner_subject": "owner-a",
+        "run_id": started["run_id"],
+        "action": "submit_input",
+        "expected_state_version": started["state_version"],
+        "idempotency_key": f"control-{crash_window}",
+        "payload": {"decision": "continue"},
+        "scopes": ("autocad.read", "autocad.write"),
+    }
+    with pytest.raises((RuntimeError, WorkflowServiceError)):
+        await service.control(**control)
+
+    await service.reconcile_restart()
+    recovered = await service.control(**control)
+    assert recovered["state"] == "waiting_for_trusted_approval"
+    assert await service.control(**control) == recovered
+    await service.reconcile_restart()
+    event_count = len(
+        await service.repository.list_events(
+            "owner-a", started["run_id"], limit=100
+        )
+    )
+    await service.reconcile_restart()
+    assert len(
+        await service.repository.list_events(
+            "owner-a", started["run_id"], limit=100
+        )
+    ) == event_count
+    actions = await service.repository.list_actions(
+        "owner-a", started["run_id"]
+    )
+    assert [action["action_kind"] for action in actions] == ["preview", "commit"]
+    assert calls == {"preview": 1, "commit": 1}
+    await database.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("step_id", "target", "before"),
+    [
+        ("commit", "succeeded", False),
+        (None, "running", False),
+        ("validate", "ready", False),
+        ("validate", "running", False),
+        ("validate", "succeeded", False),
+        ("finish", "ready", False),
+        ("finish", "running", False),
+        ("finish", "succeeded", False),
+        (None, "succeeded", True),
+    ],
+)
+async def test_commit_success_resumes_validate_and_finish_from_each_crash_window(
+    tmp_path, monkeypatch, step_id, target, before
+):
+    async def commit_status(owner, intent_id):
+        assert (owner, intent_id) == ("owner-a", "intent-a")
+        return {
+            "state": "succeeded",
+            "intent_id": "intent-a",
+            "job_id": "job-a",
+            "receipt_id": "receipt-a",
+        }
+
+    database, service, calls = await _auto_dimension_service(
+        tmp_path, commit_status=commit_status
+    )
+    started = await service.start(
+        owner_subject="owner-a",
+        actor_subject="owner-a",
+        skill_id="mechanical.auto-dimension-overall",
+        version="1.0.0",
+        device_id="device-a",
+        source_snapshot_id="snapshot-a",
+        inputs=_auto_dimension_inputs(),
+        idempotency_key=f"finish-{step_id}-{target}-{before}",
+        scopes=("autocad.read", "autocad.write"),
+    )
+    waiting = await service.control(
+        owner_subject="owner-a",
+        run_id=started["run_id"],
+        action="submit_input",
+        expected_state_version=started["state_version"],
+        idempotency_key=f"finish-control-{step_id}-{target}-{before}",
+        payload={"decision": "continue"},
+        scopes=("autocad.read", "autocad.write"),
+    )
+    assert waiting["state"] == "waiting_for_trusted_approval"
+    original_step = service.repository.transition_step
+    original_run = service.repository.transition_run
+    crashed = False
+
+    async def transition_step(**kwargs):
+        nonlocal crashed
+        result = await original_step(**kwargs)
+        if (
+            kwargs["step_id"] == step_id
+            and kwargs["target"] == target
+            and not crashed
+        ):
+            crashed = True
+            raise RuntimeError("finish_crash")
+        return result
+
+    async def transition_run(**kwargs):
+        nonlocal crashed
+        matches_validate = (
+            step_id is None
+            and target == "running"
+            and kwargs["target"] == "running"
+            and kwargs["current_step_id"] == "validate"
+        )
+        matches_terminal = (
+            step_id is None
+            and target == "succeeded"
+            and kwargs["target"] == "succeeded"
+        )
+        if before and matches_terminal and not crashed:
+            crashed = True
+            raise RuntimeError("finish_crash")
+        result = await original_run(**kwargs)
+        if not before and matches_validate and not crashed:
+            crashed = True
+            raise RuntimeError("finish_crash")
+        return result
+
+    monkeypatch.setattr(service.repository, "transition_step", transition_step)
+    monkeypatch.setattr(service.repository, "transition_run", transition_run)
+    with pytest.raises(RuntimeError, match="finish_crash"):
+        await service.reconcile_restart()
+
+    await service.reconcile_restart()
+    detail = await service.get("owner-a", started["run_id"])
+    assert detail["run"]["state"] == "succeeded"
+    assert calls == {"preview": 1, "commit": 1}
+    event_count = len(
+        await service.repository.list_events(
+            "owner-a", started["run_id"], limit=100
+        )
+    )
+    await service.reconcile_restart()
+    assert len(
+        await service.repository.list_events(
+            "owner-a", started["run_id"], limit=100
+        )
+    ) == event_count
     await database.close()

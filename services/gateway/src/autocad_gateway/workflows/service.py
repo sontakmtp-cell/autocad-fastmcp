@@ -17,7 +17,6 @@ from ..infrastructure.sqlite.repositories import RepositoryConflict
 from ..skills.catalog import CatalogError, SkillCatalog
 from ..skills.catalog_repository import CatalogLifecycleError, SkillCatalogRepository
 
-
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$")
 _CONTROL_ACTIONS = {
     "submit_input",
@@ -262,54 +261,7 @@ class WorkflowApplicationService:
                 target="succeeded",
                 output_ref={"result": status},
             )
-        current = await self.repository.get_run(
-            run["owner_subject"], run["run_id"]
-        )
-        if current["state"] in {
-            "waiting_for_trusted_approval",
-            "waiting_for_job",
-            "waiting_for_recovery",
-        }:
-            current = await self.repository.transition_run(
-                owner_subject=run["owner_subject"],
-                run_id=run["run_id"],
-                expected_state=current["state"],
-                expected_version=current["state_version"],
-                target="running",
-                current_step_id="validate",
-                event_type="commit_succeeded",
-            )
-        for step_id in ("validate", "finish"):
-            steps = {
-                step["step_id"]: step
-                for step in await self.repository.list_steps(
-                    run["owner_subject"], run["run_id"]
-                )
-            }
-            if steps[step_id]["state"] == "pending":
-                await self._ready_step(
-                    run["owner_subject"], run["run_id"], step_id
-                )
-            if steps[step_id]["state"] != "succeeded":
-                await self._complete_ready_step(
-                    run["owner_subject"],
-                    run["run_id"],
-                    step_id,
-                    {"result": status},
-                )
-        current = await self.repository.get_run(
-            run["owner_subject"], run["run_id"]
-        )
-        if current["state"] == "running":
-            await self.repository.transition_run(
-                owner_subject=run["owner_subject"],
-                run_id=run["run_id"],
-                expected_state="running",
-                expected_version=current["state_version"],
-                target="succeeded",
-                current_step_id="finish",
-                event_type="workflow_succeeded",
-            )
+        await self._finish_write_after_commit(run, status)
 
     async def list_skills(
         self,
@@ -533,6 +485,8 @@ class WorkflowApplicationService:
         run = await self.repository.get_run(owner_subject, run_id)
         if run is None:
             raise WorkflowServiceError("not_found")
+        if run["state"] == "waiting_for_user":
+            await self._heal_user_input_wait(run)
         steps = await self.repository.list_steps(owner_subject, run_id)
         wait = await self.repository.current_wait(owner_subject, run_id)
         events = await self.repository.list_events(
@@ -599,6 +553,8 @@ class WorkflowApplicationService:
             and "autocad.write" not in scopes
         ):
             raise WorkflowServiceError("insufficient_scope")
+        if action == "submit_input" and run["state"] == "waiting_for_user":
+            await self._heal_user_input_wait(run)
         try:
             command, replay = await self.repository.begin_control_command(
                 owner_subject=owner_subject,
@@ -619,7 +575,11 @@ class WorkflowApplicationService:
                 )
                 return value
 
-            if replay and run["state_version"] != expected_state_version:
+            if (
+                replay
+                and action != "submit_input"
+                and run["state_version"] != expected_state_version
+            ):
                 return await finish(self._run_response(run))
             if action == "cancel":
                 result = await self.repository.cancel_run(
@@ -655,6 +615,7 @@ class WorkflowApplicationService:
                     )
                     return await finish(self._run_response(result))
                 if run["skill_id"] == "mechanical.auto-dimension-overall":
+                    run = await self.repository.get_run(owner_subject, run_id)
                     result = await self._request_auto_dimension_commit(
                         owner_subject=owner_subject,
                         run=run,
@@ -746,11 +707,6 @@ class WorkflowApplicationService:
             )
         if "autocad.write" not in manifest.required_scopes:
             return run
-        reconcile_existing_wait = run["state"] in {
-            "waiting_for_trusted_approval",
-            "waiting_for_job",
-            "waiting_for_recovery",
-        }
         actions = await self.repository.list_actions(
             run["owner_subject"], run["run_id"]
         )
@@ -771,23 +727,115 @@ class WorkflowApplicationService:
                 run_id=run["run_id"],
                 reason="write_scope_evidence_missing",
             )
-        if run["state"] == "running":
-            run = await self._advance_write_preview(
+        run = await self._resume_write_run(
+            run,
+            manifest=manifest,
+            snapshot=snapshot or {},
+            scopes=durable_scopes,
+        )
+        command = await self.repository.started_control_command(
+            run["owner_subject"], run["run_id"], "submit_input"
+        )
+        if command is not None and run["state"] != "running":
+            await self.repository.complete_control_command(
                 owner_subject=run["owner_subject"],
-                run=run,
-                manifest=manifest,
-                snapshot=snapshot or {},
-                inputs=run["inputs"],
-                idempotency_key=run["idempotency_key"],
-                scopes=durable_scopes,
+                idempotency_key=command["idempotency_key"],
+                result=self._run_response(run),
             )
-        run = await self.repository.get_run(
-            run["owner_subject"], run["run_id"]
+        return run
+
+    async def _resume_write_run(
+        self,
+        run: dict[str, Any],
+        *,
+        manifest: Any,
+        snapshot: dict[str, Any],
+        scopes: tuple[str, ...],
+    ) -> dict[str, Any]:
+        owner_subject = run["owner_subject"]
+        run_id = run["run_id"]
+        reconcile_existing_wait = run["state"] in {
+            "waiting_for_trusted_approval",
+            "waiting_for_job",
+            "waiting_for_recovery",
+        }
+        steps = {
+            step["step_id"]: step
+            for step in await self.repository.list_steps(owner_subject, run_id)
+        }
+        commit = steps["commit"]
+        if commit["state"] == "succeeded":
+            status = (commit.get("output_ref") or {}).get("result") or {}
+            return await self._finish_write_after_commit(run, status)
+
+        command = await self.repository.started_control_command(
+            owner_subject, run_id, "submit_input"
         )
-        actions = await self.repository.list_actions(
-            run["owner_subject"], run["run_id"]
+        commit_key = (
+            command["idempotency_key"]
+            if command is not None
+            else f"{run['idempotency_key']}:commit"
         )
-        commit = next(
+        if manifest.skill_id == "mechanical.auto-dimension-overall":
+            review = steps["review"]
+            if review["state"] == "waiting" and run["state"] == "waiting_for_user":
+                resolved = (
+                    await self.repository.wait_resolved_by_command(
+                        owner_subject, run_id, command["idempotency_key"]
+                    )
+                    if command is not None
+                    else None
+                )
+                if resolved is None:
+                    await self._heal_user_input_wait(run)
+                    return await self.repository.get_run(owner_subject, run_id)
+            if review["state"] in {"waiting", "succeeded"} and run["state"] in {
+                "waiting_for_user",
+                "running",
+            }:
+                run = await self._request_auto_dimension_commit(
+                    owner_subject=owner_subject,
+                    run=run,
+                    idempotency_key=commit_key,
+                    scopes=scopes,
+                )
+            elif run["state"] == "running":
+                run = await self._advance_write_preview(
+                    owner_subject=owner_subject,
+                    run=run,
+                    manifest=manifest,
+                    snapshot=snapshot,
+                    inputs=run["inputs"],
+                    idempotency_key=run["idempotency_key"],
+                    scopes=scopes,
+                )
+        elif run["state"] == "running":
+            preview = steps["preview"]
+            preview_result = (preview.get("output_ref") or {}).get("result") or {}
+            if commit["state"] in {"ready", "running", "waiting"} and isinstance(
+                preview_result.get("preview_id"), str
+            ):
+                run = await self._request_commit(
+                    owner_subject=owner_subject,
+                    run=run,
+                    preview_id=preview_result["preview_id"],
+                    idempotency_key=commit_key,
+                    scopes=scopes,
+                )
+            else:
+                run = await self._advance_write_preview(
+                    owner_subject=owner_subject,
+                    run=run,
+                    manifest=manifest,
+                    snapshot=snapshot,
+                    inputs=run["inputs"],
+                    idempotency_key=run["idempotency_key"],
+                    scopes=scopes,
+                )
+
+        run = await self.repository.get_run(owner_subject, run_id)
+        actions = await self.repository.list_actions(owner_subject, run_id)
+        completed_commit = next(
             (
                 action
                 for action in actions
@@ -796,13 +844,13 @@ class WorkflowApplicationService:
             ),
             None,
         )
-        if run["state"] == "waiting_for_recovery" and commit is not None:
-            payload = commit["payload"]
+        if run["state"] == "waiting_for_recovery" and completed_commit is not None:
+            payload = completed_commit["payload"]
             run = await self._request_commit(
-                owner_subject=run["owner_subject"],
+                owner_subject=owner_subject,
                 run=run,
                 preview_id=str(payload["preview_id"]),
-                idempotency_key=commit["idempotency_key"],
+                idempotency_key=completed_commit["idempotency_key"],
                 scopes=tuple(payload["scopes"]),
             )
         if reconcile_existing_wait and run["state"] in {
@@ -811,9 +859,82 @@ class WorkflowApplicationService:
             "waiting_for_recovery",
         }:
             await self._reconcile_commit_status(run)
-        return await self.repository.get_run(
-            run["owner_subject"], run["run_id"]
+        return await self.repository.get_run(owner_subject, run_id)
+
+    async def _heal_user_input_wait(self, run: dict[str, Any]) -> None:
+        if run["state"] != "waiting_for_user":
+            return
+        steps = {
+            step["step_id"]: step
+            for step in await self.repository.list_steps(
+                run["owner_subject"], run["run_id"]
+            )
+        }
+        review = steps.get("review")
+        if review is None or review["state"] != "waiting":
+            return
+        await self.repository.create_wait(
+            owner_subject=run["owner_subject"],
+            run_id=run["run_id"],
+            step_id="review",
+            wait_kind="user_input",
+            expected_state_version=run["state_version"],
+            response_schema={
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["decision"],
+                "properties": {
+                    "decision": {"type": "string", "const": "continue"}
+                },
+            },
         )
+
+    async def _finish_write_after_commit(
+        self, run: dict[str, Any], status: dict[str, Any]
+    ) -> dict[str, Any]:
+        owner_subject = run["owner_subject"]
+        run_id = run["run_id"]
+        current = await self.repository.get_run(owner_subject, run_id)
+        if current["state"] in {
+            "waiting_for_trusted_approval",
+            "waiting_for_job",
+            "waiting_for_recovery",
+        }:
+            await self.repository.resolve_open_waits_system(
+                owner_subject=owner_subject,
+                run_id=run_id,
+                reason="commit_succeeded",
+            )
+            current = await self.repository.transition_run(
+                owner_subject=owner_subject,
+                run_id=run_id,
+                expected_state=current["state"],
+                expected_version=current["state_version"],
+                target="running",
+                current_step_id="validate",
+                event_type="commit_succeeded",
+            )
+        if current["state"] != "running":
+            return current
+        for step_id in ("validate", "finish"):
+            await self._complete_step_idempotently(
+                owner_subject,
+                run_id,
+                step_id,
+                {"result": status},
+            )
+        current = await self.repository.get_run(owner_subject, run_id)
+        if current["state"] == "running":
+            current = await self.repository.transition_run(
+                owner_subject=owner_subject,
+                run_id=run_id,
+                expected_state="running",
+                expected_version=current["state_version"],
+                target="succeeded",
+                current_step_id="finish",
+                event_type="workflow_succeeded",
+            )
+        return current
 
     async def _advance_cleanup_audit(
         self,
@@ -1039,21 +1160,7 @@ class WorkflowApplicationService:
                     current_step_id="review",
                     event_type="preview_ready",
                 )
-            await self.repository.create_wait(
-                owner_subject=owner_subject,
-                run_id=run["run_id"],
-                step_id="review",
-                wait_kind="user_input",
-                expected_state_version=waiting["state_version"],
-                response_schema={
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": ["decision"],
-                    "properties": {
-                        "decision": {"type": "string", "const": "continue"}
-                    },
-                },
-            )
+            await self._heal_user_input_wait(waiting)
             return waiting
         return await self._request_commit(
             owner_subject=owner_subject,
@@ -1079,25 +1186,32 @@ class WorkflowApplicationService:
         preview = (review.get("output_ref") or {}).get("result") or {}
         if not isinstance(preview.get("preview_id"), str):
             raise WorkflowServiceError("binding_mismatch")
-        await self.repository.transition_step(
-            owner_subject=owner_subject,
-            run_id=run["run_id"],
-            step_id="review",
-            attempt=1,
-            expected_state="waiting",
-            expected_version=review["state_version"],
-            target="succeeded",
-            output_ref=review["output_ref"],
-        )
-        running = await self.repository.transition_run(
-            owner_subject=owner_subject,
-            run_id=run["run_id"],
-            expected_state="waiting_for_user",
-            expected_version=run["state_version"],
-            target="running",
-            current_step_id="commit",
-            event_type="submit_input",
-        )
+        if review["state"] == "waiting":
+            await self.repository.transition_step(
+                owner_subject=owner_subject,
+                run_id=run["run_id"],
+                step_id="review",
+                attempt=1,
+                expected_state="waiting",
+                expected_version=review["state_version"],
+                target="succeeded",
+                output_ref=review["output_ref"],
+            )
+        elif review["state"] != "succeeded":
+            raise WorkflowServiceError("invalid_workflow_state")
+        running = await self.repository.get_run(owner_subject, run["run_id"])
+        if running["state"] == "waiting_for_user":
+            running = await self.repository.transition_run(
+                owner_subject=owner_subject,
+                run_id=run["run_id"],
+                expected_state="waiting_for_user",
+                expected_version=running["state_version"],
+                target="running",
+                current_step_id="commit",
+                event_type="submit_input",
+            )
+        if running["state"] != "running":
+            return running
         return await self._request_commit(
             owner_subject=owner_subject,
             run=running,
