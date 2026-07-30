@@ -103,7 +103,9 @@ class AgentConfig:
     def from_env(cls) -> "AgentConfig":
         local = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "Kythuatvang" / "AutoCADAgent"
         config = cls(
-            gateway_ws_url=os.environ.get("AUTOCAD_AGENT_GATEWAY_WS_URL", "").strip(),
+            gateway_ws_url=os.environ.get(
+                "AUTOCAD_AGENT_GATEWAY_WS_URL", "ws://127.0.0.1:8000/agent/ws"
+            ).strip(),
             device_id=os.environ.get("AUTOCAD_AGENT_DEVICE_ID", "").strip(),
             device_name=os.environ.get("AUTOCAD_AGENT_DEVICE_NAME", "Máy AutoCAD Lab").strip(),
             ledger_path=Path(os.environ.get("AUTOCAD_AGENT_LEDGER_PATH", str(local / "agent.db"))),
@@ -152,11 +154,11 @@ class AgentConfig:
             ),
             gateway_http_url=os.environ.get(
                 "AUTOCAD_AGENT_GATEWAY_HTTP_URL",
-                "",
+                "http://127.0.0.1:8000",
             ).strip(),
             portal_url=os.environ.get(
                 "AUTOCAD_AGENT_PORTAL_URL",
-                "",
+                "http://localhost:3000",
             ).strip(),
             phase7_c2_enabled=_env_flag(
                 "AUTOCAD_MCP_PHASE7_C2_ENABLED",

@@ -72,6 +72,10 @@ echo Starting AutoCAD AI Connector MVP...
 set SCRIPT_DIR=%~dp0
 set REPO_ROOT=%SCRIPT_DIR%..\..
 
+if "%AUTOCAD_AGENT_GATEWAY_WS_URL%"=="" set AUTOCAD_AGENT_GATEWAY_WS_URL=ws://127.0.0.1:8000/agent/ws
+if "%AUTOCAD_AGENT_PORTAL_URL%"=="" set AUTOCAD_AGENT_PORTAL_URL=http://localhost:3000
+if "%AUTOCAD_AGENT_GATEWAY_HTTP_URL%"=="" set AUTOCAD_AGENT_GATEWAY_HTTP_URL=http://127.0.0.1:8000
+
 set PYTHONPATH=%SCRIPT_DIR%agent\src;%REPO_ROOT%\packages\contracts\src;%REPO_ROOT%\packages\cad_core\src;%REPO_ROOT%\services\gateway\src;%REPO_ROOT%\src;%PYTHONPATH%
 
 if exist "%SCRIPT_DIR%.venv\Scripts\python.exe" (
