@@ -1,0 +1,54 @@
+{
+  "schema": "autocad-mcp.phase10-headless-conformance/1",
+  "recorded_at": "2026-07-30",
+  "status": "partial_headless_pass",
+  "working_tree_head": "f4fae7188ca771e7907dacc8c441d52b81f2012a",
+  "baseline_origin_main": "d1e84711841b4b262fc5563cb768904b8eefd811",
+  "environment": {
+    "os": "Microsoft Windows 11 Pro 10.0.26200 build 26200",
+    "python": "3.13.13",
+    "uv": "0.9.26",
+    "node": "24.18.0",
+    "dotnet_sdk": "8.0.423"
+  },
+  "phase10_conformance": {
+    "command": "python scripts/test-phase10-conformance.py",
+    "result": "36 passed",
+    "public_security_counters": {
+      "scene_tools": 2,
+      "scene_resources": 7,
+      "destructive_scene_tools": 0,
+      "open_world_scene_tools": 0
+    },
+    "coverage": [
+      "strict finite contracts and canonical digests",
+      "deterministic scene engine and bounded candidate counters",
+      "owner scoped immutable Gateway scene persistence",
+      "cursor tamper and filter binding",
+      "prompt text redaction",
+      "default off feature flag dependencies",
+      "R25 source shape, ezdxf projection and LT capability honesty"
+    ]
+  },
+  "regression": {
+    "phase9": {
+      "command": "python scripts/test-phase9-conformance.py",
+      "result": "94 passed"
+    },
+    "phase8_python": {
+      "command": "python scripts/test-phase8-conformance.py --python-only",
+      "result": "39 passed"
+    },
+    "managed_host_core": {
+      "command": "dotnet test native/autocad_managed_host/tests/AutocadMcp.Host.Core.Tests/AutocadMcp.Host.Core.Tests.csproj --configuration Release",
+      "result": "75 passed, 0 failed, 0 skipped"
+    }
+  },
+  "limitations": [
+    "The recorded source included shared uncommitted Phase 10 integration changes and is not a release commit.",
+    "GitHub Actions execution is not recorded by this local artifact.",
+    "Live AutoCAD Mechanical 2025 R25 evidence for Drawings A, B and C is pending.",
+    "Headless evidence cannot establish unchanged live DWG revision or no CAD effect."
+  ],
+  "engineering_decision": "NO-GO"
+}
