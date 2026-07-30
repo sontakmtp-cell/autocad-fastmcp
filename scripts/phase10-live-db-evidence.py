@@ -194,6 +194,8 @@ def collect_evidence(
     device: str,
     window_start: str,
     window_end: str,
+    anchor_job_ids: tuple[str, ...] = ANCHOR_JOB_IDS,
+    scene_ids: tuple[str, ...] = SCENE_IDS,
 ) -> dict[str, Any]:
     connection = sqlite3.connect(
         f"{database.resolve().as_uri()}?mode=ro", uri=True, isolation_level=None
@@ -221,26 +223,26 @@ def collect_evidence(
         }
         no_write_events = _rows(connection.execute(NO_WRITE_SQL, parameters))
 
-        job_marks = ",".join("?" for _ in ANCHOR_JOB_IDS)
+        job_marks = ",".join("?" for _ in anchor_job_ids)
         anchor_jobs = _rows(
             connection.execute(
                 f"SELECT * FROM jobs WHERE job_id IN ({job_marks}) ORDER BY job_id",
-                ANCHOR_JOB_IDS,
+                anchor_job_ids,
             )
         )
-        scene_marks = ",".join("?" for _ in SCENE_IDS)
+        scene_marks = ",".join("?" for _ in scene_ids)
         scenes = _rows(
             connection.execute(
                 f"SELECT * FROM scene_records WHERE scene_id IN ({scene_marks}) "
                 "ORDER BY scene_id",
-                SCENE_IDS,
+                scene_ids,
             )
         )
         scene_sections = _rows(
             connection.execute(
                 f"SELECT * FROM scene_sections WHERE scene_id IN ({scene_marks}) "
                 "ORDER BY scene_id,section",
-                SCENE_IDS,
+                scene_ids,
             )
         )
 
@@ -271,7 +273,7 @@ def collect_evidence(
         scene_id: {
             row["section"] for row in scene_sections if row["scene_id"] == scene_id
         }
-        for scene_id in SCENE_IDS
+        for scene_id in scene_ids
     }
     active_sessions = [
         row
@@ -285,7 +287,7 @@ def collect_evidence(
         "foreign_keys_ok": not foreign_keys,
         "migrations_ok": migration_identity == _expected_migrations(),
         "no_write_events_in_window": not no_write_events,
-        "anchor_jobs_ok": anchor_ids == set(ANCHOR_JOB_IDS)
+        "anchor_jobs_ok": anchor_ids == set(anchor_job_ids)
         and all(
             row["owner_subject"] == owner
             and row["device_id"] == device
@@ -293,7 +295,7 @@ def collect_evidence(
             and row["state"] == "succeeded"
             for row in anchor_jobs
         ),
-        "scenes_ok": {row["scene_id"] for row in scenes} == set(SCENE_IDS)
+        "scenes_ok": {row["scene_id"] for row in scenes} == set(scene_ids)
         and all(
             row["owner_subject"] == owner
             and row["device_id"] == device
@@ -312,8 +314,8 @@ def collect_evidence(
             "device_id": device,
             "window_start": window_start,
             "window_end": window_end,
-            "anchor_job_ids": list(ANCHOR_JOB_IDS),
-            "scene_ids": list(SCENE_IDS),
+            "anchor_job_ids": list(anchor_job_ids),
+            "scene_ids": list(scene_ids),
         },
         "database_checks": {
             "integrity_check": integrity,
@@ -346,6 +348,8 @@ def main() -> int:
         "--window-start", default="2026-07-30T06:15:00+00:00"
     )
     parser.add_argument("--window-end", default="2026-07-30T06:43:00+00:00")
+    parser.add_argument("--anchor-job-id", action="append")
+    parser.add_argument("--scene-id", action="append")
     args = parser.parse_args()
     evidence = collect_evidence(
         args.database,
@@ -353,6 +357,8 @@ def main() -> int:
         device=args.device_id,
         window_start=args.window_start,
         window_end=args.window_end,
+        anchor_job_ids=tuple(args.anchor_job_id or ANCHOR_JOB_IDS),
+        scene_ids=tuple(args.scene_id or SCENE_IDS),
     )
     json.dump(evidence, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
     sys.stdout.write("\n")
