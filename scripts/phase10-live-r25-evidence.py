@@ -62,6 +62,8 @@ class _LiveSnapshot:
 
 
 async def _capture(fixture_id: str, database_path: Path) -> dict[str, Any]:
+    drawing_path = REPO_ROOT / "drawing33.dwg"
+    drawing_hash_before = _sha256(drawing_path)
     port = ManagedDotNetCadReadPort.from_default_bootstrap(
         agent_version="phase10-live-r25-evidence",
         expected_host_family="R25",
@@ -110,6 +112,7 @@ async def _capture(fixture_id: str, database_path: Path) -> dict[str, Any]:
     revision_after = str(after.payload["revision"]["revision"])
     if revision_after != revision:
         raise RuntimeError("scene_build_changed_document_revision")
+    drawing_hash_after = _sha256(drawing_path)
 
     if database_path.exists():
         raise RuntimeError("live evidence database already exists")
@@ -169,6 +172,9 @@ async def _capture(fixture_id: str, database_path: Path) -> dict[str, Any]:
             "document_name": str(snapshot.get("document_name", "")),
             "document_id": str(snapshot["document_id"]),
             "database_fingerprint": str(snapshot.get("database_fingerprint", "")),
+            "dwg_file_hash_before": drawing_hash_before,
+            "dwg_file_hash_after": drawing_hash_after,
+            "dwg_file_hash_unchanged": drawing_hash_before == drawing_hash_after,
         },
         "runtime": {
             "runtime_id": probe.runtime_id,
@@ -237,7 +243,14 @@ async def _capture(fixture_id: str, database_path: Path) -> dict[str, Any]:
             "same_scene_retrieved": True,
             "issue_count_after_reopen": restored_issues.total,
             "cad_effect_attempted": False,
+            "actual_gateway_process_restart": False,
+            "gateway_public_reconnect": False,
         },
+        "limitations": [
+            "single combined drawing, not the required identified Drawings A, B and C",
+            "repository/service reopen occurred in-process; no Gateway process restart",
+            "direct Managed .NET read port used; no standalone Desktop Agent process identity",
+        ],
     }
 
 
@@ -248,6 +261,12 @@ def main() -> None:
     parser.add_argument("--database", required=True, type=Path)
     args = parser.parse_args()
     result = asyncio.run(_capture(args.fixture_id, args.database))
+    result["capture_command"] = (
+        "python scripts/phase10-live-r25-evidence.py"
+        f" --fixture-id {args.fixture_id}"
+        f" --database {args.database}"
+        f" --output {args.output}"
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(result, indent=2, sort_keys=True) + "\n",
