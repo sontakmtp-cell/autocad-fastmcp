@@ -220,6 +220,16 @@ async def _capture(fixture_id: str, database_path: Path) -> dict[str, Any]:
             "feature_types": _counts(
                 [feature.feature_type for feature in artifact.features]
             ),
+            "feature_evidence_strengths": _counts(
+                [feature.evidence_strength for feature in artifact.features]
+            ),
+            "feature_limitations": _counts(
+                [
+                    limitation
+                    for feature in artifact.features
+                    for limitation in feature.limitations
+                ]
+            ),
             "issue_codes": _counts([issue.code for issue in artifact.issues]),
             "counts": {
                 "nodes": len(artifact.nodes),
