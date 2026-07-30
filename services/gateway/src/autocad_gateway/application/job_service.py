@@ -1574,7 +1574,7 @@ class DurableJobService:
         if (
             not isinstance(entity.get("entity_id"), str)
             or re.fullmatch(r"[0-9A-Fa-f]{1,32}", entity["entity_id"]) is None
-            or entity_type not in {"LINE", "CIRCLE", "LWPOLYLINE"}
+            or entity_type not in {"LINE", "CIRCLE", "LWPOLYLINE", "ARC"}
             or not isinstance(entity.get("layer"), str)
             or len(entity["layer"]) > 255
             or entity.get("space") != "model"
@@ -1589,21 +1589,65 @@ class DurableJobService:
         if not isinstance(geometry, dict):
             return False
         if entity_type == "LINE":
-            return set(geometry) == {"start", "end"} and all(
-                cls._valid_c1_point(geometry.get(key), 2)
-                for key in ("start", "end")
-            )
-        if entity_type == "CIRCLE":
-            radius = geometry.get("radius")
+            keys = set(geometry)
             return (
-                set(geometry) == {"center", "radius"}
+                keys == {"start", "end"}
+                or (
+                    keys
+                    == {"start", "end", "start_elevation", "end_elevation"}
+                    and cls._valid_c1_number(geometry.get("start_elevation"))
+                    and cls._valid_c1_number(geometry.get("end_elevation"))
+                )
+            ) and all(
+                cls._valid_c1_point(geometry.get(key), 2) for key in ("start", "end")
+            )
+        if entity_type in {"CIRCLE", "ARC"}:
+            radius = geometry.get("radius")
+            keys = {"center", "radius"}
+            if entity_type == "ARC":
+                keys |= {"start_angle_radians", "end_angle_radians"}
+            canonical_keys = keys | {"elevation", "normal"}
+            return (
+                set(geometry)
+                in (
+                    (keys, canonical_keys)
+                    if entity_type == "CIRCLE"
+                    else (canonical_keys,)
+                )
                 and cls._valid_c1_point(geometry.get("center"), 2)
                 and cls._valid_c1_number(radius)
                 and radius > 0
+                and (
+                    set(geometry) == keys
+                    or (
+                        cls._valid_c1_number(geometry.get("elevation"))
+                        and cls._valid_c1_point(geometry.get("normal"), 3)
+                    )
+                )
+                and (
+                    entity_type == "CIRCLE"
+                    or (
+                        cls._valid_c1_number(geometry.get("start_angle_radians"))
+                        and cls._valid_c1_number(geometry.get("end_angle_radians"))
+                    )
+                )
             )
         points = geometry.get("points")
+        keys = set(geometry)
+        bulges = geometry.get("bulges")
         return (
-            set(geometry) == {"points", "closed"}
+            (
+                keys == {"points", "closed"}
+                or (
+                    keys == {"points", "bulges", "closed", "elevation", "normal"}
+                    and isinstance(bulges, list)
+                    and isinstance(points, list)
+                    and len(bulges) == len(points)
+                    and all(cls._valid_c1_number(value) for value in bulges)
+                    and cls._valid_c1_number(geometry.get("elevation"))
+                    and cls._valid_c1_point(geometry.get("normal"), 3)
+                )
+            )
             and isinstance(points, list)
             and len(points) <= 4096
             and all(cls._valid_c1_point(point, 2) for point in points)

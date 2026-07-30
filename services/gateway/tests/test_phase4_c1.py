@@ -50,6 +50,106 @@ def test_phase4_safe_agent_errors_remain_typed(code):
     assert summary
 
 
+@pytest.mark.parametrize(
+    ("entity_type", "geometry"),
+    [
+        (
+            "LINE",
+            {
+                "start": [0.0, 0.0],
+                "end": [10.0, 0.0],
+                "start_elevation": 0.0,
+                "end_elevation": 0.0,
+            },
+        ),
+        (
+            "CIRCLE",
+            {
+                "center": [5.0, 5.0],
+                "radius": 2.0,
+                "elevation": 0.0,
+                "normal": [0.0, 0.0, 1.0],
+            },
+        ),
+        (
+            "LWPOLYLINE",
+            {
+                "points": [[0.0, 0.0], [10.0, 0.0], [10.0, 5.0]],
+                "bulges": [0.0, 1.0, 0.0],
+                "closed": True,
+                "elevation": 0.0,
+                "normal": [0.0, 0.0, 1.0],
+            },
+        ),
+        (
+            "ARC",
+            {
+                "center": [5.0, 5.0],
+                "radius": 2.0,
+                "start_angle_radians": 0.0,
+                "end_angle_radians": 3.141592653589793,
+                "elevation": 0.0,
+                "normal": [0.0, 0.0, 1.0],
+            },
+        ),
+    ],
+)
+def test_c1_detail_accepts_exact_managed_host_geometry(entity_type, geometry):
+    entity = {
+        "entity_id": "1A",
+        "entity_type": entity_type,
+        "layer": "0",
+        "space": "model",
+        "bounds": {"min": [0.0, 0.0, 0.0], "max": [10.0, 10.0, 0.0]},
+        "geometry": geometry,
+        "geometry_truncated": False,
+        "fingerprint": f"sha256:{'b' * 64}",
+    }
+
+    assert DurableJobService._valid_c1_detail_entity(entity)
+
+
+@pytest.mark.parametrize(
+    "geometry",
+    [
+        {
+            "points": [[0.0, 0.0], [1.0, 0.0]],
+            "bulges": [0.0],
+            "closed": False,
+            "elevation": 0.0,
+            "normal": [0.0, 0.0, 1.0],
+        },
+        {
+            "center": [0.0, 0.0],
+            "radius": float("nan"),
+            "elevation": 0.0,
+            "normal": [0.0, 0.0, 1.0],
+        },
+        {
+            "center": [0.0, 0.0],
+            "radius": 1.0,
+            "elevation": 0.0,
+            "normal": [0.0, 0.0, 1.0],
+            "unexpected": True,
+        },
+    ],
+)
+def test_c1_detail_rejects_malformed_managed_host_geometry(geometry):
+    entity_type = "LWPOLYLINE" if "points" in geometry else "CIRCLE"
+    entity = {
+        "entity_id": "1A",
+        "entity_type": entity_type,
+        "layer": "0",
+        "space": "model",
+        "bounds": None,
+        "geometry": geometry,
+        "geometry_truncated": False,
+        "fingerprint": f"sha256:{'b' * 64}",
+    }
+
+    assert not DurableJobService._valid_c1_detail_entity(entity)
+
+
 class Socket:
     def __init__(self):
         self.messages = []
