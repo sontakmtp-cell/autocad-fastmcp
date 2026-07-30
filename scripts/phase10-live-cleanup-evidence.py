@@ -160,6 +160,10 @@ async def capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
             {
                 "failure": "The first live start was rejected with capability_missing because Gateway analysis capability scene.core/1 was evaluated as an Agent capability (correlation_id=d5700151-3865-40f6-9abd-bd6921d5b1fc).",
                 "resolution": "Gateway now contributes scene.core/1 only when the workflow service is enabled with a real scene port; Agent write capability checks remain unchanged, and this final live rerun passed.",
+            },
+            {
+                "failure": "The first deployment retest still loaded the previous release through copied editable-package paths and was rejected with capability_missing (correlation_id=4e8cee93-0786-42ce-a38c-230cd62310c8).",
+                "resolution": "The release venv was synchronized against the exact deployed source and its loaded module path was verified before this final live rerun passed.",
             }
         ],
         "limitations": [],
