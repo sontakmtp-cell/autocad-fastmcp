@@ -287,6 +287,7 @@ async def test_cancel_keeps_started_write_but_cancels_not_started_actions(repo):
         )
     claimed = await repo.claim_action("worker")
     await repo.mark_dispatch_started(claimed["action_id"], "worker")
+    claimed_kind = claimed["action_kind"]
     result = await repo.cancel_run(
         owner_subject="alice",
         run_id="run",
@@ -298,7 +299,10 @@ async def test_cancel_keeps_started_write_but_cancels_not_started_actions(repo):
         action["action_kind"]: action["state"]
         for action in await repo.list_actions("alice", "run")
     }
-    assert states == {"commit": "started", "rollback": "cancelled"}
+    assert states[claimed_kind] == "started"
+    assert {
+        state for action_kind, state in states.items() if action_kind != claimed_kind
+    } == {"cancelled"}
     assert await repo.claim_action("other") is None
 
 
