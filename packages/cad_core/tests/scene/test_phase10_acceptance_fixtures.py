@@ -109,6 +109,13 @@ def test_drawing_b_exact_slots_concentric_group_and_non_slot_control():
         "B-CONCENTRIC-1",
         "B-CONCENTRIC-2",
     }
+    assert "B-NEAR-CONCENTRIC" not in source_ids(
+        scene, concentric[0].source_node_ids
+    )
+    assert all(
+        "B-NEAR-SLOT" not in source_ids(scene, item.source_node_ids)
+        for item in slots
+    )
 
 
 def test_drawing_c_cleanup_issues_are_exactly_scoped_and_read_only():
@@ -126,15 +133,27 @@ def test_drawing_c_cleanup_issues_are_exactly_scoped_and_read_only():
         if item.code == "degenerate_geometry"
         and source_ids(scene, item.source_node_ids) == {"C-ZERO-LINE"}
     )
+    self_intersection = next(
+        item for item in scene.issues if item.code == "self_intersection"
+    )
 
     assert duplicate.relation_id == fixture["stable_ids"]["duplicate_relation"]
     assert source_ids(scene, duplicate.source_node_ids) == {"C-DUP-A", "C-DUP-B"}
     assert "C-DISTINCT" not in source_ids(scene, duplicate.source_node_ids)
     assert duplicate_issue.issue_id == fixture["stable_ids"]["duplicate_issue"]
     assert zero_line_issue.issue_id == fixture["stable_ids"]["zero_line_issue"]
-    assert {"duplicate_geometry", "degenerate_geometry", "open_contour"} <= {
-        item.code for item in scene.issues
-    }
+    assert self_intersection.issue_id == fixture["stable_ids"]["self_intersection_issue"]
+    assert source_ids(scene, self_intersection.source_node_ids) == {"C-SELF-X"}
+    assert {
+        "duplicate_geometry",
+        "degenerate_geometry",
+        "open_contour",
+        "self_intersection",
+    } <= {item.code for item in scene.issues}
+    assert all(
+        "C-VALID-CONTOUR" not in source_ids(scene, item.source_node_ids)
+        for item in scene.issues
+    )
     assert all(item.write_authority is False for item in scene.issues)
 
 
