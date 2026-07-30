@@ -2062,8 +2062,8 @@ Phase 10 **không hoàn tất** chỉ vì demo nhận ra vài hình tròn là l�
 
 Implementation branch:
 `codex/phase-10-scene-graph-drawing-intelligence`, baseline
-`48365bccccb9c1214a4447072410f99ac8361dc3`, retained live-code head
-`7e00fdc366a9b0a90b27a27a96f94f9e190ef00a`.
+`d1e84711841b4b262fc5563cb768904b8eefd811`, retained live-code head
+`3c1b5b8dc86083bb0956a13fe2d71307e491bf99`.
 
 Delivered:
 

@@ -7,9 +7,8 @@ Date: 2026-07-30. Branch:
 
 Environment: Windows, Python 3.13.13, .NET SDK 8.0.423, Node 24.18.0,
 npm 11.16.0. Baseline commit:
-`48365bccccb9c1214a4447072410f99ac8361dc3` (latest local `main`, containing
-PR #13 plus the local `AGENTS.md` instruction commit). The corresponding
-fetched `origin/main` was `d1e84711841b4b262fc5563cb768904b8eefd811`.
+`d1e84711841b4b262fc5563cb768904b8eefd811`, the fetched `origin/main`
+containing PR #13.
 
 | Suite | Command | Result |
 |---|---|---:|
@@ -69,10 +68,8 @@ memory are retained observations.
 
 ## Final automated conformance
 
-Final product-code head used for automated gates:
-`7a4931da94d46c8f4a3227062796d57d04c51c6a`. The retained live evidence was
-regenerated at `7e00fdc366a9b0a90b27a27a96f94f9e190ef00a` after clarifying its
-repository-reopen semantics and retention limitations.
+Final tested/live-evidence head before this documentation commit:
+`3c1b5b8dc86083bb0956a13fe2d71307e491bf99`.
 
 | Suite | Result |
 |---|---:|

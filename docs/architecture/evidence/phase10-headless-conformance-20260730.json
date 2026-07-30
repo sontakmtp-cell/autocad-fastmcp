@@ -2,7 +2,7 @@
   "schema": "autocad-mcp.phase10-headless-conformance/1",
   "recorded_at": "2026-07-30",
   "status": "headless_pass_live_partial",
-  "working_tree_head": "7a4931da94d46c8f4a3227062796d57d04c51c6a",
+  "working_tree_head": "3c1b5b8dc86083bb0956a13fe2d71307e491bf99",
   "baseline_origin_main": "d1e84711841b4b262fc5563cb768904b8eefd811",
   "environment": {
     "os": "Microsoft Windows 11 Pro 10.0.26200 build 26200",

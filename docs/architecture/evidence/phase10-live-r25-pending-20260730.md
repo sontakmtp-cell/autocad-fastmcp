@@ -55,9 +55,9 @@ issues were ten `duplicate_geometry` and one `open_contour`.
 - The next ARC projection used ambiguous angle field names; bundle `0.10.3`
   emits explicit radians and the live projection passed.
 - Gateway public projection initially referenced obsolete ARC attributes; fixed
-  by commit `97b7020`.
+  by commit `0a5eb3c`.
 - The full public scene digest initially exceeded the bounded contract payload;
-  commit `7a4931d` binds bounded per-section hashes and the live service build
+  commit `0c30f78` binds bounded per-section hashes and the live service build
   passed.
 
 The exact final capture command is retained in the JSON. The run used the

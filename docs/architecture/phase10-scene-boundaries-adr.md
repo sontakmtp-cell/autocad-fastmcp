@@ -2,7 +2,7 @@
 
 Status: accepted for local Phase 10 implementation on 2026-07-30.
 
-Baseline: `48365bccccb9c1214a4447072410f99ac8361dc3`, containing PR #13 at
+Baseline: `d1e84711841b4b262fc5563cb768904b8eefd811`, containing PR #13 at
 `2217bd0387bcc8e5f2a4d9c0235c58e52dd3eab7`.
 
 ## Evidence classification
