@@ -71,7 +71,7 @@ def _repo(tmp_path: Path) -> Path:
             }
         )
         gates = {
-            key: True
+            VALIDATOR.GATE_ALIASES.get(key, key): True
             for key in VALIDATOR.GENERIC_FIXTURE_GATES
             | {item for values in expected[name].values() for item in values}
         }
@@ -179,6 +179,10 @@ def _repo(tmp_path: Path) -> Path:
 
 def test_validator_accepts_complete_bound_evidence(tmp_path: Path) -> None:
     VALIDATOR.validate(_repo(tmp_path))
+    assert (
+        VALIDATOR.GATE_ALIASES["self_intersection"]
+        == "invalid_or_self_intersecting_contour"
+    )
 
 
 def test_validator_rejects_fixture_hash_or_cleanup_scene_mismatch(

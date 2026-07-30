@@ -10,6 +10,9 @@ from pathlib import Path
 
 
 FIXTURES = ("a", "b", "c")
+GATE_ALIASES = {
+    "self_intersection": "invalid_or_self_intersecting_contour",
+}
 GENERIC_FIXTURE_GATES = {
     "document_revision_unchanged",
     "dwg_file_hash_unchanged",
@@ -163,7 +166,7 @@ def validate(root: Path) -> None:
         expected = row.get("expected")
         _require(isinstance(expected, dict), f"{label}: expected outcomes are required")
         required_gates = GENERIC_FIXTURE_GATES | {
-            item
+            GATE_ALIASES.get(item, item)
             for values in expected.values()
             for item in values
         }
