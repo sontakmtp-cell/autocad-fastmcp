@@ -423,6 +423,20 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
             "cad_effect_attempted": False,
         },
         "gate_results": gates,
+        "failures_retests": (
+            [
+                {
+                    "failure": "The original 1e-7 tiny-circle fixture was rejected by the signed payload boundary with payload_mismatch.",
+                    "resolution": "Retained the fail-closed boundary and replaced the live degenerate case with an exact zero-length LINE; the final capture passed.",
+                },
+                {
+                    "failure": "The first valid-geometry assertion depended on a raw layer name that is privacy-hashed in the public projection.",
+                    "resolution": "Changed the gate to exact valid geometry identity; the final capture passed without weakening privacy.",
+                },
+            ]
+            if args.fixture == "c"
+            else []
+        ),
         "limitations": (
             [
                 "tiny_circle_omitted: R25 rejected the 1e-7 projection at the signed payload boundary; zero-length LINE supplies the mandatory live degenerate case"
@@ -481,6 +495,7 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
         "schema_version": "cad.phase10-live-gateway-restart/1",
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "capture_command": args.capture_command,
+        "baseline_commit": _git_baseline(),
         "implementation_commit": _git_head(),
         "operator": args.operator,
         "fixture_id": before["fixture"]["fixture_id"],
@@ -495,6 +510,7 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
         "cad_effect_attempted": False,
         "gate_results": gates,
         **gates,
+        "failures_retests": [],
         "limitations": [],
         "status": "PASS",
     }

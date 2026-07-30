@@ -155,6 +155,7 @@ async def capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
         "write_requested": False,
         "cad_effect_attempted": False,
         "gate_results": gates,
+        "failures_retests": [],
         "limitations": [],
         "status": "PASS",
     }
