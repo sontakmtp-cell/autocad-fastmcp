@@ -1,6 +1,6 @@
 {
-  "capture_command": "python scripts/phase10-live-r25-evidence.py --fixture-id drawing33-combined --database tmp\\phase10-live-drawing33-bd94f25.sqlite --output docs\\architecture\\evidence\\phase10-live-r25-drawing33-20260730.json",
-  "captured_at": "2026-07-30T03:09:20.772799+00:00",
+  "capture_command": "python scripts/phase10-live-r25-evidence.py --fixture-id drawing33-combined --database tmp\\phase10-live-drawing33-cd6e581.sqlite --output docs\\architecture\\evidence\\phase10-live-r25-drawing33-20260730.json",
+  "captured_at": "2026-07-30T04:05:13.051920+00:00",
   "effects": {
     "document_revision_unchanged": true,
     "write_requested": false
@@ -14,7 +14,7 @@
     "dwg_file_hash_unchanged": true,
     "fixture_id": "drawing33-combined"
   },
-  "implementation_commit": "bd94f25d4183837116240a47600bfb9c635ba0d2",
+  "implementation_commit": "cd6e58156336b8068105805d7016c742293deace",
   "limitations": [
     "single combined drawing, not the required identified Drawings A, B and C",
     "repository/service reopen occurred in-process; no Gateway process restart",
@@ -24,12 +24,12 @@
   "repository_reopen": {
     "actual_gateway_process_restart": false,
     "cad_effect_attempted": false,
-    "database_hash": "sha256:6e84e548bd756f4c5fe010a7393194ffde8f066ea6db0c8f399c0b4f6fb2aa1a",
+    "database_hash": "sha256:77311b4ffebd7002500535dc523545326bd76331aa94dcbf3b47e1fc62273509",
     "gateway_public_reconnect": false,
     "issue_count_after_reopen": 11,
     "public_scene_digest": "sha256:111d66715733a5dccf389fe0e62f959e9f7be6cd3e991651e5fda9f78871844e",
     "same_scene_retrieved": true,
-    "scene_id": "scn_8c5e8cefbec740e18489075b228ebb13",
+    "scene_id": "scn_8f90890c122d43fabfbf7fd07c26140c",
     "source_digest": "sha256:2c83cf319037c7b37cc1a52a755fd04fc5fe6e9b8fcfe8551b3705949fadb0ea"
   },
   "runtime": {
@@ -112,7 +112,7 @@
     },
     "source_digest": "sha256:2c83cf319037c7b37cc1a52a755fd04fc5fe6e9b8fcfe8551b3705949fadb0ea",
     "stats": {
-      "build_seconds": 0.021281299996189773,
+      "build_seconds": 0.030530999996699393,
       "components": 20,
       "contours": 7,
       "features": 11,

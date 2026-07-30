@@ -2,7 +2,7 @@
   "schema": "autocad-mcp.phase10-headless-conformance/1",
   "recorded_at": "2026-07-30",
   "status": "headless_pass_live_partial",
-  "working_tree_head": "bf606a5ce9ad870aacc650da8a91b32af04d864e",
+  "working_tree_head": "cd6e58156336b8068105805d7016c742293deace",
   "baseline_origin_main": "d1e84711841b4b262fc5563cb768904b8eefd811",
   "environment": {
     "os": "Microsoft Windows 11 Pro 10.0.26200 build 26200",
@@ -13,7 +13,7 @@
   },
   "phase10_conformance": {
     "command": "python scripts/test-phase10-conformance.py",
-    "result": "47 passed",
+    "result": "53 passed",
     "public_security_counters": {
       "scene_tools": 2,
       "scene_resources": 7,
@@ -24,6 +24,8 @@
       "strict finite contracts and canonical digests",
       "deterministic scene engine and bounded candidate counters",
       "owner scoped immutable Gateway scene persistence",
+      "expiry-aware scene lifecycle and maintenance",
+      "exact contour and hole workflow evidence gating",
       "cursor tamper and filter binding",
       "prompt text redaction",
       "default off feature flag dependencies",
