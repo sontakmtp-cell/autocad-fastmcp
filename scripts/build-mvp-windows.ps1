@@ -34,14 +34,12 @@ if (Test-Path -LiteralPath (Join-Path $agentSource "launcher.py")) {
 # 2. Copy Managed Host R25 bundle
 $hostSource = Join-Path $repoRoot "dist\phase8-managed-host\AutocadMcp.ManagedHost.R25.bundle"
 if (-not (Test-Path -LiteralPath $hostSource)) {
-    # If phase8 bundle is not pre-built, check phase5 lab bundle
     $hostSource = Join-Path $repoRoot "dist\phase5-release\AutocadMcp.ManagedHost.bundle"
 }
 
 if (Test-Path -LiteralPath $hostSource) {
     Copy-Item -LiteralPath $hostSource -Destination (Join-Path $distTarget "host_bundle\AutocadMcp.ManagedHost.R25.bundle") -Recurse
 } else {
-    # Create scaffold host bundle if not built
     Write-Warning "Host bundle dist folder not pre-built. Creating MVP scaffold host bundle."
     $scaffold = Join-Path $distTarget "host_bundle\AutocadMcp.ManagedHost.R25.bundle"
     New-Item -ItemType Directory -Path (Join-Path $scaffold "Contents\R25") -Force | Out-Null
@@ -63,19 +61,36 @@ $configContent = @'
 '@
 Set-Content -LiteralPath (Join-Path $distTarget "config\config.mvp-lab.json") -Value $configContent -Encoding UTF8
 
-# 4. Create launcher batch script
-$launcherContent = @'
+# 4. Create launcher batch script without UTF-8 BOM
+$launcherContent = @"
 @echo off
+chcp 65001 > NUL
+set PYTHONIOENCODING=utf-8
 title AutoCAD AI Connector MVP Desktop Agent
 echo Starting AutoCAD AI Connector MVP...
-set PYTHONPATH=%~dp0agent\src;%~dp0..\..\packages\contracts\src;%~dp0..\..\packages\cad_core\src;%PYTHONPATH%
-python -m autocad_desktop_agent %*
+
+set SCRIPT_DIR=%~dp0
+set REPO_ROOT=%SCRIPT_DIR%..\..
+
+set PYTHONPATH=%SCRIPT_DIR%agent\src;%REPO_ROOT%\packages\contracts\src;%REPO_ROOT%\packages\cad_core\src;%REPO_ROOT%\services\gateway\src;%REPO_ROOT%\src;%PYTHONPATH%
+
+if exist "%SCRIPT_DIR%.venv\Scripts\python.exe" (
+    set PYTHON_BIN="%SCRIPT_DIR%.venv\Scripts\python.exe"
+) else if exist "%REPO_ROOT%\.venv\Scripts\python.exe" (
+    set PYTHON_BIN="%REPO_ROOT%\.venv\Scripts\python.exe"
+) else (
+    set PYTHON_BIN=python
+)
+
+%PYTHON_BIN% -m autocad_desktop_agent %*
 if errorlevel 1 (
-    echo AutoCAD AI Connector Agent exited with code %errorlevel%
+    echo.
+    echo AutoCAD AI Connector Agent exited with error code %errorlevel%
     pause
 )
-'@
-Set-Content -LiteralPath (Join-Path $distTarget "run-agent.bat") -Value $launcherContent -Encoding UTF8
+"@
+
+Set-Content -LiteralPath (Join-Path $distTarget "run-agent.bat") -Value $launcherContent -Encoding ASCII
 
 # 5. Generate Release Manifest with SHA-256 hashes
 $inventory = [ordered]@{}
@@ -98,7 +113,6 @@ $releaseManifest = [ordered]@{
 }
 
 $releaseManifest | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $distTarget "release-manifest.json") -Encoding UTF8
-
 
 Write-Host "AutoCAD AI Connector MVP build complete!"
 Write-Host "Artifacts location:" $distTarget
