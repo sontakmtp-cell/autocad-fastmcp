@@ -103,7 +103,9 @@ FeatureType = Literal[
 IssueCode = Literal[
     "duplicate_geometry",
     "degenerate_geometry",
+    "invalid_geometry",
     "open_contour",
+    "self_intersection",
     "unsupported_geometry",
     "truncated_geometry",
     "orphan_annotation",

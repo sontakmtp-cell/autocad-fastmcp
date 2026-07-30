@@ -15,6 +15,7 @@ from autocad_contracts import (
     Point2d,
     SceneCounts,
     SceneEvidence,
+    SceneIssue,
     SceneNode,
     SceneResourceUris,
     SceneRoot,
@@ -161,6 +162,29 @@ def test_confidence_tolerance_and_completeness_are_bounded():
             {**_root().model_dump(), "truncation_reasons": ["unexpected"]}
         )
     assert _root(complete=False).complete is False
+
+
+@pytest.mark.parametrize("code", ["invalid_geometry", "self_intersection"])
+def test_phase10_geometry_issue_codes_are_strict(code):
+    evidence_id = canonical_scene_evidence_id(
+        evidence_type="geometry-validation",
+        source_entity_ids=["entity-a"],
+        algorithm_version="issues/1.0.0",
+    )
+    issue = SceneIssue(
+        issue_id=canonical_scene_issue_id(
+            issue_code=code,
+            source_evidence_ids=[evidence_id],
+            detector_version="issues/1.0.0",
+        ),
+        code=code,
+        severity="error",
+        source_node_ids=[canonical_scene_node_id("entity-a")],
+        message_key=code,
+        evidence_ids=[evidence_id],
+        confidence=1.0,
+    )
+    assert issue.code == code
 
 
 def test_stable_ids_and_digests_are_canonical_and_domain_separated():
