@@ -1,0 +1,25 @@
+{
+  "profile": "mvp-lab",
+  "description": "AutoCAD AI Connector MVP Lab Profile - Safe Read-Only & Scene Intelligence",
+  "gateway_public_url": "https://gateway.autocad-mcp.com",
+  "gateway_wss_url": "wss://gateway.autocad-mcp.com/wss",
+  "portal_url": "http://localhost:3000",
+  "defaults": {
+    "write_lock_enabled": true,
+    "hard_pause_enabled": false,
+    "managed_r25_enabled": true,
+    "arbitrary_code_enabled": false,
+    "advanced_lisp_enabled": false,
+    "autocad_lt_write_enabled": false,
+    "high_risk_write_enabled": false,
+    "scene_inference_write_authority": false
+  },
+  "capabilities": [
+    "drawing.observe.summary",
+    "cad_observe",
+    "cad_build_scene",
+    "cad_query_scene",
+    "drawing.cleanup-audit/1.1.0",
+    "mechanical.auto-dimension-overall/1.1.0"
+  ]
+}
