@@ -121,3 +121,6 @@ def test_capture_uses_full_workflow_detail_shape(monkeypatch, tmp_path):
 
     assert result["status"] == "PASS"
     assert result["gate_results"]["cleanup_workflow_version"] is True
+    assert result["failures_retests"][0]["failure"].startswith(
+        "The first live start was rejected with capability_missing"
+    )
