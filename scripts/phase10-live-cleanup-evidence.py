@@ -90,7 +90,7 @@ async def capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
                 {
                     "run_id": started["run_id"],
                     "action": "submit_input",
-                    "expected_state_version": started["state_version"],
+                    "expected_state_version": detail["run"]["state_version"],
                     "idempotency_key": finish_key,
                     "payload": {"decision": "continue"},
                 },
@@ -104,8 +104,9 @@ async def capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
         )
 
     gates = {
-        "cleanup_workflow_version": started["skill_id"] == "drawing.cleanup-audit"
-        and started["skill_version"] == "1.1.0",
+        "cleanup_workflow_version": detail["run"]["skill_id"]
+        == "drawing.cleanup-audit"
+        and detail["run"]["skill_version"] == "1.1.0",
         "same_scene_reused": report["scene_id"] == scene["scene_id"]
         and report["scene_digest"] == scene["scene_digest"]
         and report["source_digest"] == scene["source_digest"],
