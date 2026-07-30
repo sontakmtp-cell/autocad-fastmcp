@@ -155,7 +155,7 @@ async def _capture(fixture_id: str, database_path: Path) -> dict[str, Any]:
         restored["scene_digest"] != built.scene.scene_digest
         or restored["source_digest"] != artifact.source_digest
     ):
-        raise RuntimeError("gateway_restart_scene_binding_mismatch")
+        raise RuntimeError("repository_reopen_scene_binding_mismatch")
 
     manifest = json.loads(PACKAGE_MANIFEST.read_text(encoding="utf-8"))
     signing = manifest.get("signing") if isinstance(manifest.get("signing"), dict) else {}
@@ -203,7 +203,7 @@ async def _capture(fixture_id: str, database_path: Path) -> dict[str, Any]:
             "projection_version": "cad.entity-projection/2",
             "engine_version": artifact.engine_version,
             "source_digest": artifact.source_digest,
-            "scene_digest": artifact.scene_digest,
+            "engine_scene_digest": artifact.scene_digest,
             "complete": artifact.complete,
             "geometry_statuses": _counts(
                 [node.geometry_status for node in artifact.nodes]
@@ -229,14 +229,14 @@ async def _capture(fixture_id: str, database_path: Path) -> dict[str, Any]:
             "write_requested": False,
             "document_revision_unchanged": True,
         },
-        "gateway_restart": {
+        "repository_reopen": {
             "database_hash": _sha256(database_path),
             "scene_id": built.scene.scene_id,
-            "scene_digest": built.scene.scene_digest,
+            "public_scene_digest": built.scene.scene_digest,
             "source_digest": built.scene.source_digest,
             "same_scene_retrieved": True,
-            "issue_count_after_restart": restored_issues.total,
-            "duplicate_cad_effect": False,
+            "issue_count_after_reopen": restored_issues.total,
+            "cad_effect_attempted": False,
         },
     }
 
