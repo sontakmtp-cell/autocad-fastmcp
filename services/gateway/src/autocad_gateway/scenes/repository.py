@@ -76,7 +76,10 @@ class SceneRepository:
             if duplicate is not None:
                 if str(duplicate["scene_digest"]) != str(root["scene_digest"]):
                     raise SceneRepositoryConflict("scene_conflict")
-                return self._record(duplicate), True
+                # One immutable row cannot safely bind a second idempotency key.
+                # Exact replay uses the first lookup above; a new key must not be
+                # accepted without durable request binding.
+                raise SceneRepositoryConflict("idempotency_conflict")
 
             scene_id = str(root.get("scene_id") or new_id("scn").replace("scn-", "scn_"))
             persisted_root = dict(root)

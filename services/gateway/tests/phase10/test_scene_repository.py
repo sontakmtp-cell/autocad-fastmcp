@@ -86,6 +86,21 @@ async def test_scene_is_owner_scoped_immutable_and_restart_safe(repo):
     )
     assert replayed and duplicate["scene_id"] == first["scene_id"]
     assert (await repo.list("alice"))[0]["scene_id"] == first["scene_id"]
+    with pytest.raises(SceneRepositoryConflict, match="idempotency_conflict"):
+        await repo.create(
+            owner_subject="alice",
+            root=root,
+            sections=sections,
+            request_hash=_digest({"request": 1}),
+            idempotency_key="different-key",
+            tolerance_digest=_digest({"profile": "mechanical-2d/1"}),
+            build_options_digest=_digest({"sections": sorted(sections)}),
+            section_digests={
+                name: _digest(items) for name, items in sections.items()
+            },
+            correlation_id="correlation-c",
+            expires_at="2026-08-01T00:00:00+00:00",
+        )
 
     with pytest.raises(Exception, match="scene_records_immutable"):
         with repo.database.transaction() as connection:
