@@ -1,0 +1,74 @@
+{
+  "fixture_id": "phase10-drawing-a/1",
+  "entities": [
+    {
+      "entity_id": "A-PLATE",
+      "entity_type": "LWPOLYLINE",
+      "layer": "PART",
+      "space": "model",
+      "geometry": {
+        "vertices": [
+          {"x": 0, "y": 0, "bulge": 0},
+          {"x": 120, "y": 0, "bulge": 0},
+          {"x": 120, "y": 80, "bulge": 0},
+          {"x": 0, "y": 80, "bulge": 0}
+        ],
+        "closed": true,
+        "elevation": 0,
+        "normal": [0, 0, 1]
+      },
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.polyline/1"]
+    },
+    {
+      "entity_id": "A-H1",
+      "entity_type": "CIRCLE",
+      "layer": "HOLES",
+      "space": "model",
+      "geometry": {"center": [20, 20], "radius": 5, "normal": [0, 0, 1]},
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.circle/1"]
+    },
+    {
+      "entity_id": "A-H2",
+      "entity_type": "CIRCLE",
+      "layer": "HOLES",
+      "space": "model",
+      "geometry": {"center": [100, 20], "radius": 5, "normal": [0, 0, 1]},
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.circle/1"]
+    },
+    {
+      "entity_id": "A-H3",
+      "entity_type": "CIRCLE",
+      "layer": "HOLES",
+      "space": "model",
+      "geometry": {"center": [20, 60], "radius": 5, "normal": [0, 0, 1]},
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.circle/1"]
+    },
+    {
+      "entity_id": "A-H4",
+      "entity_type": "CIRCLE",
+      "layer": "HOLES",
+      "space": "model",
+      "geometry": {"center": [100, 60], "radius": 5, "normal": [0, 0, 1]},
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.circle/1"]
+    },
+    {
+      "entity_id": "A-OUTSIDE",
+      "entity_type": "CIRCLE",
+      "layer": "REFERENCE",
+      "space": "model",
+      "geometry": {"center": [140, 40], "radius": 5, "normal": [0, 0, 1]},
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.circle/1"]
+    }
+  ],
+  "stable_ids": {
+    "scene_digest": "sha256:083f4769580db9b1df21addee3c880a7c5787d8de51320f1c5d7c1b42b9f7890",
+    "plate_node": "nod_f073d6eb13a9d22ed5a0c544634daf8769f254728ff5a15baa0a8e2607966d11",
+    "repeated_pattern_feature": "fea_ecbe0a169606a826e9128f67d6e818e457b7691be7c055684d8bbb4066086965"
+  }
+}

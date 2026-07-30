@@ -1,0 +1,115 @@
+{
+  "fixture_id": "phase10-drawing-b/1",
+  "entities": [
+    {
+      "entity_id": "B-ARC-LEFT",
+      "entity_type": "ARC",
+      "layer": "SLOTS",
+      "space": "model",
+      "geometry": {
+        "center": [0, 0],
+        "radius": 5,
+        "start_angle_radians": 1.5707963267948966,
+        "end_angle_radians": 4.71238898038469,
+        "normal": [0, 0, 1]
+      },
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.arc/1"]
+    },
+    {
+      "entity_id": "B-ARC-RIGHT",
+      "entity_type": "ARC",
+      "layer": "SLOTS",
+      "space": "model",
+      "geometry": {
+        "center": [20, 0],
+        "radius": 5,
+        "start_angle_radians": 4.71238898038469,
+        "end_angle_radians": 1.5707963267948966,
+        "normal": [0, 0, 1]
+      },
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.arc/1"]
+    },
+    {
+      "entity_id": "B-LINE-TOP",
+      "entity_type": "LINE",
+      "layer": "SLOTS",
+      "space": "model",
+      "geometry": {"start": [0, 5], "end": [20, 5]},
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.line/1"]
+    },
+    {
+      "entity_id": "B-LINE-BOTTOM",
+      "entity_type": "LINE",
+      "layer": "SLOTS",
+      "space": "model",
+      "geometry": {"start": [0, -5], "end": [20, -5]},
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.line/1"]
+    },
+    {
+      "entity_id": "B-CONCENTRIC-1",
+      "entity_type": "CIRCLE",
+      "layer": "FEATURES",
+      "space": "model",
+      "geometry": {"center": [50, 0], "radius": 3, "normal": [0, 0, 1]},
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.circle/1"]
+    },
+    {
+      "entity_id": "B-CONCENTRIC-2",
+      "entity_type": "CIRCLE",
+      "layer": "FEATURES",
+      "space": "model",
+      "geometry": {"center": [50, 0], "radius": 6, "normal": [0, 0, 1]},
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.circle/1"]
+    },
+    {
+      "entity_id": "B-POLY-SLOT",
+      "entity_type": "LWPOLYLINE",
+      "layer": "SLOTS",
+      "space": "model",
+      "geometry": {
+        "vertices": [
+          {"x": 70, "y": -5, "bulge": 0},
+          {"x": 90, "y": -5, "bulge": 1},
+          {"x": 90, "y": 5, "bulge": 0},
+          {"x": 70, "y": 5, "bulge": 1}
+        ],
+        "closed": true,
+        "elevation": 0,
+        "normal": [0, 0, 1]
+      },
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.polyline/1"]
+    },
+    {
+      "entity_id": "B-NOT-SLOT",
+      "entity_type": "LWPOLYLINE",
+      "layer": "REFERENCE",
+      "space": "model",
+      "geometry": {
+        "vertices": [
+          {"x": 110, "y": -5, "bulge": 0},
+          {"x": 130, "y": -5, "bulge": 0},
+          {"x": 130, "y": 5, "bulge": 0},
+          {"x": 110, "y": 5, "bulge": 0}
+        ],
+        "closed": true,
+        "elevation": 0,
+        "normal": [0, 0, 1]
+      },
+      "source_runtime": "headless_fixture",
+      "source_capabilities": ["entity.geometry.polyline/1"]
+    }
+  ],
+  "stable_ids": {
+    "scene_digest": "sha256:1ef11dace1f80ef10dadef5ae9b0592b1e87de59b5260e57dc6d0bef545f1b31",
+    "arc_slot_feature": "fea_2b9ffb88fe99db484dc4d51bda10ec2c01d4a9ce3fca325b46c9e2d104ccd0b3",
+    "polyline_slot_feature": "fea_93c5df2683440f40097d68d29f68e1d0aea63dfebe0a5135f9507bded001c6bf",
+    "concentric_feature": "fea_5b4cd9e47c628e013ff835e856b3564435726ab9e82401a512dfd5e30fa2733c"
+  }
+}
