@@ -21,8 +21,12 @@ Baseline: `d1e84711841b4b262fc5563cb768904b8eefd811`, containing PR #13 at
   authenticated.
 - New Phase 10 decision: the rules below are the accepted implementation
   boundary and unblock slices 10.1 onward.
-- Unknown until live evidence: the three R25 fixtures, cross-runtime parity and
-  post-restart no-write behavior.
+- Verified by retained Phase 10 evidence: three independently hashed R25
+  fixtures, bounded ezdxf/R25 cross-runtime parity, typed read-only cleanup
+  reuse, actual Gateway restart/reconnect and unchanged scoped DB write
+  snapshot. Runtime commit:
+  `165de0452af2b665deb67401b7c73420eefae226`; final evidence commit:
+  `FINAL_EVIDENCE_COMMIT`.
 
 ## Authority boundary
 

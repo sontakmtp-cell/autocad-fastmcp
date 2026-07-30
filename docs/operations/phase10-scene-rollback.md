@@ -62,7 +62,19 @@ workflow step, resources/tools, then Portal visibility. Before each step verify:
 
 Live R25 re-enable additionally requires all three Phase 10 drawings, unchanged
 document revision before/after scene work, Gateway restart retrieval and no CAD
-effect. As of 2026-07-30 one signed combined drawing proves a partial read-only
-run and in-process repository reopen only. The three-drawing outcomes and real
-Gateway process restart remain incomplete, so Phase 10 remains Engineering
-**NO-GO**.
+effect. As of 2026-07-30 these gates pass for the bounded lab profile:
+
+- A/B/C fixture hashes match the retained manifest;
+- every drawing retains the same revision, entity count and DWG hash;
+- cleanup audit reuses Drawing C scene and remains read-only;
+- Gateway PID `173016` restarted as `174089`, while standalone Agent PID
+  `69500` reconnected with a new session and returned the same scene;
+- the scoped DB comparison found no write event and identical canonical
+  pre/post write snapshot digest
+  `sha256:ed0564b367c5cda86d340f5baf5bf1da5be328342467529649c2adee7194d2f6`;
+- `python scripts/validate-phase10-live-evidence.py` passes locally.
+
+Therefore Phase 10 is **Engineering GO** for the default-off bounded lab
+profile. GitHub Actions is pending the final push of `FINAL_EVIDENCE_COMMIT`,
+so hosted CI green is not claimed. Customer Pilot remains **NO-GO** pending
+Phase 11 production hardening and pilot gates.

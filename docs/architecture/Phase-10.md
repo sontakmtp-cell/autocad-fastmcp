@@ -2064,8 +2064,9 @@ Phase 10 **không hoàn tất** chỉ vì demo nhận ra vài hình tròn là l�
 
 Implementation branch:
 `codex/phase-10-scene-graph-drawing-intelligence`, baseline
-`d1e84711841b4b262fc5563cb768904b8eefd811`, retained live-code head
-`cd6e58156336b8068105805d7016c742293deace`.
+`d1e84711841b4b262fc5563cb768904b8eefd811`, deployed live runtime commit
+`165de0452af2b665deb67401b7c73420eefae226`, final code/evidence commit
+`FINAL_EVIDENCE_COMMIT`.
 
 Delivered:
 
@@ -2089,18 +2090,47 @@ Delivered:
 
 Final local automated results:
 
-- Phase 10 53; `cad_core` 15; Gateway 349; root 416 with 1 skip;
-- contracts 144; Desktop Agent 159; Managed Host 75;
-- Portal unit 42, production build passed, E2E 11;
-- Phase 9 regression 94; Phase 8 Python regression 39.
+- Phase 10 63; `cad_core` 22; Gateway 360; root 420 with 1 skip;
+- contracts 144; Desktop Agent 160; Managed Host 75;
+- Portal unit 42, production build passed, E2E 11, npm audit 0
+  vulnerabilities;
+- Phase 9 regression 94; Phase 8 Python 39 plus Host contracts 23;
+- selected migration/checksum negatives 2 passed with 23 deselected; direct LT
+  default-off regression 3 passed.
 
-The signed R25 lab run on `drawing33.dwg` retained 41 exact entities, unchanged
-document revision, zero requested write, 265 relations, 7 contours, 11
-read-only features and 11 issues. Closing and reopening the repository
-database/service in the evidence process retrieved the same immutable scene and
-issue count. This is durability evidence, not a real Gateway process restart.
-Evidence:
-`evidence/phase10-live-r25-drawing33-20260730.json`.
+The final signed bounded R25 lab matrix used three independently hashed fixtures
+through the public Gateway and unchanged standalone Desktop Agent:
+
+- Drawing A retained six exact entities, one part/outer contour, five hole
+  features and one four-hole repeated pattern; the non-pattern circle was
+  excluded.
+- Drawing B retained eight exact entities, one bounded slot and one concentric
+  group; the near-slot and near-concentric negative controls were excluded.
+- Drawing C retained eight exact entities and reported
+  `degenerate_geometry`, `duplicate_geometry`, `open_contour` and
+  `self_intersection`; exact valid geometry was not flagged for cleanup.
+- `drawing.cleanup-audit/1.1.0` reused Drawing C scene
+  `scn_63aa70dee79e44b580a19612c0fd9e2e`, returned the same four issues with
+  `write_authority=false`, and completed without a write request.
+
+Every drawing retained the same document revision, entity count and DWG hash
+before/after. The actual Gateway restart changed PID `173016` to `174089`;
+Desktop Agent PID `69500` stayed unchanged and reconnected from session
+`session-5125c353-5868-4a2e-8d54-da497c6e3d66` to
+`session-1ea445bf-a60a-4ee2-86f0-3b324043db82`. The same Drawing C scene and
+sections were retrieved publicly after restart. The scoped durable DB
+comparison found zero write events and retained identical pre/post canonical
+write snapshots:
+`sha256:ed0564b367c5cda86d340f5baf5bf1da5be328342467529649c2adee7194d2f6`.
+
+Retained artifacts:
+
+- `evidence/phase10-live-r25-drawing-a-20260730.json`;
+- `evidence/phase10-live-r25-drawing-b-20260730.json`;
+- `evidence/phase10-live-r25-drawing-c-20260730.json`;
+- `evidence/phase10-live-cleanup-workflow-20260730.json`;
+- `evidence/phase10-live-gateway-restart-20260730.json`;
+- `evidence/phase10-live-no-effect-db-20260730.json`.
 
 PR review hardening:
 
@@ -2128,13 +2158,21 @@ default-off profile: owner isolation, cursor tamper rejection, prompt-text
 redaction, bounded payloads/deadlines, read-only annotations and the existing
 Phase 6–9 write authority are covered by tests.
 
-Known live blockers: the repository does not contain all three separately
-identified required fixtures; the combined drawing did not produce
-hole/repeated-hole, slot, concentric or degenerate evidence; and a real Gateway
-process restart/reconnect with independent no-effect comparison has not been
-retained. Therefore the mandatory live acceptance matrix is incomplete.
+Retained failure/retest evidence includes the fail-closed tiny-circle payload
+rejection and zero-length LINE replacement, privacy-safe valid-geometry gate,
+Gateway-owned `scene.core/1` workflow capability correction, exact deployed
+venv synchronization, Cloudflare tunnel restart after the verified Gateway
+restart, and corrected DB owner/timestamp arguments. The isolated `cad_core`
+and contracts first attempts used the wrong Python environments; corrected
+repo/Gateway environments passed and these were environment failures, not code
+failures. Drawing C retains the explicit limitation that the rejected `1e-7`
+tiny circle is not claimed; the exact zero-length LINE is the live degenerate
+case.
 
-**Engineering decision: NO-GO. Customer Pilot: NO-GO.** Automated,
-security, regression and the retained partial live run are green. The remaining
-blockers are the complete three-drawing live matrix and a real Gateway process
-restart/reconnect with independent no-effect evidence.
+`python scripts/validate-phase10-live-evidence.py` passes all manifest hashes,
+artifact schemas, commit/scene/digest bindings, cleanup, restart and no-effect
+gates locally. GitHub Actions has not yet run against
+`FINAL_EVIDENCE_COMMIT`; CI status remains pending the final push.
+
+**Engineering decision: GO for the default-off bounded Phase 10 lab profile.
+Customer Pilot: NO-GO pending Phase 11 production hardening and pilot gates.**

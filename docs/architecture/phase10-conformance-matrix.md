@@ -68,22 +68,35 @@ memory are retained observations.
 
 ## Final automated conformance
 
-Final tested product-code head:
-`bf606a5ce9ad870aacc650da8a91b32af04d864e`. Retained live evidence head:
-`bd94f25d4183837116240a47600bfb9c635ba0d2`.
+Deployed live runtime commit:
+`165de0452af2b665deb67401b7c73420eefae226`. Final code/evidence commit:
+`FINAL_EVIDENCE_COMMIT`.
 
-| Suite | Result |
-|---|---:|
-| Phase 10 conformance and public security counters | 47 passed; 2 tools, 7 resources, 0 destructive, 0 open-world |
-| `cad_core` | 15 passed |
-| Gateway full | 343 passed |
-| Root Python | 416 passed, 1 skipped |
-| Contracts full | 144 passed |
-| Desktop Agent full | 159 passed |
-| Managed Host Core | 75 passed |
-| Portal unit / build / E2E | 42 passed / build passed / 11 passed |
-| Phase 9 regression | 94 passed |
-| Phase 8 Python regression | 39 passed |
+| Suite | Command | Result |
+|---|---|---:|
+| Phase 10 conformance and public security counters | `python scripts/test-phase10-conformance.py` | 63 passed; 2 tools, 7 resources, 0 destructive, 0 open-world |
+| `cad_core` isolated | `uv run --locked --group test --project packages/cad_core pytest packages/cad_core/tests -q` | 22 passed |
+| Gateway full | Gateway environment: `uv run --no-sync pytest -q` | 360 passed |
+| Root Python | `uv run pytest tests/ -q --basetemp=.pytest_cache\phase10-final-root` | 420 passed, 1 skipped |
+| Contracts full | Gateway environment running `packages/contracts/tests` | 144 passed |
+| Desktop Agent full | `uv run --locked --group test --group ui-test pytest -q` | 160 passed |
+| Managed Host Core | `dotnet test native/autocad_managed_host/tests/AutocadMcp.Host.Core.Tests/AutocadMcp.Host.Core.Tests.csproj --configuration Release` | 75 passed |
+| Portal unit / build / E2E | `npm test`; `npm run build`; `npm run test:e2e` | 42 passed / build passed / 11 passed; npm audit 0 vulnerabilities |
+| Phase 9 regression | `python scripts/test-phase9-conformance.py` | 94 passed |
+| Phase 8 regression | `python scripts/test-phase8-conformance.py` | 39 Python + 23 Host passed |
+| Migration/checksum negatives | selected Gateway migration/checksum tests | 2 passed, 23 deselected |
+| LT default-off | direct Gateway-environment LT regression | 3 passed |
+| Live evidence validator | `python scripts/validate-phase10-live-evidence.py` | passed |
+
+The root skip is the documented Windows platform skip at
+`tests/test_remote_policy.py:356`: symlink creation is unavailable in this
+environment. It is pre-existing and does not disable a Phase 10 gate.
+
+The first isolated `cad_core` attempt used the wrong Python environment. The
+first contracts attempt used an environment without pytest. Both corrected
+commands above passed; these were environment/retest failures, not code
+failures. A first LT attempt used the root environment without FastMCP; the
+correct Gateway environment passed all three default-off checks.
 
 The deterministic dense/adversarial gates fail closed on candidate, spatial
 cell, projected-byte, scene-byte and deadline limits. Local wall time and peak
@@ -91,29 +104,40 @@ memory are observations, not correctness gates.
 
 ## Live evidence result
 
-Engineering GO requires three identified R25 drawings:
+The final public R25 matrix passed against three independently hashed fixtures:
 
-- A: plate with four holes and repeated pattern;
-- B: exact slot plus concentric geometry;
-- C: duplicate/degenerate/open-contour cleanup.
+| Drawing | Exact live result | No-effect proof |
+|---|---|---|
+| A | 6 nodes; 1 contour; 5 `hole` features; one four-hole `repeated_hole_pattern`; non-pattern circle excluded | revision, entity count and DWG hash unchanged |
+| B | 8 nodes; bounded `slot` and `concentric_group`; near-slot and near-concentric negatives excluded | revision, entity count and DWG hash unchanged |
+| C | 8 nodes; `degenerate_geometry`, `duplicate_geometry`, `open_contour`, `self_intersection`; valid geometry retained | revision, entity count and DWG hash unchanged |
 
-For each, retain fixture identity/hash, package/Agent/Host/runtime capabilities,
-source snapshot/revision, scene/profile/engine digests, counts, commands,
-failures/retests, operator/date and before/after proof that document revision
-did not change. Restart Gateway and retrieve the same scene/report without a
-new CAD effect. Headless and ezdxf evidence cannot replace live R25.
+The typed `drawing.cleanup-audit/1.1.0` workflow reused Drawing C scene
+`scn_63aa70dee79e44b580a19612c0fd9e2e`, reported the same four issue codes,
+completed, and retained `write_authority=false`.
 
-The signed bounded R25 lab run retained
-`evidence/phase10-live-r25-drawing33-20260730.json`. It proves 41 exact source
-entities, unchanged document revision, no requested write and durable retrieval
-of the same scene after reopening the repository database/service.
+The actual Gateway restart changed PID `173016` to `174089`. The standalone
+Desktop Agent remained PID `69500`, reconnected with a new session, and the
+public query returned the same scene/sections. The first reconnect attempt
+exposed that systemd had also stopped cloudflared; restarting the tunnel and
+verifying `/healthz=200` completed the retained retest without changing the
+Agent process.
 
-`drawing33.dwg` produced 265 relations, 7 contours, 11 read-only features and
-11 issues. It did not produce the required hole/repeated-hole, slot or
-concentric feature evidence. The repository contains no separately identified
-Drawings A, B and C; the combined drawing also lacks the complete required
-expected outcomes, including the degenerate cleanup case.
+The owner/device/window-scoped DB comparison found no write event. Its
+pre/post canonical write snapshot tables and digest were identical:
+`sha256:ed0564b367c5cda86d340f5baf5bf1da5be328342467529649c2adee7194d2f6`.
+The first DB collection used the external Auth0 subject, and a later command
+split locale-formatted timestamps; the corrected durable owner and quoted
+ISO-8601 retests passed.
 
-Therefore automated/headless/security gates are green, but the required
-three-drawing live acceptance gate and real Gateway process restart are
-incomplete. **Phase 10 Engineering NO-GO; Customer Pilot NO-GO.**
+Drawing C retains one explicit support limitation: the signed payload boundary
+rejected the original `1e-7` tiny circle. The boundary stayed fail-closed and
+the final exact zero-length LINE supplies the live degenerate case.
+
+All retained artifacts and fixture hashes pass
+`python scripts/validate-phase10-live-evidence.py` locally. GitHub Actions is
+pending the final push of `FINAL_EVIDENCE_COMMIT`; this document does not claim
+hosted CI green yet.
+
+**Phase 10 Engineering GO for the default-off bounded lab profile. Customer
+Pilot NO-GO pending Phase 11 production hardening and pilot acceptance.**
