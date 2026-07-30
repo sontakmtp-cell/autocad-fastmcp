@@ -4,7 +4,7 @@
       "dwg": "phase10-drawing-a.dwg",
       "dwg_sha256": "sha256:e7d5891cd8d88fd34a7b1f91d2e092c4d068c7cae7cf902ca526eacfe254d257",
       "dxf": "phase10-drawing-a.dxf",
-      "dxf_sha256": "sha256:ce786d17d99f41a555354729b60cf5aaa2337682d3918f77277e1294275d06bc",
+      "dxf_sha256": "sha256:57cdffb072b62eadc7be35537b4b9241f6a66ffe21350893ddba6722bb3518d3",
       "expected": {
         "features": [
           "hole",
@@ -22,7 +22,7 @@
       "dwg": "phase10-drawing-b.dwg",
       "dwg_sha256": "sha256:47baa712c04d5cd20255b30be5bd12f2b1a23e03e3968848df4ebc61f18115bd",
       "dxf": "phase10-drawing-b.dxf",
-      "dxf_sha256": "sha256:544db869fcfca26fb2c73bf748bee63cd2b290287b1eed282f6237b570f917bf",
+      "dxf_sha256": "sha256:590ae2eb65b61a90690f22967233dbb01cb2df1560d1ef45bbdc54966c8ed524",
       "expected": {
         "features": [
           "slot",
@@ -41,7 +41,7 @@
       "dwg": "phase10-drawing-c.dwg",
       "dwg_sha256": "sha256:6fc0673129d73315b4edb885cf0214401ccbd04f7451dad468cabccf43b379dd",
       "dxf": "phase10-drawing-c.dxf",
-      "dxf_sha256": "sha256:60b84c7c77c158e797157b2c44e53ad7fb89408b1dab08fda0bed2afeb7286e8",
+      "dxf_sha256": "sha256:aa33f3f6d339ee368e39907bdc4324c4943b3bfa85352d39a18a1c3a95d21978",
       "expected": {
         "issues": [
           "degenerate_geometry",
