@@ -98,7 +98,7 @@ def build_scene(
     )
     scene_sections = {
         "source_digest": source_digest,
-        "engine_version": "scene-engine/1.0.0",
+        "engine_version": "scene-engine/1.0.1",
         "nodes": [node.to_dict() for node in nodes],
         "relations": [item.to_dict() for item in relations],
         "contours": [item.to_dict() for item in contours],

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 
-from .canonical import quantize, stable_id
+from .canonical import stable_id
 from .models import (
     Bounds,
     LineGeometry,
@@ -33,7 +34,13 @@ def build_contours_and_components(
         for node in nodes
         if isinstance(node.geometry, PolylineGeometry) and node.geometry.closed
     ]
-    contours.extend(_line_loop_contours(nodes, tolerance.endpoint))
+    contours.extend(
+        _line_loop_contours(
+            nodes,
+            tolerance.endpoint,
+            budgets.max_relation_candidates,
+        )
+    )
     contours.sort(key=lambda item: item.contour_id)
     if len(contours) > budgets.max_contours:
         raise SceneBudgetExceeded("scene exceeds contour budget")
@@ -59,32 +66,29 @@ def contour_polygon(
     }
     if not all(isinstance(line, LineGeometry) for line in lines.values()):
         return None
-    endpoint_map: dict[tuple[int, int], list[tuple[str, Point]]] = defaultdict(list)
-    for node_id, line in lines.items():
-        assert isinstance(line, LineGeometry)
-        endpoint_map[_key(line.start, tolerance)].append((node_id, line.start))
-        endpoint_map[_key(line.end, tolerance)].append((node_id, line.end))
+    matches = _endpoint_matches(lines, tolerance, 250_000)
     start_id = min(lines)
     first = lines[start_id]
     assert isinstance(first, LineGeometry)
     points = [first.start, first.end]
     used = {start_id}
-    current_key = _key(first.end, tolerance)
+    current = (start_id, 1)
     while len(used) < len(lines):
         choices = sorted(
-            (item for item in endpoint_map[current_key] if item[0] not in used),
-            key=lambda item: item[0],
+            (item for item in matches[current] if item[0] not in used),
+            key=lambda item: (item[0], item[1]),
         )
         if not choices:
             return None
-        node_id = choices[0][0]
+        node_id, matched_side = choices[0]
         line = lines[node_id]
         assert isinstance(line, LineGeometry)
         used.add(node_id)
-        next_point = line.end if _key(line.start, tolerance) == current_key else line.start
+        next_side = 1 - matched_side
+        next_point = line.end if next_side else line.start
         points.append(next_point)
-        current_key = _key(next_point, tolerance)
-    return tuple(points[:-1]) if _key(points[-1], tolerance) == _key(points[0], tolerance) else None
+        current = (node_id, next_side)
+    return tuple(points[:-1]) if (start_id, 0) in matches[current] else None
 
 
 def _polyline_contour(node: SceneNode) -> SceneContour:
@@ -95,7 +99,7 @@ def _polyline_contour(node: SceneNode) -> SceneContour:
             "cad.scene-contour-id/1",
             {
                 "source_node_ids": [node.node_id],
-                "algorithm_version": "scene-contours/1",
+                "algorithm_version": "scene-contours/2",
             },
         ),
         (node.node_id,),
@@ -108,6 +112,7 @@ def _polyline_contour(node: SceneNode) -> SceneContour:
 def _line_loop_contours(
     nodes: tuple[SceneNode, ...],
     tolerance: float,
+    max_candidates: int,
 ) -> list[SceneContour]:
     lines = {
         node.node_id: node
@@ -115,15 +120,15 @@ def _line_loop_contours(
         if isinstance(node.geometry, LineGeometry)
         and node.geometry.start != node.geometry.end
     }
-    endpoint_map: dict[tuple[int, int], set[str]] = defaultdict(set)
-    for node_id, node in lines.items():
-        assert isinstance(node.geometry, LineGeometry)
-        endpoint_map[_key(node.geometry.start, tolerance)].add(node_id)
-        endpoint_map[_key(node.geometry.end, tolerance)].add(node_id)
+    geometries = {
+        node_id: node.geometry
+        for node_id, node in lines.items()
+        if isinstance(node.geometry, LineGeometry)
+    }
+    matches = _endpoint_matches(geometries, tolerance, max_candidates)
     adjacency: dict[str, set[str]] = defaultdict(set)
-    for members in endpoint_map.values():
-        for node_id in members:
-            adjacency[node_id].update(members - {node_id})
+    for occurrence, connected in matches.items():
+        adjacency[occurrence[0]].update(item[0] for item in connected)
     result: list[SceneContour] = []
     unseen = set(lines)
     while unseen:
@@ -136,13 +141,22 @@ def _line_loop_contours(
             member_ids.add(current)
             stack.extend(sorted(adjacency[current] - member_ids, reverse=True))
         unseen -= member_ids
-        degrees: dict[tuple[int, int], int] = defaultdict(int)
-        for node_id in member_ids:
-            geometry = lines[node_id].geometry
-            assert isinstance(geometry, LineGeometry)
-            degrees[_key(geometry.start, tolerance)] += 1
-            degrees[_key(geometry.end, tolerance)] += 1
-        if len(member_ids) < 3 or any(value != 2 for value in degrees.values()):
+        occurrences = [
+            (node_id, side)
+            for node_id in member_ids
+            for side in (0, 1)
+        ]
+        if len(member_ids) < 3 or any(
+            len(
+                {
+                    other
+                    for other in matches[occurrence]
+                    if other[0] in member_ids
+                }
+            )
+            != 1
+            for occurrence in occurrences
+        ):
             continue
         ordered = tuple(sorted(member_ids))
         bounds = _union(lines[node_id].bounds for node_id in ordered)
@@ -153,7 +167,7 @@ def _line_loop_contours(
                     "cad.scene-contour-id/1",
                     {
                         "source_node_ids": list(ordered),
-                        "algorithm_version": "scene-contours/1",
+                        "algorithm_version": "scene-contours/2",
                     },
                 ),
                 ordered,
@@ -201,8 +215,40 @@ def _components(
     )
 
 
-def _key(point: Point, tolerance: float) -> tuple[int, int]:
-    return quantize(point[0], tolerance), quantize(point[1], tolerance)
+def _endpoint_matches(
+    lines: dict[str, LineGeometry],
+    tolerance: float,
+    max_candidates: int,
+) -> dict[tuple[str, int], set[tuple[str, int]]]:
+    records = [
+        ((node_id, side), point)
+        for node_id, line in sorted(lines.items())
+        for side, point in enumerate((line.start, line.end))
+    ]
+    buckets: dict[tuple[int, int], list[tuple[tuple[str, int], Point]]] = defaultdict(list)
+    matches: dict[tuple[str, int], set[tuple[str, int]]] = defaultdict(set)
+    candidates = 0
+    for occurrence, point in records:
+        key = (
+            math.floor(point[0] / tolerance),
+            math.floor(point[1] / tolerance),
+        )
+        for x in range(key[0] - 1, key[0] + 2):
+            for y in range(key[1] - 1, key[1] + 2):
+                for other, other_point in buckets[(x, y)]:
+                    if other[0] == occurrence[0]:
+                        continue
+                    candidates += 1
+                    if candidates > max_candidates:
+                        raise SceneBudgetExceeded(
+                            "scene exceeds endpoint candidate budget"
+                        )
+                    if math.dist(point, other_point) <= tolerance:
+                        matches[occurrence].add(other)
+                        matches[other].add(occurrence)
+        buckets[key].append((occurrence, point))
+        matches[occurrence]
+    return matches
 
 
 def _union(values) -> Bounds:

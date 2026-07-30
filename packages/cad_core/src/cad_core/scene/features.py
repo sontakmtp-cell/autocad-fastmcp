@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 
-from .canonical import quantize, stable_id
+from .canonical import stable_id
 from .contours import contour_polygon
 from .models import (
     ArcGeometry,
@@ -50,9 +50,11 @@ def infer_features(
                 "part",
                 source_ids,
                 (),
-                ("outer_contour",),
-                (),
+                ("closed_contour_part_candidate",),
+                ("part_semantics_not_proven",),
                 (("hole_count", len(holes)),),
+                strength="bounded_heuristic",
+                confidence=0.75,
                 source_entity_ids=_source_entity_ids(source_ids, by_id),
             )
         )
@@ -142,7 +144,7 @@ def _feature(
             {
                 "evidence_type": item,
                 "source_entity_ids": sorted(source_entity_ids),
-                "algorithm_version": "scene-features/1",
+                "algorithm_version": "scene-features/2",
             },
         )
         for item in sorted(evidence)
@@ -153,7 +155,7 @@ def _feature(
         {
             "feature_type": feature_type,
             "source_evidence_ids": evidence_ids,
-            "algorithm_version": "scene-features/1",
+            "algorithm_version": "scene-features/2",
         },
     )
     return SceneFeature(
@@ -170,11 +172,28 @@ def _feature(
 
 
 def _radius_groups(nodes: list[SceneNode], tolerance: float):
-    groups: dict[int, list[SceneNode]] = defaultdict(list)
-    for node in nodes:
+    ordered = sorted(
+        nodes,
+        key=lambda item: (
+            item.geometry.radius
+            if isinstance(item.geometry, CircleGeometry)
+            else 0.0,
+            item.node_id,
+        ),
+    )
+    groups: list[list[SceneNode]] = []
+    for node in ordered:
         assert isinstance(node.geometry, CircleGeometry)
-        groups[quantize(node.geometry.radius, tolerance)].append(node)
-    return [sorted(group, key=lambda item: item.node_id) for _, group in sorted(groups.items())]
+        if not groups:
+            groups.append([node])
+            continue
+        first = groups[-1][0]
+        assert isinstance(first.geometry, CircleGeometry)
+        if node.geometry.radius - first.geometry.radius <= tolerance:
+            groups[-1].append(node)
+        else:
+            groups.append([node])
+    return [sorted(group, key=lambda item: item.node_id) for group in groups]
 
 
 def _circle_inside(circle: CircleGeometry, polygon: tuple[Point, ...], tolerance: float) -> bool:

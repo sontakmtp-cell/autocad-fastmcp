@@ -22,6 +22,7 @@ from autocad_contracts import (
     canonical_scene_evidence_id,
     canonical_scene_feature_id,
     canonical_scene_issue_id,
+    canonical_scene_relation_evidence_id,
     canonical_scene_source_digest,
 )
 
@@ -89,7 +90,6 @@ def project_artifact(
     *,
     scene_id: str,
     source_snapshot_available: bool,
-    include_sections: list[str],
     mechanical_features_enabled: bool,
 ) -> tuple[SceneRoot, dict[str, list[dict[str, Any]]], dict[str, str]]:
     by_node = {item.node_id: item for item in artifact.nodes}
@@ -159,12 +159,14 @@ def project_artifact(
     relations: list[SceneRelation] = []
     for item in artifact.relations:
         entity_ids = _entity_ids(item.source_node_ids, by_node)
-        evidence_id = canonical_scene_evidence_id(
-            evidence_type=item.relation_type,
-            source_entity_ids=entity_ids,
+        evidence_id = canonical_scene_relation_evidence_id(
+            relation_id=item.relation_id,
+            directionality=item.directionality,
+            metrics=dict(item.metrics),
+            tolerance_used=item.tolerance_used,
             algorithm_version=item.algorithm_version,
         )
-        evidence[evidence_id] = SceneEvidence(
+        relation_evidence = SceneEvidence(
             evidence_id=evidence_id,
             evidence_type=item.relation_type,
             evidence_strength=item.evidence_strength,
@@ -173,6 +175,10 @@ def project_artifact(
             metrics=dict(item.metrics),
             algorithm_version=item.algorithm_version,
         )
+        existing_evidence = evidence.get(evidence_id)
+        if existing_evidence is not None and existing_evidence != relation_evidence:
+            raise ValueError("conflicting relation evidence identity")
+        evidence[evidence_id] = relation_evidence
         relations.append(
             SceneRelation(
                 relation_id=item.relation_id,
@@ -307,7 +313,7 @@ def project_artifact(
             for item in sorted(evidence.values(), key=lambda value: value.evidence_id)
         ],
     }
-    sections = {name: all_sections[name] for name in include_sections}
+    sections = all_sections
     counts = SceneCounts(
         nodes=len(nodes),
         relations=len(relations),

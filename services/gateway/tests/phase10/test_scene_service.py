@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from autocad_contracts import CadBuildSceneInput, CadQuerySceneInput
+from cad_core.scene import SceneBuildContext, build_scene
 from cad_core.scene.models import ArcGeometry
+from cad_core.scene.models import SceneRelation as CoreSceneRelation
 from autocad_gateway.infrastructure.sqlite.database import SqliteDatabase
-from autocad_gateway.scenes.public_projection import _geometry
+from autocad_gateway.scenes.public_projection import _geometry, project_artifact
 from autocad_gateway.scenes.repository import SceneRepository
 from autocad_gateway.scenes.service import SceneApplicationService
 from autocad_gateway.services import GatewayError
@@ -21,6 +25,70 @@ def test_public_projection_preserves_explicit_arc_radians():
         "radius": 3.0,
         "start_angle_radians": 0.25,
         "end_angle_radians": 1.5,
+    }
+
+
+def test_public_projection_keeps_distinct_relation_evidence():
+    snapshot = Snapshots().value
+    artifact = build_scene(
+        snapshot["entities"],
+        SceneBuildContext(
+            "snapshot-a",
+            "device-a",
+            "drawing-a",
+            "7419413270066305",
+        ),
+    )
+    node_ids = tuple(item.node_id for item in artifact.nodes)
+    relations = (
+        CoreSceneRelation(
+            "rel_" + "a" * 64,
+            "parallel",
+            node_ids,
+            "symmetric",
+            "derived_exact",
+            1.0,
+            (("angle_delta", 0.0),),
+            0.01,
+        ),
+        CoreSceneRelation(
+            "rel_" + "b" * 64,
+            "parallel",
+            node_ids,
+            "symmetric",
+            "derived_exact",
+            1.0,
+            (("angle_delta", 0.001),),
+            0.01,
+        ),
+    )
+    artifact = replace(
+        artifact,
+        relations=relations,
+        contours=(),
+        components=(),
+        features=(),
+        issues=(),
+    )
+    _, sections, _ = project_artifact(
+        artifact,
+        scene_id="scn_1234567890abcdef",
+        source_snapshot_available=True,
+        mechanical_features_enabled=True,
+    )
+
+    evidence_ids = [
+        item["evidence_ids"][0] for item in sections["relations"]
+    ]
+    relation_evidence = {
+        item["evidence_id"]: item
+        for item in sections["evidence"]
+        if item["evidence_type"] == "parallel"
+    }
+    assert len(set(evidence_ids)) == 2
+    assert {relation_evidence[item]["metrics"]["angle_delta"] for item in evidence_ids} == {
+        0.0,
+        0.001,
     }
 
 
@@ -110,6 +178,46 @@ async def test_build_query_restart_dedup_and_prompt_text_redaction(service):
 
     replay = await service.build("alice", request, "correlation-b")
     assert replay.reused and replay.scene.scene_id == first.scene.scene_id
+    subset_reuse = await service.build(
+        "alice",
+        CadBuildSceneInput(
+            source_snapshot_id="snapshot-a",
+            include_sections=["nodes"],
+            idempotency_key="build-subset",
+        ),
+        "correlation-subset",
+    )
+    assert subset_reuse.reused
+    assert subset_reuse.scene.scene_id == first.scene.scene_id
+    for section in ("nodes", "relations", "contours", "features", "issues", "evidence"):
+        result = await service.query(
+            "alice",
+            CadQuerySceneInput(
+                scene_id=first.scene.scene_id,
+                section=section,
+                limit=200,
+            ),
+            f"correlation-{section}",
+        )
+        assert result.total == getattr(first.scene.counts, section)
+    part_evidence = next(
+        item
+        for item in result.items
+        if item.evidence_type == "part"
+    )
+    assert part_evidence.evidence_strength == "bounded_heuristic"
+    assert part_evidence.limitations == ["part_semantics_not_proven"]
+    with pytest.raises(GatewayError) as conflict:
+        await service.build(
+            "alice",
+            CadBuildSceneInput(
+                source_snapshot_id="snapshot-a",
+                include_sections=["nodes"],
+                idempotency_key="build-a",
+            ),
+            "correlation-conflict",
+        )
+    assert conflict.value.code == "idempotency_conflict"
     nodes = await service.query(
         "alice",
         CadQuerySceneInput(

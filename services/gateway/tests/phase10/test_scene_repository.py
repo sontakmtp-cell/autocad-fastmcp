@@ -86,19 +86,36 @@ async def test_scene_is_owner_scoped_immutable_and_restart_safe(repo):
     )
     assert replayed and duplicate["scene_id"] == first["scene_id"]
     assert (await repo.list("alice"))[0]["scene_id"] == first["scene_id"]
+    canonical_reuse, replayed = await repo.create(
+        owner_subject="alice",
+        root=root,
+        sections=sections,
+        request_hash=_digest({"request": 1}),
+        idempotency_key="different-key",
+        tolerance_digest=_digest({"profile": "mechanical-2d/1"}),
+        build_options_digest=_digest({"sections": sorted(sections)}),
+        section_digests={name: _digest(items) for name, items in sections.items()},
+        correlation_id="correlation-c",
+        expires_at="2026-08-01T00:00:00+00:00",
+    )
+    assert replayed and canonical_reuse["scene_id"] == first["scene_id"]
+    with repo.database.read_connection() as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM scene_request_bindings"
+        ).fetchone()[0] == 2
     with pytest.raises(SceneRepositoryConflict, match="idempotency_conflict"):
         await repo.create(
             owner_subject="alice",
             root=root,
             sections=sections,
             request_hash=_digest({"request": 1}),
-            idempotency_key="different-key",
+            idempotency_key="build-a",
             tolerance_digest=_digest({"profile": "mechanical-2d/1"}),
-            build_options_digest=_digest({"sections": sorted(sections)}),
+            build_options_digest=_digest({"sections": ["changed"]}),
             section_digests={
                 name: _digest(items) for name, items in sections.items()
             },
-            correlation_id="correlation-c",
+            correlation_id="correlation-d",
             expires_at="2026-08-01T00:00:00+00:00",
         )
 
@@ -147,4 +164,7 @@ async def test_conflict_expiry_and_no_orphan_sections(repo):
     with repo.database.read_connection() as connection:
         assert connection.execute(
             "SELECT COUNT(*) FROM scene_sections"
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM scene_request_bindings"
         ).fetchone()[0] == 0

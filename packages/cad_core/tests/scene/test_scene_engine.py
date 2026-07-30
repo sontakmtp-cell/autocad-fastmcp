@@ -10,6 +10,7 @@ from cad_core.scene import (
     SceneBudgetExceeded,
     SceneBudgets,
     SceneBuildContext,
+    ToleranceProfile,
     build_scene,
     project_entities,
 )
@@ -237,6 +238,106 @@ def test_reversed_polyline_duplicate_is_canonical_and_partial_source_is_explicit
         item.relation_type == "duplicate_geometry" for item in result.relations
     )
     assert "unsupported_geometry" in {item.code for item in result.issues}
+
+
+def test_tolerance_boundaries_use_verified_geometry_not_bucket_equality():
+    tolerance = ToleranceProfile(
+        "mechanical-2d/1",
+        "mm",
+        1e-6,
+        1e-9,
+        1e-6,
+        0.01,
+        0.01,
+        0.01,
+        0.01,
+    )
+    result = build_scene(
+        [
+            line("L1", (0, 0), (10, 0.0049)),
+            line("L2", (10, 0.0051), (10, 10)),
+            line("L3", (10, 10), (0, 10)),
+            line("L4", (0, 10), (0, 0)),
+            circle("C1", (20.0049, 5), 2.0049),
+            circle("C2", (20.0051, 5), 2.0051),
+        ],
+        context(),
+        tolerance=tolerance,
+    )
+
+    assert len([item for item in result.contours if item.kind == "line_loop"]) == 1
+    entities_by_node = {
+        item.node_id: item.source_entity_id for item in result.nodes
+    }
+    assert any(
+        item.relation_type == "duplicate_geometry"
+        and {
+            entities_by_node[item.source_node_ids[0]],
+            entities_by_node[item.source_node_ids[1]],
+        }
+        == {"C1", "C2"}
+        for item in result.relations
+    )
+
+    false_positive = build_scene(
+        [
+            line("A", (-10, 0), (0.0049, 0.0049)),
+            line("B", (-0.0049, -0.0049), (10, 0)),
+        ],
+        context(),
+        tolerance=tolerance,
+    )
+    assert not any(
+        item.relation_type == "connected_endpoint"
+        for item in false_positive.relations
+    )
+
+
+def test_radius_groups_verify_full_group_span_within_tolerance():
+    tolerance = ToleranceProfile(
+        "mechanical-2d/1",
+        "mm",
+        1e-6,
+        1e-9,
+        1e-6,
+        0.01,
+        0.01,
+        0.01,
+        0.01,
+    )
+    result = build_scene(
+        [
+            polyline("P", [(0, 0), (100, 0), (100, 60), (0, 60)]),
+            circle("C1", (20, 20), 5.0),
+            circle("C2", (50, 20), 5.009),
+            circle("C3", (80, 20), 5.018),
+        ],
+        context(),
+        tolerance=tolerance,
+    )
+    patterns = [
+        item for item in result.features if item.feature_type == "repeated_hole_pattern"
+    ]
+
+    assert len(patterns) == 1
+    assert dict(patterns[0].geometry_summary)["quantity"] == 2
+
+
+def test_closed_contours_are_part_candidates_not_exact_parts():
+    result = build_scene(
+        [
+            polyline("OUTER", [(0, 0), (100, 0), (100, 60), (0, 60)]),
+            polyline("CUTOUT", [(20, 20), (40, 20), (40, 40), (20, 40)]),
+            polyline("TOUCHING", [(100, 10), (120, 10), (120, 30), (100, 30)]),
+        ],
+        context(),
+    )
+    parts = [item for item in result.features if item.feature_type == "part"]
+
+    assert len(parts) == 3
+    assert all(item.evidence_strength == "bounded_heuristic" for item in parts)
+    assert all(item.confidence == 0.75 for item in parts)
+    assert all("part_semantics_not_proven" in item.limitations for item in parts)
 
 
 def test_inconsistent_equal_spacing_hole_row_is_read_only_issue():

@@ -996,7 +996,8 @@ class WorkflowApplicationService:
             if isinstance(item, dict)
             and item.get("evidence_type") in {"part", "contour"}
             and isinstance(item.get("evidence_id"), str)
-            and isinstance(item.get("evidence_strength"), str)
+            and item.get("evidence_strength")
+            in {"exact_source_geometry", "derived_exact"}
             and isinstance(item.get("algorithm_version"), str)
             and isinstance(item.get("source_entity_ids"), list)
             and 1 <= len(item["source_entity_ids"]) <= 64

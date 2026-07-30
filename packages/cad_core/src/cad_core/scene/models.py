@@ -145,7 +145,7 @@ class SceneRelation:
     confidence: float
     metrics: tuple[tuple[str, float], ...]
     tolerance_used: float
-    algorithm_version: str = "scene-relations/1"
+    algorithm_version: str = "scene-relations/2"
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -160,7 +160,7 @@ class SceneContour:
     closed: bool
     kind: Literal["polyline", "line_loop"]
     bounds: Bounds
-    algorithm_version: str = "scene-contours/1"
+    algorithm_version: str = "scene-contours/2"
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -185,7 +185,7 @@ class SceneFeature:
     limitations: tuple[str, ...]
     geometry_summary: tuple[tuple[str, Any], ...] = ()
     evidence_strength: Literal["derived_exact", "bounded_heuristic"] = "derived_exact"
-    algorithm_version: str = "scene-features/1"
+    algorithm_version: str = "scene-features/2"
 
     def to_dict(self) -> dict[str, Any]:
         value = asdict(self)
@@ -251,7 +251,7 @@ class SceneArtifact:
     issues: tuple[SceneIssue, ...]
     stats: SceneStats
     complete: bool = True
-    engine_version: str = "scene-engine/1.0.0"
+    engine_version: str = "scene-engine/1.0.1"
 
     def to_dict(self) -> dict[str, Any]:
         return {

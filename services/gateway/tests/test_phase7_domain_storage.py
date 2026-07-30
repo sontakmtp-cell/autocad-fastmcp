@@ -489,6 +489,7 @@ async def test_migration_has_exact_phase7_tables_and_owner_key(repository):
             10,
             11,
             12,
+            13,
         }
     expected = {
         "execution_intents",

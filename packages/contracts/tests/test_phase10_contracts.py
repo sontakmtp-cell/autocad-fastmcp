@@ -27,6 +27,7 @@ from autocad_contracts import (
     canonical_scene_issue_id,
     canonical_scene_node_id,
     canonical_scene_relation_id,
+    canonical_scene_relation_evidence_id,
     canonical_scene_source_digest,
     phase10_build_scene_input_json_schema,
     phase10_query_scene_input_json_schema,
@@ -238,6 +239,30 @@ def test_scene_digest_excludes_opaque_identity_and_runtime_links():
     source = {"snapshot_id": "snapshot-a", "source_digest": _digest("a")}
     assert canonical_scene_source_digest(source) == canonical_scene_source_digest(
         {**source, "source_digest": _digest("b")}
+    )
+
+
+def test_relation_evidence_identity_binds_metrics_direction_and_tolerance():
+    common = {
+        "relation_id": "rel_" + "a" * 64,
+        "directionality": "symmetric",
+        "metrics": {"offset": 0.0},
+        "tolerance_used": 0.01,
+        "algorithm_version": "scene-relations/2",
+    }
+    baseline = canonical_scene_relation_evidence_id(**common)
+
+    assert baseline == canonical_scene_relation_evidence_id(
+        **{**common, "metrics": {"offset": 0.0}}
+    )
+    assert baseline != canonical_scene_relation_evidence_id(
+        **{**common, "metrics": {"offset": 0.001}}
+    )
+    assert baseline != canonical_scene_relation_evidence_id(
+        **{**common, "directionality": "directed"}
+    )
+    assert baseline != canonical_scene_relation_evidence_id(
+        **{**common, "tolerance_used": 0.02}
     )
 
 

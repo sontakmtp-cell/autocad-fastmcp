@@ -49,13 +49,21 @@ class WritePort:
 
 
 class AutoDimensionScenePort:
-    def __init__(self, *, evidence_entity_ids=None) -> None:
+    def __init__(
+        self,
+        *,
+        evidence_entity_ids=None,
+        evidence_type="contour",
+        evidence_strength="derived_exact",
+    ) -> None:
         self.calls: list[tuple[str, str]] = []
         self.evidence_entity_ids = (
             ["entity-a"]
             if evidence_entity_ids is None
             else evidence_entity_ids
         )
+        self.evidence_type = evidence_type
+        self.evidence_strength = evidence_strength
 
     async def source_digest(
         self,
@@ -106,8 +114,8 @@ class AutoDimensionScenePort:
             "items": [
                 {
                     "evidence_id": "evd_entity_a",
-                    "evidence_type": "contour",
-                    "evidence_strength": "derived_exact",
+                    "evidence_type": self.evidence_type,
+                    "evidence_strength": self.evidence_strength,
                     "source_entity_ids": self.evidence_entity_ids,
                     "algorithm_version": "contours/1.0.0",
                     "limitations": [],
@@ -255,11 +263,28 @@ async def test_scene_evidence_gates_planner_and_restart_does_not_commit(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_missing_scene_selection_evidence_fails_before_planner(tmp_path):
+@pytest.mark.parametrize(
+    ("evidence_entity_ids", "evidence_type", "evidence_strength"),
+    [
+        (["other-entity"], "contour", "derived_exact"),
+        (["entity-a"], "part", "bounded_heuristic"),
+    ],
+    ids=["missing-entity", "heuristic-part"],
+)
+async def test_untrusted_scene_selection_evidence_fails_before_planner(
+    tmp_path,
+    evidence_entity_ids,
+    evidence_type,
+    evidence_strength,
+):
     database = SqliteDatabase(tmp_path / "auto-dimension-no-evidence.sqlite")
     await database.open()
     write_port = WritePort()
-    scene_port = AutoDimensionScenePort(evidence_entity_ids=["other-entity"])
+    scene_port = AutoDimensionScenePort(
+        evidence_entity_ids=evidence_entity_ids,
+        evidence_type=evidence_type,
+        evidence_strength=evidence_strength,
+    )
     service, repository = _service(database, write_port, scene_port)
 
     started = await service.start(

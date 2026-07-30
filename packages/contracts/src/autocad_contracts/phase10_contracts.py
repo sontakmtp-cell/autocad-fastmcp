@@ -642,6 +642,27 @@ def canonical_scene_evidence_id(
     )
 
 
+def canonical_scene_relation_evidence_id(
+    *,
+    relation_id: str,
+    directionality: Literal["symmetric", "directed"],
+    metrics: dict[str, float],
+    tolerance_used: float,
+    algorithm_version: str,
+) -> str:
+    return _stable_id(
+        "evd",
+        "cad.scene-relation-evidence-id/1",
+        {
+            "relation_id": relation_id,
+            "directionality": directionality,
+            "metrics": metrics,
+            "tolerance_used": tolerance_used,
+            "algorithm_version": algorithm_version,
+        },
+    )
+
+
 def canonical_scene_source_digest(value: BaseModel | dict[str, Any]) -> str:
     payload = _canonical_semantic_payload(value)
     if isinstance(payload, dict):

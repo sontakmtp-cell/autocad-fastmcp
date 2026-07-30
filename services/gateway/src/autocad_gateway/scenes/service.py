@@ -61,32 +61,17 @@ class SceneApplicationService:
         ):
             raise GatewayError("backend_error")
         scene_id = "scn_" + uuid.uuid4().hex
-        effective_sections = sorted(
-            {
-                *request.include_sections,
-                *(
-                    {"nodes", "evidence"}
-                    if any(
-                        section
-                        in {"relations", "contours", "features", "issues"}
-                        for section in request.include_sections
-                    )
-                    else set()
-                ),
-            }
-        )
         root, sections, section_digests = project_artifact(
             artifact,
             scene_id=scene_id,
             source_snapshot_available=True,
-            include_sections=effective_sections,
             mechanical_features_enabled=self.mechanical_features_enabled,
         )
         request_hash = canonical_scene_source_digest(request)
         build_options_digest = canonical_scene_source_digest(
             {
-                "include_sections": list(request.include_sections),
-                "effective_sections": effective_sections,
+                "materialization_version": "scene-sections/all/1",
+                "relation_evidence_version": "scene-relation-evidence/1",
                 "mechanical_features_enabled": self.mechanical_features_enabled,
                 "annotation_links_enabled": self.annotation_links_enabled,
             }

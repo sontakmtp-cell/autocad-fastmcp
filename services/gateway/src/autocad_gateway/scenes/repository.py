@@ -50,15 +50,34 @@ class SceneRepository:
         with self.database.transaction() as conn:
             replay = conn.execute(
                 """
-                SELECT * FROM scene_records
-                WHERE owner_subject = ? AND idempotency_key = ?
+                SELECT r.*,
+                       b.request_hash AS binding_request_hash,
+                       b.source_digest AS binding_source_digest,
+                       b.projection_version AS binding_projection_version,
+                       b.engine_version AS binding_engine_version,
+                       b.profile_id AS binding_profile_id,
+                       b.tolerance_digest AS binding_tolerance_digest,
+                       b.build_options_digest AS binding_build_options_digest,
+                       b.scene_digest AS binding_scene_digest
+                FROM scene_request_bindings b
+                JOIN scene_records r ON r.scene_id = b.scene_id
+                WHERE b.owner_subject = ? AND b.idempotency_key = ?
                 """,
                 (owner_subject, idempotency_key),
             ).fetchone()
             if replay is not None:
                 if (
-                    str(replay["request_hash"]) != request_hash
-                    or str(replay["scene_digest"]) != str(root["scene_digest"])
+                    str(replay["binding_request_hash"]) != request_hash
+                    or (
+                        str(replay["binding_source_digest"]),
+                        str(replay["binding_projection_version"]),
+                        str(replay["binding_engine_version"]),
+                        str(replay["binding_profile_id"]),
+                        str(replay["binding_tolerance_digest"]),
+                        str(replay["binding_build_options_digest"]),
+                    )
+                    != identity[1:]
+                    or str(replay["binding_scene_digest"]) != str(root["scene_digest"])
                 ):
                     raise SceneRepositoryConflict("idempotency_conflict")
                 return self._record(replay), True
@@ -76,10 +95,27 @@ class SceneRepository:
             if duplicate is not None:
                 if str(duplicate["scene_digest"]) != str(root["scene_digest"]):
                     raise SceneRepositoryConflict("scene_conflict")
-                # One immutable row cannot safely bind a second idempotency key.
-                # Exact replay uses the first lookup above; a new key must not be
-                # accepted without durable request binding.
-                raise SceneRepositoryConflict("idempotency_conflict")
+                conn.execute(
+                    """
+                    INSERT INTO scene_request_bindings(
+                        owner_subject, idempotency_key, request_hash, source_digest,
+                        projection_version, engine_version, profile_id,
+                        tolerance_digest, build_options_digest, scene_digest,
+                        scene_id, correlation_id, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        owner_subject,
+                        idempotency_key,
+                        request_hash,
+                        *identity[1:],
+                        str(root["scene_digest"]),
+                        str(duplicate["scene_id"]),
+                        correlation_id,
+                        utc_now(),
+                    ),
+                )
+                return self._record(duplicate), True
 
             scene_id = str(root.get("scene_id") or new_id("scn").replace("scn-", "scn_"))
             persisted_root = dict(root)
@@ -125,6 +161,26 @@ class SceneRepository:
                         correlation_id,
                         utc_now(),
                         expires_at,
+                    ),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO scene_request_bindings(
+                        owner_subject, idempotency_key, request_hash, source_digest,
+                        projection_version, engine_version, profile_id,
+                        tolerance_digest, build_options_digest, scene_digest,
+                        scene_id, correlation_id, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        owner_subject,
+                        idempotency_key,
+                        request_hash,
+                        *identity[1:],
+                        str(root["scene_digest"]),
+                        scene_id,
+                        correlation_id,
+                        utc_now(),
                     ),
                 )
                 for section, items in sorted(sections.items()):

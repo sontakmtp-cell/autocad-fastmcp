@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable
 
-from .canonical import quantize, stable_id
+from .canonical import stable_id
 from .models import (
     ArcGeometry,
     CircleGeometry,
@@ -61,10 +61,9 @@ def _pair_relations(
 ):
     first, second = left.geometry, right.geometry
     assert first is not None and second is not None
-    duplicate = _geometry_signature(first, tolerance.duplicate) == _geometry_signature(
-        second, tolerance.duplicate
-    )
-    if duplicate and type(first) is type(second):
+    if type(first) is type(second) and _geometry_equal(
+        first, second, tolerance.duplicate
+    ):
         yield "duplicate_geometry", (), tolerance.duplicate
 
     if _connected(first, second, tolerance.endpoint):
@@ -213,53 +212,74 @@ def _connected(first, second, tolerance: float) -> bool:
     )
 
 
-def _geometry_signature(geometry, tolerance: float):
-    q = lambda value: quantize(value, tolerance)
-    if isinstance(geometry, LineGeometry):
-        return "line", tuple(sorted(((q(geometry.start[0]), q(geometry.start[1])), (q(geometry.end[0]), q(geometry.end[1])))))
-    if isinstance(geometry, CircleGeometry):
-        return "circle", q(geometry.center[0]), q(geometry.center[1]), q(geometry.radius)
-    if isinstance(geometry, ArcGeometry):
+def _geometry_equal(first, second, tolerance: float) -> bool:
+    if isinstance(first, LineGeometry) and isinstance(second, LineGeometry):
         return (
-            "arc",
-            q(geometry.center[0]),
-            q(geometry.center[1]),
-            q(geometry.radius),
-            round(geometry.start_angle_radians, 12),
-            round(geometry.end_angle_radians, 12),
+            math.dist(first.start, second.start) <= tolerance
+            and math.dist(first.end, second.end) <= tolerance
+        ) or (
+            math.dist(first.start, second.end) <= tolerance
+            and math.dist(first.end, second.start) <= tolerance
         )
-    vertices = tuple(
-        (q(item.x), q(item.y), round(item.bulge, 12))
-        for item in geometry.vertices
+    if isinstance(first, CircleGeometry) and isinstance(second, CircleGeometry):
+        return (
+            math.dist(first.center, second.center) <= tolerance
+            and abs(first.radius - second.radius) <= tolerance
+        )
+    if isinstance(first, ArcGeometry) and isinstance(second, ArcGeometry):
+        return (
+            math.dist(first.center, second.center) <= tolerance
+            and abs(first.radius - second.radius) <= tolerance
+            and abs(first.start_angle_radians - second.start_angle_radians) <= 1e-12
+            and abs(first.end_angle_radians - second.end_angle_radians) <= 1e-12
+        )
+    if not (
+        isinstance(first, PolylineGeometry)
+        and isinstance(second, PolylineGeometry)
+        and first.closed == second.closed
+        and len(first.vertices) == len(second.vertices)
+    ):
+        return False
+    first_sequence = _polyline_sequences(first)[0]
+    return any(
+        all(
+            math.dist(left[:2], right[:2]) <= tolerance
+            and abs(left[2] - right[2]) <= 1e-12
+            for left, right in zip(first_sequence, second_sequence)
+        )
+        for second_sequence in _polyline_sequences(second)
     )
-    if geometry.closed:
+
+
+def _polyline_sequences(
+    geometry: PolylineGeometry,
+) -> tuple[tuple[tuple[float, float, float], ...], ...]:
+    forward = tuple(
+        (vertex.x, vertex.y, vertex.bulge) for vertex in geometry.vertices
+    )
+    if not geometry.closed:
         reversed_vertices = tuple(
             (
-                q(geometry.vertices[index].x),
-                q(geometry.vertices[index].y),
-                round(-geometry.vertices[(index - 1) % len(geometry.vertices)].bulge, 12),
+                geometry.vertices[index].x,
+                geometry.vertices[index].y,
+                -geometry.vertices[index - 1].bulge if index > 0 else 0.0,
             )
             for index in reversed(range(len(geometry.vertices)))
         )
-        vertices = min(_rotations(vertices), _rotations(reversed_vertices))
-    else:
-        reversed_vertices = tuple(
-            (
-                q(geometry.vertices[index].x),
-                q(geometry.vertices[index].y),
-                round(
-                    -geometry.vertices[index - 1].bulge if index > 0 else 0.0,
-                    12,
-                ),
-            )
-            for index in reversed(range(len(geometry.vertices)))
+        return forward, reversed_vertices
+    reversed_vertices = tuple(
+        (
+            geometry.vertices[index].x,
+            geometry.vertices[index].y,
+            -geometry.vertices[(index - 1) % len(geometry.vertices)].bulge,
         )
-        vertices = min(vertices, reversed_vertices)
-    return "polyline", geometry.closed, vertices
-
-
-def _rotations(values: tuple) -> tuple:
-    return min(values[index:] + values[:index] for index in range(len(values)))
+        for index in reversed(range(len(geometry.vertices)))
+    )
+    return tuple(
+        sequence[index:] + sequence[:index]
+        for sequence in (forward, reversed_vertices)
+        for index in range(len(sequence))
+    )
 
 
 def _segment_relation(first, second, tolerance: float) -> str | None:
