@@ -59,8 +59,8 @@ def _geometry(value: Any) -> dict[str, Any] | None:
             "kind": "arc",
             "center": _point(value.center),
             "radius": float(value.radius),
-            "start_angle_radians": float(value.start_angle),
-            "end_angle_radians": float(value.end_angle),
+            "start_angle_radians": float(value.start_angle_radians),
+            "end_angle_radians": float(value.end_angle_radians),
         }
     if name == "PolylineGeometry":
         return {

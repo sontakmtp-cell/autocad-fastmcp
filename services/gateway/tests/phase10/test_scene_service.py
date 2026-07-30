@@ -3,13 +3,25 @@ from __future__ import annotations
 import pytest
 
 from autocad_contracts import CadBuildSceneInput, CadQuerySceneInput
+from cad_core.scene.models import ArcGeometry
 from autocad_gateway.infrastructure.sqlite.database import SqliteDatabase
+from autocad_gateway.scenes.public_projection import _geometry
 from autocad_gateway.scenes.repository import SceneRepository
 from autocad_gateway.scenes.service import SceneApplicationService
 from autocad_gateway.services import GatewayError
 
 
 SECRET = b"phase10-test-cursor-secret-with-more-than-32-bytes"
+
+
+def test_public_projection_preserves_explicit_arc_radians():
+    assert _geometry(ArcGeometry((1.0, 2.0), 3.0, 0.25, 1.5)) == {
+        "kind": "arc",
+        "center": {"x": 1.0, "y": 2.0},
+        "radius": 3.0,
+        "start_angle_radians": 0.25,
+        "end_angle_radians": 1.5,
+    }
 
 
 class Snapshots:
