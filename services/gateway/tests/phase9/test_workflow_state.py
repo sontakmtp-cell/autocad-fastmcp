@@ -31,3 +31,23 @@ def test_child_key_is_deterministic_and_write_unknown_never_retries():
     validate_safe_retry(retry_class="pure", effect_class="read")
     with pytest.raises(InvalidWorkflowTransition, match="write_retry_requires_recovery"):
         validate_safe_retry(retry_class="not_started", effect_class="write", child_state="outcome_unknown")
+
+
+def test_scene_child_key_binds_source_digest_without_changing_old_keys():
+    source_digest = "sha256:" + "a" * 64
+    assert child_idempotency_key(
+        "run",
+        "scene",
+        1,
+        "build_scene",
+        source_digest=source_digest,
+    ) == f"wf:run:scene:1:build_scene:{source_digest}"
+    assert child_idempotency_key("run", "query", 1, "query") == (
+        "wf:run:query:1:query"
+    )
+    with pytest.raises(ValueError, match="requires source_digest"):
+        child_idempotency_key("run", "scene", 1, "build_scene")
+    with pytest.raises(ValueError, match="only valid"):
+        child_idempotency_key(
+            "run", "query", 1, "query", source_digest=source_digest
+        )

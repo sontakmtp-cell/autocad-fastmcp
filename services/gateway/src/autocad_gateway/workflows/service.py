@@ -16,6 +16,7 @@ from cad_core.phase9_workflows import (
 from ..infrastructure.sqlite.repositories import RepositoryConflict
 from ..skills.catalog import CatalogError, SkillCatalog
 from ..skills.catalog_repository import CatalogLifecycleError, SkillCatalogRepository
+from .runner import SceneWorkflowPort
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,159}$")
 _CONTROL_ACTIONS = {
@@ -23,6 +24,7 @@ _CONTROL_ACTIONS = {
     "resume",
     "cancel",
 }
+_SCENE_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class WorkflowServiceError(ValueError):
@@ -68,6 +70,7 @@ class WorkflowApplicationService:
         commit_request_executor: CommitRequestExecutor | None = None,
         action_runner: Any | None = None,
         commit_status_resolver: CommitStatusResolver | None = None,
+        scene_port: SceneWorkflowPort | None = None,
     ) -> None:
         self.repository = repository
         self.catalog_repository = catalog_repository
@@ -84,6 +87,12 @@ class WorkflowApplicationService:
         self.commit_request_executor = commit_request_executor
         self.action_runner = action_runner
         self.commit_status_resolver = commit_status_resolver
+        self.scene_port = scene_port
+        if scene_port is not None and action_runner is not None:
+            setter = getattr(action_runner, "set_scene_port", None)
+            if setter is None:
+                raise ValueError("action runner does not support scene workflows")
+            setter(scene_port)
 
     def initialize_catalog(self) -> None:
         if self.catalog_enabled:
@@ -282,6 +291,11 @@ class WorkflowApplicationService:
             if not self._skill_enabled(manifest.skill_id):
                 continue
             try:
+                default_version, _ = self.catalog_repository.get_channel(
+                    manifest.skill_id
+                )
+                if manifest.version != default_version:
+                    continue
                 status = self.catalog_repository.get_status(
                     manifest.skill_id, manifest.version
                 )
@@ -306,9 +320,7 @@ class WorkflowApplicationService:
                 {
                     "skill_id": manifest.skill_id,
                     "version": manifest.version,
-                    "default_version": self.catalog_repository.get_channel(
-                        manifest.skill_id
-                    )[0],
+                    "default_version": default_version,
                     "title": manifest.title,
                     "summary": manifest.summary,
                     "domain": manifest.domain,
@@ -670,6 +682,12 @@ class WorkflowApplicationService:
         if manifest.skill_id == "drawing.cleanup-audit":
             if run["state"] not in {"running", "waiting_for_user"}:
                 return run
+            if manifest.version != "1.0.0":
+                return await self._advance_scene_cleanup_audit(
+                    owner_subject=run["owner_subject"],
+                    run=run,
+                    inputs=run["inputs"],
+                )
             if snapshot is None:
                 if self.snapshot_resolver is None or not run["initial_snapshot_id"]:
                     raise WorkflowServiceError("feature_disabled")
@@ -921,6 +939,308 @@ class WorkflowApplicationService:
                 event_type="workflow_succeeded",
             )
         return current
+
+    async def _advance_scene_cleanup_audit(
+        self,
+        *,
+        owner_subject: str,
+        run: dict[str, Any],
+        inputs: dict[str, Any],
+    ) -> dict[str, Any]:
+        if self.scene_port is None or self.action_runner is None:
+            raise WorkflowServiceError("feature_disabled")
+        if inputs.get("document_revision") != run["initial_document_revision"]:
+            raise WorkflowServiceError("binding_mismatch")
+        run_id = run["run_id"]
+        steps = {
+            step["step_id"]: step
+            for step in await self.repository.list_steps(owner_subject, run_id)
+        }
+        if steps["review"]["state"] == "succeeded":
+            current = await self.repository.get_run(owner_subject, run_id)
+            if current["state"] == "waiting_for_user":
+                current = await self.repository.transition_run(
+                    owner_subject=owner_subject,
+                    run_id=run_id,
+                    expected_state="waiting_for_user",
+                    expected_version=current["state_version"],
+                    target="running",
+                    current_step_id="finish",
+                    event_type="scene_cleanup_review_recovered",
+                )
+            if current["state"] == "running":
+                await self._complete_step_idempotently(
+                    owner_subject,
+                    run_id,
+                    "finish",
+                    {"result": {"status": "ok", "write_authority": False}},
+                )
+                current = await self.repository.get_run(owner_subject, run_id)
+                return await self.repository.transition_run(
+                    owner_subject=owner_subject,
+                    run_id=run_id,
+                    expected_state="running",
+                    expected_version=current["state_version"],
+                    target="succeeded",
+                    current_step_id=None,
+                    event_type="completed",
+                )
+            return current
+
+        build = (steps["build_scene"].get("output_ref") or {}).get("result")
+        if build is None:
+            source_digest = await self.scene_port.source_digest(
+                owner_subject=owner_subject,
+                device_id=run["device_id"],
+                source_snapshot_id=run["initial_snapshot_id"],
+                document_revision=run["initial_document_revision"],
+                analysis_profile="mechanical-2d/1",
+            )
+            if not isinstance(source_digest, str) or not _SCENE_DIGEST.fullmatch(
+                source_digest
+            ):
+                raise WorkflowServiceError("scene_source_digest_invalid")
+            build = await self._run_scene_action(
+                owner_subject=owner_subject,
+                run=run,
+                step_id="build_scene",
+                action_kind="build_scene",
+                source_digest=source_digest,
+                payload={
+                    "owner_subject": owner_subject,
+                    "skill_id": run["skill_id"],
+                    "skill_version": run["skill_version"],
+                    "device_id": run["device_id"],
+                    "source_snapshot_id": run["initial_snapshot_id"],
+                    "document_revision": run["initial_document_revision"],
+                    "analysis_profile": "mechanical-2d/1",
+                    "space": "model",
+                    "include_sections": [
+                        "nodes",
+                        "issues",
+                        "evidence",
+                    ],
+                    "source_digest": source_digest,
+                },
+            )
+            if build is None:
+                return await self.repository.get_run(owner_subject, run_id)
+
+        source_digest = str(build.get("source_digest", ""))
+        scene_id = str(build.get("scene_id", ""))
+        scene_digest = str(build.get("scene_digest", ""))
+        self._validate_scene_binding(
+            build,
+            source_digest=source_digest,
+            source_snapshot_id=run["initial_snapshot_id"],
+            document_revision=run["initial_document_revision"],
+        )
+
+        query = (steps["query_scene"].get("output_ref") or {}).get("result")
+        if query is None:
+            query = await self._run_scene_action(
+                owner_subject=owner_subject,
+                run=run,
+                step_id="query_scene",
+                action_kind="query_scene",
+                source_digest=source_digest,
+                payload={
+                    "owner_subject": owner_subject,
+                    "skill_id": run["skill_id"],
+                    "skill_version": run["skill_version"],
+                    "scene_id": scene_id,
+                    "scene_digest": scene_digest,
+                    "source_digest": source_digest,
+                    "source_snapshot_id": run["initial_snapshot_id"],
+                    "document_revision": run["initial_document_revision"],
+                    "section": "issues",
+                    "limit": min(int(inputs["max_candidates"]), 128),
+                },
+            )
+            if query is None:
+                return await self.repository.get_run(owner_subject, run_id)
+        self._validate_scene_binding(
+            query,
+            source_digest=source_digest,
+            scene_id=scene_id,
+            scene_digest=scene_digest,
+        )
+
+        validation = (steps["validate_scene"].get("output_ref") or {}).get(
+            "result"
+        )
+        if validation is None:
+            validation = await self._run_scene_action(
+                owner_subject=owner_subject,
+                run=run,
+                step_id="validate_scene",
+                action_kind="validate_scene",
+                source_digest=source_digest,
+                payload={
+                    "owner_subject": owner_subject,
+                    "skill_id": run["skill_id"],
+                    "skill_version": run["skill_version"],
+                    "scene_id": scene_id,
+                    "scene_digest": scene_digest,
+                    "source_digest": source_digest,
+                    "source_snapshot_id": run["initial_snapshot_id"],
+                    "document_revision": run["initial_document_revision"],
+                    "validation_profile": "cleanup-audit/1",
+                },
+            )
+            if validation is None:
+                return await self.repository.get_run(owner_subject, run_id)
+        self._validate_scene_binding(
+            validation,
+            source_digest=source_digest,
+            scene_id=scene_id,
+            scene_digest=scene_digest,
+            source_snapshot_id=run["initial_snapshot_id"],
+            document_revision=run["initial_document_revision"],
+        )
+        if not isinstance(validation.get("valid"), bool):
+            raise WorkflowServiceError("scene_result_invalid")
+
+        items = query.get("items", [])
+        if not isinstance(items, list) or len(items) > 128:
+            raise WorkflowServiceError("scene_result_invalid")
+        issue_codes = sorted(
+            {
+                str(item["code"])
+                for item in items
+                if isinstance(item, dict) and isinstance(item.get("code"), str)
+            }
+        )
+        report = {
+            "status": "issues_found" if items else "ok",
+            "scene_id": scene_id,
+            "scene_digest": scene_digest,
+            "source_digest": source_digest,
+            "source_snapshot_id": run["initial_snapshot_id"],
+            "document_revision": run["initial_document_revision"],
+            "issue_count": len(items),
+            "issue_codes": issue_codes,
+            "validation_ok": validation.get("valid") is True,
+            "write_authority": False,
+        }
+        await self._complete_step_idempotently(
+            owner_subject, run_id, "report", {"result": report}
+        )
+        await self._complete_step_idempotently(
+            owner_subject,
+            run_id,
+            "review",
+            {"result": report},
+            target="waiting",
+        )
+        current = await self.repository.get_run(owner_subject, run_id)
+        if current["state"] == "running":
+            current = await self.repository.transition_run(
+                owner_subject=owner_subject,
+                run_id=run_id,
+                expected_state="running",
+                expected_version=current["state_version"],
+                target="waiting_for_user",
+                current_step_id="review",
+                event_type="scene_cleanup_report_ready",
+            )
+        if current["state"] == "waiting_for_user":
+            await self.repository.create_wait(
+                owner_subject=owner_subject,
+                run_id=run_id,
+                step_id="review",
+                wait_kind="user_input",
+                expected_state_version=current["state_version"],
+                response_schema={
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["decision"],
+                    "properties": {
+                        "decision": {"type": "string", "const": "continue"}
+                    },
+                },
+            )
+        return current
+
+    async def _run_scene_action(
+        self,
+        *,
+        owner_subject: str,
+        run: dict[str, Any],
+        step_id: str,
+        action_kind: str,
+        source_digest: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        await self.repository.insert_action(
+            owner_subject=owner_subject,
+            run_id=run["run_id"],
+            step_id=step_id,
+            attempt=1,
+            action_kind=action_kind,
+            payload=payload,
+            retry_class="read",
+            effect_class="read",
+            source_digest=source_digest,
+        )
+        await self.action_runner.run_once()
+        action = next(
+            item
+            for item in await self.repository.list_actions(
+                owner_subject, run["run_id"]
+            )
+            if item["action_kind"] == action_kind
+        )
+        if action["state"] == "failed":
+            await self.repository.mark_run_needs_attention(
+                owner_subject=owner_subject,
+                run_id=run["run_id"],
+                reason=(
+                    f"{action_kind}_failed:"
+                    f"{action.get('error_code') or 'backend_error'}"
+                ),
+            )
+            return None
+        if action["state"] != "completed" or not isinstance(
+            action.get("result"), dict
+        ):
+            return None
+        result = action["result"]
+        self._validate_scene_binding(result, source_digest=source_digest)
+        await self._complete_step_idempotently(
+            owner_subject, run["run_id"], step_id, {"result": result}
+        )
+        return result
+
+    @staticmethod
+    def _validate_scene_binding(
+        value: dict[str, Any],
+        *,
+        source_digest: str,
+        scene_id: str | None = None,
+        scene_digest: str | None = None,
+        source_snapshot_id: str | None = None,
+        document_revision: str | None = None,
+    ) -> None:
+        expected = {
+            "source_digest": source_digest,
+            "scene_id": scene_id,
+            "scene_digest": scene_digest,
+            "source_snapshot_id": source_snapshot_id,
+            "document_revision": document_revision,
+        }
+        if not _SCENE_DIGEST.fullmatch(source_digest):
+            raise WorkflowServiceError("scene_result_invalid")
+        for key, required in expected.items():
+            if required is not None and value.get(key) != required:
+                raise WorkflowServiceError("scene_binding_mismatch")
+        if scene_id is None and (
+            not isinstance(value.get("scene_id"), str)
+            or not value["scene_id"].startswith("scn_")
+            or not isinstance(value.get("scene_digest"), str)
+            or not _SCENE_DIGEST.fullmatch(value["scene_digest"])
+        ):
+            raise WorkflowServiceError("scene_result_invalid")
 
     async def _advance_cleanup_audit(
         self,

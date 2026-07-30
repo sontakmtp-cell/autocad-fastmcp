@@ -138,7 +138,7 @@ def validate_json_schema_subset(schema: dict[str, Any]) -> dict[str, Any]:
 
 class WorkflowStep(Phase9Model):
     step_id: str = Field(pattern=_ID)
-    kind: Literal["observe", "query", "run_planner", "render_template", "prepare_program", "preview_program", "wait_user_input", "wait_program_revision", "request_commit", "wait_job", "validate_receipt", "branch", "emit_report", "request_rollback", "finish"]
+    kind: Literal["observe", "query", "build_scene", "query_scene", "validate_scene", "run_planner", "render_template", "prepare_program", "preview_program", "wait_user_input", "wait_program_revision", "request_commit", "wait_job", "validate_receipt", "branch", "emit_report", "request_rollback", "finish"]
     depends_on: list[str] = Field(default_factory=list, max_length=8)
     input_bindings: dict[str, RunInputRef | StepOutputRef | str | int | bool | list[str | int | bool]] = Field(default_factory=dict, max_length=32)
     condition: TypedCondition | None = None
@@ -172,6 +172,10 @@ class WorkflowStep(Phase9Model):
             raise ValueError("branch step requires typed condition")
         if self.kind != "branch" and self.condition is not None:
             raise ValueError("condition is only allowed on branch step")
+        if self.kind in {"build_scene", "query_scene", "validate_scene"} and (
+            self.retry_class not in {"safe", "deterministic", "existing_idempotent"}
+        ):
+            raise ValueError("scene steps require a safe typed retry class")
         validate_json_schema_subset(self.output_schema)
         return self
 

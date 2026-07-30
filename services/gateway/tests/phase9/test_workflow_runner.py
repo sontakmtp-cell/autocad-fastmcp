@@ -20,6 +20,11 @@ class Port:
         return self.reconciled
 
 
+class ScenePort(Port):
+    async def source_digest(self, **kwargs):
+        return kwargs["source_digest"]
+
+
 @pytest.mark.asyncio
 async def test_runner_completes_pure_and_write_actions(repo):
     await _run(repo)
@@ -141,3 +146,61 @@ async def test_restart_reconciles_preview_child_without_redispatch(repo):
     reconciled = (await repo.list_actions("alice", "run"))[0]
     assert reconciled["state"] == "completed"
     assert port.calls == []
+
+
+@pytest.mark.asyncio
+async def test_runner_routes_scene_action_and_retains_exact_child_refs(repo):
+    await _run(repo)
+    await repo.transition_run(
+        owner_subject="alice",
+        run_id="run",
+        expected_state="created",
+        expected_version=0,
+        target="running",
+    )
+    await repo.create_step(
+        owner_subject="alice",
+        run_id="run",
+        step_id="scene",
+        attempt=1,
+        kind="build_scene",
+    )
+    source_digest = "sha256:" + "a" * 64
+    scene_digest = "sha256:" + "b" * 64
+    await repo.insert_action(
+        owner_subject="alice",
+        run_id="run",
+        step_id="scene",
+        attempt=1,
+        action_kind="build_scene",
+        payload={"source_digest": source_digest},
+        retry_class="read",
+        source_digest=source_digest,
+    )
+    base_port = Port(error=AssertionError("base port must not receive scene action"))
+    scene_port = ScenePort(
+        result={
+            "scene_id": "scn_0123456789abcdef",
+            "scene_digest": scene_digest,
+            "source_digest": source_digest,
+            "source_snapshot_id": "snapshot-a",
+            "document_revision": "revision-a",
+        }
+    )
+    await WorkflowRunner(
+        repo,
+        base_port,
+        worker_id="scene-worker",
+        scene_port=scene_port,
+    ).run_once()
+    action = (await repo.list_actions("alice", "run"))[0]
+    assert action["idempotency_key"].endswith(source_digest)
+    assert action["child_ref"] == {
+        "idempotency_key": action["idempotency_key"],
+        "scene_id": "scn_0123456789abcdef",
+        "scene_digest": scene_digest,
+        "source_digest": source_digest,
+        "source_snapshot_id": "snapshot-a",
+        "document_revision": "revision-a",
+    }
+    assert base_port.calls == []

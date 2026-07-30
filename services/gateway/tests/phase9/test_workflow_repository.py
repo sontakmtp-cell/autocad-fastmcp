@@ -123,6 +123,60 @@ async def test_duplicate_start_wait_step_and_action_are_idempotent(repo):
 
 
 @pytest.mark.asyncio
+async def test_scene_action_key_and_payload_survive_restart_and_replay(repo):
+    await _run(repo)
+    await repo.create_step(
+        owner_subject="alice",
+        run_id="run",
+        step_id="scene",
+        attempt=1,
+        kind="build_scene",
+    )
+    source_digest = "sha256:" + "a" * 64
+    payload = {
+        "source_snapshot_id": "snapshot-a",
+        "source_digest": source_digest,
+    }
+    created, replayed = await repo.insert_action(
+        owner_subject="alice",
+        run_id="run",
+        step_id="scene",
+        attempt=1,
+        action_kind="build_scene",
+        payload=payload,
+        retry_class="read",
+        source_digest=source_digest,
+    )
+    assert replayed is False
+    assert created["idempotency_key"].endswith(source_digest)
+    await repo.database.close()
+    await repo.database.open()
+    replay, replayed = await repo.insert_action(
+        owner_subject="alice",
+        run_id="run",
+        step_id="scene",
+        attempt=1,
+        action_kind="build_scene",
+        payload=payload,
+        retry_class="read",
+        source_digest=source_digest,
+    )
+    assert replayed is True
+    assert replay["action_id"] == created["action_id"]
+    with pytest.raises(RepositoryConflict, match="workflow_action_conflict"):
+        await repo.insert_action(
+            owner_subject="alice",
+            run_id="run",
+            step_id="scene",
+            attempt=1,
+            action_kind="build_scene",
+            payload={**payload, "source_snapshot_id": "snapshot-b"},
+            retry_class="read",
+            source_digest=source_digest,
+        )
+
+
+@pytest.mark.asyncio
 async def test_started_write_is_never_reclaimed_and_unknown_enters_recovery(repo):
     await _run(repo)
     await repo.transition_run(owner_subject="alice", run_id="run", expected_state="created", expected_version=0, target="running")

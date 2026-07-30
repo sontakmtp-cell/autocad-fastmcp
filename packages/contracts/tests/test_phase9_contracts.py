@@ -66,3 +66,66 @@ def test_workflow_rejects_cycles_and_wait_schema_is_pinned():
     assert canonical_workflow_wait_schema_digest(schema).startswith("sha256:")
     with pytest.raises(ValueError, match="forbidden"):
         validate_json_schema_subset({"$ref": "https://unsafe.invalid/schema"})
+
+
+def test_phase10_scene_steps_are_typed_and_require_safe_retry():
+    payload = {
+        "schema_version": "cad.workflow-definition/1",
+        "workflow_id": "drawing.scene-audit",
+        "version": "1.0.0",
+        "steps": [
+            {
+                "step_id": "build",
+                "kind": "build_scene",
+                "depends_on": [],
+                "input_bindings": {
+                    "source_snapshot_id": {
+                        "kind": "run_input",
+                        "input_path": "source_snapshot_id",
+                    }
+                },
+                "output_schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                },
+                "timeout_seconds": 30,
+                "retry_class": "existing_idempotent",
+            },
+            {
+                "step_id": "query",
+                "kind": "query_scene",
+                "depends_on": ["build"],
+                "input_bindings": {
+                    "scene": {
+                        "kind": "step_output",
+                        "source_step_id": "build",
+                        "output_path": "result",
+                    }
+                },
+                "output_schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                },
+                "timeout_seconds": 30,
+                "retry_class": "safe",
+            },
+            {
+                "step_id": "finish",
+                "kind": "finish",
+                "depends_on": ["query"],
+                "input_bindings": {},
+                "output_schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                },
+                "timeout_seconds": 30,
+            },
+        ],
+    }
+    payload["definition_digest"] = canonical_workflow_definition_digest(payload)
+    assert parse_workflow_definition(payload).steps[0].kind == "build_scene"
+    unsafe = deepcopy(payload)
+    unsafe["steps"][0]["retry_class"] = "none"
+    unsafe["definition_digest"] = canonical_workflow_definition_digest(unsafe)
+    with pytest.raises(ValidationError, match="safe typed retry"):
+        parse_workflow_definition(unsafe)
