@@ -1,9 +1,9 @@
-# Phase 10 live R25 evidence — pending
+# Phase 10 live R25 evidence — partial
 
-Status on 2026-07-30: **not executed; Engineering NO-GO**.
+Status on 2026-07-30: **one combined drawing executed; Engineering NO-GO**.
 
-This file is the retention checklist for the required signed bounded lab run.
-Headless, ezdxf, contract or Host Core tests must not be entered as live proof.
+Retained machine-readable result:
+`phase10-live-r25-drawing33-20260730.json`.
 
 ## Common evidence
 
@@ -22,39 +22,60 @@ For each drawing retain:
 - Gateway restart/retrieval result;
 - proof of zero CAD effect.
 
-## Drawing A — plate and four-hole pattern
+## Executed combined fixture — `drawing33.dwg`
 
-Pending checks:
+The signed lab package `autocad.managed_host.r25` version `0.10.3` projected
+41/41 entities exactly from AutoCAD Mechanical 2025 R25. The source included
+18 LINE, 12 CIRCLE, 7 LWPOLYLINE and 4 ARC entities.
 
-- exact observe detail and Tier A projection;
-- one outer part/contour;
-- four hole features and repeated-hole pattern;
-- expected inside/concentric/aligned relations with evidence;
-- unchanged revision before/after build and query;
-- same immutable scene after Gateway restart.
+Proven:
 
-## Drawing B — slot and concentric geometry
+- document revision unchanged before/after;
+- the on-disk DWG SHA-256 unchanged before/after;
+- no CAD write requested;
+- 265 relations, 7 contours, 20 components, 11 features and 11 issues;
+- the same immutable scene and 11 issues retrieved after repository database
+  close/reopen in the evidence process;
+- signed, bounded, lab-only package identity and hashes retained.
 
-Pending checks:
+Not proven by this fixture:
 
-- exact LINE/CIRCLE/ARC/LWPOLYLINE source projection;
-- slot feature with source-node evidence;
+- hole and repeated-hole pattern;
+- slot;
 - concentric group;
-- confidence and limitations shown without write authority;
-- unchanged revision and no CAD effect.
+- degenerate geometry cleanup.
 
-## Drawing C — cleanup and anomaly fixture
+The observed feature types were `part` and `centerline_candidate`. The observed
+issues were ten `duplicate_geometry` and one `open_contour`.
 
-Pending checks:
+## Failures and retests retained
 
-- exact duplicate, permitted degenerate geometry and open contour;
-- read-only issue report;
-- typed cleanup audit references the same immutable scene;
-- unchanged revision;
-- durable report after Gateway restart;
-- no workflow write retry.
+- The first Host run advertised ARC but used a legacy read fingerprint that
+  rejected ARC as `capability_missing`; the signed lab bundle was rebuilt.
+- The next ARC projection used ambiguous angle field names; bundle `0.10.3`
+  emits explicit radians and the live projection passed.
+- Gateway public projection initially referenced obsolete ARC attributes; fixed
+  by commit `97b7020`.
+- The full public scene digest initially exceeded the bounded contract payload;
+  commit `7a4931d` binds bounded per-section hashes and the live service build
+  passed.
+
+The exact final capture command is retained in the JSON. The run used the
+direct Managed .NET read port; no standalone Desktop Agent process identity is
+claimed.
+
+## Required live rows still missing
+
+- Drawing A: identified plate/four-hole fixture with four hole features and a
+  repeated-hole pattern.
+- Drawing B: identified exact slot and concentric fixture.
+- Drawing C: identified duplicate/degenerate/open-contour cleanup fixture with
+  the typed durable cleanup workflow report.
+- A real Gateway process restart/reconnect followed by public scene/report
+  retrieval and an independent no-effect comparison.
 
 ## Decision
 
-No live row above is complete. Do not claim Phase 10 Engineering GO, live R25
-acceptance or Customer Pilot readiness from the current headless evidence.
+The executed drawing is valid partial live evidence, but it cannot substitute
+for all three required drawings and expected outcomes. **Engineering NO-GO and
+Customer Pilot NO-GO.**

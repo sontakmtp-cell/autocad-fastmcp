@@ -2055,3 +2055,61 @@ Final Codex report phải state:
 Phase 10 hoàn tất khi hệ thống có thể lấy một immutable owner-scoped drawing snapshot, tạo một deterministic bounded scene pinned vào exact document revision, cung cấp normalized nodes, exact/derived relations, contours/components, evidence-backed mechanical features và read-only anomaly reports qua một public surface nhỏ với paginated resources; scene/workflow state sống qua Gateway restart, không leak cross-owner data, không bị prompt injection từ drawing text, không tạo CAD effect, và bất kỳ hành động sửa bản vẽ nào vẫn phải quay về exact Phase 6–9 CAD Program, preview, trusted approval, commit, validation, recovery và rollback authority.
 
 Phase 10 **không hoàn tất** chỉ vì demo nhận ra vài hình tròn là lỗ. Nó chỉ đạt Engineering GO khi contracts, determinism, budgets, security, durability, cross-runtime honesty và live R25 no-write evidence cùng được chứng minh.
+
+---
+
+## 32. Implementation evidence — 2026-07-30
+
+Implementation branch:
+`codex/phase-10-scene-graph-drawing-intelligence`, baseline
+`48365bccccb9c1214a4447072410f99ac8361dc3`, retained live-code head
+`7e00fdc366a9b0a90b27a27a96f94f9e190ef00a`.
+
+Delivered:
+
+- strict `cad.scene/1` contracts, canonical IDs/digests and golden vectors;
+- exact bounded Tier A LINE/CIRCLE/LWPOLYLINE/ARC projection across R25,
+  Desktop Agent and ezdxf, with LT capability honesty;
+- deterministic pure scene engine with grid candidate generation, relations,
+  contours/components, evidence-backed mechanical features, read-only issues
+  and fail-closed budgets;
+- owner-scoped immutable SQLite migration `0012_phase10_scenes.sql`, signed
+  cursors and restart-safe scene/query service;
+- exactly two read-only scene tools and seven bounded resources, all default
+  off;
+- durable Phase 9 build/query/validate scene steps, read-only cleanup audit
+  `1.1.0`, and scene-gated auto-dimension `1.1.0` that still returns to the
+  existing prepare/preview/approval/commit path;
+- read-only Portal scene list/detail views, CI gates, threat/security review
+  and rollback guide.
+
+Final local automated results:
+
+- Phase 10 41; `cad_core` 12; Gateway 341; root 416 with 1 skip;
+- contracts 143; Desktop Agent 159; Managed Host 75;
+- Portal unit 42, production build passed, E2E 11;
+- Phase 9 regression 94; Phase 8 Python regression 39.
+
+The signed R25 lab run on `drawing33.dwg` retained 41 exact entities, unchanged
+document revision, zero requested write, 265 relations, 7 contours, 11
+read-only features and 11 issues. Closing and reopening the repository
+database/service in the evidence process retrieved the same immutable scene and
+issue count. This is durability evidence, not a real Gateway process restart.
+Evidence:
+`evidence/phase10-live-r25-drawing33-20260730.json`.
+
+Security review found no open critical/high code blocker in the implemented
+default-off profile: owner isolation, cursor tamper rejection, prompt-text
+redaction, bounded payloads/deadlines, read-only annotations and the existing
+Phase 6–9 write authority are covered by tests.
+
+Known live blockers: the repository does not contain all three separately
+identified required fixtures; the combined drawing did not produce
+hole/repeated-hole, slot, concentric or degenerate evidence; and a real Gateway
+process restart/reconnect with independent no-effect comparison has not been
+retained. Therefore the mandatory live acceptance matrix is incomplete.
+
+**Engineering decision: NO-GO. Customer Pilot: NO-GO.** Automated,
+security, regression and the retained partial live run are green. The remaining
+blockers are the complete three-drawing live matrix and a real Gateway process
+restart/reconnect with independent no-effect evidence.

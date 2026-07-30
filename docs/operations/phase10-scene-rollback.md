@@ -62,5 +62,7 @@ workflow step, resources/tools, then Portal visibility. Before each step verify:
 
 Live R25 re-enable additionally requires all three Phase 10 drawings, unchanged
 document revision before/after scene work, Gateway restart retrieval and no CAD
-effect. As of 2026-07-30 that live evidence is pending, so Phase 10 remains
-Engineering **NO-GO**.
+effect. As of 2026-07-30 one signed combined drawing proves a partial read-only
+run and in-process repository reopen only. The three-drawing outcomes and real
+Gateway process restart remain incomplete, so Phase 10 remains Engineering
+**NO-GO**.

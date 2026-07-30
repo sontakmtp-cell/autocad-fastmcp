@@ -7,7 +7,9 @@ Date: 2026-07-30. Branch:
 
 Environment: Windows, Python 3.13.13, .NET SDK 8.0.423, Node 24.18.0,
 npm 11.16.0. Baseline commit:
-`48365bccccb9c1214a4447072410f99ac8361dc3`.
+`48365bccccb9c1214a4447072410f99ac8361dc3` (latest local `main`, containing
+PR #13 plus the local `AGENTS.md` instruction commit). The corresponding
+fetched `origin/main` was `d1e84711841b4b262fc5563cb768904b8eefd811`.
 
 | Suite | Command | Result |
 |---|---|---:|
@@ -65,7 +67,31 @@ and 5,000 simple entities, dense overlap, repeated grid and a near-cap
 polyline. Gates assert candidate/cell/relation/byte counters; timing and peak
 memory are retained observations.
 
-## Live evidence plan
+## Final automated conformance
+
+Final product-code head used for automated gates:
+`7a4931da94d46c8f4a3227062796d57d04c51c6a`. The retained live evidence was
+regenerated at `7e00fdc366a9b0a90b27a27a96f94f9e190ef00a` after clarifying its
+repository-reopen semantics and retention limitations.
+
+| Suite | Result |
+|---|---:|
+| Phase 10 conformance and public security counters | 41 passed; 2 tools, 7 resources, 0 destructive, 0 open-world |
+| `cad_core` | 12 passed |
+| Gateway full | 341 passed |
+| Root Python | 416 passed, 1 skipped |
+| Contracts full | 143 passed |
+| Desktop Agent full | 159 passed |
+| Managed Host Core | 75 passed |
+| Portal unit / build / E2E | 42 passed / build passed / 11 passed |
+| Phase 9 regression | 94 passed |
+| Phase 8 Python regression | 39 passed |
+
+The deterministic dense/adversarial gates fail closed on candidate, spatial
+cell, projected-byte, scene-byte and deadline limits. Local wall time and peak
+memory are observations, not correctness gates.
+
+## Live evidence result
 
 Engineering GO requires three identified R25 drawings:
 
@@ -79,5 +105,17 @@ failures/retests, operator/date and before/after proof that document revision
 did not change. Restart Gateway and retrieve the same scene/report without a
 new CAD effect. Headless and ezdxf evidence cannot replace live R25.
 
-Current status: fixtures and live execution are not yet proven. Therefore this
-matrix is start-gate evidence, not Engineering GO.
+The signed bounded R25 lab run retained
+`evidence/phase10-live-r25-drawing33-20260730.json`. It proves 41 exact source
+entities, unchanged document revision, no requested write and durable retrieval
+of the same scene after reopening the repository database/service.
+
+`drawing33.dwg` produced 265 relations, 7 contours, 11 read-only features and
+11 issues. It did not produce the required hole/repeated-hole, slot or
+concentric feature evidence. The repository contains no separately identified
+Drawings A, B and C; the combined drawing also lacks the complete required
+expected outcomes, including the degenerate cleanup case.
+
+Therefore automated/headless/security gates are green, but the required
+three-drawing live acceptance gate and real Gateway process restart are
+incomplete. **Phase 10 Engineering NO-GO; Customer Pilot NO-GO.**

@@ -1,8 +1,8 @@
 {
   "schema": "autocad-mcp.phase10-headless-conformance/1",
   "recorded_at": "2026-07-30",
-  "status": "partial_headless_pass",
-  "working_tree_head": "f4fae7188ca771e7907dacc8c441d52b81f2012a",
+  "status": "headless_pass_live_partial",
+  "working_tree_head": "7a4931da94d46c8f4a3227062796d57d04c51c6a",
   "baseline_origin_main": "d1e84711841b4b262fc5563cb768904b8eefd811",
   "environment": {
     "os": "Microsoft Windows 11 Pro 10.0.26200 build 26200",
@@ -13,7 +13,7 @@
   },
   "phase10_conformance": {
     "command": "python scripts/test-phase10-conformance.py",
-    "result": "36 passed",
+    "result": "41 passed",
     "public_security_counters": {
       "scene_tools": 2,
       "scene_resources": 7,
@@ -45,10 +45,9 @@
     }
   },
   "limitations": [
-    "The recorded source included shared uncommitted Phase 10 integration changes and is not a release commit.",
     "GitHub Actions execution is not recorded by this local artifact.",
-    "Live AutoCAD Mechanical 2025 R25 evidence for Drawings A, B and C is pending.",
-    "Headless evidence cannot establish unchanged live DWG revision or no CAD effect."
+    "One signed live R25 combined drawing is retained separately, but required Drawings A, B and C are not all proven.",
+    "Headless evidence cannot replace the remaining live drawing outcomes."
   ],
   "engineering_decision": "NO-GO"
 }

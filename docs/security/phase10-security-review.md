@@ -2,7 +2,8 @@
 
 ## Status and scope
 
-Status on 2026-07-30: **headless review passed; final Engineering NO-GO**.
+Status on 2026-07-30: **integrated review passed; Engineering NO-GO on live
+acceptance**.
 
 Reviewed surfaces are the strict scene contracts, pure scene engine, bounded
 runtime projection, immutable owner-scoped Gateway repository/service, signed
@@ -10,12 +11,13 @@ cursor, two-tool/seven-resource public surface and read-only Portal projection.
 The accepted trust boundary is
 [`phase10-threat-model.md`](phase10-threat-model.md).
 
-This is not live AutoCAD evidence. The integrated final commit, workflow scene
-steps and three signed-lab R25 drawings still require final review.
+This document is not itself live AutoCAD evidence. Integrated workflow changes
+were reviewed; the required three signed-lab R25 drawings and real Gateway
+process restart remain incomplete.
 
 ## Automated evidence
 
-`python scripts/test-phase10-conformance.py` passed **36 tests** and checked
+`python scripts/test-phase10-conformance.py` passed **41 tests** and checked
 these deterministic public counters:
 
 - exactly two scene tools;
@@ -32,6 +34,10 @@ criteria.
 
 Regression checks passed independently:
 
+- Gateway full: **341 passed**;
+- root Python: **416 passed, 1 skipped**;
+- contracts full: **143 passed**;
+- Desktop Agent full: **159 passed**;
 - Phase 9 conformance: **94 passed**;
 - Phase 8 Python conformance: **39 passed**;
 - Managed Host Core: **75 passed**;
@@ -39,9 +45,9 @@ Regression checks passed independently:
 
 ## Review result
 
-No reportable Critical or High security finding was identified in the reviewed
-headless surfaces. This result is provisional until final integration and live
-R25 acceptance.
+No reportable Critical or High security finding was identified in the
+integrated default-off surfaces. This does not waive the remaining live
+acceptance gates.
 
 | Risk | Reviewed control | Current result |
 | --- | --- | --- |
@@ -52,8 +58,8 @@ R25 acceptance.
 | Dense geometry DoS | Entity/byte/cell/candidate/relation/scene caps and no all-pairs fallback | Deterministic counter coverage |
 | Prompt injection/data exfiltration | Prompt-like drawing text omitted/redacted; no URL/path/command sink | Headless covered |
 | Query/code injection | Closed typed filters; no expression, regex, SQL, path or plugin editor | Headless and Portal covered |
-| Inference as write authority | Issue `write_authority=false`; scene IDs/features do not enter commit authority | Headless covered; final workflow review pending |
-| Approval/risk weakening | Existing Phase 7–9 authority remains unchanged | Regressions green; live confirmation pending |
+| Inference as write authority | Issue `write_authority=false`; scene IDs/features do not enter commit authority | Integrated workflow covered |
+| Approval/risk weakening | Existing Phase 7–9 authority remains unchanged | Regressions green; live matrix incomplete |
 | Silent runtime downgrade | Explicit runtime/source capability evidence; LT claims no Phase 10 geometry/write | Headless cross-runtime covered |
 | Default-on exposure | All Phase 10 flags default off with dependency validation | Headless covered |
 
@@ -63,8 +69,8 @@ R25 acceptance.
   lab profile.
 - Prove exact document revision is unchanged before/after every scene build and
   query.
-- Prove durable scene retrieval after Gateway restart with no CAD effect.
-- Complete final integrated workflow security review and full regression.
+- Prove durable scene retrieval after a real Gateway process restart with an
+  independent no-CAD-effect comparison.
 - Retain failures/retests, hashes, operator/date and capability evidence.
 
 Until those gates pass, do not claim Phase 10 Engineering GO or Customer Pilot

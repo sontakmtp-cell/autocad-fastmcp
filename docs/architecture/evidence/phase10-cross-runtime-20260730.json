@@ -1,7 +1,7 @@
 {
   "schema": "autocad-mcp.phase10-cross-runtime-evidence/1",
   "recorded_at": "2026-07-30",
-  "status": "headless_partial",
+  "status": "headless_pass_live_partial",
   "command": "$env:PYTHONPATH='packages/cad_core/src;packages/contracts/src;services/gateway/src;apps/desktop_agent/src;src'; uv run --project services/gateway --group test python -m pytest -q apps/desktop_agent/tests/test_phase10_projection.py tests/test_phase10_projection.py --basetemp=.pytest_cache/phase10-cross-runtime",
   "result": "5 passed",
   "matrix": [
@@ -25,16 +25,16 @@
     },
     {
       "runtime": "AutoCAD Mechanical 2025 R25",
-      "evidence": "Drawings A, B and C have not yet been executed for Phase 10.",
-      "status": "pending",
+      "evidence": "Signed lab package 0.10.3 projected 41 exact LINE/CIRCLE/ARC/LWPOLYLINE entities from drawing33.dwg with unchanged revision and in-process repository/service reopen retrieval.",
+      "status": "partial",
       "live": true
     }
   ],
   "retest_note": "An initial isolated pytest invocation omitted the repository PYTHONPATH and failed during collection. The conformance entrypoint sets the required paths; the corrected command passed 5 tests.",
   "limitations": [
     "Shape compatibility is not live R25 parity.",
-    "No silent fallback/live disconnect drill is recorded.",
-    "No unchanged DWG revision or Gateway restart proof is recorded."
+    "The required separate Drawings A, B and C and their expected feature/issue outcomes are not all recorded.",
+    "The retained live combined fixture did not produce hole/repeated-hole, slot, concentric or degenerate evidence."
   ],
   "engineering_decision": "NO-GO"
 }

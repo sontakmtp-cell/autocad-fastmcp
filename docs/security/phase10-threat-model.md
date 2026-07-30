@@ -1,6 +1,7 @@
 # Phase 10 threat model
 
-Status: accepted implementation boundary; validation evidence pending.
+Status: accepted implementation boundary; integrated/headless validation
+passed; live acceptance partial.
 
 ## Assets and trust boundaries
 

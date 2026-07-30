@@ -16,7 +16,7 @@
     "projected_bytes": 2539,
     "scene_bytes": 10601,
     "peak_python_bytes": 69732,
-    "build_seconds": 0.011892,
+    "build_seconds": 0.006878,
     "complete": true
   },
   "deterministic_adversarial_gates": {
@@ -35,6 +35,6 @@
   "limitations": [
     "This is one local Python allocation observation, not a statistically controlled benchmark.",
     "Native process peak memory and production scale are not measured.",
-    "Live R25 build time, memory and DWG revision evidence are pending."
+    "One live R25 run retains build time and unchanged revision; the required three-drawing matrix remains incomplete."
   ]
 }
