@@ -1,0 +1,62 @@
+{
+  "fixtures": [
+    {
+      "dwg": "phase10-drawing-a.dwg",
+      "dwg_sha256": "sha256:e7d5891cd8d88fd34a7b1f91d2e092c4d068c7cae7cf902ca526eacfe254d257",
+      "dxf": "phase10-drawing-a.dxf",
+      "dxf_sha256": "sha256:be847f92f17bfb538110e3f02e0cdfb87926f272dcd1740a5be884c88a118b8d",
+      "expected": {
+        "features": [
+          "hole",
+          "repeated_hole_pattern"
+        ],
+        "negative": [
+          "non_pattern_circle_excluded"
+        ]
+      },
+      "fixture_id": "phase10-drawing-a-r25/1",
+      "independent_source": true,
+      "purpose": "hole and repeated-hole pattern with one non-pattern circle"
+    },
+    {
+      "dwg": "phase10-drawing-b.dwg",
+      "dwg_sha256": "sha256:47baa712c04d5cd20255b30be5bd12f2b1a23e03e3968848df4ebc61f18115bd",
+      "dxf": "phase10-drawing-b.dxf",
+      "dxf_sha256": "sha256:605814e6138958d5d5a9d66f547282b0acd5be171e687030e73e087638c35663",
+      "expected": {
+        "features": [
+          "slot",
+          "concentric_group"
+        ],
+        "negative": [
+          "near_slot_excluded",
+          "near_concentric_outside_tolerance"
+        ]
+      },
+      "fixture_id": "phase10-drawing-b-r25/1",
+      "independent_source": true,
+      "purpose": "exact slot and concentric group with tolerance negatives"
+    },
+    {
+      "dwg": "phase10-drawing-c.dwg",
+      "dwg_sha256": "sha256:ad9d1317cd6f87433217003e952a6b9f8ab9d72c521f5b650437ebba5a87cd1d",
+      "dxf": "phase10-drawing-c.dxf",
+      "dxf_sha256": "sha256:d11e26b94614c6092f4a6ba72d4a0347462c1a32f54a37fd54c495fe340b409c",
+      "expected": {
+        "issues": [
+          "degenerate_geometry",
+          "duplicate_geometry",
+          "open_contour",
+          "self_intersection"
+        ],
+        "negative": [
+          "valid_geometry_not_flagged_for_cleanup"
+        ]
+      },
+      "fixture_id": "phase10-drawing-c-r25/1",
+      "independent_source": true,
+      "purpose": "degenerate, duplicate, open and self-intersecting cleanup cases"
+    }
+  ],
+  "schema_version": "autocad-mcp.phase10-live-fixtures/1"
+}
