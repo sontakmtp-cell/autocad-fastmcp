@@ -70,7 +70,7 @@ memory are retained observations.
 
 Deployed live runtime commit:
 `165de0452af2b665deb67401b7c73420eefae226`. Final code/evidence commit:
-`FINAL_EVIDENCE_COMMIT`.
+`cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`.
 
 | Suite | Command | Result |
 |---|---|---:|
@@ -136,7 +136,7 @@ the final exact zero-length LINE supplies the live degenerate case.
 
 All retained artifacts and fixture hashes pass
 `python scripts/validate-phase10-live-evidence.py` locally. GitHub Actions is
-pending the final push of `FINAL_EVIDENCE_COMMIT`; this document does not claim
+pending the final push of `cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`; this document does not claim
 hosted CI green yet.
 
 **Phase 10 Engineering GO for the default-off bounded lab profile. Customer

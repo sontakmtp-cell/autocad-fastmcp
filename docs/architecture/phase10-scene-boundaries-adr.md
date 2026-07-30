@@ -26,7 +26,7 @@ Baseline: `d1e84711841b4b262fc5563cb768904b8eefd811`, containing PR #13 at
   reuse, actual Gateway restart/reconnect and unchanged scoped DB write
   snapshot. Runtime commit:
   `165de0452af2b665deb67401b7c73420eefae226`; final evidence commit:
-  `FINAL_EVIDENCE_COMMIT`.
+  `cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`.
 
 ## Authority boundary
 

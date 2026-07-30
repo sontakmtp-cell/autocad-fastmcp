@@ -75,6 +75,6 @@ effect. As of 2026-07-30 these gates pass for the bounded lab profile:
 - `python scripts/validate-phase10-live-evidence.py` passes locally.
 
 Therefore Phase 10 is **Engineering GO** for the default-off bounded lab
-profile. GitHub Actions is pending the final push of `FINAL_EVIDENCE_COMMIT`,
+profile. GitHub Actions is pending the final push of `cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`,
 so hosted CI green is not claimed. Customer Pilot remains **NO-GO** pending
 Phase 11 production hardening and pilot gates.

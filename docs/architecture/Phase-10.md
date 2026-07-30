@@ -2066,7 +2066,7 @@ Implementation branch:
 `codex/phase-10-scene-graph-drawing-intelligence`, baseline
 `d1e84711841b4b262fc5563cb768904b8eefd811`, deployed live runtime commit
 `165de0452af2b665deb67401b7c73420eefae226`, final code/evidence commit
-`FINAL_EVIDENCE_COMMIT`.
+`cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`.
 
 Delivered:
 
@@ -2172,7 +2172,7 @@ case.
 `python scripts/validate-phase10-live-evidence.py` passes all manifest hashes,
 artifact schemas, commit/scene/digest bindings, cleanup, restart and no-effect
 gates locally. GitHub Actions has not yet run against
-`FINAL_EVIDENCE_COMMIT`; CI status remains pending the final push.
+`cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`; CI status remains pending the final push.
 
 **Engineering decision: GO for the default-off bounded Phase 10 lab profile.
 Customer Pilot: NO-GO pending Phase 11 production hardening and pilot gates.**

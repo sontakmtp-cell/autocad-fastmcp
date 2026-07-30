@@ -15,7 +15,7 @@ This document is not itself live AutoCAD evidence. The retained A/B/C, cleanup
 workflow, Gateway restart and scoped no-effect DB artifacts supply that
 evidence at deployed runtime commit
 `165de0452af2b665deb67401b7c73420eefae226`; final code/evidence commit:
-`FINAL_EVIDENCE_COMMIT`.
+`cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`.
 
 ## Automated evidence
 

@@ -2,7 +2,7 @@
   "schema": "autocad-mcp.phase10-headless-conformance/1",
   "recorded_at": "2026-07-30",
   "status": "local_and_live_pass_ci_pending",
-  "working_tree_head": "FINAL_EVIDENCE_COMMIT",
+  "working_tree_head": "cdf591d05c9d89692b4cb8f283cd36cceeaf6b32",
   "deployed_live_runtime_commit": "165de0452af2b665deb67401b7c73420eefae226",
   "baseline_origin_main": "d1e84711841b4b262fc5563cb768904b8eefd811",
   "environment": {
@@ -90,7 +90,7 @@
     "command": "python scripts/validate-phase10-live-evidence.py",
     "result": "passed",
     "runtime_commit": "165de0452af2b665deb67401b7c73420eefae226",
-    "final_evidence_commit": "FINAL_EVIDENCE_COMMIT",
+    "final_evidence_commit": "cdf591d05c9d89692b4cb8f283cd36cceeaf6b32",
     "drawings": {
       "a": "5 holes; one 4-hole repeated pattern; non-pattern circle excluded",
       "b": "slot and concentric group; near-slot and near-concentric negatives excluded",

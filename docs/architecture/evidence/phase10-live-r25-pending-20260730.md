@@ -6,7 +6,7 @@ default-off bounded lab profile**.
 Baseline commit:
 `d1e84711841b4b262fc5563cb768904b8eefd811`. Deployed live runtime commit:
 `165de0452af2b665deb67401b7c73420eefae226`. Final code/evidence commit:
-`FINAL_EVIDENCE_COMMIT`.
+`cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`.
 
 The earlier combined `drawing33.dwg` run remains historical partial evidence.
 The acceptance decision below is based on three independently hashed fixtures,
@@ -135,7 +135,7 @@ corrected commands passed and these are retained environment/retest failures,
 not code failures. The first LT attempt used the root environment without
 FastMCP; the corrected Gateway-environment run passed.
 
-GitHub Actions has not yet run against `FINAL_EVIDENCE_COMMIT`; hosted CI green
+GitHub Actions has not yet run against `cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`; hosted CI green
 is not claimed.
 
 ## Decision
