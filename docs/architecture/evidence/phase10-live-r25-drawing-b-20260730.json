@@ -1,0 +1,3263 @@
+{
+  "baseline_commit": "d1e84711841b4b262fc5563cb768904b8eefd811",
+  "capture_command": "python scripts/phase10-live-public-evidence.py capture --endpoint https://cad.kythuatvang.com/mcp --device-id device-0e4df1b2-fbf2-42ca-a151-a487c5437052 --token-file <redacted> --output docs\\architecture\\evidence\\phase10-live-r25-drawing-b-20260730.json --operator haing.nguyen --fixture b --drawing fixtures\\phase10\\live\\phase10-drawing-b.dwg --process-identity tmp\\phase10-live\\process-identity-b-final.json",
+  "captured_at": "2026-07-30T07:29:21.403212+00:00",
+  "failures_retests": [],
+  "fixture": {
+    "document_id": "doc-4c9e80cc2d0101584c4d4d19",
+    "document_name": "phase10-drawing-b.dwg",
+    "dwg_file_hash_after": "sha256:47baa712c04d5cd20255b30be5bd12f2b1a23e03e3968848df4ebc61f18115bd",
+    "dwg_file_hash_before": "sha256:47baa712c04d5cd20255b30be5bd12f2b1a23e03e3968848df4ebc61f18115bd",
+    "fixture_file": "D:\\AI\\autocad-mcp\\fixtures\\phase10\\live\\phase10-drawing-b.dwg",
+    "fixture_id": "phase10-drawing-b-r25/1"
+  },
+  "gate_results": {
+    "concentric_group": true,
+    "document_revision_unchanged": true,
+    "dwg_file_hash_unchanged": true,
+    "entity_count_unchanged": true,
+    "managed_dotnet_runtime": true,
+    "near_concentric_outside_tolerance": true,
+    "near_slot_excluded": true,
+    "no_cad_effect_attempted": true,
+    "no_write_requested": true,
+    "slot": true,
+    "source_capabilities_present": true,
+    "source_runtime_managed": true,
+    "stable_scene_reuse": true
+  },
+  "implementation_commit": "165de0452af2b665deb67401b7c73420eefae226",
+  "limitations": [],
+  "no_effect": {
+    "cad_effect_attempted": false,
+    "document_revision_unchanged": true,
+    "dwg_file_hash_unchanged": true,
+    "entity_count_unchanged": true,
+    "write_requested": false
+  },
+  "operator": "haing.nguyen",
+  "public_path": {
+    "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+    "devices": {
+      "contract_version": "cad.mcp/1.2",
+      "correlation_id": "ecfed0f6-5938-42c6-afdc-a0cdcc63b7b0",
+      "default_device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+      "devices": [
+        {
+          "agent_version": "0.1.0",
+          "capabilities": [
+            "checkpoint_lookup",
+            "observe",
+            "program_commit",
+            "program_preview",
+            "program_validate",
+            "receipt_lookup",
+            "rollback_commit",
+            "rollback_preview",
+            "rollback_validate"
+          ],
+          "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+          "display_name": "Phase 9 Portal Live Acceptance",
+          "document_name": "phase10-drawing-b.dwg",
+          "last_seen_at": "2026-07-30T07:28:58.830510+00:00",
+          "package_summary": [
+            {
+              "package_id": "autocad.lisp.drawing_info",
+              "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+              "version": "3.3-c1"
+            },
+            {
+              "package_id": "autocad.managed_host.r25",
+              "sha256": "ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+              "version": "0.8.0"
+            }
+          ],
+          "paused": false,
+          "runtime_state": "online_idle",
+          "status": "online"
+        }
+      ]
+    },
+    "endpoint": "https://cad.kythuatvang.com/mcp",
+    "invoked_tools": [
+      "cad_list_devices",
+      "cad_observe",
+      "cad_get_job",
+      "cad_build_scene",
+      "cad_query_scene"
+    ],
+    "standalone_desktop_agent": true,
+    "write_tools_invoked": []
+  },
+  "runtime_identity": {
+    "agent_session": {
+      "agent_version": "0.1.0",
+      "connected_at": "2026-07-30T07:28:26.844976+00:00",
+      "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+      "managed_host": {
+        "framework": ".NET 8",
+        "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+        "package_id": "autocad.managed_host.r25",
+        "package_version": "0.8.0",
+        "runtime_id": "managed_dotnet"
+      },
+      "protocol_version": "cad.agent/2",
+      "session_id": "session-5125c353-5868-4a2e-8d54-da497c6e3d66"
+    },
+    "autocad_process": {
+      "edition": "Mechanical 2025",
+      "executable": "C:\\Program Files\\Autodesk\\AutoCAD 2025\\acad.exe",
+      "file_version": "R25.0.58.0.0",
+      "host_family": "R25",
+      "process_id": 50256,
+      "product": "AutoCAD",
+      "release_year": 2025,
+      "series": "R25.0"
+    },
+    "desktop_agent_process": {
+      "executable": "D:\\AI\\autocad-mcp\\dist\\phase10-agent-final\\app\\KythuatvangAutoCADAgent.exe",
+      "executable_sha256": "sha256:8904dd87e1990997f8c566928a79ac15ff94e6fd98e819a8862568f16cceebb5",
+      "process_id": 69500,
+      "standalone": true,
+      "started_at": "2026-07-30T07:28:32.1622111Z"
+    },
+    "gateway_process": {
+      "executable": "/usr/bin/python3.12",
+      "executable_sha256": "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
+      "process_id": 173016,
+      "release_commit": "165de0452af2b665deb67401b7c73420eefae226",
+      "service": "autocad-mcp-phase4.service",
+      "working_directory": "/opt/autocad-mcp/releases/20260730T1500-phase10-go-165de04/services/gateway"
+    }
+  },
+  "scene": {
+    "capabilities": [
+      "entity.geometry.arc/1",
+      "entity.geometry.circle/1",
+      "entity.geometry.line/1",
+      "entity.geometry.polyline/1",
+      "scene.contours.simple2d/1",
+      "scene.core/1",
+      "scene.features.mechanical2d/1",
+      "scene.issues.cleanup-audit/1",
+      "scene.relations.core2d/1"
+    ],
+    "complete": true,
+    "counts": {
+      "contours": 1,
+      "evidence": 25,
+      "features": 3,
+      "issues": 1,
+      "nodes": 8,
+      "omitted": 0,
+      "relations": 12
+    },
+    "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+    "document_id": "doc-4c9e80cc2d0101584c4d4d19",
+    "document_revision": "7542304900287789",
+    "engine_version": "scene-engine/1.0.1",
+    "evidence_strengths": [
+      "bounded_heuristic",
+      "derived_exact",
+      "exact_source_geometry"
+    ],
+    "feature_types": [
+      "concentric_group",
+      "part",
+      "slot"
+    ],
+    "issue_codes": [
+      "open_contour"
+    ],
+    "profile_id": "mechanical-2d/1",
+    "projection_version": "cad.entity-projection/2",
+    "relation_types": [
+      "aligned",
+      "concentric",
+      "connected_endpoint",
+      "parallel",
+      "perpendicular"
+    ],
+    "repeat_build": {
+      "contract_version": "cad.mcp/1.6",
+      "correlation_id": "dc241d8d-5c84-44ca-a378-a3a2a5884c12",
+      "reused": true,
+      "scene": {
+        "capabilities": [
+          "entity.geometry.arc/1",
+          "entity.geometry.circle/1",
+          "entity.geometry.line/1",
+          "entity.geometry.polyline/1",
+          "scene.contours.simple2d/1",
+          "scene.core/1",
+          "scene.features.mechanical2d/1",
+          "scene.issues.cleanup-audit/1",
+          "scene.relations.core2d/1"
+        ],
+        "complete": true,
+        "counts": {
+          "contours": 1,
+          "evidence": 25,
+          "features": 3,
+          "issues": 1,
+          "nodes": 8,
+          "omitted": 0,
+          "relations": 12
+        },
+        "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+        "document_id": "doc-4c9e80cc2d0101584c4d4d19",
+        "document_revision": "7542304900287789",
+        "engine_version": "scene-engine/1.0.1",
+        "profile_id": "mechanical-2d/1",
+        "projection_version": "cad.entity-projection/2",
+        "resource_uris": {
+          "contours": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/contours",
+          "evidence": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/evidence",
+          "features": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/features",
+          "issues": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/issues",
+          "nodes": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/nodes",
+          "relations": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/relations",
+          "summary": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/summary"
+        },
+        "scene_digest": "sha256:f5ee87606587290037ba0ed0831bf1f62e1ae77a60cf4c76f7e83edd32507fb2",
+        "scene_id": "scn_01de1b752a9a48a493173a0e7c0c09cd",
+        "schema_version": "cad.scene/1",
+        "source_digest": "sha256:6c912483fd8c8e4751196a3f9f35055d0e5bb6d46523a3155c0a69add380aa26",
+        "source_snapshot_available": true,
+        "source_snapshot_id": "snapshot-command-3cd97e6c-92bf-4b1a-9c15-dde422e8e243",
+        "space": "model",
+        "tolerance_profile": {
+          "absolute_floor": 1e-06,
+          "angular_radians": 1e-06,
+          "drawing_unit": "unitless",
+          "duplicate": 1e-06,
+          "endpoint": 1e-06,
+          "maximum_cap": 0.01,
+          "profile_id": "mechanical-2d/1",
+          "radius": 1e-06,
+          "relative_to_extents": 1e-09
+        },
+        "truncation_reasons": [],
+        "warnings": []
+      }
+    },
+    "resource_uris": {
+      "contours": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/contours",
+      "evidence": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/evidence",
+      "features": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/features",
+      "issues": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/issues",
+      "nodes": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/nodes",
+      "relations": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/relations",
+      "summary": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/summary"
+    },
+    "scene_digest": "sha256:f5ee87606587290037ba0ed0831bf1f62e1ae77a60cf4c76f7e83edd32507fb2",
+    "scene_id": "scn_01de1b752a9a48a493173a0e7c0c09cd",
+    "schema_version": "cad.scene/1",
+    "sections": {
+      "contours": {
+        "contract_version": "cad.mcp/1.6",
+        "correlation_id": "fc4eecac-c04b-452f-a298-3a154d3edf0d",
+        "items": [
+          {
+            "algorithm_version": "scene-contours/2",
+            "bounds": {
+              "maximum": {
+                "x": 90.0,
+                "y": 5.0
+              },
+              "minimum": {
+                "x": 70.0,
+                "y": -5.0
+              }
+            },
+            "closed": true,
+            "contour_id": "ctr_5de717ae0613b7f71000ea9a3dd45296e351e91665a9fd52623e8b5576dca405",
+            "evidence_ids": [
+              "evd_41f9265f4677dba9777b7f8ea080af28fd95793f312a06c9dec0738251db7f2e"
+            ],
+            "orientation": "undefined",
+            "schema_version": "cad.scene-contour/1",
+            "signed_area": null,
+            "source_node_ids": [
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3"
+            ]
+          }
+        ],
+        "next_cursor": null,
+        "resource_uri": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/contours",
+        "scene_digest": "sha256:f5ee87606587290037ba0ed0831bf1f62e1ae77a60cf4c76f7e83edd32507fb2",
+        "scene_id": "scn_01de1b752a9a48a493173a0e7c0c09cd",
+        "section": "contours",
+        "total": 1
+      },
+      "evidence": {
+        "contract_version": "cad.mcp/1.6",
+        "correlation_id": "fcc4ef33-bdfb-4458-b9de-e214c4912d60",
+        "items": [
+          {
+            "algorithm_version": "cad.entity-projection/2",
+            "evidence_id": "evd_002aecbb7439b7e1e8d91d66a69c86e28bf91050d6ed9d4b84dedb54332d42ca",
+            "evidence_strength": "exact_source_geometry",
+            "evidence_type": "source_geometry",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "93"
+            ],
+            "source_node_ids": [
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54"
+            ]
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "evidence_id": "evd_1009402cec13803e8132403e2bca8efb82b4a71ec9612b9fd8aff4a233304607",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "connected_endpoint",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "92",
+              "93"
+            ],
+            "source_node_ids": [
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54",
+              "nod_db7d0031682fdc6cecb6dfe4e056bb1a7d888b890bb203d62bc2e6b6e93049f4"
+            ]
+          },
+          {
+            "algorithm_version": "scene-issues/1",
+            "evidence_id": "evd_191f799a5cb23f8b176619f9d3f48ae96cf883a9f9543ef1ac96577820123b4d",
+            "evidence_strength": "bounded_heuristic",
+            "evidence_type": "open_contour",
+            "limitations": [
+              "read_only_report"
+            ],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "93",
+              "94"
+            ],
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54"
+            ]
+          },
+          {
+            "algorithm_version": "scene-features/2",
+            "evidence_id": "evd_3a66bf500b17cff4354a0a47a95b605deb8b02ce16fbef61fe0440b0e551d3d1",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "slot",
+            "limitations": [],
+            "metrics": {
+              "length": 30.0,
+              "width": 10.0
+            },
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "91",
+              "92",
+              "93",
+              "94"
+            ],
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54",
+              "nod_b52154e6cd4620acbf4f80497e64d4b30a8ac792233d00be58b8357334f16949",
+              "nod_db7d0031682fdc6cecb6dfe4e056bb1a7d888b890bb203d62bc2e6b6e93049f4"
+            ]
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "evidence_id": "evd_3fd10dfe19018f8ecc0bd3578762210c8feca21815e35acb6a529eed61ea1002",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "concentric",
+            "limitations": [],
+            "metrics": {
+              "center_delta": 0.0
+            },
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "95",
+              "96"
+            ],
+            "source_node_ids": [
+              "nod_2e06c6fb691633cdca5e69e10aaa2711d353ff12c930d4cd4d1850daac754dc6",
+              "nod_be6d8353458878e34f8d32f59f105ea7d6835f2c11b4b4245f2911f8bee72995"
+            ]
+          },
+          {
+            "algorithm_version": "scene-contours/2",
+            "evidence_id": "evd_41f9265f4677dba9777b7f8ea080af28fd95793f312a06c9dec0738251db7f2e",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "contour",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "98"
+            ],
+            "source_node_ids": [
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3"
+            ]
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "evidence_id": "evd_47368efe0bc771b85c12e67950b95397900be829cdf8a7554510a39f40d93fc4",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "perpendicular",
+            "limitations": [],
+            "metrics": {
+              "angle_delta": 0.0
+            },
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "94",
+              "98"
+            ],
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3"
+            ]
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "evidence_id": "evd_54eeeabad51482bb3c95273b58ac6201224b7c65aacd2259229f668dbefa9d2e",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "aligned",
+            "limitations": [],
+            "metrics": {
+              "offset": 0.0
+            },
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "93",
+              "98"
+            ],
+            "source_node_ids": [
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3",
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54"
+            ]
+          },
+          {
+            "algorithm_version": "scene-features/2",
+            "evidence_id": "evd_55c1e7576ac05a47f65d0ef9a8ebe5b604f104c2aa2aa12ce1741bb5d70a8781",
+            "evidence_strength": "bounded_heuristic",
+            "evidence_type": "part",
+            "limitations": [
+              "part_semantics_not_proven"
+            ],
+            "metrics": {
+              "hole_count": 0.0
+            },
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "98"
+            ],
+            "source_node_ids": [
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3"
+            ]
+          },
+          {
+            "algorithm_version": "cad.entity-projection/2",
+            "evidence_id": "evd_5c3c1881f6811da7150b580a24e278158fe20f336d7c4e0b6f5be9cc9f6ae418",
+            "evidence_strength": "exact_source_geometry",
+            "evidence_type": "source_geometry",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "97"
+            ],
+            "source_node_ids": [
+              "nod_0d266e281c2c9552a58bf0e37520550d12a2ee5c6cc9bf85792116b5eeadbb5f"
+            ]
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "evidence_id": "evd_603c7448a8261faf87e6e86fa0c6c4dc0ea535676e22e8555e14a3cba00cdbf0",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "connected_endpoint",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "91",
+              "93"
+            ],
+            "source_node_ids": [
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54",
+              "nod_b52154e6cd4620acbf4f80497e64d4b30a8ac792233d00be58b8357334f16949"
+            ]
+          },
+          {
+            "algorithm_version": "cad.entity-projection/2",
+            "evidence_id": "evd_75ea920edf8b3dea56a92d0d2f5157afe91d1b435b27e1d3b737af8cf6c5b2a7",
+            "evidence_strength": "exact_source_geometry",
+            "evidence_type": "source_geometry",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "91"
+            ],
+            "source_node_ids": [
+              "nod_b52154e6cd4620acbf4f80497e64d4b30a8ac792233d00be58b8357334f16949"
+            ]
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "evidence_id": "evd_80f49bb0f735f2db289c03c28e74dd90fcf97fc62e5da8b5b26f12959dcac9a0",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "parallel",
+            "limitations": [],
+            "metrics": {
+              "angle_delta": 0.0
+            },
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "93",
+              "98"
+            ],
+            "source_node_ids": [
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3",
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54"
+            ]
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "evidence_id": "evd_81eebca3ecf9e786e6a4a3a29b00861afa4c2c4de14a9573c1f32676cf73b0a4",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "aligned",
+            "limitations": [],
+            "metrics": {
+              "offset": 0.0
+            },
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "94",
+              "98"
+            ],
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3"
+            ]
+          },
+          {
+            "algorithm_version": "cad.entity-projection/2",
+            "evidence_id": "evd_8d88ff9186e5cefef7739605454d6b1ab76483ce17fc2bd6353853c9e95a2ff6",
+            "evidence_strength": "exact_source_geometry",
+            "evidence_type": "source_geometry",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "95"
+            ],
+            "source_node_ids": [
+              "nod_be6d8353458878e34f8d32f59f105ea7d6835f2c11b4b4245f2911f8bee72995"
+            ]
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "evidence_id": "evd_8dc047cc6b6c286e07dab4716e5edcb82fc33db9686e858be5580645e23cef39",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "connected_endpoint",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "91",
+              "94"
+            ],
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_b52154e6cd4620acbf4f80497e64d4b30a8ac792233d00be58b8357334f16949"
+            ]
+          },
+          {
+            "algorithm_version": "scene-features/2",
+            "evidence_id": "evd_908669c0d69d1dd6357a09b87c670000d753fdef14c2bf21405e2c703a1bd5df",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "concentric_group",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "95",
+              "96"
+            ],
+            "source_node_ids": [
+              "nod_2e06c6fb691633cdca5e69e10aaa2711d353ff12c930d4cd4d1850daac754dc6",
+              "nod_be6d8353458878e34f8d32f59f105ea7d6835f2c11b4b4245f2911f8bee72995"
+            ]
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "evidence_id": "evd_924cc49a73863b9b08b64fc47405614fc5aebff293204660ac576f93a262fcb6",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "parallel",
+            "limitations": [],
+            "metrics": {
+              "angle_delta": 0.0
+            },
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "93",
+              "94"
+            ],
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54"
+            ]
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "evidence_id": "evd_9f93f1af5d9f0d5a84f91a167e9831d35dec7363445dc1aafdacd7dfab604a20",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "parallel",
+            "limitations": [],
+            "metrics": {
+              "angle_delta": 0.0
+            },
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "94",
+              "98"
+            ],
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3"
+            ]
+          },
+          {
+            "algorithm_version": "cad.entity-projection/2",
+            "evidence_id": "evd_ab29b657042c55a192a5317138c0b00d1b09f876d85e2e1d3cd00f28c82b1b62",
+            "evidence_strength": "exact_source_geometry",
+            "evidence_type": "source_geometry",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "98"
+            ],
+            "source_node_ids": [
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3"
+            ]
+          },
+          {
+            "algorithm_version": "cad.entity-projection/2",
+            "evidence_id": "evd_bef6b1f9d26087bc3d3b757cb652b37675566d12470de83372893b2e05572ef8",
+            "evidence_strength": "exact_source_geometry",
+            "evidence_type": "source_geometry",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "92"
+            ],
+            "source_node_ids": [
+              "nod_db7d0031682fdc6cecb6dfe4e056bb1a7d888b890bb203d62bc2e6b6e93049f4"
+            ]
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "evidence_id": "evd_c6faa00e7f8f258a28281db40e41649dd0b7a12bc36d85706384404f24966b42",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "perpendicular",
+            "limitations": [],
+            "metrics": {
+              "angle_delta": 0.0
+            },
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "93",
+              "98"
+            ],
+            "source_node_ids": [
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3",
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54"
+            ]
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "evidence_id": "evd_d54be1a6283020f7db674266e0936b404c5583a41916be1cb6ba1f2280d55deb",
+            "evidence_strength": "derived_exact",
+            "evidence_type": "connected_endpoint",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "92",
+              "94"
+            ],
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_db7d0031682fdc6cecb6dfe4e056bb1a7d888b890bb203d62bc2e6b6e93049f4"
+            ]
+          },
+          {
+            "algorithm_version": "cad.entity-projection/2",
+            "evidence_id": "evd_df48d3970f96a3e6dd315a23fc38882f475febd23971dc7c9703acb5dfe4720e",
+            "evidence_strength": "exact_source_geometry",
+            "evidence_type": "source_geometry",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "94"
+            ],
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b"
+            ]
+          },
+          {
+            "algorithm_version": "cad.entity-projection/2",
+            "evidence_id": "evd_eeb3aac3fd4239b44c478bff69fe3b8b012023dfb05900c4f81debc3e7b4c172",
+            "evidence_strength": "exact_source_geometry",
+            "evidence_type": "source_geometry",
+            "limitations": [],
+            "metrics": {},
+            "schema_version": "cad.scene-evidence/1",
+            "source_entity_ids": [
+              "96"
+            ],
+            "source_node_ids": [
+              "nod_2e06c6fb691633cdca5e69e10aaa2711d353ff12c930d4cd4d1850daac754dc6"
+            ]
+          }
+        ],
+        "next_cursor": null,
+        "resource_uri": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/evidence",
+        "scene_digest": "sha256:f5ee87606587290037ba0ed0831bf1f62e1ae77a60cf4c76f7e83edd32507fb2",
+        "scene_id": "scn_01de1b752a9a48a493173a0e7c0c09cd",
+        "section": "evidence",
+        "total": 25
+      },
+      "features": {
+        "contract_version": "cad.mcp/1.6",
+        "correlation_id": "574bd04b-907b-428d-aec9-08d4df99d53b",
+        "items": [
+          {
+            "algorithm_version": "scene-features/2",
+            "confidence": 1.0,
+            "evidence_ids": [
+              "evd_3a66bf500b17cff4354a0a47a95b605deb8b02ce16fbef61fe0440b0e551d3d1"
+            ],
+            "feature_id": "fea_cf6abab5937158fc4c658e7a3f6f4cdf8ddeece8d3408842ee766a3eb4d0f409",
+            "feature_type": "slot",
+            "limitations": [],
+            "schema_version": "cad.scene-feature/1",
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54",
+              "nod_b52154e6cd4620acbf4f80497e64d4b30a8ac792233d00be58b8357334f16949",
+              "nod_db7d0031682fdc6cecb6dfe4e056bb1a7d888b890bb203d62bc2e6b6e93049f4"
+            ],
+            "source_relation_ids": [
+              "rel_064556928b45f66cdb70e0a4275b5276ac9b7869005205f032b6cdab623ba964",
+              "rel_7f5ed2af448724e5499073d6a6c84746355106ada00ff22cde21ec7150f12698",
+              "rel_94f4659ac12fe463f13540dc4ddb5a59bf0f25f9e6803a394543ee742b7418ef",
+              "rel_b22c9ddec24f427b7bb900e5c592a587d7deed05bf5532de9ed9e95de66242ea",
+              "rel_eb6c30fb5adeb2d99ffe5bbc3378ed53788b9ed231950b0e1d9e013d8cd67305"
+            ]
+          },
+          {
+            "algorithm_version": "scene-features/2",
+            "confidence": 0.75,
+            "evidence_ids": [
+              "evd_55c1e7576ac05a47f65d0ef9a8ebe5b604f104c2aa2aa12ce1741bb5d70a8781"
+            ],
+            "feature_id": "fea_568668b4402b32af2d64a12937dcf6ee5f319ab3da1f2d175417fa0394c08e33",
+            "feature_type": "part",
+            "limitations": [
+              "part_semantics_not_proven"
+            ],
+            "schema_version": "cad.scene-feature/1",
+            "source_node_ids": [
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3"
+            ],
+            "source_relation_ids": []
+          },
+          {
+            "algorithm_version": "scene-features/2",
+            "confidence": 1.0,
+            "evidence_ids": [
+              "evd_908669c0d69d1dd6357a09b87c670000d753fdef14c2bf21405e2c703a1bd5df"
+            ],
+            "feature_id": "fea_8677295d031473871693ec36cb053afb37feb4ca7a7ae18f35fd5ad2732f0569",
+            "feature_type": "concentric_group",
+            "limitations": [],
+            "schema_version": "cad.scene-feature/1",
+            "source_node_ids": [
+              "nod_2e06c6fb691633cdca5e69e10aaa2711d353ff12c930d4cd4d1850daac754dc6",
+              "nod_be6d8353458878e34f8d32f59f105ea7d6835f2c11b4b4245f2911f8bee72995"
+            ],
+            "source_relation_ids": [
+              "rel_a6634893b09f6c047074d0febc001918027c0dba7497fceeda8fa1dce417b28c"
+            ]
+          }
+        ],
+        "next_cursor": null,
+        "resource_uri": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/features",
+        "scene_digest": "sha256:f5ee87606587290037ba0ed0831bf1f62e1ae77a60cf4c76f7e83edd32507fb2",
+        "scene_id": "scn_01de1b752a9a48a493173a0e7c0c09cd",
+        "section": "features",
+        "total": 3
+      },
+      "issues": {
+        "contract_version": "cad.mcp/1.6",
+        "correlation_id": "308e731a-53b0-4d64-81f6-5289154cc1bc",
+        "items": [
+          {
+            "code": "open_contour",
+            "confidence": 1.0,
+            "evidence_ids": [
+              "evd_191f799a5cb23f8b176619f9d3f48ae96cf883a9f9543ef1ac96577820123b4d"
+            ],
+            "issue_id": "iss_a3f903a37347130afdaf3a6d829cdbe960993f04d200d6ebf28227ab9800ad01",
+            "message_key": "scene.issue.open_contour",
+            "schema_version": "cad.scene-issue/1",
+            "severity": "warning",
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54"
+            ],
+            "source_relation_ids": [],
+            "suggested_action": "close_or_review_contour",
+            "write_authority": false
+          }
+        ],
+        "next_cursor": null,
+        "resource_uri": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/issues",
+        "scene_digest": "sha256:f5ee87606587290037ba0ed0831bf1f62e1ae77a60cf4c76f7e83edd32507fb2",
+        "scene_id": "scn_01de1b752a9a48a493173a0e7c0c09cd",
+        "section": "issues",
+        "total": 1
+      },
+      "nodes": {
+        "contract_version": "cad.mcp/1.6",
+        "correlation_id": "884eab56-120e-40a4-bcd6-8692e4172571",
+        "items": [
+          {
+            "bounds": {
+              "maximum": {
+                "x": 3.061616997868383e-16,
+                "y": 5.0
+              },
+              "minimum": {
+                "x": -5.0,
+                "y": -5.0
+              }
+            },
+            "entity_type": "ARC",
+            "fingerprint": "sha256:6ac5c7301fa8b710f323f222660ad96b7c3c2bd9aad3955e54a9a8fb59d429ea",
+            "geometry": {
+              "center": {
+                "x": 0.0,
+                "y": 0.0
+              },
+              "end_angle_radians": 4.71238898038469,
+              "kind": "arc",
+              "radius": 5.0,
+              "start_angle_radians": 1.5707963267948966
+            },
+            "geometry_status": "exact",
+            "layer": "layer_8d9348b4f6adb880",
+            "node_id": "nod_b52154e6cd4620acbf4f80497e64d4b30a8ac792233d00be58b8357334f16949",
+            "schema_version": "cad.scene-node/1",
+            "source_capabilities": [
+              "entity.geometry.arc/1"
+            ],
+            "source_entity_id": "91",
+            "source_runtime": "managed_dotnet",
+            "space": "model"
+          },
+          {
+            "bounds": {
+              "maximum": {
+                "x": 25.0,
+                "y": 5.0
+              },
+              "minimum": {
+                "x": 20.0,
+                "y": -5.0
+              }
+            },
+            "entity_type": "ARC",
+            "fingerprint": "sha256:144c39f55dcb946a9d9c8b35d18514ea801f1aa6e0a7cada7507246cbd2b7fa3",
+            "geometry": {
+              "center": {
+                "x": 20.0,
+                "y": 0.0
+              },
+              "end_angle_radians": 1.5707963267948966,
+              "kind": "arc",
+              "radius": 5.0,
+              "start_angle_radians": 4.71238898038469
+            },
+            "geometry_status": "exact",
+            "layer": "layer_8d9348b4f6adb880",
+            "node_id": "nod_db7d0031682fdc6cecb6dfe4e056bb1a7d888b890bb203d62bc2e6b6e93049f4",
+            "schema_version": "cad.scene-node/1",
+            "source_capabilities": [
+              "entity.geometry.arc/1"
+            ],
+            "source_entity_id": "92",
+            "source_runtime": "managed_dotnet",
+            "space": "model"
+          },
+          {
+            "bounds": {
+              "maximum": {
+                "x": 20.0,
+                "y": 5.0
+              },
+              "minimum": {
+                "x": 0.0,
+                "y": 5.0
+              }
+            },
+            "entity_type": "LINE",
+            "fingerprint": "sha256:c31db662a8596f06b2858ac56f4d6e0ac16f2dabf21cc4c7c411131f2d023729",
+            "geometry": {
+              "end": {
+                "x": 20.0,
+                "y": 5.0
+              },
+              "kind": "line",
+              "start": {
+                "x": 0.0,
+                "y": 5.0
+              }
+            },
+            "geometry_status": "exact",
+            "layer": "layer_8d9348b4f6adb880",
+            "node_id": "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54",
+            "schema_version": "cad.scene-node/1",
+            "source_capabilities": [
+              "entity.geometry.line/1"
+            ],
+            "source_entity_id": "93",
+            "source_runtime": "managed_dotnet",
+            "space": "model"
+          },
+          {
+            "bounds": {
+              "maximum": {
+                "x": 20.0,
+                "y": -5.0
+              },
+              "minimum": {
+                "x": 0.0,
+                "y": -5.0
+              }
+            },
+            "entity_type": "LINE",
+            "fingerprint": "sha256:4d25dab6bc6c534962f1ec719420da5b9adc193777d203239b49e0c13f99a64d",
+            "geometry": {
+              "end": {
+                "x": 20.0,
+                "y": -5.0
+              },
+              "kind": "line",
+              "start": {
+                "x": 0.0,
+                "y": -5.0
+              }
+            },
+            "geometry_status": "exact",
+            "layer": "layer_8d9348b4f6adb880",
+            "node_id": "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+            "schema_version": "cad.scene-node/1",
+            "source_capabilities": [
+              "entity.geometry.line/1"
+            ],
+            "source_entity_id": "94",
+            "source_runtime": "managed_dotnet",
+            "space": "model"
+          },
+          {
+            "bounds": {
+              "maximum": {
+                "x": 53.0,
+                "y": 3.0
+              },
+              "minimum": {
+                "x": 47.0,
+                "y": -3.0
+              }
+            },
+            "entity_type": "CIRCLE",
+            "fingerprint": "sha256:06bab532cfe1e1acbcfc13f602dd1b4b1bcee4dcaae6d15c17cd98b4212cc9fc",
+            "geometry": {
+              "center": {
+                "x": 50.0,
+                "y": 0.0
+              },
+              "kind": "circle",
+              "radius": 3.0
+            },
+            "geometry_status": "exact",
+            "layer": "layer_d88dd8363c93124a",
+            "node_id": "nod_be6d8353458878e34f8d32f59f105ea7d6835f2c11b4b4245f2911f8bee72995",
+            "schema_version": "cad.scene-node/1",
+            "source_capabilities": [
+              "entity.geometry.circle/1"
+            ],
+            "source_entity_id": "95",
+            "source_runtime": "managed_dotnet",
+            "space": "model"
+          },
+          {
+            "bounds": {
+              "maximum": {
+                "x": 56.0,
+                "y": 6.0
+              },
+              "minimum": {
+                "x": 44.0,
+                "y": -6.0
+              }
+            },
+            "entity_type": "CIRCLE",
+            "fingerprint": "sha256:a9faea202dbdc7d039d3e76671bc031c62a030eb0319c8bec7041138d3db9eee",
+            "geometry": {
+              "center": {
+                "x": 50.0,
+                "y": 0.0
+              },
+              "kind": "circle",
+              "radius": 6.0
+            },
+            "geometry_status": "exact",
+            "layer": "layer_d88dd8363c93124a",
+            "node_id": "nod_2e06c6fb691633cdca5e69e10aaa2711d353ff12c930d4cd4d1850daac754dc6",
+            "schema_version": "cad.scene-node/1",
+            "source_capabilities": [
+              "entity.geometry.circle/1"
+            ],
+            "source_entity_id": "96",
+            "source_runtime": "managed_dotnet",
+            "space": "model"
+          },
+          {
+            "bounds": {
+              "maximum": {
+                "x": 59.1,
+                "y": 9.0
+              },
+              "minimum": {
+                "x": 41.1,
+                "y": -9.0
+              }
+            },
+            "entity_type": "CIRCLE",
+            "fingerprint": "sha256:8653a161a8d9f3fa9c73bcbdcf79cf50d17330395c7fa716e016c5749e95fde5",
+            "geometry": {
+              "center": {
+                "x": 50.1,
+                "y": 0.0
+              },
+              "kind": "circle",
+              "radius": 9.0
+            },
+            "geometry_status": "exact",
+            "layer": "layer_ae679b833e58538e",
+            "node_id": "nod_0d266e281c2c9552a58bf0e37520550d12a2ee5c6cc9bf85792116b5eeadbb5f",
+            "schema_version": "cad.scene-node/1",
+            "source_capabilities": [
+              "entity.geometry.circle/1"
+            ],
+            "source_entity_id": "97",
+            "source_runtime": "managed_dotnet",
+            "space": "model"
+          },
+          {
+            "bounds": {
+              "maximum": {
+                "x": 90.0,
+                "y": 5.0
+              },
+              "minimum": {
+                "x": 70.0,
+                "y": -5.0
+              }
+            },
+            "entity_type": "LWPOLYLINE",
+            "fingerprint": "sha256:5ba308715d031125082670f2455bcaaab011ce7884d45cec611c9214e9746f0f",
+            "geometry": {
+              "bulges": [
+                0.0,
+                0.0,
+                0.0,
+                0.0
+              ],
+              "closed": true,
+              "elevation": 0.0,
+              "kind": "polyline",
+              "vertices": [
+                {
+                  "x": 70.0,
+                  "y": -5.0
+                },
+                {
+                  "x": 90.0,
+                  "y": -5.0
+                },
+                {
+                  "x": 90.0,
+                  "y": 5.0
+                },
+                {
+                  "x": 70.0,
+                  "y": 5.0
+                }
+              ]
+            },
+            "geometry_status": "exact",
+            "layer": "layer_ae679b833e58538e",
+            "node_id": "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3",
+            "schema_version": "cad.scene-node/1",
+            "source_capabilities": [
+              "entity.geometry.polyline/1"
+            ],
+            "source_entity_id": "98",
+            "source_runtime": "managed_dotnet",
+            "space": "model"
+          }
+        ],
+        "next_cursor": null,
+        "resource_uri": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/nodes",
+        "scene_digest": "sha256:f5ee87606587290037ba0ed0831bf1f62e1ae77a60cf4c76f7e83edd32507fb2",
+        "scene_id": "scn_01de1b752a9a48a493173a0e7c0c09cd",
+        "section": "nodes",
+        "total": 8
+      },
+      "relations": {
+        "contract_version": "cad.mcp/1.6",
+        "correlation_id": "cc7b5045-6283-4158-a9f8-5f5da2206868",
+        "items": [
+          {
+            "algorithm_version": "scene-relations/2",
+            "confidence": 1.0,
+            "directionality": "symmetric",
+            "evidence_ids": [
+              "evd_1009402cec13803e8132403e2bca8efb82b4a71ec9612b9fd8aff4a233304607"
+            ],
+            "evidence_strength": "derived_exact",
+            "metrics": {},
+            "relation_id": "rel_064556928b45f66cdb70e0a4275b5276ac9b7869005205f032b6cdab623ba964",
+            "relation_type": "connected_endpoint",
+            "schema_version": "cad.scene-relation/1",
+            "source_node_ids": [
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54",
+              "nod_db7d0031682fdc6cecb6dfe4e056bb1a7d888b890bb203d62bc2e6b6e93049f4"
+            ],
+            "tolerance_used": 1e-06
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "confidence": 1.0,
+            "directionality": "symmetric",
+            "evidence_ids": [
+              "evd_81eebca3ecf9e786e6a4a3a29b00861afa4c2c4de14a9573c1f32676cf73b0a4"
+            ],
+            "evidence_strength": "derived_exact",
+            "metrics": {
+              "offset": 0.0
+            },
+            "relation_id": "rel_18cc393d6a9f20ef5a9a46c3dd42db5b0831192c7d68d99e62aaf58178713ca0",
+            "relation_type": "aligned",
+            "schema_version": "cad.scene-relation/1",
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3"
+            ],
+            "tolerance_used": 1e-06
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "confidence": 1.0,
+            "directionality": "symmetric",
+            "evidence_ids": [
+              "evd_47368efe0bc771b85c12e67950b95397900be829cdf8a7554510a39f40d93fc4"
+            ],
+            "evidence_strength": "derived_exact",
+            "metrics": {
+              "angle_delta": 0.0
+            },
+            "relation_id": "rel_3ebc912e95ea87c37def2c4e05b252f07adb30ee933bcc98a9c8616d08bec046",
+            "relation_type": "perpendicular",
+            "schema_version": "cad.scene-relation/1",
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3"
+            ],
+            "tolerance_used": 1e-06
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "confidence": 1.0,
+            "directionality": "symmetric",
+            "evidence_ids": [
+              "evd_80f49bb0f735f2db289c03c28e74dd90fcf97fc62e5da8b5b26f12959dcac9a0"
+            ],
+            "evidence_strength": "derived_exact",
+            "metrics": {
+              "angle_delta": 0.0
+            },
+            "relation_id": "rel_46fe3f136306378521c46e85e608791e7e2a453d3e81c4a6d6e101ee12f9cda8",
+            "relation_type": "parallel",
+            "schema_version": "cad.scene-relation/1",
+            "source_node_ids": [
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3",
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54"
+            ],
+            "tolerance_used": 1e-06
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "confidence": 1.0,
+            "directionality": "symmetric",
+            "evidence_ids": [
+              "evd_c6faa00e7f8f258a28281db40e41649dd0b7a12bc36d85706384404f24966b42"
+            ],
+            "evidence_strength": "derived_exact",
+            "metrics": {
+              "angle_delta": 0.0
+            },
+            "relation_id": "rel_7229c234826feb3a5af979c98a406250f04f06bc8dcee03f3098bfcee46c1a3f",
+            "relation_type": "perpendicular",
+            "schema_version": "cad.scene-relation/1",
+            "source_node_ids": [
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3",
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54"
+            ],
+            "tolerance_used": 1e-06
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "confidence": 1.0,
+            "directionality": "symmetric",
+            "evidence_ids": [
+              "evd_d54be1a6283020f7db674266e0936b404c5583a41916be1cb6ba1f2280d55deb"
+            ],
+            "evidence_strength": "derived_exact",
+            "metrics": {},
+            "relation_id": "rel_7f5ed2af448724e5499073d6a6c84746355106ada00ff22cde21ec7150f12698",
+            "relation_type": "connected_endpoint",
+            "schema_version": "cad.scene-relation/1",
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_db7d0031682fdc6cecb6dfe4e056bb1a7d888b890bb203d62bc2e6b6e93049f4"
+            ],
+            "tolerance_used": 1e-06
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "confidence": 1.0,
+            "directionality": "symmetric",
+            "evidence_ids": [
+              "evd_9f93f1af5d9f0d5a84f91a167e9831d35dec7363445dc1aafdacd7dfab604a20"
+            ],
+            "evidence_strength": "derived_exact",
+            "metrics": {
+              "angle_delta": 0.0
+            },
+            "relation_id": "rel_88ca150ba8949c7ab4cfb268af429afaf37ad8730642988295a1994c4f40b867",
+            "relation_type": "parallel",
+            "schema_version": "cad.scene-relation/1",
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3"
+            ],
+            "tolerance_used": 1e-06
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "confidence": 1.0,
+            "directionality": "symmetric",
+            "evidence_ids": [
+              "evd_603c7448a8261faf87e6e86fa0c6c4dc0ea535676e22e8555e14a3cba00cdbf0"
+            ],
+            "evidence_strength": "derived_exact",
+            "metrics": {},
+            "relation_id": "rel_94f4659ac12fe463f13540dc4ddb5a59bf0f25f9e6803a394543ee742b7418ef",
+            "relation_type": "connected_endpoint",
+            "schema_version": "cad.scene-relation/1",
+            "source_node_ids": [
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54",
+              "nod_b52154e6cd4620acbf4f80497e64d4b30a8ac792233d00be58b8357334f16949"
+            ],
+            "tolerance_used": 1e-06
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "confidence": 1.0,
+            "directionality": "symmetric",
+            "evidence_ids": [
+              "evd_3fd10dfe19018f8ecc0bd3578762210c8feca21815e35acb6a529eed61ea1002"
+            ],
+            "evidence_strength": "derived_exact",
+            "metrics": {
+              "center_delta": 0.0
+            },
+            "relation_id": "rel_a6634893b09f6c047074d0febc001918027c0dba7497fceeda8fa1dce417b28c",
+            "relation_type": "concentric",
+            "schema_version": "cad.scene-relation/1",
+            "source_node_ids": [
+              "nod_2e06c6fb691633cdca5e69e10aaa2711d353ff12c930d4cd4d1850daac754dc6",
+              "nod_be6d8353458878e34f8d32f59f105ea7d6835f2c11b4b4245f2911f8bee72995"
+            ],
+            "tolerance_used": 1e-06
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "confidence": 1.0,
+            "directionality": "symmetric",
+            "evidence_ids": [
+              "evd_924cc49a73863b9b08b64fc47405614fc5aebff293204660ac576f93a262fcb6"
+            ],
+            "evidence_strength": "derived_exact",
+            "metrics": {
+              "angle_delta": 0.0
+            },
+            "relation_id": "rel_b22c9ddec24f427b7bb900e5c592a587d7deed05bf5532de9ed9e95de66242ea",
+            "relation_type": "parallel",
+            "schema_version": "cad.scene-relation/1",
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54"
+            ],
+            "tolerance_used": 1e-06
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "confidence": 1.0,
+            "directionality": "symmetric",
+            "evidence_ids": [
+              "evd_54eeeabad51482bb3c95273b58ac6201224b7c65aacd2259229f668dbefa9d2e"
+            ],
+            "evidence_strength": "derived_exact",
+            "metrics": {
+              "offset": 0.0
+            },
+            "relation_id": "rel_c7e15db8ba42d2be72750c14b9c86c65fcf787d05cc18551a4fad24db04ebbd8",
+            "relation_type": "aligned",
+            "schema_version": "cad.scene-relation/1",
+            "source_node_ids": [
+              "nod_6bb9feed4cd95207a9d8d8026dcdc803fe86ebeca0d7c426f750e93e5fdf15a3",
+              "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54"
+            ],
+            "tolerance_used": 1e-06
+          },
+          {
+            "algorithm_version": "scene-relations/2",
+            "confidence": 1.0,
+            "directionality": "symmetric",
+            "evidence_ids": [
+              "evd_8dc047cc6b6c286e07dab4716e5edcb82fc33db9686e858be5580645e23cef39"
+            ],
+            "evidence_strength": "derived_exact",
+            "metrics": {},
+            "relation_id": "rel_eb6c30fb5adeb2d99ffe5bbc3378ed53788b9ed231950b0e1d9e013d8cd67305",
+            "relation_type": "connected_endpoint",
+            "schema_version": "cad.scene-relation/1",
+            "source_node_ids": [
+              "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+              "nod_b52154e6cd4620acbf4f80497e64d4b30a8ac792233d00be58b8357334f16949"
+            ],
+            "tolerance_used": 1e-06
+          }
+        ],
+        "next_cursor": null,
+        "resource_uri": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/relations",
+        "scene_digest": "sha256:f5ee87606587290037ba0ed0831bf1f62e1ae77a60cf4c76f7e83edd32507fb2",
+        "scene_id": "scn_01de1b752a9a48a493173a0e7c0c09cd",
+        "section": "relations",
+        "total": 12
+      }
+    },
+    "source_capabilities": [
+      "entity.geometry.arc/1",
+      "entity.geometry.circle/1",
+      "entity.geometry.line/1",
+      "entity.geometry.polyline/1"
+    ],
+    "source_digest": "sha256:6c912483fd8c8e4751196a3f9f35055d0e5bb6d46523a3155c0a69add380aa26",
+    "source_snapshot_available": true,
+    "source_snapshot_id": "snapshot-command-3cd97e6c-92bf-4b1a-9c15-dde422e8e243",
+    "space": "model",
+    "summary_resource": {
+      "capabilities": [
+        "entity.geometry.arc/1",
+        "entity.geometry.circle/1",
+        "entity.geometry.line/1",
+        "entity.geometry.polyline/1",
+        "scene.contours.simple2d/1",
+        "scene.core/1",
+        "scene.features.mechanical2d/1",
+        "scene.issues.cleanup-audit/1",
+        "scene.relations.core2d/1"
+      ],
+      "complete": true,
+      "counts": {
+        "contours": 1,
+        "evidence": 25,
+        "features": 3,
+        "issues": 1,
+        "nodes": 8,
+        "omitted": 0,
+        "relations": 12
+      },
+      "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+      "document_id": "doc-4c9e80cc2d0101584c4d4d19",
+      "document_revision": "7542304900287789",
+      "engine_version": "scene-engine/1.0.1",
+      "profile_id": "mechanical-2d/1",
+      "projection_version": "cad.entity-projection/2",
+      "resource_uris": {
+        "contours": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/contours",
+        "evidence": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/evidence",
+        "features": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/features",
+        "issues": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/issues",
+        "nodes": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/nodes",
+        "relations": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/relations",
+        "summary": "cad://scenes/scn_01de1b752a9a48a493173a0e7c0c09cd/summary"
+      },
+      "scene_digest": "sha256:f5ee87606587290037ba0ed0831bf1f62e1ae77a60cf4c76f7e83edd32507fb2",
+      "scene_id": "scn_01de1b752a9a48a493173a0e7c0c09cd",
+      "schema_version": "cad.scene/1",
+      "source_digest": "sha256:6c912483fd8c8e4751196a3f9f35055d0e5bb6d46523a3155c0a69add380aa26",
+      "source_snapshot_available": true,
+      "source_snapshot_id": "snapshot-command-3cd97e6c-92bf-4b1a-9c15-dde422e8e243",
+      "space": "model",
+      "tolerance_profile": {
+        "absolute_floor": 1e-06,
+        "angular_radians": 1e-06,
+        "drawing_unit": "unitless",
+        "duplicate": 1e-06,
+        "endpoint": 1e-06,
+        "maximum_cap": 0.01,
+        "profile_id": "mechanical-2d/1",
+        "radius": 1e-06,
+        "relative_to_extents": 1e-09
+      },
+      "truncation_reasons": [],
+      "warnings": []
+    },
+    "tolerance_profile": {
+      "absolute_floor": 1e-06,
+      "angular_radians": 1e-06,
+      "drawing_unit": "unitless",
+      "duplicate": 1e-06,
+      "endpoint": 1e-06,
+      "maximum_cap": 0.01,
+      "profile_id": "mechanical-2d/1",
+      "radius": 1e-06,
+      "relative_to_extents": 1e-09
+    },
+    "truncation_reasons": [],
+    "warnings": []
+  },
+  "schema_version": "cad.phase10-live-public-fixture/1",
+  "source": {
+    "document_revision_after": "7542304900287789",
+    "document_revision_before": "7542304900287789",
+    "entity_count_after": 8,
+    "entity_count_before": 8,
+    "observation_after": {
+      "job": {
+        "agent_version": "0.1.0",
+        "command_id": "command-64c5a929-f95e-48f2-8c75-48e2139da81a",
+        "contract_version": "cad.mcp/1.2",
+        "correlation_id": "69dbc1c4-e828-4be8-8cf5-e42f3bfeb629",
+        "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+        "error_code": null,
+        "error_summary": null,
+        "events": [
+          {
+            "created_at": "2026-07-30T07:29:12.256978+00:00",
+            "error_code": null,
+            "event_type": "state",
+            "progress": null,
+            "result": null,
+            "sequence": 1,
+            "state": "queued"
+          },
+          {
+            "created_at": "2026-07-30T07:29:12.265467+00:00",
+            "error_code": null,
+            "event_type": "state",
+            "progress": null,
+            "result": null,
+            "sequence": 2,
+            "state": "dispatched"
+          },
+          {
+            "created_at": "2026-07-30T07:29:12.373022+00:00",
+            "error_code": null,
+            "event_type": "state",
+            "progress": null,
+            "result": null,
+            "sequence": 3,
+            "state": "acknowledged"
+          },
+          {
+            "created_at": "2026-07-30T07:29:13.847633+00:00",
+            "error_code": null,
+            "event_type": "state",
+            "progress": null,
+            "result": {
+              "execution_evidence": {
+                "agent_version": "0.1.0",
+                "degradation_reason": null,
+                "degraded": false,
+                "package": {
+                  "package_id": "autocad.lisp.drawing_info",
+                  "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+                  "version": "3.3-c1"
+                },
+                "runtime": {
+                  "framework": ".NET 8",
+                  "host_family": "R25",
+                  "host_version": "0.8.0",
+                  "id": "managed_dotnet",
+                  "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+                  "package_id": "autocad.managed_host.r25",
+                  "package_version": "0.8.0",
+                  "role": "primary"
+                },
+                "runtime_state": "online_idle"
+              },
+              "snapshot": {
+                "document_revision": "7542304900287789",
+                "drawing": {
+                  "database_fingerprint": "{5A41D710-99A2-40C0-8908-42BC97830727}",
+                  "document_id": "doc-4c9e80cc2d0101584c4d4d19",
+                  "document_name": "phase10-drawing-b.dwg",
+                  "entity_count": 8,
+                  "layer_count": 9,
+                  "layers": [
+                    "0",
+                    "ANOMALIES",
+                    "Defpoints",
+                    "FEATURES",
+                    "HOLES",
+                    "PART",
+                    "REFERENCE",
+                    "SLOTS",
+                    "VALID"
+                  ],
+                  "truncated": false
+                },
+                "entities": [
+                  {
+                    "bounds": {
+                      "max": [
+                        0,
+                        5,
+                        0
+                      ],
+                      "min": [
+                        -5,
+                        -5,
+                        0
+                      ]
+                    },
+                    "entity_id": "91",
+                    "entity_type": "ARC",
+                    "fingerprint": "sha256:6ac5c7301fa8b710f323f222660ad96b7c3c2bd9aad3955e54a9a8fb59d429ea",
+                    "geometry": {
+                      "center": [
+                        0,
+                        0
+                      ],
+                      "elevation": 0,
+                      "end_angle_radians": 4.71238898038469,
+                      "normal": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "radius": 5,
+                      "start_angle_radians": 1.5707963267948966
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "SLOTS",
+                    "source_capabilities": [
+                      "entity.geometry.arc/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        25,
+                        5,
+                        0
+                      ],
+                      "min": [
+                        20,
+                        -5,
+                        0
+                      ]
+                    },
+                    "entity_id": "92",
+                    "entity_type": "ARC",
+                    "fingerprint": "sha256:144c39f55dcb946a9d9c8b35d18514ea801f1aa6e0a7cada7507246cbd2b7fa3",
+                    "geometry": {
+                      "center": [
+                        20,
+                        0
+                      ],
+                      "elevation": 0,
+                      "end_angle_radians": 1.5707963267948966,
+                      "normal": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "radius": 5,
+                      "start_angle_radians": 4.71238898038469
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "SLOTS",
+                    "source_capabilities": [
+                      "entity.geometry.arc/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        20,
+                        5,
+                        0
+                      ],
+                      "min": [
+                        0,
+                        5,
+                        0
+                      ]
+                    },
+                    "entity_id": "93",
+                    "entity_type": "LINE",
+                    "fingerprint": "sha256:c31db662a8596f06b2858ac56f4d6e0ac16f2dabf21cc4c7c411131f2d023729",
+                    "geometry": {
+                      "end": [
+                        20,
+                        5
+                      ],
+                      "end_elevation": 0,
+                      "start": [
+                        0,
+                        5
+                      ],
+                      "start_elevation": 0
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "SLOTS",
+                    "source_capabilities": [
+                      "entity.geometry.line/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        20,
+                        -5,
+                        0
+                      ],
+                      "min": [
+                        0,
+                        -5,
+                        0
+                      ]
+                    },
+                    "entity_id": "94",
+                    "entity_type": "LINE",
+                    "fingerprint": "sha256:4d25dab6bc6c534962f1ec719420da5b9adc193777d203239b49e0c13f99a64d",
+                    "geometry": {
+                      "end": [
+                        20,
+                        -5
+                      ],
+                      "end_elevation": 0,
+                      "start": [
+                        0,
+                        -5
+                      ],
+                      "start_elevation": 0
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "SLOTS",
+                    "source_capabilities": [
+                      "entity.geometry.line/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        53,
+                        3,
+                        0
+                      ],
+                      "min": [
+                        47,
+                        -3,
+                        0
+                      ]
+                    },
+                    "entity_id": "95",
+                    "entity_type": "CIRCLE",
+                    "fingerprint": "sha256:06bab532cfe1e1acbcfc13f602dd1b4b1bcee4dcaae6d15c17cd98b4212cc9fc",
+                    "geometry": {
+                      "center": [
+                        50,
+                        0
+                      ],
+                      "elevation": 0,
+                      "normal": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "radius": 3
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "FEATURES",
+                    "source_capabilities": [
+                      "entity.geometry.circle/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        56,
+                        6,
+                        0
+                      ],
+                      "min": [
+                        44,
+                        -6,
+                        0
+                      ]
+                    },
+                    "entity_id": "96",
+                    "entity_type": "CIRCLE",
+                    "fingerprint": "sha256:a9faea202dbdc7d039d3e76671bc031c62a030eb0319c8bec7041138d3db9eee",
+                    "geometry": {
+                      "center": [
+                        50,
+                        0
+                      ],
+                      "elevation": 0,
+                      "normal": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "radius": 6
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "FEATURES",
+                    "source_capabilities": [
+                      "entity.geometry.circle/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        59.1,
+                        9,
+                        0
+                      ],
+                      "min": [
+                        41.1,
+                        -9,
+                        0
+                      ]
+                    },
+                    "entity_id": "97",
+                    "entity_type": "CIRCLE",
+                    "fingerprint": "sha256:8653a161a8d9f3fa9c73bcbdcf79cf50d17330395c7fa716e016c5749e95fde5",
+                    "geometry": {
+                      "center": [
+                        50.1,
+                        0
+                      ],
+                      "elevation": 0,
+                      "normal": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "radius": 9
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "REFERENCE",
+                    "source_capabilities": [
+                      "entity.geometry.circle/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        94.75,
+                        5,
+                        0
+                      ],
+                      "min": [
+                        65.25,
+                        -5,
+                        0
+                      ]
+                    },
+                    "entity_id": "98",
+                    "entity_type": "LWPOLYLINE",
+                    "fingerprint": "sha256:5ba308715d031125082670f2455bcaaab011ce7884d45cec611c9214e9746f0f",
+                    "geometry": {
+                      "bulges": [
+                        0,
+                        0.95,
+                        0,
+                        0.95
+                      ],
+                      "closed": true,
+                      "elevation": 0,
+                      "normal": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "points": [
+                        [
+                          70,
+                          -5
+                        ],
+                        [
+                          90,
+                          -5
+                        ],
+                        [
+                          90,
+                          5
+                        ],
+                        [
+                          70,
+                          5
+                        ]
+                      ]
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "REFERENCE",
+                    "source_capabilities": [
+                      "entity.geometry.polyline/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  }
+                ],
+                "entity_summary": {
+                  "detail_available": true,
+                  "entity_count": 8,
+                  "truncated": false
+                },
+                "observation_level": "detail",
+                "revision_evidence": {
+                  "commit_safe": true,
+                  "revision_schema": "cad.revision/1",
+                  "revision_strength": "database_object_fingerprint"
+                },
+                "snapshot_id": "snapshot-command-64c5a929-f95e-48f2-8c75-48e2139da81a"
+              }
+            },
+            "sequence": 4,
+            "state": "succeeded"
+          }
+        ],
+        "job_id": "job-48b36740-1216-447c-8e7c-059c2bfc9623",
+        "kind": "observe",
+        "next_event_cursor": null,
+        "package": {
+          "package_id": "autocad.lisp.drawing_info",
+          "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+          "version": "3.3-c1"
+        },
+        "progress": null,
+        "result": {
+          "execution_evidence": {
+            "agent_version": "0.1.0",
+            "degradation_reason": null,
+            "degraded": false,
+            "package": {
+              "package_id": "autocad.lisp.drawing_info",
+              "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+              "version": "3.3-c1"
+            },
+            "runtime": {
+              "framework": ".NET 8",
+              "host_family": "R25",
+              "host_version": "0.8.0",
+              "id": "managed_dotnet",
+              "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+              "package_id": "autocad.managed_host.r25",
+              "package_version": "0.8.0",
+              "role": "primary"
+            },
+            "runtime_state": "online_idle"
+          },
+          "snapshot": {
+            "document_revision": "7542304900287789",
+            "drawing": {
+              "database_fingerprint": "{5A41D710-99A2-40C0-8908-42BC97830727}",
+              "document_id": "doc-4c9e80cc2d0101584c4d4d19",
+              "document_name": "phase10-drawing-b.dwg",
+              "entity_count": 8,
+              "layer_count": 9,
+              "layers": [
+                "0",
+                "ANOMALIES",
+                "Defpoints",
+                "FEATURES",
+                "HOLES",
+                "PART",
+                "REFERENCE",
+                "SLOTS",
+                "VALID"
+              ],
+              "truncated": false
+            },
+            "entities": [
+              {
+                "bounds": {
+                  "max": [
+                    0,
+                    5,
+                    0
+                  ],
+                  "min": [
+                    -5,
+                    -5,
+                    0
+                  ]
+                },
+                "entity_id": "91",
+                "entity_type": "ARC",
+                "fingerprint": "sha256:6ac5c7301fa8b710f323f222660ad96b7c3c2bd9aad3955e54a9a8fb59d429ea",
+                "geometry": {
+                  "center": [
+                    0,
+                    0
+                  ],
+                  "elevation": 0,
+                  "end_angle_radians": 4.71238898038469,
+                  "normal": [
+                    0,
+                    0,
+                    1
+                  ],
+                  "radius": 5,
+                  "start_angle_radians": 1.5707963267948966
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "SLOTS",
+                "source_capabilities": [
+                  "entity.geometry.arc/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    25,
+                    5,
+                    0
+                  ],
+                  "min": [
+                    20,
+                    -5,
+                    0
+                  ]
+                },
+                "entity_id": "92",
+                "entity_type": "ARC",
+                "fingerprint": "sha256:144c39f55dcb946a9d9c8b35d18514ea801f1aa6e0a7cada7507246cbd2b7fa3",
+                "geometry": {
+                  "center": [
+                    20,
+                    0
+                  ],
+                  "elevation": 0,
+                  "end_angle_radians": 1.5707963267948966,
+                  "normal": [
+                    0,
+                    0,
+                    1
+                  ],
+                  "radius": 5,
+                  "start_angle_radians": 4.71238898038469
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "SLOTS",
+                "source_capabilities": [
+                  "entity.geometry.arc/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    20,
+                    5,
+                    0
+                  ],
+                  "min": [
+                    0,
+                    5,
+                    0
+                  ]
+                },
+                "entity_id": "93",
+                "entity_type": "LINE",
+                "fingerprint": "sha256:c31db662a8596f06b2858ac56f4d6e0ac16f2dabf21cc4c7c411131f2d023729",
+                "geometry": {
+                  "end": [
+                    20,
+                    5
+                  ],
+                  "end_elevation": 0,
+                  "start": [
+                    0,
+                    5
+                  ],
+                  "start_elevation": 0
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "SLOTS",
+                "source_capabilities": [
+                  "entity.geometry.line/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    20,
+                    -5,
+                    0
+                  ],
+                  "min": [
+                    0,
+                    -5,
+                    0
+                  ]
+                },
+                "entity_id": "94",
+                "entity_type": "LINE",
+                "fingerprint": "sha256:4d25dab6bc6c534962f1ec719420da5b9adc193777d203239b49e0c13f99a64d",
+                "geometry": {
+                  "end": [
+                    20,
+                    -5
+                  ],
+                  "end_elevation": 0,
+                  "start": [
+                    0,
+                    -5
+                  ],
+                  "start_elevation": 0
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "SLOTS",
+                "source_capabilities": [
+                  "entity.geometry.line/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    53,
+                    3,
+                    0
+                  ],
+                  "min": [
+                    47,
+                    -3,
+                    0
+                  ]
+                },
+                "entity_id": "95",
+                "entity_type": "CIRCLE",
+                "fingerprint": "sha256:06bab532cfe1e1acbcfc13f602dd1b4b1bcee4dcaae6d15c17cd98b4212cc9fc",
+                "geometry": {
+                  "center": [
+                    50,
+                    0
+                  ],
+                  "elevation": 0,
+                  "normal": [
+                    0,
+                    0,
+                    1
+                  ],
+                  "radius": 3
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "FEATURES",
+                "source_capabilities": [
+                  "entity.geometry.circle/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    56,
+                    6,
+                    0
+                  ],
+                  "min": [
+                    44,
+                    -6,
+                    0
+                  ]
+                },
+                "entity_id": "96",
+                "entity_type": "CIRCLE",
+                "fingerprint": "sha256:a9faea202dbdc7d039d3e76671bc031c62a030eb0319c8bec7041138d3db9eee",
+                "geometry": {
+                  "center": [
+                    50,
+                    0
+                  ],
+                  "elevation": 0,
+                  "normal": [
+                    0,
+                    0,
+                    1
+                  ],
+                  "radius": 6
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "FEATURES",
+                "source_capabilities": [
+                  "entity.geometry.circle/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    59.1,
+                    9,
+                    0
+                  ],
+                  "min": [
+                    41.1,
+                    -9,
+                    0
+                  ]
+                },
+                "entity_id": "97",
+                "entity_type": "CIRCLE",
+                "fingerprint": "sha256:8653a161a8d9f3fa9c73bcbdcf79cf50d17330395c7fa716e016c5749e95fde5",
+                "geometry": {
+                  "center": [
+                    50.1,
+                    0
+                  ],
+                  "elevation": 0,
+                  "normal": [
+                    0,
+                    0,
+                    1
+                  ],
+                  "radius": 9
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "REFERENCE",
+                "source_capabilities": [
+                  "entity.geometry.circle/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    94.75,
+                    5,
+                    0
+                  ],
+                  "min": [
+                    65.25,
+                    -5,
+                    0
+                  ]
+                },
+                "entity_id": "98",
+                "entity_type": "LWPOLYLINE",
+                "fingerprint": "sha256:5ba308715d031125082670f2455bcaaab011ce7884d45cec611c9214e9746f0f",
+                "geometry": {
+                  "bulges": [
+                    0,
+                    0.95,
+                    0,
+                    0.95
+                  ],
+                  "closed": true,
+                  "elevation": 0,
+                  "normal": [
+                    0,
+                    0,
+                    1
+                  ],
+                  "points": [
+                    [
+                      70,
+                      -5
+                    ],
+                    [
+                      90,
+                      -5
+                    ],
+                    [
+                      90,
+                      5
+                    ],
+                    [
+                      70,
+                      5
+                    ]
+                  ]
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "REFERENCE",
+                "source_capabilities": [
+                  "entity.geometry.polyline/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              }
+            ],
+            "entity_summary": {
+              "detail_available": true,
+              "entity_count": 8,
+              "truncated": false
+            },
+            "observation_level": "detail",
+            "revision_evidence": {
+              "commit_safe": true,
+              "revision_schema": "cad.revision/1",
+              "revision_strength": "database_object_fingerprint"
+            },
+            "snapshot_id": "snapshot-command-64c5a929-f95e-48f2-8c75-48e2139da81a"
+          }
+        },
+        "runtime_evidence": {
+          "agent_version": "0.1.0",
+          "degradation_reason": null,
+          "degraded": false,
+          "package": {
+            "package_id": "autocad.lisp.drawing_info",
+            "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+            "version": "3.3-c1"
+          },
+          "runtime": {
+            "framework": ".NET 8",
+            "host_family": "R25",
+            "host_version": "0.8.0",
+            "id": "managed_dotnet",
+            "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+            "package_id": "autocad.managed_host.r25",
+            "package_version": "0.8.0",
+            "role": "primary"
+          },
+          "runtime_state": "online_idle"
+        },
+        "snapshot_id": "snapshot-command-64c5a929-f95e-48f2-8c75-48e2139da81a",
+        "state": "succeeded"
+      },
+      "request": {
+        "artifact_refs": [],
+        "contract_version": "cad.mcp/1.2",
+        "correlation_id": "cbf86996-dc21-46de-a72f-ecdec556474b",
+        "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+        "document_revision": "7542304900287789",
+        "entities_uri": "cad://snapshots/snapshot-command-64c5a929-f95e-48f2-8c75-48e2139da81a/entities",
+        "entity_count": 8,
+        "execution_evidence": {
+          "agent_version": "0.1.0",
+          "command_id": "command-64c5a929-f95e-48f2-8c75-48e2139da81a",
+          "package": {
+            "package_id": "autocad.lisp.drawing_info",
+            "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+            "version": "3.3-c1"
+          },
+          "runtime_state": "online_idle"
+        },
+        "job_id": "job-48b36740-1216-447c-8e7c-059c2bfc9623",
+        "observation_level": "detail",
+        "revision_evidence": {
+          "commit_safe": true,
+          "revision_schema": "cad.revision/1",
+          "revision_strength": "database_object_fingerprint"
+        },
+        "snapshot_id": "snapshot-command-64c5a929-f95e-48f2-8c75-48e2139da81a",
+        "summary_uri": "cad://snapshots/snapshot-command-64c5a929-f95e-48f2-8c75-48e2139da81a/summary"
+      }
+    },
+    "observation_before": {
+      "job": {
+        "agent_version": "0.1.0",
+        "command_id": "command-3cd97e6c-92bf-4b1a-9c15-dde422e8e243",
+        "contract_version": "cad.mcp/1.2",
+        "correlation_id": "f2656fcd-0aa3-4fdc-9c17-120c15e0e491",
+        "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+        "error_code": null,
+        "error_summary": null,
+        "events": [
+          {
+            "created_at": "2026-07-30T07:29:06.838230+00:00",
+            "error_code": null,
+            "event_type": "state",
+            "progress": null,
+            "result": null,
+            "sequence": 1,
+            "state": "queued"
+          },
+          {
+            "created_at": "2026-07-30T07:29:06.847819+00:00",
+            "error_code": null,
+            "event_type": "state",
+            "progress": null,
+            "result": null,
+            "sequence": 2,
+            "state": "dispatched"
+          },
+          {
+            "created_at": "2026-07-30T07:29:06.958164+00:00",
+            "error_code": null,
+            "event_type": "state",
+            "progress": null,
+            "result": null,
+            "sequence": 3,
+            "state": "acknowledged"
+          },
+          {
+            "created_at": "2026-07-30T07:29:08.377191+00:00",
+            "error_code": null,
+            "event_type": "state",
+            "progress": null,
+            "result": {
+              "execution_evidence": {
+                "agent_version": "0.1.0",
+                "degradation_reason": null,
+                "degraded": false,
+                "package": {
+                  "package_id": "autocad.lisp.drawing_info",
+                  "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+                  "version": "3.3-c1"
+                },
+                "runtime": {
+                  "framework": ".NET 8",
+                  "host_family": "R25",
+                  "host_version": "0.8.0",
+                  "id": "managed_dotnet",
+                  "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+                  "package_id": "autocad.managed_host.r25",
+                  "package_version": "0.8.0",
+                  "role": "primary"
+                },
+                "runtime_state": "online_idle"
+              },
+              "snapshot": {
+                "document_revision": "7542304900287789",
+                "drawing": {
+                  "database_fingerprint": "{5A41D710-99A2-40C0-8908-42BC97830727}",
+                  "document_id": "doc-4c9e80cc2d0101584c4d4d19",
+                  "document_name": "phase10-drawing-b.dwg",
+                  "entity_count": 8,
+                  "layer_count": 9,
+                  "layers": [
+                    "0",
+                    "ANOMALIES",
+                    "Defpoints",
+                    "FEATURES",
+                    "HOLES",
+                    "PART",
+                    "REFERENCE",
+                    "SLOTS",
+                    "VALID"
+                  ],
+                  "truncated": false
+                },
+                "entities": [
+                  {
+                    "bounds": {
+                      "max": [
+                        0,
+                        5,
+                        0
+                      ],
+                      "min": [
+                        -5,
+                        -5,
+                        0
+                      ]
+                    },
+                    "entity_id": "91",
+                    "entity_type": "ARC",
+                    "fingerprint": "sha256:6ac5c7301fa8b710f323f222660ad96b7c3c2bd9aad3955e54a9a8fb59d429ea",
+                    "geometry": {
+                      "center": [
+                        0,
+                        0
+                      ],
+                      "elevation": 0,
+                      "end_angle_radians": 4.71238898038469,
+                      "normal": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "radius": 5,
+                      "start_angle_radians": 1.5707963267948966
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "SLOTS",
+                    "source_capabilities": [
+                      "entity.geometry.arc/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        25,
+                        5,
+                        0
+                      ],
+                      "min": [
+                        20,
+                        -5,
+                        0
+                      ]
+                    },
+                    "entity_id": "92",
+                    "entity_type": "ARC",
+                    "fingerprint": "sha256:144c39f55dcb946a9d9c8b35d18514ea801f1aa6e0a7cada7507246cbd2b7fa3",
+                    "geometry": {
+                      "center": [
+                        20,
+                        0
+                      ],
+                      "elevation": 0,
+                      "end_angle_radians": 1.5707963267948966,
+                      "normal": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "radius": 5,
+                      "start_angle_radians": 4.71238898038469
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "SLOTS",
+                    "source_capabilities": [
+                      "entity.geometry.arc/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        20,
+                        5,
+                        0
+                      ],
+                      "min": [
+                        0,
+                        5,
+                        0
+                      ]
+                    },
+                    "entity_id": "93",
+                    "entity_type": "LINE",
+                    "fingerprint": "sha256:c31db662a8596f06b2858ac56f4d6e0ac16f2dabf21cc4c7c411131f2d023729",
+                    "geometry": {
+                      "end": [
+                        20,
+                        5
+                      ],
+                      "end_elevation": 0,
+                      "start": [
+                        0,
+                        5
+                      ],
+                      "start_elevation": 0
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "SLOTS",
+                    "source_capabilities": [
+                      "entity.geometry.line/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        20,
+                        -5,
+                        0
+                      ],
+                      "min": [
+                        0,
+                        -5,
+                        0
+                      ]
+                    },
+                    "entity_id": "94",
+                    "entity_type": "LINE",
+                    "fingerprint": "sha256:4d25dab6bc6c534962f1ec719420da5b9adc193777d203239b49e0c13f99a64d",
+                    "geometry": {
+                      "end": [
+                        20,
+                        -5
+                      ],
+                      "end_elevation": 0,
+                      "start": [
+                        0,
+                        -5
+                      ],
+                      "start_elevation": 0
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "SLOTS",
+                    "source_capabilities": [
+                      "entity.geometry.line/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        53,
+                        3,
+                        0
+                      ],
+                      "min": [
+                        47,
+                        -3,
+                        0
+                      ]
+                    },
+                    "entity_id": "95",
+                    "entity_type": "CIRCLE",
+                    "fingerprint": "sha256:06bab532cfe1e1acbcfc13f602dd1b4b1bcee4dcaae6d15c17cd98b4212cc9fc",
+                    "geometry": {
+                      "center": [
+                        50,
+                        0
+                      ],
+                      "elevation": 0,
+                      "normal": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "radius": 3
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "FEATURES",
+                    "source_capabilities": [
+                      "entity.geometry.circle/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        56,
+                        6,
+                        0
+                      ],
+                      "min": [
+                        44,
+                        -6,
+                        0
+                      ]
+                    },
+                    "entity_id": "96",
+                    "entity_type": "CIRCLE",
+                    "fingerprint": "sha256:a9faea202dbdc7d039d3e76671bc031c62a030eb0319c8bec7041138d3db9eee",
+                    "geometry": {
+                      "center": [
+                        50,
+                        0
+                      ],
+                      "elevation": 0,
+                      "normal": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "radius": 6
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "FEATURES",
+                    "source_capabilities": [
+                      "entity.geometry.circle/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        59.1,
+                        9,
+                        0
+                      ],
+                      "min": [
+                        41.1,
+                        -9,
+                        0
+                      ]
+                    },
+                    "entity_id": "97",
+                    "entity_type": "CIRCLE",
+                    "fingerprint": "sha256:8653a161a8d9f3fa9c73bcbdcf79cf50d17330395c7fa716e016c5749e95fde5",
+                    "geometry": {
+                      "center": [
+                        50.1,
+                        0
+                      ],
+                      "elevation": 0,
+                      "normal": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "radius": 9
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "REFERENCE",
+                    "source_capabilities": [
+                      "entity.geometry.circle/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  },
+                  {
+                    "bounds": {
+                      "max": [
+                        94.75,
+                        5,
+                        0
+                      ],
+                      "min": [
+                        65.25,
+                        -5,
+                        0
+                      ]
+                    },
+                    "entity_id": "98",
+                    "entity_type": "LWPOLYLINE",
+                    "fingerprint": "sha256:5ba308715d031125082670f2455bcaaab011ce7884d45cec611c9214e9746f0f",
+                    "geometry": {
+                      "bulges": [
+                        0,
+                        0.95,
+                        0,
+                        0.95
+                      ],
+                      "closed": true,
+                      "elevation": 0,
+                      "normal": [
+                        0,
+                        0,
+                        1
+                      ],
+                      "points": [
+                        [
+                          70,
+                          -5
+                        ],
+                        [
+                          90,
+                          -5
+                        ],
+                        [
+                          90,
+                          5
+                        ],
+                        [
+                          70,
+                          5
+                        ]
+                      ]
+                    },
+                    "geometry_reason": null,
+                    "geometry_status": "exact",
+                    "geometry_truncated": false,
+                    "layer": "REFERENCE",
+                    "source_capabilities": [
+                      "entity.geometry.polyline/1"
+                    ],
+                    "source_runtime": "managed_dotnet",
+                    "space": "model"
+                  }
+                ],
+                "entity_summary": {
+                  "detail_available": true,
+                  "entity_count": 8,
+                  "truncated": false
+                },
+                "observation_level": "detail",
+                "revision_evidence": {
+                  "commit_safe": true,
+                  "revision_schema": "cad.revision/1",
+                  "revision_strength": "database_object_fingerprint"
+                },
+                "snapshot_id": "snapshot-command-3cd97e6c-92bf-4b1a-9c15-dde422e8e243"
+              }
+            },
+            "sequence": 4,
+            "state": "succeeded"
+          }
+        ],
+        "job_id": "job-97a8302a-943b-45d9-a71f-371cac61ed7d",
+        "kind": "observe",
+        "next_event_cursor": null,
+        "package": {
+          "package_id": "autocad.lisp.drawing_info",
+          "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+          "version": "3.3-c1"
+        },
+        "progress": null,
+        "result": {
+          "execution_evidence": {
+            "agent_version": "0.1.0",
+            "degradation_reason": null,
+            "degraded": false,
+            "package": {
+              "package_id": "autocad.lisp.drawing_info",
+              "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+              "version": "3.3-c1"
+            },
+            "runtime": {
+              "framework": ".NET 8",
+              "host_family": "R25",
+              "host_version": "0.8.0",
+              "id": "managed_dotnet",
+              "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+              "package_id": "autocad.managed_host.r25",
+              "package_version": "0.8.0",
+              "role": "primary"
+            },
+            "runtime_state": "online_idle"
+          },
+          "snapshot": {
+            "document_revision": "7542304900287789",
+            "drawing": {
+              "database_fingerprint": "{5A41D710-99A2-40C0-8908-42BC97830727}",
+              "document_id": "doc-4c9e80cc2d0101584c4d4d19",
+              "document_name": "phase10-drawing-b.dwg",
+              "entity_count": 8,
+              "layer_count": 9,
+              "layers": [
+                "0",
+                "ANOMALIES",
+                "Defpoints",
+                "FEATURES",
+                "HOLES",
+                "PART",
+                "REFERENCE",
+                "SLOTS",
+                "VALID"
+              ],
+              "truncated": false
+            },
+            "entities": [
+              {
+                "bounds": {
+                  "max": [
+                    0,
+                    5,
+                    0
+                  ],
+                  "min": [
+                    -5,
+                    -5,
+                    0
+                  ]
+                },
+                "entity_id": "91",
+                "entity_type": "ARC",
+                "fingerprint": "sha256:6ac5c7301fa8b710f323f222660ad96b7c3c2bd9aad3955e54a9a8fb59d429ea",
+                "geometry": {
+                  "center": [
+                    0,
+                    0
+                  ],
+                  "elevation": 0,
+                  "end_angle_radians": 4.71238898038469,
+                  "normal": [
+                    0,
+                    0,
+                    1
+                  ],
+                  "radius": 5,
+                  "start_angle_radians": 1.5707963267948966
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "SLOTS",
+                "source_capabilities": [
+                  "entity.geometry.arc/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    25,
+                    5,
+                    0
+                  ],
+                  "min": [
+                    20,
+                    -5,
+                    0
+                  ]
+                },
+                "entity_id": "92",
+                "entity_type": "ARC",
+                "fingerprint": "sha256:144c39f55dcb946a9d9c8b35d18514ea801f1aa6e0a7cada7507246cbd2b7fa3",
+                "geometry": {
+                  "center": [
+                    20,
+                    0
+                  ],
+                  "elevation": 0,
+                  "end_angle_radians": 1.5707963267948966,
+                  "normal": [
+                    0,
+                    0,
+                    1
+                  ],
+                  "radius": 5,
+                  "start_angle_radians": 4.71238898038469
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "SLOTS",
+                "source_capabilities": [
+                  "entity.geometry.arc/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    20,
+                    5,
+                    0
+                  ],
+                  "min": [
+                    0,
+                    5,
+                    0
+                  ]
+                },
+                "entity_id": "93",
+                "entity_type": "LINE",
+                "fingerprint": "sha256:c31db662a8596f06b2858ac56f4d6e0ac16f2dabf21cc4c7c411131f2d023729",
+                "geometry": {
+                  "end": [
+                    20,
+                    5
+                  ],
+                  "end_elevation": 0,
+                  "start": [
+                    0,
+                    5
+                  ],
+                  "start_elevation": 0
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "SLOTS",
+                "source_capabilities": [
+                  "entity.geometry.line/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    20,
+                    -5,
+                    0
+                  ],
+                  "min": [
+                    0,
+                    -5,
+                    0
+                  ]
+                },
+                "entity_id": "94",
+                "entity_type": "LINE",
+                "fingerprint": "sha256:4d25dab6bc6c534962f1ec719420da5b9adc193777d203239b49e0c13f99a64d",
+                "geometry": {
+                  "end": [
+                    20,
+                    -5
+                  ],
+                  "end_elevation": 0,
+                  "start": [
+                    0,
+                    -5
+                  ],
+                  "start_elevation": 0
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "SLOTS",
+                "source_capabilities": [
+                  "entity.geometry.line/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    53,
+                    3,
+                    0
+                  ],
+                  "min": [
+                    47,
+                    -3,
+                    0
+                  ]
+                },
+                "entity_id": "95",
+                "entity_type": "CIRCLE",
+                "fingerprint": "sha256:06bab532cfe1e1acbcfc13f602dd1b4b1bcee4dcaae6d15c17cd98b4212cc9fc",
+                "geometry": {
+                  "center": [
+                    50,
+                    0
+                  ],
+                  "elevation": 0,
+                  "normal": [
+                    0,
+                    0,
+                    1
+                  ],
+                  "radius": 3
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "FEATURES",
+                "source_capabilities": [
+                  "entity.geometry.circle/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    56,
+                    6,
+                    0
+                  ],
+                  "min": [
+                    44,
+                    -6,
+                    0
+                  ]
+                },
+                "entity_id": "96",
+                "entity_type": "CIRCLE",
+                "fingerprint": "sha256:a9faea202dbdc7d039d3e76671bc031c62a030eb0319c8bec7041138d3db9eee",
+                "geometry": {
+                  "center": [
+                    50,
+                    0
+                  ],
+                  "elevation": 0,
+                  "normal": [
+                    0,
+                    0,
+                    1
+                  ],
+                  "radius": 6
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "FEATURES",
+                "source_capabilities": [
+                  "entity.geometry.circle/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    59.1,
+                    9,
+                    0
+                  ],
+                  "min": [
+                    41.1,
+                    -9,
+                    0
+                  ]
+                },
+                "entity_id": "97",
+                "entity_type": "CIRCLE",
+                "fingerprint": "sha256:8653a161a8d9f3fa9c73bcbdcf79cf50d17330395c7fa716e016c5749e95fde5",
+                "geometry": {
+                  "center": [
+                    50.1,
+                    0
+                  ],
+                  "elevation": 0,
+                  "normal": [
+                    0,
+                    0,
+                    1
+                  ],
+                  "radius": 9
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "REFERENCE",
+                "source_capabilities": [
+                  "entity.geometry.circle/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              },
+              {
+                "bounds": {
+                  "max": [
+                    94.75,
+                    5,
+                    0
+                  ],
+                  "min": [
+                    65.25,
+                    -5,
+                    0
+                  ]
+                },
+                "entity_id": "98",
+                "entity_type": "LWPOLYLINE",
+                "fingerprint": "sha256:5ba308715d031125082670f2455bcaaab011ce7884d45cec611c9214e9746f0f",
+                "geometry": {
+                  "bulges": [
+                    0,
+                    0.95,
+                    0,
+                    0.95
+                  ],
+                  "closed": true,
+                  "elevation": 0,
+                  "normal": [
+                    0,
+                    0,
+                    1
+                  ],
+                  "points": [
+                    [
+                      70,
+                      -5
+                    ],
+                    [
+                      90,
+                      -5
+                    ],
+                    [
+                      90,
+                      5
+                    ],
+                    [
+                      70,
+                      5
+                    ]
+                  ]
+                },
+                "geometry_reason": null,
+                "geometry_status": "exact",
+                "geometry_truncated": false,
+                "layer": "REFERENCE",
+                "source_capabilities": [
+                  "entity.geometry.polyline/1"
+                ],
+                "source_runtime": "managed_dotnet",
+                "space": "model"
+              }
+            ],
+            "entity_summary": {
+              "detail_available": true,
+              "entity_count": 8,
+              "truncated": false
+            },
+            "observation_level": "detail",
+            "revision_evidence": {
+              "commit_safe": true,
+              "revision_schema": "cad.revision/1",
+              "revision_strength": "database_object_fingerprint"
+            },
+            "snapshot_id": "snapshot-command-3cd97e6c-92bf-4b1a-9c15-dde422e8e243"
+          }
+        },
+        "runtime_evidence": {
+          "agent_version": "0.1.0",
+          "degradation_reason": null,
+          "degraded": false,
+          "package": {
+            "package_id": "autocad.lisp.drawing_info",
+            "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+            "version": "3.3-c1"
+          },
+          "runtime": {
+            "framework": ".NET 8",
+            "host_family": "R25",
+            "host_version": "0.8.0",
+            "id": "managed_dotnet",
+            "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+            "package_id": "autocad.managed_host.r25",
+            "package_version": "0.8.0",
+            "role": "primary"
+          },
+          "runtime_state": "online_idle"
+        },
+        "snapshot_id": "snapshot-command-3cd97e6c-92bf-4b1a-9c15-dde422e8e243",
+        "state": "succeeded"
+      },
+      "request": {
+        "artifact_refs": [],
+        "contract_version": "cad.mcp/1.2",
+        "correlation_id": "191dcad1-db69-40e7-a69e-8ff531e0abf0",
+        "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+        "document_revision": "7542304900287789",
+        "entities_uri": "cad://snapshots/snapshot-command-3cd97e6c-92bf-4b1a-9c15-dde422e8e243/entities",
+        "entity_count": 8,
+        "execution_evidence": {
+          "agent_version": "0.1.0",
+          "command_id": "command-3cd97e6c-92bf-4b1a-9c15-dde422e8e243",
+          "package": {
+            "package_id": "autocad.lisp.drawing_info",
+            "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+            "version": "3.3-c1"
+          },
+          "runtime_state": "online_idle"
+        },
+        "job_id": "job-97a8302a-943b-45d9-a71f-371cac61ed7d",
+        "observation_level": "detail",
+        "revision_evidence": {
+          "commit_safe": true,
+          "revision_schema": "cad.revision/1",
+          "revision_strength": "database_object_fingerprint"
+        },
+        "snapshot_id": "snapshot-command-3cd97e6c-92bf-4b1a-9c15-dde422e8e243",
+        "summary_uri": "cad://snapshots/snapshot-command-3cd97e6c-92bf-4b1a-9c15-dde422e8e243/summary"
+      }
+    },
+    "snapshot_id": "snapshot-command-3cd97e6c-92bf-4b1a-9c15-dde422e8e243"
+  },
+  "status": "PASS"
+}

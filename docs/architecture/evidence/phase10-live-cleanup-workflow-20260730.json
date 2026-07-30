@@ -1,0 +1,1096 @@
+{
+  "baseline_commit": "d1e84711841b4b262fc5563cb768904b8eefd811",
+  "cad_effect_attempted": false,
+  "capture_command": "python scripts/phase10-live-cleanup-evidence.py --endpoint https://cad.kythuatvang.com/mcp --device-id device-0e4df1b2-fbf2-42ca-a151-a487c5437052 --token-file <redacted> --fixture-evidence docs\\architecture\\evidence\\phase10-live-r25-drawing-c-20260730.json --output docs\\architecture\\evidence\\phase10-live-cleanup-workflow-20260730.json --operator haing.nguyen",
+  "captured_at": "2026-07-30T07:24:04.132642+00:00",
+  "completed": {
+    "current_step_id": null,
+    "pins": {
+      "actor_scopes": [
+        "autocad.device.manage",
+        "autocad.read",
+        "autocad.write",
+        "email",
+        "openid",
+        "profile"
+      ],
+      "catalog_epoch": 1,
+      "planner_registry_hash": "sha256:e067bdbd50454b8327cc2b9fbdd2c23da32377f47f10146131dac23b6d2c507e",
+      "planner_registry_version": "phase9-first-party/1",
+      "policy_epoch": 1,
+      "skill_digest": "sha256:6d77b908e0d018542dd290466cfedc32b89dcdf78c51d493f8914f36eea4b74a",
+      "skill_id": "drawing.cleanup-audit",
+      "skill_version": "1.1.0",
+      "workflow_digest": "sha256:450d9260d33cc1bf2334b68e3ff65dd81c80f8b882d644d51ed6f440537b3859",
+      "workflow_id": "drawing.cleanup-audit",
+      "workflow_version": "1.1.0"
+    },
+    "replayed": false,
+    "required_next_action": null,
+    "resource_uri": "cad://workflows/wfr:8eeb886319ba41b79606aa7d67acdf12",
+    "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+    "state": "succeeded",
+    "state_version": 4
+  },
+  "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+  "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
+  "document_revision": "6342267835475121",
+  "failures_retests": [
+    {
+      "failure": "The first live start was rejected with capability_missing because Gateway analysis capability scene.core/1 was evaluated as an Agent capability (correlation_id=d5700151-3865-40f6-9abd-bd6921d5b1fc).",
+      "resolution": "Gateway now contributes scene.core/1 only when the workflow service is enabled with a real scene port; Agent write capability checks remain unchanged, and this final live rerun passed."
+    },
+    {
+      "failure": "The first deployment retest still loaded the previous release through copied editable-package paths and was rejected with capability_missing (correlation_id=4e8cee93-0786-42ce-a38c-230cd62310c8).",
+      "resolution": "The release venv was synchronized against the exact deployed source and its loaded module path was verified before this final live rerun passed."
+    }
+  ],
+  "final": {
+    "current_wait": null,
+    "events": [
+      {
+        "created_at": "2026-07-30T07:23:55.145738+00:00",
+        "event_id": "wfe-aaeb9ed4-03b6-4e00-b0e1-9bf7ff22d3a4",
+        "event_type": "created",
+        "payload": {
+          "state": "created"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 1
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.146017+00:00",
+        "event_id": "wfe-4ab0320d-e128-4149-8679-46e62a108ff8",
+        "event_type": "step_created",
+        "payload": {
+          "attempt": 1,
+          "step_id": "build_scene"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 2
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.146149+00:00",
+        "event_id": "wfe-d926abdd-9ab5-46fd-89c4-27c16c80028b",
+        "event_type": "step_created",
+        "payload": {
+          "attempt": 1,
+          "step_id": "query_scene"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 3
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.146258+00:00",
+        "event_id": "wfe-b2c73715-07f7-4c6b-926c-610b7843537d",
+        "event_type": "step_created",
+        "payload": {
+          "attempt": 1,
+          "step_id": "validate_scene"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 4
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.146363+00:00",
+        "event_id": "wfe-31aaeed7-a7e4-4990-9340-fbf503b43392",
+        "event_type": "step_created",
+        "payload": {
+          "attempt": 1,
+          "step_id": "report"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 5
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.146476+00:00",
+        "event_id": "wfe-7175ce9c-de01-44cc-9d9c-b9409ace7629",
+        "event_type": "step_created",
+        "payload": {
+          "attempt": 1,
+          "step_id": "review"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 6
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.146601+00:00",
+        "event_id": "wfe-8170991a-ec2c-4851-9e80-c350fbb6797c",
+        "event_type": "step_created",
+        "payload": {
+          "attempt": 1,
+          "step_id": "finish"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 7
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.146807+00:00",
+        "event_id": "wfe-d18018c3-fc35-424e-9ced-58d067411cfc",
+        "event_type": "step_state",
+        "payload": {
+          "from": "pending",
+          "step_id": "build_scene",
+          "to": "ready"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 8
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.147237+00:00",
+        "event_id": "wfe-90507dc3-afdd-460a-b8e6-d50a5527ff8e",
+        "event_type": "started",
+        "payload": {
+          "from": "created",
+          "state_version": 1,
+          "to": "running"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 9
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.176973+00:00",
+        "event_id": "wfe-c469cbcd-f704-419e-b274-760d5b54159a",
+        "event_type": "action_inserted",
+        "payload": {
+          "action_id": "wfa:wfr:8eeb886319ba41b79606aa7d67acdf12:build_scene:1:build_scene",
+          "step_id": "build_scene"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 10
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.190113+00:00",
+        "event_id": "wfe-29eb0efc-1fe1-4c3c-92dc-cc2f8e640dad",
+        "event_type": "action_claimed",
+        "payload": {
+          "action_id": "wfa:wfr:8eeb886319ba41b79606aa7d67acdf12:build_scene:1:build_scene"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 11
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.200943+00:00",
+        "event_id": "wfe-fb98ccd0-3b90-4294-9275-9a074a617a4b",
+        "event_type": "action_dispatch_started",
+        "payload": {
+          "action_id": "wfa:wfr:8eeb886319ba41b79606aa7d67acdf12:build_scene:1:build_scene"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 12
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.279456+00:00",
+        "event_id": "wfe-01c3c722-215b-4834-b1ca-41e08e241c9b",
+        "event_type": "action_completed",
+        "payload": {
+          "action_id": "wfa:wfr:8eeb886319ba41b79606aa7d67acdf12:build_scene:1:build_scene",
+          "error_code": null
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 13
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.287613+00:00",
+        "event_id": "wfe-36634c42-7b15-47e7-aa61-457eed0cb647",
+        "event_type": "step_state",
+        "payload": {
+          "from": "ready",
+          "step_id": "build_scene",
+          "to": "running"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 14
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.302388+00:00",
+        "event_id": "wfe-710c3802-b690-46a4-906e-b7e424210b7a",
+        "event_type": "step_state",
+        "payload": {
+          "from": "running",
+          "step_id": "build_scene",
+          "to": "succeeded"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 15
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.322393+00:00",
+        "event_id": "wfe-3495f6ca-c252-4bfa-ba55-bb260ead9fda",
+        "event_type": "action_inserted",
+        "payload": {
+          "action_id": "wfa:wfr:8eeb886319ba41b79606aa7d67acdf12:query_scene:1:query_scene",
+          "step_id": "query_scene"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 16
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.342360+00:00",
+        "event_id": "wfe-1ae4dfb5-398f-4178-a242-cfa44ae26f15",
+        "event_type": "action_claimed",
+        "payload": {
+          "action_id": "wfa:wfr:8eeb886319ba41b79606aa7d67acdf12:query_scene:1:query_scene"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 17
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.348656+00:00",
+        "event_id": "wfe-d4569afa-6e46-4fed-a381-0d8b3d1af32b",
+        "event_type": "action_dispatch_started",
+        "payload": {
+          "action_id": "wfa:wfr:8eeb886319ba41b79606aa7d67acdf12:query_scene:1:query_scene"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 18
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.357218+00:00",
+        "event_id": "wfe-2e3d0bd0-8716-47ff-862f-93f2d72b749f",
+        "event_type": "action_completed",
+        "payload": {
+          "action_id": "wfa:wfr:8eeb886319ba41b79606aa7d67acdf12:query_scene:1:query_scene",
+          "error_code": null
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 19
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.366407+00:00",
+        "event_id": "wfe-1077ca7c-1dd2-4596-ab03-cdf311f73a9c",
+        "event_type": "step_state",
+        "payload": {
+          "from": "pending",
+          "step_id": "query_scene",
+          "to": "ready"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 20
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.374538+00:00",
+        "event_id": "wfe-ece650ed-7e3e-426b-a729-3915ba9706f6",
+        "event_type": "step_state",
+        "payload": {
+          "from": "ready",
+          "step_id": "query_scene",
+          "to": "running"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 21
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.382060+00:00",
+        "event_id": "wfe-86517682-6c3c-4bd8-90b8-0ee0ba01db5c",
+        "event_type": "step_state",
+        "payload": {
+          "from": "running",
+          "step_id": "query_scene",
+          "to": "succeeded"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 22
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.392485+00:00",
+        "event_id": "wfe-afc22852-a380-40ef-a441-c7b4623d46d3",
+        "event_type": "action_inserted",
+        "payload": {
+          "action_id": "wfa:wfr:8eeb886319ba41b79606aa7d67acdf12:validate_scene:1:validate_scene",
+          "step_id": "validate_scene"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 23
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.399872+00:00",
+        "event_id": "wfe-1dac2b50-c218-4d4b-914c-3195e5a2867c",
+        "event_type": "action_claimed",
+        "payload": {
+          "action_id": "wfa:wfr:8eeb886319ba41b79606aa7d67acdf12:validate_scene:1:validate_scene"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 24
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.406314+00:00",
+        "event_id": "wfe-b2a5d4b3-6e2e-4f41-910c-69082abce91f",
+        "event_type": "action_dispatch_started",
+        "payload": {
+          "action_id": "wfa:wfr:8eeb886319ba41b79606aa7d67acdf12:validate_scene:1:validate_scene"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 25
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.413199+00:00",
+        "event_id": "wfe-9be9b1fc-41cf-43d8-b874-50b685bb3640",
+        "event_type": "action_completed",
+        "payload": {
+          "action_id": "wfa:wfr:8eeb886319ba41b79606aa7d67acdf12:validate_scene:1:validate_scene",
+          "error_code": null
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 26
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.421487+00:00",
+        "event_id": "wfe-a6853ec5-4026-4eb8-aabd-adb2dc190f58",
+        "event_type": "step_state",
+        "payload": {
+          "from": "pending",
+          "step_id": "validate_scene",
+          "to": "ready"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 27
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.428326+00:00",
+        "event_id": "wfe-f1fafd3c-c54a-4cd7-bd33-eaa455dc7f0a",
+        "event_type": "step_state",
+        "payload": {
+          "from": "ready",
+          "step_id": "validate_scene",
+          "to": "running"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 28
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.434556+00:00",
+        "event_id": "wfe-408e2c4f-47b7-41c8-828a-ee420280f581",
+        "event_type": "step_state",
+        "payload": {
+          "from": "running",
+          "step_id": "validate_scene",
+          "to": "succeeded"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 29
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.442441+00:00",
+        "event_id": "wfe-223b1f88-ba0f-4483-8543-d5a49098bee0",
+        "event_type": "step_state",
+        "payload": {
+          "from": "pending",
+          "step_id": "report",
+          "to": "ready"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 30
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.448677+00:00",
+        "event_id": "wfe-ebf537f5-f1a9-4aba-91a3-56ae219983c5",
+        "event_type": "step_state",
+        "payload": {
+          "from": "ready",
+          "step_id": "report",
+          "to": "running"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 31
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.454798+00:00",
+        "event_id": "wfe-070c7627-812f-4cfe-82cf-31872b6ca05c",
+        "event_type": "step_state",
+        "payload": {
+          "from": "running",
+          "step_id": "report",
+          "to": "succeeded"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 32
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.461638+00:00",
+        "event_id": "wfe-5ee7a9d9-4d29-4aa1-9308-78de36d1da08",
+        "event_type": "step_state",
+        "payload": {
+          "from": "pending",
+          "step_id": "review",
+          "to": "ready"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 33
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.468261+00:00",
+        "event_id": "wfe-2b9cb366-faea-46f7-b65b-ee60f0f1a391",
+        "event_type": "step_state",
+        "payload": {
+          "from": "ready",
+          "step_id": "review",
+          "to": "running"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 34
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.474715+00:00",
+        "event_id": "wfe-f2981045-2e2f-40ba-99bf-1ead54773e35",
+        "event_type": "step_state",
+        "payload": {
+          "from": "running",
+          "step_id": "review",
+          "to": "waiting"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 35
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.482639+00:00",
+        "event_id": "wfe-3e1532ab-0c7f-4b97-8273-53d77e9f6c10",
+        "event_type": "scene_cleanup_report_ready",
+        "payload": {
+          "from": "running",
+          "state_version": 2,
+          "to": "waiting_for_user"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 36
+      },
+      {
+        "created_at": "2026-07-30T07:23:55.489463+00:00",
+        "event_id": "wfe-c208a3a8-a59c-4d25-887a-e7d9446f12f6",
+        "event_type": "wait_created",
+        "payload": {
+          "expected_state_version": 2,
+          "wait_id": "wfw-8981168e-15e1-4a16-a139-8ab931922cd5"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 37
+      },
+      {
+        "created_at": "2026-07-30T07:23:56.644605+00:00",
+        "event_id": "wfe-f8c5b3f4-f75a-4bcc-8f67-48ef2a772925",
+        "event_type": "control_started",
+        "payload": {
+          "action": "submit_input",
+          "idempotency_key": "phase10-cleanup-finish-20260730072401"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 38
+      },
+      {
+        "created_at": "2026-07-30T07:23:56.651577+00:00",
+        "event_id": "wfe-0282b7d7-d59e-4408-aa05-2476d0bc670b",
+        "event_type": "wait_resolved",
+        "payload": {
+          "state_version": 2,
+          "wait_id": "wfw-8981168e-15e1-4a16-a139-8ab931922cd5"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 39
+      },
+      {
+        "created_at": "2026-07-30T07:23:56.658243+00:00",
+        "event_id": "wfe-35d6aa48-03e5-4efd-9105-e330ccd22833",
+        "event_type": "step_state",
+        "payload": {
+          "from": "waiting",
+          "step_id": "review",
+          "to": "succeeded"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 40
+      },
+      {
+        "created_at": "2026-07-30T07:23:56.665112+00:00",
+        "event_id": "wfe-23deb82f-af9e-454b-8d3e-d7796deaec39",
+        "event_type": "submit_input",
+        "payload": {
+          "from": "waiting_for_user",
+          "state_version": 3,
+          "to": "running"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 41
+      },
+      {
+        "created_at": "2026-07-30T07:23:56.671991+00:00",
+        "event_id": "wfe-961be2d9-cb65-4134-a43a-d21cac90124e",
+        "event_type": "step_state",
+        "payload": {
+          "from": "pending",
+          "step_id": "finish",
+          "to": "ready"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 42
+      },
+      {
+        "created_at": "2026-07-30T07:23:56.678136+00:00",
+        "event_id": "wfe-ce77df64-a2c4-4103-a81c-dc29264ba791",
+        "event_type": "step_state",
+        "payload": {
+          "from": "ready",
+          "step_id": "finish",
+          "to": "running"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 43
+      },
+      {
+        "created_at": "2026-07-30T07:23:56.684888+00:00",
+        "event_id": "wfe-c3fc0783-501d-4872-abca-3017c10fc219",
+        "event_type": "step_state",
+        "payload": {
+          "from": "running",
+          "step_id": "finish",
+          "to": "succeeded"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 44
+      },
+      {
+        "created_at": "2026-07-30T07:23:56.692425+00:00",
+        "event_id": "wfe-68dafc15-d018-4c2c-bfea-94f0ec88f91e",
+        "event_type": "completed",
+        "payload": {
+          "from": "running",
+          "state_version": 4,
+          "to": "succeeded"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 45
+      },
+      {
+        "created_at": "2026-07-30T07:23:56.701254+00:00",
+        "event_id": "wfe-58ed6979-ecfe-403b-96c4-56ac5e4bc30e",
+        "event_type": "control_completed",
+        "payload": {
+          "action": "submit_input",
+          "idempotency_key": "phase10-cleanup-finish-20260730072401"
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "sequence": 46
+      }
+    ],
+    "required_next_action": null,
+    "resource_uri": "cad://workflows/wfr:8eeb886319ba41b79606aa7d67acdf12",
+    "run": {
+      "actor_issuer": "opaque-owner-key/1",
+      "actor_subject": "user-3b507baea6adb49989a040871b1903918eb60701b91be8e3a6c6166fce6a9bea",
+      "catalog_epoch": 1,
+      "created_at": "2026-07-30T07:23:55.145085+00:00",
+      "current_step_id": null,
+      "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+      "device_identity_generation": 1,
+      "error": null,
+      "error_json": null,
+      "expires_at": null,
+      "idempotency_key": "phase10-cleanup-start-20260730072401",
+      "initial_document_id": "doc-7fdc0ac9a316d93a5f068aa1",
+      "initial_document_revision": "6342267835475121",
+      "initial_snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+      "inputs": {
+        "document_revision": "6342267835475121",
+        "layer": "0",
+        "max_candidates": 128,
+        "page_size": 200,
+        "source_snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d"
+      },
+      "inputs_digest": "sha256:6b4579dab5895d7de45b187dbe5a495b72bdecf7e1d1ef2e68efe4a071beb848",
+      "owner_subject": "user-3b507baea6adb49989a040871b1903918eb60701b91be8e3a6c6166fce6a9bea",
+      "pins": {
+        "actor_scopes": [
+          "autocad.device.manage",
+          "autocad.read",
+          "autocad.write",
+          "email",
+          "openid",
+          "profile"
+        ],
+        "catalog_epoch": 1,
+        "planner_registry_hash": "sha256:e067bdbd50454b8327cc2b9fbdd2c23da32377f47f10146131dac23b6d2c507e",
+        "planner_registry_version": "phase9-first-party/1",
+        "policy_epoch": 1,
+        "skill_digest": "sha256:6d77b908e0d018542dd290466cfedc32b89dcdf78c51d493f8914f36eea4b74a",
+        "skill_id": "drawing.cleanup-audit",
+        "skill_version": "1.1.0",
+        "workflow_digest": "sha256:450d9260d33cc1bf2334b68e3ff65dd81c80f8b882d644d51ed6f440537b3859",
+        "workflow_id": "drawing.cleanup-audit",
+        "workflow_version": "1.1.0"
+      },
+      "pins_digest": "sha256:03b699db755f4e996a31a020bced78e5257c2b00c5648fcc5550f5018e79360b",
+      "planner_registry_hash": "sha256:e067bdbd50454b8327cc2b9fbdd2c23da32377f47f10146131dac23b6d2c507e",
+      "planner_registry_version": "phase9-first-party/1",
+      "policy_epoch": 1,
+      "request_hash": "sha256:b993482f321aa4faacff2c12b314f8dbbb3003ddb6daa78b805b5c348fad51a6",
+      "result": null,
+      "result_digest": null,
+      "result_json": null,
+      "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+      "skill_digest": "sha256:6d77b908e0d018542dd290466cfedc32b89dcdf78c51d493f8914f36eea4b74a",
+      "skill_id": "drawing.cleanup-audit",
+      "skill_version": "1.1.0",
+      "state": "succeeded",
+      "state_version": 4,
+      "updated_at": "2026-07-30T07:23:56.692162+00:00",
+      "workflow_digest": "sha256:450d9260d33cc1bf2334b68e3ff65dd81c80f8b882d644d51ed6f440537b3859",
+      "workflow_id": "drawing.cleanup-audit",
+      "workflow_version": "1.1.0"
+    },
+    "steps": [
+      {
+        "attempt": 1,
+        "child_intent_id": null,
+        "child_job_id": null,
+        "child_preview_id": null,
+        "child_program_id": null,
+        "child_program_revision": null,
+        "child_receipt_id": null,
+        "child_recovery_id": null,
+        "created_at": "2026-07-30T07:23:55.145836+00:00",
+        "error_code": null,
+        "input_ref": {
+          "source_snapshot_id": {
+            "input_path": "source_snapshot_id",
+            "kind": "run_input"
+          }
+        },
+        "kind": "build_scene",
+        "lease_expires_at": null,
+        "lease_owner": null,
+        "output_ref": {
+          "result": {
+            "capabilities": [
+              "entity.geometry.circle/1",
+              "entity.geometry.line/1",
+              "entity.geometry.polyline/1",
+              "scene.contours.simple2d/1",
+              "scene.core/1",
+              "scene.features.mechanical2d/1",
+              "scene.issues.cleanup-audit/1",
+              "scene.relations.core2d/1"
+            ],
+            "complete": true,
+            "counts": {
+              "contours": 2,
+              "evidence": 62,
+              "features": 3,
+              "issues": 5,
+              "nodes": 8,
+              "omitted": 0,
+              "relations": 44
+            },
+            "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+            "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
+            "document_revision": "6342267835475121",
+            "engine_version": "scene-engine/1.0.1",
+            "profile_id": "mechanical-2d/1",
+            "projection_version": "cad.entity-projection/2",
+            "resource_uris": {
+              "contours": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/contours",
+              "evidence": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/evidence",
+              "features": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/features",
+              "issues": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/issues",
+              "nodes": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/nodes",
+              "relations": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/relations",
+              "summary": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/summary"
+            },
+            "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
+            "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+            "schema_version": "cad.scene/1",
+            "source_digest": "sha256:c77fce46395b666190e5a73edda774b3f06de7ecfb1b9830ded381da14f98869",
+            "source_snapshot_available": true,
+            "source_snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+            "space": "model",
+            "tolerance_profile": {
+              "absolute_floor": 1e-06,
+              "angular_radians": 1e-06,
+              "drawing_unit": "unitless",
+              "duplicate": 1e-06,
+              "endpoint": 1e-06,
+              "maximum_cap": 0.01,
+              "profile_id": "mechanical-2d/1",
+              "radius": 1e-06,
+              "relative_to_extents": 1e-09
+            },
+            "truncation_reasons": [],
+            "warnings": []
+          }
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "state": "succeeded",
+        "state_version": 3,
+        "step_id": "build_scene",
+        "updated_at": "2026-07-30T07:23:55.302063+00:00"
+      },
+      {
+        "attempt": 1,
+        "child_intent_id": null,
+        "child_job_id": null,
+        "child_preview_id": null,
+        "child_program_id": null,
+        "child_program_revision": null,
+        "child_receipt_id": null,
+        "child_recovery_id": null,
+        "created_at": "2026-07-30T07:23:55.146052+00:00",
+        "error_code": null,
+        "input_ref": {
+          "scene": {
+            "kind": "step_output",
+            "output_path": "result",
+            "source_step_id": "build_scene"
+          }
+        },
+        "kind": "query_scene",
+        "lease_expires_at": null,
+        "lease_owner": null,
+        "output_ref": {
+          "result": {
+            "contract_version": "cad.mcp/1.6",
+            "correlation_id": "wf_d46cde3b5f17e338d1f84acb",
+            "document_revision": "6342267835475121",
+            "items": [
+              {
+                "code": "open_contour",
+                "confidence": 1.0,
+                "evidence_ids": [
+                  "evd_a93b961af175efe45d8cd43b0bdd90618709787fa9323c0bcf92563721358137"
+                ],
+                "issue_id": "iss_161777db28b828814ed6faf522541df2b7ba23fa921c886c2cb9818db2924ae6",
+                "message_key": "scene.issue.open_contour",
+                "schema_version": "cad.scene-issue/1",
+                "severity": "warning",
+                "source_node_ids": [
+                  "nod_030b69a487eda68199cb7a73ad5708ae988e13ba55112ce53983b170314cab5b",
+                  "nod_be6d8353458878e34f8d32f59f105ea7d6835f2c11b4b4245f2911f8bee72995"
+                ],
+                "source_relation_ids": [],
+                "suggested_action": "close_or_review_contour",
+                "write_authority": false
+              },
+              {
+                "code": "self_intersection",
+                "confidence": 1.0,
+                "evidence_ids": [
+                  "evd_5447d093e20095a0d6edcac0c2cb5503c1cdb15c637b38237f379fd1caa02e8d"
+                ],
+                "issue_id": "iss_58f9dd9bf22aadfc7421daea0a34b4a4794f3c68da990e9b11a2a06b0ea20249",
+                "message_key": "scene.issue.self_intersection",
+                "schema_version": "cad.scene-issue/1",
+                "severity": "error",
+                "source_node_ids": [
+                  "nod_2e06c6fb691633cdca5e69e10aaa2711d353ff12c930d4cd4d1850daac754dc6"
+                ],
+                "source_relation_ids": [],
+                "suggested_action": "review_contour",
+                "write_authority": false
+              },
+              {
+                "code": "duplicate_geometry",
+                "confidence": 1.0,
+                "evidence_ids": [
+                  "evd_9eee4451b59b05fb16c1bab93eadc7c96c70833aa0cd6fbed1914621fea74936"
+                ],
+                "issue_id": "iss_15d047f1bc465ca797517b4992213061988cada8770f99d3365fb20281d7ac96",
+                "message_key": "scene.issue.duplicate_geometry",
+                "schema_version": "cad.scene-issue/1",
+                "severity": "warning",
+                "source_node_ids": [
+                  "nod_b52154e6cd4620acbf4f80497e64d4b30a8ac792233d00be58b8357334f16949",
+                  "nod_db7d0031682fdc6cecb6dfe4e056bb1a7d888b890bb203d62bc2e6b6e93049f4"
+                ],
+                "source_relation_ids": [
+                  "rel_87bf32e8565d7c28537c97a1d5410ea44abc3c089e1198f3bbecf60a403a1903"
+                ],
+                "suggested_action": "review_duplicate",
+                "write_authority": false
+              },
+              {
+                "code": "open_contour",
+                "confidence": 1.0,
+                "evidence_ids": [
+                  "evd_94199ffeccdf6b06301c06ef3741b15579973eaf3e1a4e81cb4d2b14a76b7ef5"
+                ],
+                "issue_id": "iss_eaa7ad71066eed08166a392f586e2e0206a8496f05477f193bb0e63a285a803a",
+                "message_key": "scene.issue.open_contour",
+                "schema_version": "cad.scene-issue/1",
+                "severity": "warning",
+                "source_node_ids": [
+                  "nod_b52154e6cd4620acbf4f80497e64d4b30a8ac792233d00be58b8357334f16949",
+                  "nod_db7d0031682fdc6cecb6dfe4e056bb1a7d888b890bb203d62bc2e6b6e93049f4"
+                ],
+                "source_relation_ids": [],
+                "suggested_action": "close_or_review_contour",
+                "write_authority": false
+              },
+              {
+                "code": "degenerate_geometry",
+                "confidence": 1.0,
+                "evidence_ids": [
+                  "evd_578f4435b8dbd3b421e2ac790950e7ef336873d93f9e0dbb0888b933a0568321"
+                ],
+                "issue_id": "iss_6bc6a086df9710d7b98c9e58735ee51439a5a78e427b9f205be65639f76036c4",
+                "message_key": "scene.issue.degenerate_geometry",
+                "schema_version": "cad.scene-issue/1",
+                "severity": "error",
+                "source_node_ids": [
+                  "nod_b25f02ca0faf192ca212edc9632380422c5cdaf2c922bc06c96a06bacdc29b54"
+                ],
+                "source_relation_ids": [],
+                "suggested_action": "review_degenerate_entity",
+                "write_authority": false
+              }
+            ],
+            "next_cursor": null,
+            "resource_uri": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/issues",
+            "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
+            "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+            "section": "issues",
+            "source_digest": "sha256:c77fce46395b666190e5a73edda774b3f06de7ecfb1b9830ded381da14f98869",
+            "source_snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+            "total": 5
+          }
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "state": "succeeded",
+        "state_version": 3,
+        "step_id": "query_scene",
+        "updated_at": "2026-07-30T07:23:55.381692+00:00"
+      },
+      {
+        "attempt": 1,
+        "child_intent_id": null,
+        "child_job_id": null,
+        "child_preview_id": null,
+        "child_program_id": null,
+        "child_program_revision": null,
+        "child_receipt_id": null,
+        "child_recovery_id": null,
+        "created_at": "2026-07-30T07:23:55.146181+00:00",
+        "error_code": null,
+        "input_ref": {
+          "scene": {
+            "kind": "step_output",
+            "output_path": "result",
+            "source_step_id": "build_scene"
+          }
+        },
+        "kind": "validate_scene",
+        "lease_expires_at": null,
+        "lease_owner": null,
+        "output_ref": {
+          "result": {
+            "document_revision": "6342267835475121",
+            "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
+            "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+            "source_digest": "sha256:c77fce46395b666190e5a73edda774b3f06de7ecfb1b9830ded381da14f98869",
+            "source_snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+            "valid": true
+          }
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "state": "succeeded",
+        "state_version": 3,
+        "step_id": "validate_scene",
+        "updated_at": "2026-07-30T07:23:55.434325+00:00"
+      },
+      {
+        "attempt": 1,
+        "child_intent_id": null,
+        "child_job_id": null,
+        "child_preview_id": null,
+        "child_program_id": null,
+        "child_program_revision": null,
+        "child_receipt_id": null,
+        "child_recovery_id": null,
+        "created_at": "2026-07-30T07:23:55.146286+00:00",
+        "error_code": null,
+        "input_ref": {
+          "issues": {
+            "kind": "step_output",
+            "output_path": "result",
+            "source_step_id": "query_scene"
+          },
+          "validation": {
+            "kind": "step_output",
+            "output_path": "result",
+            "source_step_id": "validate_scene"
+          }
+        },
+        "kind": "emit_report",
+        "lease_expires_at": null,
+        "lease_owner": null,
+        "output_ref": {
+          "result": {
+            "document_revision": "6342267835475121",
+            "issue_codes": [
+              "degenerate_geometry",
+              "duplicate_geometry",
+              "open_contour",
+              "self_intersection"
+            ],
+            "issue_count": 5,
+            "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
+            "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+            "source_digest": "sha256:c77fce46395b666190e5a73edda774b3f06de7ecfb1b9830ded381da14f98869",
+            "source_snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+            "status": "issues_found",
+            "validation_ok": true,
+            "write_authority": false
+          }
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "state": "succeeded",
+        "state_version": 3,
+        "step_id": "report",
+        "updated_at": "2026-07-30T07:23:55.454612+00:00"
+      },
+      {
+        "attempt": 1,
+        "child_intent_id": null,
+        "child_job_id": null,
+        "child_preview_id": null,
+        "child_program_id": null,
+        "child_program_revision": null,
+        "child_receipt_id": null,
+        "child_recovery_id": null,
+        "created_at": "2026-07-30T07:23:55.146397+00:00",
+        "error_code": null,
+        "input_ref": {
+          "report": {
+            "kind": "step_output",
+            "output_path": "result",
+            "source_step_id": "report"
+          }
+        },
+        "kind": "wait_user_input",
+        "lease_expires_at": null,
+        "lease_owner": null,
+        "output_ref": {
+          "result": {
+            "document_revision": "6342267835475121",
+            "issue_codes": [
+              "degenerate_geometry",
+              "duplicate_geometry",
+              "open_contour",
+              "self_intersection"
+            ],
+            "issue_count": 5,
+            "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
+            "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+            "source_digest": "sha256:c77fce46395b666190e5a73edda774b3f06de7ecfb1b9830ded381da14f98869",
+            "source_snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+            "status": "issues_found",
+            "validation_ok": true,
+            "write_authority": false
+          }
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "state": "succeeded",
+        "state_version": 4,
+        "step_id": "review",
+        "updated_at": "2026-07-30T07:23:56.658001+00:00"
+      },
+      {
+        "attempt": 1,
+        "child_intent_id": null,
+        "child_job_id": null,
+        "child_preview_id": null,
+        "child_program_id": null,
+        "child_program_revision": null,
+        "child_receipt_id": null,
+        "child_recovery_id": null,
+        "created_at": "2026-07-30T07:23:55.146517+00:00",
+        "error_code": null,
+        "input_ref": {},
+        "kind": "finish",
+        "lease_expires_at": null,
+        "lease_owner": null,
+        "output_ref": {
+          "result": {
+            "status": "ok"
+          }
+        },
+        "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+        "state": "succeeded",
+        "state_version": 3,
+        "step_id": "finish",
+        "updated_at": "2026-07-30T07:23:56.684691+00:00"
+      }
+    ]
+  },
+  "fixture_id": "phase10-drawing-c-r25/1",
+  "gate_results": {
+    "cleanup_workflow_version": true,
+    "document_revision_unchanged": true,
+    "dwg_file_hash_unchanged": true,
+    "no_cad_effect_attempted": true,
+    "no_write_requested": true,
+    "read_only_report": true,
+    "required_issues_reported": true,
+    "same_scene_reused": true,
+    "same_snapshot_and_revision": true,
+    "workflow_completed": true
+  },
+  "implementation_commit": "165de0452af2b665deb67401b7c73420eefae226",
+  "invoked_tools": [
+    "cad_start_workflow",
+    "cad_get_workflow",
+    "cad_control_workflow"
+  ],
+  "limitations": [],
+  "operator": "haing.nguyen",
+  "report": {
+    "document_revision": "6342267835475121",
+    "issue_codes": [
+      "degenerate_geometry",
+      "duplicate_geometry",
+      "open_contour",
+      "self_intersection"
+    ],
+    "issue_count": 5,
+    "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
+    "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+    "source_digest": "sha256:c77fce46395b666190e5a73edda774b3f06de7ecfb1b9830ded381da14f98869",
+    "source_snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+    "status": "issues_found",
+    "validation_ok": true,
+    "write_authority": false
+  },
+  "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
+  "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+  "schema_version": "cad.phase10-live-cleanup-workflow/1",
+  "source_digest": "sha256:c77fce46395b666190e5a73edda774b3f06de7ecfb1b9830ded381da14f98869",
+  "source_snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+  "started": {
+    "current_step_id": "review",
+    "pins": {
+      "actor_scopes": [
+        "autocad.device.manage",
+        "autocad.read",
+        "autocad.write",
+        "email",
+        "openid",
+        "profile"
+      ],
+      "catalog_epoch": 1,
+      "planner_registry_hash": "sha256:e067bdbd50454b8327cc2b9fbdd2c23da32377f47f10146131dac23b6d2c507e",
+      "planner_registry_version": "phase9-first-party/1",
+      "policy_epoch": 1,
+      "skill_digest": "sha256:6d77b908e0d018542dd290466cfedc32b89dcdf78c51d493f8914f36eea4b74a",
+      "skill_id": "drawing.cleanup-audit",
+      "skill_version": "1.1.0",
+      "workflow_digest": "sha256:450d9260d33cc1bf2334b68e3ff65dd81c80f8b882d644d51ed6f440537b3859",
+      "workflow_id": "drawing.cleanup-audit",
+      "workflow_version": "1.1.0"
+    },
+    "replayed": false,
+    "required_next_action": "submit_input",
+    "resource_uri": "cad://workflows/wfr:8eeb886319ba41b79606aa7d67acdf12",
+    "run_id": "wfr:8eeb886319ba41b79606aa7d67acdf12",
+    "state": "waiting_for_user",
+    "state_version": 2
+  },
+  "status": "PASS",
+  "write_requested": false,
+  "write_tools_invoked": []
+}
