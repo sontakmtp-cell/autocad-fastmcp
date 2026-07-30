@@ -39,9 +39,9 @@
     },
     {
       "dwg": "phase10-drawing-c.dwg",
-      "dwg_sha256": "sha256:ad9d1317cd6f87433217003e952a6b9f8ab9d72c521f5b650437ebba5a87cd1d",
+      "dwg_sha256": "sha256:6fc0673129d73315b4edb885cf0214401ccbd04f7451dad468cabccf43b379dd",
       "dxf": "phase10-drawing-c.dxf",
-      "dxf_sha256": "sha256:d11e26b94614c6092f4a6ba72d4a0347462c1a32f54a37fd54c495fe340b409c",
+      "dxf_sha256": "sha256:d914ffcf8e3c54af47443d165537a4b79975cc6ae8b3279fb54612d6c1bdd3a9",
       "expected": {
         "issues": [
           "degenerate_geometry",
@@ -55,6 +55,9 @@
       },
       "fixture_id": "phase10-drawing-c-r25/1",
       "independent_source": true,
+      "limitations": [
+        "tiny circle omitted because the R25 signed projection rejected 1e-7 numeric canonicalization; zero-length LINE is the live degenerate case"
+      ],
       "purpose": "degenerate, duplicate, open and self-intersecting cleanup cases"
     }
   ],

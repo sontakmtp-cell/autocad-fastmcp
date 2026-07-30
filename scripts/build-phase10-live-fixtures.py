@@ -90,7 +90,7 @@ def _drawing_c(path: Path) -> None:
     space = document.modelspace()
     space.add_line((0, 0), (10, 0), dxfattribs={"layer": "ANOMALIES"})
     space.add_line((10, 0), (0, 0), dxfattribs={"layer": "ANOMALIES"})
-    space.add_line((20, 0), (20.0000001, 0), dxfattribs={"layer": "ANOMALIES"})
+    space.add_line((20, 0), (20, 0), dxfattribs={"layer": "ANOMALIES"})
     space.add_line((30, 0), (40, 0), dxfattribs={"layer": "ANOMALIES"})
     space.add_line((40, 0), (45, 5), dxfattribs={"layer": "ANOMALIES"})
     space.add_lwpolyline(
@@ -98,7 +98,6 @@ def _drawing_c(path: Path) -> None:
         close=True,
         dxfattribs={"layer": "ANOMALIES"},
     )
-    space.add_circle((75, 0), 0.0000001, dxfattribs={"layer": "ANOMALIES"})
     space.add_lwpolyline(
         [(85, 0), (105, 0), (105, 10), (85, 10)],
         close=True,
@@ -198,6 +197,13 @@ def main() -> None:
                         "negative": ["valid_geometry_not_flagged_for_cleanup"],
                     },
                 }[name],
+                "limitations": (
+                    [
+                        "tiny circle omitted because the R25 signed projection rejected 1e-7 numeric canonicalization; zero-length LINE is the live degenerate case"
+                    ]
+                    if name == "drawing-c"
+                    else []
+                ),
             }
         )
     (output / "manifest.json").write_text(

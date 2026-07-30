@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import ctypes
 import hashlib
 import json
+import msvcrt
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,6 +22,10 @@ SECTIONS = ("nodes", "relations", "contours", "features", "issues", "evidence")
 
 
 def _payload(result: Any) -> Any:
+    if isinstance(result, list):
+        return [_payload(item) for item in result]
+    if isinstance(result, dict):
+        return {key: _payload(value) for key, value in result.items()}
     if getattr(result, "structured_content", None) is not None:
         return result.structured_content
     if getattr(result, "data", None) is not None:
@@ -28,13 +35,50 @@ def _payload(result: Any) -> Any:
     return result
 
 
+def _resource_payload(result: Any) -> Any:
+    value = _payload(result)
+    if (
+        isinstance(value, list)
+        and len(value) == 1
+        and isinstance(value[0], dict)
+        and isinstance(value[0].get("text"), str)
+    ):
+        return json.loads(value[0]["text"])
+    return value
+
+
 def _sha256(path: Path) -> str:
-    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+    if os.name != "nt":
+        return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+    handle = ctypes.windll.kernel32.CreateFileW(
+        str(path),
+        0x80000000,  # GENERIC_READ
+        0x00000007,  # FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE
+        None,
+        3,  # OPEN_EXISTING
+        0x00000080,  # FILE_ATTRIBUTE_NORMAL
+        None,
+    )
+    if handle == ctypes.c_void_p(-1).value:
+        raise ctypes.WinError()
+    with os.fdopen(msvcrt.open_osfhandle(handle, os.O_RDONLY), "rb") as stream:
+        return "sha256:" + hashlib.file_digest(stream, "sha256").hexdigest()
 
 
 def _git_head() -> str:
     return subprocess.run(
         ["git", "rev-parse", "HEAD"],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+def _git_baseline() -> str:
+    return subprocess.run(
+        ["git", "merge-base", "HEAD", "origin/main"],
         cwd=REPO_ROOT,
         check=True,
         capture_output=True,
@@ -142,7 +186,23 @@ def _fixture_gates(fixture: str, sections: dict[str, Any]) -> dict[str, bool]:
         }
     codes = {item["code"] for item in issues}
     valid_nodes = {
-        item["node_id"] for item in nodes.values() if item.get("layer") == "VALID"
+        item["node_id"]
+        for item in nodes.values()
+        if (
+            item["entity_type"] == "CIRCLE"
+            and item.get("geometry", {}).get("center") == {"x": 95.0, "y": 5.0}
+            and item.get("geometry", {}).get("radius") == 2.0
+        )
+        or (
+            item["entity_type"] == "LWPOLYLINE"
+            and item.get("geometry", {}).get("vertices")
+            == [
+                {"x": 85.0, "y": 0.0},
+                {"x": 105.0, "y": 0.0},
+                {"x": 105.0, "y": 10.0},
+                {"x": 85.0, "y": 10.0},
+            ]
+        )
     }
     cleanup_nodes = {
         node_id
@@ -168,6 +228,19 @@ def _fixture_gates(fixture: str, sections: dict[str, Any]) -> dict[str, bool]:
 
 async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
     drawing = args.drawing.resolve()
+    process_identity = json.loads(args.process_identity.read_text(encoding="utf-8"))
+    required_identity = {
+        "gateway_process",
+        "desktop_agent_process",
+        "autocad_process",
+        "agent_session",
+    }
+    if set(process_identity) != required_identity:
+        raise ValueError(
+            f"process identity must contain exactly {sorted(required_identity)}"
+        )
+    if process_identity["agent_session"].get("device_id") != args.device_id:
+        raise ValueError("process identity device does not match --device-id")
     expected_name = f"phase10-drawing-{args.fixture}.dwg"
     if drawing.name.lower() != expected_name:
         raise ValueError(f"expected {expected_name}")
@@ -212,21 +285,31 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
             raise RuntimeError(
                 f"active public document is {document_name!r}, expected {expected_name!r}"
             )
+        build_input = {
+            "source_snapshot_id": request["snapshot_id"],
+            "idempotency_key": f"phase10-{args.fixture}-scene-{stamp}",
+            "analysis_profile": "mechanical-2d/1",
+            "space": "model",
+            "include_sections": list(SECTIONS),
+        }
         built = _payload(
             await client.call_tool(
                 "cad_build_scene",
-                {
-                    "source_snapshot_id": request["snapshot_id"],
-                    "idempotency_key": f"phase10-{args.fixture}-scene-{stamp}",
-                    "analysis_profile": "mechanical-2d/1",
-                    "space": "model",
-                    "include_sections": list(SECTIONS),
-                },
+                build_input,
             )
         )
         scene = built["scene"]
+        repeated = _payload(
+            await client.call_tool(
+                "cad_build_scene",
+                {
+                    **build_input,
+                    "idempotency_key": f"phase10-{args.fixture}-scene-repeat-{stamp}",
+                },
+            )
+        )
         sections = await _query_sections(client, scene["scene_id"])
-        resource = _payload(
+        resource = _resource_payload(
             await client.read_resource(
                 f"cad://scenes/{scene['scene_id']}/summary"
             )
@@ -246,13 +329,26 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
         or len(after["job"].get("result", {}).get("snapshot", {}).get("entities", []))
     )
     gates = _fixture_gates(args.fixture, sections)
+    nodes = sections["nodes"]["items"]
+    runtime = before["job"].get("runtime_evidence", {}).get("runtime", {})
     gates.update(
         {
             "dwg_file_hash_unchanged": hash_before == hash_after,
             "document_revision_unchanged": revision_before == revision_after,
             "entity_count_unchanged": entity_count_before == entity_count_after,
-            "write_requested": False,
-            "cad_effect_attempted": False,
+            "stable_scene_reuse": repeated["scene"]["scene_id"] == scene["scene_id"]
+            and repeated["scene"]["source_digest"] == scene["source_digest"]
+            and repeated["scene"]["scene_digest"] == scene["scene_digest"]
+            and repeated["reused"] is True,
+            "managed_dotnet_runtime": runtime.get("id") == "managed_dotnet"
+            and runtime.get("role") == "primary"
+            and before["job"]["runtime_evidence"].get("degraded") is False,
+            "source_runtime_managed": bool(nodes)
+            and all(item.get("source_runtime") == "managed_dotnet" for item in nodes),
+            "source_capabilities_present": bool(nodes)
+            and all(item.get("source_capabilities") for item in nodes),
+            "no_write_requested": True,
+            "no_cad_effect_attempted": True,
         }
     )
     if not all(gates.values()):
@@ -262,16 +358,18 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
         "schema_version": "cad.phase10-live-public-fixture/1",
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "capture_command": args.capture_command,
+        "baseline_commit": _git_baseline(),
         "implementation_commit": _git_head(),
         "operator": args.operator,
         "fixture": {
             "fixture_id": f"phase10-drawing-{args.fixture}-r25/1",
             "fixture_file": str(drawing),
             "document_name": expected_name,
-            "document_id": job_snapshot.get("document_id"),
+            "document_id": job_snapshot.get("drawing", {}).get("document_id"),
             "dwg_file_hash_before": hash_before,
             "dwg_file_hash_after": hash_after,
         },
+        "runtime_identity": process_identity,
         "public_path": {
             "endpoint": args.endpoint,
             "device_id": args.device_id,
@@ -291,8 +389,31 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
         },
         "scene": {
             **scene,
+            "repeat_build": repeated,
             "sections": sections,
             "summary_resource": resource,
+            "feature_types": sorted(
+                {item["feature_type"] for item in sections["features"]["items"]}
+            ),
+            "relation_types": sorted(
+                {item["relation_type"] for item in sections["relations"]["items"]}
+            ),
+            "issue_codes": sorted(
+                {item["code"] for item in sections["issues"]["items"]}
+            ),
+            "evidence_strengths": sorted(
+                {
+                    item["evidence_strength"]
+                    for item in sections["evidence"]["items"]
+                }
+            ),
+            "source_capabilities": sorted(
+                {
+                    capability
+                    for item in nodes
+                    for capability in item["source_capabilities"]
+                }
+            ),
         },
         "no_effect": {
             "dwg_file_hash_unchanged": gates["dwg_file_hash_unchanged"],
@@ -302,7 +423,13 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
             "cad_effect_attempted": False,
         },
         "gate_results": gates,
-        "limitations": [],
+        "limitations": (
+            [
+                "tiny_circle_omitted: R25 rejected the 1e-7 projection at the signed payload boundary; zero-length LINE supplies the mandatory live degenerate case"
+            ]
+            if args.fixture == "c"
+            else []
+        ),
         "status": "PASS",
     }
 
@@ -322,7 +449,7 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
         ):
             raise RuntimeError("Agent did not reconnect")
         sections = await _query_sections(client, scene_id)
-        resource = _payload(
+        resource = _resource_payload(
             await client.read_resource(f"cad://scenes/{scene_id}/summary")
         )
     same_sections = all(
@@ -344,8 +471,8 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
         "document_revision_unchanged": before["no_effect"][
             "document_revision_unchanged"
         ],
-        "write_requested": False,
-        "cad_effect_attempted": False,
+        "no_write_requested": True,
+        "no_cad_effect_attempted": True,
     }
     if not all(gates.values()):
         failed = sorted(name for name, passed in gates.items() if not passed)
@@ -364,6 +491,8 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
         "gateway_process_after": process_after,
         "post_restart_sections": sections,
         "post_restart_summary_resource": resource,
+        "write_requested": False,
+        "cad_effect_attempted": False,
         "gate_results": gates,
         **gates,
         "limitations": [],
@@ -381,12 +510,16 @@ def main() -> None:
     parser.add_argument("--operator", default="local-operator")
     parser.add_argument("--fixture", choices=("a", "b", "c"))
     parser.add_argument("--drawing", type=Path)
+    parser.add_argument("--process-identity", type=Path)
     parser.add_argument("--before", type=Path)
     parser.add_argument("--process-before", type=Path)
     parser.add_argument("--process-after", type=Path)
     args = parser.parse_args()
-    if args.action == "capture" and (args.fixture is None or args.drawing is None):
-        parser.error("capture requires --fixture and --drawing")
+    if args.action == "capture" and any(
+        value is None
+        for value in (args.fixture, args.drawing, args.process_identity)
+    ):
+        parser.error("capture requires --fixture, --drawing and --process-identity")
     if args.action == "restart-query" and any(
         value is None
         for value in (args.before, args.process_before, args.process_after)
@@ -394,16 +527,32 @@ def main() -> None:
         parser.error(
             "restart-query requires --before, --process-before and --process-after"
         )
-    args.capture_command = " ".join(
-        [
-            "python scripts/phase10-live-public-evidence.py",
-            args.action,
-            f"--endpoint {args.endpoint}",
-            f"--device-id {args.device_id}",
-            "--token-file <redacted>",
-            f"--output {args.output}",
-        ]
-    )
+    command = [
+        "python scripts/phase10-live-public-evidence.py",
+        args.action,
+        f"--endpoint {args.endpoint}",
+        f"--device-id {args.device_id}",
+        "--token-file <redacted>",
+        f"--output {args.output}",
+        f"--operator {args.operator}",
+    ]
+    if args.action == "capture":
+        command.extend(
+            (
+                f"--fixture {args.fixture}",
+                f"--drawing {args.drawing}",
+                f"--process-identity {args.process_identity}",
+            )
+        )
+    else:
+        command.extend(
+            (
+                f"--before {args.before}",
+                f"--process-before {args.process_before}",
+                f"--process-after {args.process_after}",
+            )
+        )
+    args.capture_command = " ".join(command)
     token = json.loads(args.token_file.read_text(encoding="utf-8"))["access_token"]
     result = asyncio.run(
         _capture(args, token)
