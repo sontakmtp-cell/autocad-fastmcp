@@ -804,12 +804,23 @@ class WorkflowApplicationService:
                     scopes=scopes,
                 )
             elif run["state"] == "running":
+                preview_inputs = run["inputs"]
+                if manifest.version != "1.0.0":
+                    preview_inputs = await self._auto_dimension_scene_inputs(
+                        owner_subject=owner_subject,
+                        run=run,
+                        inputs=run["inputs"],
+                    )
+                    if preview_inputs is None:
+                        return await self.repository.get_run(
+                            owner_subject, run_id
+                        )
                 run = await self._advance_write_preview(
                     owner_subject=owner_subject,
                     run=run,
                     manifest=manifest,
                     snapshot=snapshot,
-                    inputs=run["inputs"],
+                    inputs=preview_inputs,
                     idempotency_key=run["idempotency_key"],
                     scopes=scopes,
                 )
@@ -864,6 +875,183 @@ class WorkflowApplicationService:
         }:
             await self._reconcile_commit_status(run)
         return await self.repository.get_run(owner_subject, run_id)
+
+    async def _auto_dimension_scene_inputs(
+        self,
+        *,
+        owner_subject: str,
+        run: dict[str, Any],
+        inputs: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        if self.scene_port is None or self.action_runner is None:
+            raise WorkflowServiceError("feature_disabled")
+        if inputs.get("document_revision") != run["initial_document_revision"]:
+            raise WorkflowServiceError("binding_mismatch")
+        requested_entity_ids = sorted(set(inputs["entity_ids"]))
+        if not requested_entity_ids or len(requested_entity_ids) > 64:
+            raise WorkflowServiceError("invalid_request")
+        steps = {
+            step["step_id"]: step
+            for step in await self.repository.list_steps(
+                owner_subject, run["run_id"]
+            )
+        }
+        build = (steps["build_scene"].get("output_ref") or {}).get("result")
+        if build is None:
+            source_digest = await self.scene_port.source_digest(
+                owner_subject=owner_subject,
+                device_id=run["device_id"],
+                source_snapshot_id=run["initial_snapshot_id"],
+                document_revision=run["initial_document_revision"],
+                analysis_profile="mechanical-2d/1",
+            )
+            if not isinstance(source_digest, str) or not _SCENE_DIGEST.fullmatch(
+                source_digest
+            ):
+                raise WorkflowServiceError("scene_source_digest_invalid")
+            build = await self._run_scene_action(
+                owner_subject=owner_subject,
+                run=run,
+                step_id="build_scene",
+                action_kind="build_scene",
+                source_digest=source_digest,
+                payload={
+                    "owner_subject": owner_subject,
+                    "skill_id": run["skill_id"],
+                    "skill_version": run["skill_version"],
+                    "device_id": run["device_id"],
+                    "source_snapshot_id": run["initial_snapshot_id"],
+                    "document_revision": run["initial_document_revision"],
+                    "analysis_profile": "mechanical-2d/1",
+                    "space": "model",
+                    "include_sections": [
+                        "nodes",
+                        "contours",
+                        "features",
+                        "evidence",
+                    ],
+                    "source_digest": source_digest,
+                },
+            )
+            if build is None:
+                return None
+
+        source_digest = str(build.get("source_digest", ""))
+        scene_id = str(build.get("scene_id", ""))
+        scene_digest = str(build.get("scene_digest", ""))
+        self._validate_scene_binding(
+            build,
+            source_digest=source_digest,
+            source_snapshot_id=run["initial_snapshot_id"],
+            document_revision=run["initial_document_revision"],
+        )
+        query = (steps["query_scene"].get("output_ref") or {}).get("result")
+        if query is None:
+            query = await self._run_scene_action(
+                owner_subject=owner_subject,
+                run=run,
+                step_id="query_scene",
+                action_kind="query_scene",
+                source_digest=source_digest,
+                payload={
+                    "owner_subject": owner_subject,
+                    "skill_id": run["skill_id"],
+                    "skill_version": run["skill_version"],
+                    "scene_id": scene_id,
+                    "scene_digest": scene_digest,
+                    "source_digest": source_digest,
+                    "source_snapshot_id": run["initial_snapshot_id"],
+                    "document_revision": run["initial_document_revision"],
+                    "section": "evidence",
+                    "source_entity_ids": requested_entity_ids,
+                    "limit": 200,
+                },
+            )
+            if query is None:
+                return None
+        self._validate_scene_binding(
+            query,
+            source_digest=source_digest,
+            scene_id=scene_id,
+            scene_digest=scene_digest,
+            source_snapshot_id=run["initial_snapshot_id"],
+            document_revision=run["initial_document_revision"],
+        )
+        items = query.get("items")
+        if (
+            not isinstance(items, list)
+            or len(items) > 200
+            or query.get("next_cursor") is not None
+            or query.get("total") != len(items)
+        ):
+            await self.repository.mark_run_needs_attention(
+                owner_subject=owner_subject,
+                run_id=run["run_id"],
+                reason="scene_selection_evidence_truncated",
+            )
+            return None
+        evidence = [
+            item
+            for item in items
+            if isinstance(item, dict)
+            and item.get("evidence_type") in {"part", "contour"}
+            and isinstance(item.get("evidence_id"), str)
+            and isinstance(item.get("evidence_strength"), str)
+            and isinstance(item.get("algorithm_version"), str)
+            and isinstance(item.get("source_entity_ids"), list)
+            and 1 <= len(item["source_entity_ids"]) <= 64
+            and all(
+                isinstance(entity_id, str)
+                for entity_id in item["source_entity_ids"]
+            )
+            and isinstance(item.get("limitations", []), list)
+            and len(item.get("limitations", [])) <= 16
+            and all(
+                isinstance(limitation, str)
+                for limitation in item.get("limitations", [])
+            )
+        ]
+        evidenced_entity_ids = {
+            str(entity_id)
+            for item in evidence
+            for entity_id in item["source_entity_ids"]
+            if isinstance(entity_id, str)
+        }
+        if not set(requested_entity_ids).issubset(evidenced_entity_ids):
+            await self.repository.mark_run_needs_attention(
+                owner_subject=owner_subject,
+                run_id=run["run_id"],
+                reason="scene_selection_evidence_missing",
+            )
+            return None
+        selection_evidence = [
+            {
+                key: item[key]
+                for key in (
+                    "evidence_id",
+                    "evidence_type",
+                    "evidence_strength",
+                    "source_entity_ids",
+                    "algorithm_version",
+                    "limitations",
+                )
+                if key in item
+            }
+            for item in evidence
+        ]
+        return {
+            **inputs,
+            "entity_ids": requested_entity_ids,
+            "_scene_selection_evidence": {
+                "scene_id": scene_id,
+                "scene_digest": scene_digest,
+                "source_digest": source_digest,
+                "source_snapshot_id": run["initial_snapshot_id"],
+                "document_revision": run["initial_document_revision"],
+                "evidence": selection_evidence,
+                "write_authority": False,
+            },
+        }
 
     async def _heal_user_input_wait(self, run: dict[str, Any]) -> None:
         if run["state"] != "waiting_for_user":

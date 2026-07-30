@@ -39,6 +39,14 @@ async def test_additive_catalog_release_upgrades_old_database_without_mutating_v
     assert repository.get_status("drawing.cleanup-audit", "1.0.0") == "published"
     assert repository.get_status("drawing.cleanup-audit", "1.1.0") == "published"
     assert repository.get_channel("drawing.cleanup-audit")[0] == "1.0.0"
+    assert (
+        repository.get_status("mechanical.auto-dimension-overall", "1.1.0")
+        == "published"
+    )
+    assert (
+        repository.get_channel("mechanical.auto-dimension-overall")[0]
+        == "1.0.0"
+    )
 
     changed_manifest = phase9_manifest.model_dump(mode="json")
     changed_manifest["title"] = "mutated immutable title"

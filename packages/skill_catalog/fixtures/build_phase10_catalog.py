@@ -14,6 +14,8 @@ from autocad_contracts.phase9_contracts import (
 ROOT = Path(__file__).resolve().parents[1]
 SKILL_ID = "drawing.cleanup-audit"
 VERSION = "1.1.0"
+AUTO_DIMENSION_SKILL_ID = "mechanical.auto-dimension-overall"
+AUTO_DIMENSION_VERSION = "1.1.0"
 
 
 def _dump(path: Path, value: object) -> None:
@@ -71,6 +73,8 @@ def _step(
         "retry_class": (
             "existing_idempotent"
             if kind in {"build_scene", "query_scene", "validate_scene"}
+            else "deterministic"
+            if kind in {"run_planner", "render_template"}
             else "none"
         ),
     }
@@ -179,6 +183,148 @@ def main() -> None:
         for item in catalog["workflows"]
         if not (item["workflow_id"] == SKILL_ID and item["version"] == VERSION)
     ] + [workflow]
+
+    auto_folder = (
+        ROOT / "skills" / AUTO_DIMENSION_SKILL_ID / AUTO_DIMENSION_VERSION
+    )
+    auto_folder.mkdir(parents=True, exist_ok=True)
+    auto_workflow = {
+        "schema_version": "cad.workflow-definition/1",
+        "workflow_id": AUTO_DIMENSION_SKILL_ID,
+        "version": AUTO_DIMENSION_VERSION,
+        "steps": [
+            _step(
+                "build_scene",
+                "build_scene",
+                [],
+                {"source_snapshot_id": _run_input("source_snapshot_id")},
+            ),
+            _step(
+                "query_scene",
+                "query_scene",
+                ["build_scene"],
+                {
+                    "scene": _ref("build_scene"),
+                    "entity_ids": _run_input("entity_ids"),
+                },
+            ),
+            _step(
+                "observe",
+                "observe",
+                ["query_scene"],
+                {
+                    "entity_ids": _run_input("entity_ids"),
+                    "selection_evidence": _ref("query_scene"),
+                },
+            ),
+            _step(
+                "query",
+                "query",
+                ["observe"],
+                {"snapshot": _ref("observe")},
+            ),
+            _step(
+                "pure",
+                "run_planner",
+                ["query"],
+                {
+                    "entities": _ref("query"),
+                    "selection_evidence": _ref("query_scene"),
+                },
+            ),
+            _step(
+                "prepare",
+                "prepare_program",
+                ["pure"],
+                {"program": _ref("pure")},
+            ),
+            _step(
+                "preview",
+                "preview_program",
+                ["prepare"],
+                {"program": _ref("prepare")},
+            ),
+            _step(
+                "review",
+                "wait_user_input",
+                ["preview"],
+                {"preview": _ref("preview")},
+            ),
+            _step(
+                "commit",
+                "request_commit",
+                ["review"],
+                {"program": _ref("prepare")},
+            ),
+            _step(
+                "job",
+                "wait_job",
+                ["commit"],
+                {"intent": _ref("commit")},
+            ),
+            _step(
+                "validate",
+                "validate_receipt",
+                ["job"],
+                {"job": _ref("job")},
+            ),
+            _step("finish", "finish", ["validate"]),
+        ],
+    }
+    auto_workflow["definition_digest"] = canonical_workflow_definition_digest(
+        auto_workflow
+    )
+    _dump(auto_folder / "workflow.json", auto_workflow)
+    auto_manifest = json.loads(
+        (
+            ROOT
+            / "skills"
+            / AUTO_DIMENSION_SKILL_ID
+            / "1.0.0"
+            / "skill.json"
+        ).read_text(encoding="utf-8")
+    )
+    auto_manifest.update(
+        {
+            "version": AUTO_DIMENSION_VERSION,
+            "title": "Scene-backed overall dimension",
+            "summary": (
+                "Overall dimension preview gated by immutable part and "
+                "contour scene evidence."
+            ),
+            "tags": ["phase10", "scene", "write-gated"],
+            "guide_digest": _sha((auto_folder / "guide.md").read_bytes()),
+            "required_capabilities": sorted(
+                set(auto_manifest["required_capabilities"]) | {"scene.core/1"}
+            ),
+            "workflow_definition": {
+                "workflow_id": AUTO_DIMENSION_SKILL_ID,
+                "version": AUTO_DIMENSION_VERSION,
+                "digest": auto_workflow["definition_digest"],
+            },
+        }
+    )
+    auto_manifest["input_schema"]["properties"]["entity_ids"]["maxItems"] = 64
+    auto_manifest["manifest_digest"] = canonical_skill_manifest_digest(
+        auto_manifest
+    )
+    _dump(auto_folder / "skill.json", auto_manifest)
+    catalog["skills"] = [
+        item
+        for item in catalog["skills"]
+        if not (
+            item["skill_id"] == AUTO_DIMENSION_SKILL_ID
+            and item["version"] == AUTO_DIMENSION_VERSION
+        )
+    ] + [auto_manifest]
+    catalog["workflows"] = [
+        item
+        for item in catalog["workflows"]
+        if not (
+            item["workflow_id"] == AUTO_DIMENSION_SKILL_ID
+            and item["version"] == AUTO_DIMENSION_VERSION
+        )
+    ] + [auto_workflow]
     release = {
         "skills": catalog["skills"],
         "workflows": catalog["workflows"],
