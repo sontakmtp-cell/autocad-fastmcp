@@ -343,13 +343,14 @@ def project_artifact(
             ),
         }
     )
+    section_digests = {name: _digest(items) for name, items in sections.items()}
     semantic = {
         "source_digest": artifact.source_digest,
         "projection_version": PROJECTION_VERSION,
         "engine_version": artifact.engine_version,
         "profile_id": artifact.context.profile_id,
         "tolerance_profile": tolerance.model_dump(mode="json"),
-        "sections": sections,
+        "section_digests": section_digests,
     }
     scene_digest = canonical_scene_digest(semantic)
     uris = SceneResourceUris(
@@ -387,4 +388,4 @@ def project_artifact(
         source_snapshot_available=source_snapshot_available,
         resource_uris=uris,
     )
-    return root, sections, {name: _digest(items) for name, items in sections.items()}
+    return root, sections, section_digests
