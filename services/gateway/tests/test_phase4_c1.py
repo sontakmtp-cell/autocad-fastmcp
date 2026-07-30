@@ -95,6 +95,12 @@ def test_phase4_safe_agent_errors_remain_typed(code):
     ],
 )
 def test_c1_detail_accepts_exact_managed_host_geometry(entity_type, geometry):
+    capability = {
+        "LINE": "entity.geometry.line/1",
+        "CIRCLE": "entity.geometry.circle/1",
+        "LWPOLYLINE": "entity.geometry.polyline/1",
+        "ARC": "entity.geometry.arc/1",
+    }[entity_type]
     entity = {
         "entity_id": "1A",
         "entity_type": entity_type,
@@ -102,8 +108,12 @@ def test_c1_detail_accepts_exact_managed_host_geometry(entity_type, geometry):
         "space": "model",
         "bounds": {"min": [0.0, 0.0, 0.0], "max": [10.0, 10.0, 0.0]},
         "geometry": geometry,
+        "geometry_status": "exact",
+        "geometry_reason": None,
         "geometry_truncated": False,
         "fingerprint": f"sha256:{'b' * 64}",
+        "source_runtime": "managed_dotnet",
+        "source_capabilities": [capability],
     }
 
     assert DurableJobService._valid_c1_detail_entity(entity)
@@ -136,6 +146,11 @@ def test_c1_detail_accepts_exact_managed_host_geometry(entity_type, geometry):
 )
 def test_c1_detail_rejects_malformed_managed_host_geometry(geometry):
     entity_type = "LWPOLYLINE" if "points" in geometry else "CIRCLE"
+    capability = (
+        "entity.geometry.polyline/1"
+        if entity_type == "LWPOLYLINE"
+        else "entity.geometry.circle/1"
+    )
     entity = {
         "entity_id": "1A",
         "entity_type": entity_type,
@@ -143,8 +158,36 @@ def test_c1_detail_rejects_malformed_managed_host_geometry(geometry):
         "space": "model",
         "bounds": None,
         "geometry": geometry,
+        "geometry_status": "exact",
+        "geometry_reason": None,
         "geometry_truncated": False,
         "fingerprint": f"sha256:{'b' * 64}",
+        "source_runtime": "managed_dotnet",
+        "source_capabilities": [capability],
+    }
+
+    assert not DurableJobService._valid_c1_detail_entity(entity)
+
+
+def test_c1_detail_rejects_spoofed_managed_geometry_provenance():
+    entity = {
+        "entity_id": "1A",
+        "entity_type": "CIRCLE",
+        "layer": "0",
+        "space": "model",
+        "bounds": None,
+        "geometry": {
+            "center": [0.0, 0.0],
+            "radius": 1.0,
+            "elevation": 0.0,
+            "normal": [0.0, 0.0, 1.0],
+        },
+        "geometry_status": "exact",
+        "geometry_reason": None,
+        "geometry_truncated": False,
+        "fingerprint": f"sha256:{'b' * 64}",
+        "source_runtime": "managed_dotnet",
+        "source_capabilities": ["entity.geometry.arc/1"],
     }
 
     assert not DurableJobService._valid_c1_detail_entity(entity)
@@ -403,8 +446,12 @@ async def test_phase4_summary_evidence_and_query_fail_closed(tmp_path):
             "space": "model",
             "bounds": {"min": [0, 0, 0], "max": [1, 1, 0]},
             "geometry": {"start": [0, 0], "end": [1, 1]},
+            "geometry_status": "exact",
+            "geometry_reason": None,
             "geometry_truncated": False,
             "fingerprint": f"sha256:{'b' * 64}",
+            "source_runtime": "managed_dotnet",
+            "source_capabilities": ["entity.geometry.line/1"],
         }
     ]
     managed_detail["revision_evidence"] = {

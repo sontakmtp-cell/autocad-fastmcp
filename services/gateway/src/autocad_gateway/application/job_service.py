@@ -1558,7 +1558,7 @@ class DurableJobService:
 
     @classmethod
     def _valid_c1_detail_entity(cls, entity: Any) -> bool:
-        if not isinstance(entity, dict) or set(entity) != {
+        base_keys = {
             "entity_id",
             "entity_type",
             "layer",
@@ -1567,7 +1567,17 @@ class DurableJobService:
             "geometry",
             "geometry_truncated",
             "fingerprint",
-        }:
+        }
+        provenance_keys = {
+            "geometry_status",
+            "geometry_reason",
+            "source_runtime",
+            "source_capabilities",
+        }
+        if (
+            not isinstance(entity, dict)
+            or set(entity) != base_keys | provenance_keys
+        ):
             return False
         entity_type = entity.get("entity_type")
         geometry = entity.get("geometry")
@@ -1584,6 +1594,51 @@ class DurableJobService:
             or not cls._valid_c1_bounds(entity.get("bounds"))
         ):
             return False
+        if provenance_keys <= set(entity):
+            status = entity.get("geometry_status")
+            reason = entity.get("geometry_reason")
+            source_capabilities = entity.get("source_capabilities")
+            expected_capability = {
+                "LINE": "entity.geometry.line/1",
+                "CIRCLE": "entity.geometry.circle/1",
+                "LWPOLYLINE": "entity.geometry.polyline/1",
+                "ARC": "entity.geometry.arc/1",
+            }[entity_type]
+            expected_source_capabilities = (
+                [expected_capability]
+                if status in {"exact", "truncated"}
+                else []
+            )
+            if (
+                entity.get("source_runtime") != "managed_dotnet"
+                or status
+                not in {
+                    "exact",
+                    "truncated",
+                    "unsupported",
+                    "unavailable",
+                    "invalid",
+                }
+                or (
+                    reason is not None
+                    and (
+                        not isinstance(reason, str)
+                        or not 1 <= len(reason) <= 128
+                    )
+                )
+                or not isinstance(source_capabilities, list)
+                or source_capabilities != expected_source_capabilities
+                or entity["geometry_truncated"] is not (status == "truncated")
+                or (
+                    status == "exact"
+                    and (geometry is None or reason is not None)
+                )
+                or (
+                    status != "exact"
+                    and (geometry is not None or reason is None)
+                )
+            ):
+                return False
         if geometry is None:
             return True
         if not isinstance(geometry, dict):

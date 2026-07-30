@@ -304,6 +304,18 @@ class ReadCommandExecutor:
                         entity.get("geometry_truncated", False)
                     ),
                     "fingerprint": str(entity["fingerprint"]),
+                    **(
+                        {
+                            "geometry_status": entity.get("geometry_status"),
+                            "geometry_reason": entity.get("geometry_reason"),
+                            "source_runtime": runtime.id,
+                            "source_capabilities": entity.get(
+                                "source_capabilities"
+                            ),
+                        }
+                        if managed_dotnet
+                        else {}
+                    ),
                 }
                 for entity in detail_payload["entities"]
             ]
