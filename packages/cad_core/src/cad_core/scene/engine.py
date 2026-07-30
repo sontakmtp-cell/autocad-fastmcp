@@ -36,6 +36,7 @@ def build_scene(
     source = tuple(entities)
     started = time.monotonic()
     policy = budgets or SceneBudgets()
+    deadline = started + policy.max_build_seconds
     if len(source) > policy.max_source_entities:
         raise SceneBudgetExceeded("scene exceeds source entity budget")
     if context.space != "model":
@@ -46,22 +47,25 @@ def build_scene(
     )
     if projected_bytes > policy.max_projected_bytes:
         raise SceneBudgetExceeded("scene exceeds projected byte budget")
-    _check_time(started, policy)
+    _check_deadline(deadline)
     drawing_bounds = _drawing_bounds(nodes)
     selected_tolerance = tolerance or mechanical_tolerance(
         drawing_bounds,
         drawing_units=context.drawing_units,
     )
     validate_tolerance(selected_tolerance)
+    _check_deadline(deadline)
     index = build_candidate_index(nodes, policy)
+    _check_deadline(deadline)
     relations = build_relations(nodes, index.pairs, selected_tolerance, policy)
-    _check_time(started, policy)
+    _check_deadline(deadline)
     contours, components = build_contours_and_components(
         nodes,
         relations,
         selected_tolerance,
         policy,
     )
+    _check_deadline(deadline)
     features = infer_features(
         nodes,
         relations,
@@ -70,7 +74,7 @@ def build_scene(
         selected_tolerance,
         policy,
     )
-    _check_time(started, policy)
+    _check_deadline(deadline)
     issues = detect_issues(
         nodes,
         relations,
@@ -79,6 +83,7 @@ def build_scene(
         selected_tolerance,
         policy,
     )
+    _check_deadline(deadline)
     complete = all(node.geometry_status == "exact" for node in nodes)
     context_payload = asdict(context)
     context_payload["source_capabilities"] = sorted(context.source_capabilities)
@@ -105,10 +110,10 @@ def build_scene(
     scene_bytes = len(canonical_json(scene_sections).encode("utf-8"))
     if scene_bytes > policy.max_scene_bytes:
         raise SceneBudgetExceeded("scene exceeds serialized byte budget")
+    _check_deadline(deadline)
     scene_digest = digest("cad.scene/1", scene_sections)
     build_seconds = time.monotonic() - started
-    if build_seconds > policy.max_build_seconds:
-        raise SceneBudgetExceeded("scene exceeds build time budget")
+    _check_deadline(deadline, now=started + build_seconds)
     stats = SceneStats(
         len(source),
         len(nodes),
@@ -154,6 +159,6 @@ def _drawing_bounds(nodes: tuple[SceneNode, ...]) -> Bounds | None:
     return result
 
 
-def _check_time(started: float, budgets: SceneBudgets) -> None:
-    if time.monotonic() - started > budgets.max_build_seconds:
+def _check_deadline(deadline: float, *, now: float | None = None) -> None:
+    if (time.monotonic() if now is None else now) > deadline:
         raise SceneBudgetExceeded("scene exceeds build time budget")

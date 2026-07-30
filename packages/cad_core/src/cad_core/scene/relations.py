@@ -84,12 +84,16 @@ def _pair_relations(
             if abs(angle - math.pi / 2) <= tolerance.angular:
                 yield "perpendicular", (("angle_delta", abs(angle - math.pi / 2)),), tolerance.angular
 
-    circle_a = _circle_like(first)
-    circle_b = _circle_like(second)
-    if circle_a and circle_b:
-        center_delta = math.dist(circle_a[0], circle_b[0])
+    center_a = _center_radius(first)
+    center_b = _center_radius(second)
+    if center_a and center_b:
+        center_delta = math.dist(center_a[0], center_b[0])
         if center_delta <= tolerance.endpoint:
             yield "concentric", (("center_delta", center_delta),), tolerance.endpoint
+    circle_a = _full_circle(first)
+    circle_b = _full_circle(second)
+    if circle_a and circle_b:
+        center_delta = math.dist(circle_a[0], circle_b[0])
         distance = center_delta
         outer, inner = circle_a[1] + circle_b[1], abs(circle_a[1] - circle_b[1])
         if abs(distance - outer) <= tolerance.endpoint or abs(distance - inner) <= tolerance.endpoint:
@@ -300,8 +304,14 @@ def _line_circle_relation(line, circle, tolerance: float) -> str | None:
     return "intersect" if distance < circle[1] - tolerance else None
 
 
-def _circle_like(geometry) -> tuple[Point, float] | None:
+def _center_radius(geometry) -> tuple[Point, float] | None:
     if isinstance(geometry, (CircleGeometry, ArcGeometry)):
+        return geometry.center, geometry.radius
+    return None
+
+
+def _full_circle(geometry) -> tuple[Point, float] | None:
+    if isinstance(geometry, CircleGeometry):
         return geometry.center, geometry.radius
     return None
 

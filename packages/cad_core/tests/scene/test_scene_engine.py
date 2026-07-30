@@ -13,6 +13,7 @@ from cad_core.scene import (
     build_scene,
     project_entities,
 )
+from cad_core.scene import engine as scene_engine
 from cad_core.scene.spatial_index import build_candidate_index
 
 
@@ -125,6 +126,8 @@ def test_scene_digest_ids_and_semantics_are_entity_order_invariant():
     assert first.source_digest == second.source_digest
     assert first.source_digest == reversed_capabilities.source_digest
     assert first.scene_digest == second.scene_digest
+    assert first.stats.projected_bytes == second.stats.projected_bytes
+    assert first.stats.scene_bytes == second.stats.scene_bytes
     assert [item.node_id for item in first.nodes] == [item.node_id for item in second.nodes]
     assert [item.relation_id for item in first.relations] == [
         item.relation_id for item in second.relations
@@ -202,6 +205,20 @@ def test_validated_arc_line_and_bulged_polyline_slots():
     assert any(len(item.source_node_ids) == 4 for item in slots)
     assert all(item.confidence == 1 for item in slots)
     assert all(item.evidence_strength == "derived_exact" for item in slots)
+
+
+def test_arc_carrier_circle_does_not_create_false_intersection():
+    result = build_scene(
+        [
+            arc("A", (0, 0), 10, 0, math.pi / 4),
+            line("L", (-20, 0), (-5, 0)),
+        ],
+        context(),
+    )
+    assert not {
+        "touch",
+        "intersect",
+    }.intersection(item.relation_type for item in result.relations)
 
 
 def test_reversed_polyline_duplicate_is_canonical_and_partial_source_is_explicit():
@@ -285,9 +302,29 @@ def test_dense_overlap_fails_safely_and_large_grid_is_bounded():
 def test_budget_values_cannot_exceed_server_caps():
     with pytest.raises(ValueError, match="hard cap"):
         SceneBudgets(max_source_entities=10_001)
+    with pytest.raises(ValueError, match="positive"):
+        SceneBudgets(max_build_seconds=math.inf)
     with pytest.raises(SceneBudgetExceeded, match="projected byte"):
         build_scene(
             [line("LONG", (0, 0), (1, 1), layer="X" * 255)],
             context(),
             budgets=SceneBudgets(max_projected_bytes=1),
+        )
+    with pytest.raises(SceneBudgetExceeded, match="serialized byte"):
+        build_scene(
+            [line("L", (0, 0), (1, 1))],
+            context(),
+            budgets=SceneBudgets(max_scene_bytes=1),
+        )
+
+
+def test_build_deadline_is_checked_between_stages(monkeypatch):
+    clock = iter((10.0, 11.0))
+    monkeypatch.setattr(scene_engine.time, "monotonic", lambda: next(clock))
+
+    with pytest.raises(SceneBudgetExceeded, match="build time"):
+        build_scene(
+            [line("L", (0, 0), (1, 1))],
+            context(),
+            budgets=SceneBudgets(max_build_seconds=0.1),
         )

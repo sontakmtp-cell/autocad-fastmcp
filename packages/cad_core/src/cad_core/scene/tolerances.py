@@ -28,7 +28,20 @@ class SceneBudgets:
     max_scene_bytes: int = 16 * 1024 * 1024
 
     def __post_init__(self) -> None:
-        if any(value < 1 for value in vars_from_slots(self).values()):
+        values = vars_from_slots(self)
+        count_limits = (
+            value for name, value in values.items() if name != "max_build_seconds"
+        )
+        if (
+            isinstance(self.max_build_seconds, bool)
+            or not isinstance(self.max_build_seconds, (int, float))
+            or not math.isfinite(self.max_build_seconds)
+            or self.max_build_seconds <= 0
+            or any(
+                isinstance(value, bool) or not isinstance(value, int) or value < 1
+                for value in count_limits
+            )
+        ):
             raise ValueError("scene budgets must be positive")
         caps = {
             "max_source_entities": 10_000,
@@ -44,7 +57,7 @@ class SceneBudgets:
             "max_build_seconds": 30.0,
             "max_scene_bytes": 32 * 1024 * 1024,
         }
-        if any(vars_from_slots(self)[name] > cap for name, cap in caps.items()):
+        if any(values[name] > cap for name, cap in caps.items()):
             raise ValueError("scene budget exceeds server hard cap")
 
 
