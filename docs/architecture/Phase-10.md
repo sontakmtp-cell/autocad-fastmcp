@@ -2065,8 +2065,9 @@ Phase 10 **không hoàn tất** chỉ vì demo nhận ra vài hình tròn là l�
 Implementation branch:
 `codex/phase-10-scene-graph-drawing-intelligence`, baseline
 `d1e84711841b4b262fc5563cb768904b8eefd811`, deployed live runtime commit
-`165de0452af2b665deb67401b7c73420eefae226`, final code/evidence commit
-`cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`.
+`165de0452af2b665deb67401b7c73420eefae226`, retained evidence commit
+`cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`, and full hosted-CI validation
+head `0268fd4e7cb73214e5ad1cfce8281af922359f47`.
 
 Delivered:
 
@@ -2171,8 +2172,13 @@ case.
 
 `python scripts/validate-phase10-live-evidence.py` passes all manifest hashes,
 artifact schemas, commit/scene/digest bindings, cleanup, restart and no-effect
-gates locally. GitHub Actions has not yet run against
-`cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`; CI status remains pending the final push.
+gates locally and in hosted Phase 10 run `30525245847`. At
+`0268fd4e7cb73214e5ad1cfce8281af922359f47`, all reported jobs in all 11
+pull-request workflows passed: Test `30525250930`, Phase 1.1
+`30525245940`, Phase 2 `30525245834`, Phase 3.1 `30525245919`, Phase 4
+`30525245777`, Phase 5 Managed Host `30525245807`, Phase 5 Portal
+`30525250923`, FastMCP Phase 0 `30525245885`, Phase 8 `30525251005`,
+Phase 9 `30525245796`, and Phase 10 `30525245847`.
 
 **Engineering decision: GO for the default-off bounded Phase 10 lab profile.
 Customer Pilot: NO-GO pending Phase 11 production hardening and pilot gates.**
