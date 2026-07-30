@@ -5,9 +5,12 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 
 import pytest
+
+POWERSHELL_BIN = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
 
 
 ROOT = Path(__file__).parents[1]
@@ -234,7 +237,7 @@ def test_lab_scripts_reject_unsafe_or_missing_signatures(
         "}"
     )
     result = subprocess.run(
-        ["pwsh", "-NoProfile", "-Command", command],
+        [POWERSHELL_BIN, "-NoProfile", "-Command", command],
         capture_output=True,
         text=True,
     )
@@ -290,7 +293,7 @@ def test_lab_installer_accepts_only_the_known_untrusted_root_error(tmp_path):
         f"-ReceiptRoot '{receipts_root.as_posix()}' -IsolatedTestRoot"
     )
     result = subprocess.run(
-        ["pwsh", "-NoProfile", "-Command", command],
+        [POWERSHELL_BIN, "-NoProfile", "-Command", command],
         capture_output=True,
         text=True,
     )
@@ -332,7 +335,7 @@ def test_phase5_signing_and_rollback_scripts_parse():
             "if($errors.Count){$errors|ForEach-Object{$_.Message};exit 1}"
         )
         subprocess.run(
-            ["pwsh", "-NoProfile", "-Command", command],
+            [POWERSHELL_BIN, "-NoProfile", "-Command", command],
             check=True,
             capture_output=True,
             text=True,
