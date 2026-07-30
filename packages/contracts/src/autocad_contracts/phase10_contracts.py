@@ -641,11 +641,36 @@ def canonical_scene_evidence_id(
 
 
 def canonical_scene_source_digest(value: BaseModel | dict[str, Any]) -> str:
-    return _domain_digest("cad.scene-source/1", _canonical_semantic_payload(value))
+    payload = _canonical_semantic_payload(value)
+    if isinstance(payload, dict):
+        payload = dict(payload)
+        for field in {
+            "owner_subject",
+            "correlation_id",
+            "created_at",
+            "expires_at",
+            "source_digest",
+        }:
+            payload.pop(field, None)
+    return _domain_digest("cad.scene-source/1", payload)
 
 
 def canonical_scene_digest(value: BaseModel | dict[str, Any]) -> str:
-    return _domain_digest("cad.scene/1", _canonical_semantic_payload(value))
+    payload = _canonical_semantic_payload(value)
+    if isinstance(payload, dict):
+        payload = dict(payload)
+        for field in {
+            "owner_subject",
+            "scene_id",
+            "scene_digest",
+            "resource_uris",
+            "correlation_id",
+            "created_at",
+            "expires_at",
+            "source_snapshot_available",
+        }:
+            payload.pop(field, None)
+    return _domain_digest("cad.scene/1", payload)
 
 
 def phase10_scene_json_schema() -> dict[str, Any]:

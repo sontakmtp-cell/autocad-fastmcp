@@ -201,6 +201,22 @@ def test_stable_ids_and_digests_are_canonical_and_domain_separated():
         canonical_scene_digest({"too_large": "x" * 262_144})
 
 
+def test_scene_digest_excludes_opaque_identity_and_runtime_links():
+    first = _root().model_dump()
+    second = {
+        **first,
+        "scene_id": "scn_fedcba9876543210",
+        "scene_digest": _digest("d"),
+        "source_snapshot_available": False,
+        "resource_uris": _resources("scn_fedcba9876543210").model_dump(),
+    }
+    assert canonical_scene_digest(first) == canonical_scene_digest(second)
+    source = {"snapshot_id": "snapshot-a", "source_digest": _digest("a")}
+    assert canonical_scene_source_digest(source) == canonical_scene_source_digest(
+        {**source, "source_digest": _digest("b")}
+    )
+
+
 def test_build_and_query_contracts_are_closed_and_canonical():
     build = CadBuildSceneInput(
         source_snapshot_id="snapshot-a",
