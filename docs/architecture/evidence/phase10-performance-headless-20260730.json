@@ -14,9 +14,9 @@
     "features": 6,
     "issues": 0,
     "projected_bytes": 2539,
-    "scene_bytes": 10601,
-    "peak_python_bytes": 55965,
-    "build_seconds": 0.006679,
+    "scene_bytes": 10649,
+    "peak_python_bytes": 69348,
+    "build_seconds": 0.011468,
     "complete": true
   },
   "deterministic_adversarial_gates": {

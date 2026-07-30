@@ -579,7 +579,7 @@ Một scene root tối thiểu gồm:
   "document_revision": "...",
   "space": "model",
   "projection_version": "cad.entity-projection/2",
-  "engine_version": "scene-engine/1.0.0",
+  "engine_version": "scene-engine/1.0.1",
   "profile_id": "mechanical-2d/1",
   "tolerance_profile": {...},
   "source_digest": "sha256:...",
@@ -1182,6 +1182,7 @@ Dự kiến migration additive:
 
 ```text
 0012_phase10_scenes.sql
+0013_phase10_scene_request_bindings.sql
 ```
 
 Tên cuối phụ thuộc migration hiện hành.
@@ -2063,7 +2064,7 @@ Phase 10 **không hoàn tất** chỉ vì demo nhận ra vài hình tròn là l�
 Implementation branch:
 `codex/phase-10-scene-graph-drawing-intelligence`, baseline
 `d1e84711841b4b262fc5563cb768904b8eefd811`, retained live-code head
-`3c1b5b8dc86083bb0956a13fe2d71307e491bf99`.
+`bd94f25d4183837116240a47600bfb9c635ba0d2`.
 
 Delivered:
 
@@ -2073,8 +2074,9 @@ Delivered:
 - deterministic pure scene engine with grid candidate generation, relations,
   contours/components, evidence-backed mechanical features, read-only issues
   and fail-closed budgets;
-- owner-scoped immutable SQLite migration `0012_phase10_scenes.sql`, signed
-  cursors and restart-safe scene/query service;
+- owner-scoped immutable SQLite migrations `0012_phase10_scenes.sql` and
+  `0013_phase10_scene_request_bindings.sql`, signed cursors and restart-safe
+  scene/query service;
 - exactly two read-only scene tools and seven bounded resources, all default
   off;
 - durable Phase 9 build/query/validate scene steps, read-only cleanup audit
@@ -2085,8 +2087,8 @@ Delivered:
 
 Final local automated results:
 
-- Phase 10 41; `cad_core` 12; Gateway 341; root 416 with 1 skip;
-- contracts 143; Desktop Agent 159; Managed Host 75;
+- Phase 10 47; `cad_core` 15; Gateway 343; root 416 with 1 skip;
+- contracts 144; Desktop Agent 159; Managed Host 75;
 - Portal unit 42, production build passed, E2E 11;
 - Phase 9 regression 94; Phase 8 Python regression 39.
 
@@ -2097,6 +2099,19 @@ database/service in the evidence process retrieved the same immutable scene and
 issue count. This is durability evidence, not a real Gateway process restart.
 Evidence:
 `evidence/phase10-live-r25-drawing33-20260730.json`.
+
+PR review hardening:
+
+- tolerance buckets are candidate indexes only; endpoint, duplicate geometry
+  and radius groups now require explicit tolerance comparison;
+- contour-only `part` inference is a bounded heuristic with confidence and
+  limitations, and cannot gate a write preview;
+- immutable canonical scenes may bind multiple durable idempotency keys while
+  conflicting key reuse still fails closed;
+- every advertised scene section is persisted and included in the scene
+  digest;
+- relation evidence identity binds relation, directionality, metrics,
+  tolerance and algorithm version without last-write-wins overwrite.
 
 Security review found no open critical/high code blocker in the implemented
 default-off profile: owner isolation, cursor tamper rejection, prompt-text

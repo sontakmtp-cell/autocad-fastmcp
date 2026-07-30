@@ -17,7 +17,7 @@ process restart remain incomplete.
 
 ## Automated evidence
 
-`python scripts/test-phase10-conformance.py` passed **41 tests** and checked
+`python scripts/test-phase10-conformance.py` passed **47 tests** and checked
 these deterministic public counters:
 
 - exactly two scene tools;
@@ -34,9 +34,9 @@ criteria.
 
 Regression checks passed independently:
 
-- Gateway full: **341 passed**;
+- Gateway full: **343 passed**;
 - root Python: **416 passed, 1 skipped**;
-- contracts full: **143 passed**;
+- contracts full: **144 passed**;
 - Desktop Agent full: **159 passed**;
 - Phase 9 conformance: **94 passed**;
 - Phase 8 Python conformance: **39 passed**;

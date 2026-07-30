@@ -68,16 +68,17 @@ memory are retained observations.
 
 ## Final automated conformance
 
-Final tested/live-evidence head before this documentation commit:
-`3c1b5b8dc86083bb0956a13fe2d71307e491bf99`.
+Final tested product-code head:
+`bf606a5ce9ad870aacc650da8a91b32af04d864e`. Retained live evidence head:
+`bd94f25d4183837116240a47600bfb9c635ba0d2`.
 
 | Suite | Result |
 |---|---:|
-| Phase 10 conformance and public security counters | 41 passed; 2 tools, 7 resources, 0 destructive, 0 open-world |
-| `cad_core` | 12 passed |
-| Gateway full | 341 passed |
+| Phase 10 conformance and public security counters | 47 passed; 2 tools, 7 resources, 0 destructive, 0 open-world |
+| `cad_core` | 15 passed |
+| Gateway full | 343 passed |
 | Root Python | 416 passed, 1 skipped |
-| Contracts full | 143 passed |
+| Contracts full | 144 passed |
 | Desktop Agent full | 159 passed |
 | Managed Host Core | 75 passed |
 | Portal unit / build / E2E | 42 passed / build passed / 11 passed |
