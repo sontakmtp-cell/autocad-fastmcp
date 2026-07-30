@@ -17,6 +17,7 @@ export default async function HomePage() {
           <Link className="button primary" href="/devices">Xem thiết bị</Link>
           <Link className="button secondary" href="/pair">Liên kết thiết bị</Link>
           <Link className="button secondary" href="/workflows">Workflow runs</Link>
+          <Link className="button secondary" href="/scenes">Drawing scenes</Link>
         </div>
       ) : (
         <Link className="button primary" href="/login">Đăng nhập</Link>

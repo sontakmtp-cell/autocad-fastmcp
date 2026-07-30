@@ -28,6 +28,107 @@ const devices = {
 };
 
 const digest = (character) => `sha256:${character.repeat(64)}`;
+const sceneObjectId = (prefix, character) => `${prefix}_${character.repeat(64)}`;
+function phase10Scene(sceneId, owner) {
+  const marker = owner === "a" ? "drawing33-document" : "secret-drawing-owner-b";
+  const sceneDigest = digest(owner === "a" ? "a" : "b");
+  const root = {
+    schema_version: "cad.scene/1",
+    scene_id: sceneId,
+    source_snapshot_id: `snapshot-${owner}-0001`,
+    device_id: `device-${owner}-0001`,
+    document_id: marker,
+    document_revision: `revision-${owner}-001`,
+    space: "model",
+    projection_version: "cad.entity-projection/2",
+    engine_version: "phase10-engine/1",
+    profile_id: "mechanical-2d/1",
+    tolerance_profile: {
+      profile_id: "mechanical-2d/1",
+      drawing_unit: "mm",
+      absolute_floor: 0.001,
+      relative_to_extents: 0.000001,
+      angular_radians: 0.000001,
+      endpoint: 0.01,
+      radius: 0.01,
+      duplicate: 0.001,
+      maximum_cap: 1,
+    },
+    source_digest: digest("c"),
+    scene_digest: sceneDigest,
+    complete: true,
+    truncation_reasons: [],
+    counts: {
+      nodes: 1,
+      relations: 0,
+      contours: 0,
+      features: 1,
+      issues: 0,
+      evidence: 1,
+      omitted: 0,
+    },
+    capabilities: ["scene.core/1"],
+    warnings: [],
+    source_snapshot_available: true,
+    resource_uris: Object.fromEntries(
+      ["summary", "nodes", "relations", "contours", "features", "issues", "evidence"]
+        .map((section) => [section, `cad://scenes/${sceneId}/${section}`]),
+    ),
+  };
+  const nodeId = sceneObjectId("nod", owner === "a" ? "d" : "e");
+  const evidenceId = sceneObjectId("evd", owner === "a" ? "f" : "1");
+  return {
+    root,
+    sections: {
+      nodes: [{
+        schema_version: "cad.scene-node/1",
+        node_id: nodeId,
+        source_entity_id: `entity-${owner}-0001`,
+        entity_type: "CIRCLE",
+        layer: "HOLES",
+        space: "model",
+        bounds: {
+          minimum: { x: 0, y: 0 },
+          maximum: { x: 10, y: 10 },
+        },
+        geometry: { kind: "circle", center: { x: 5, y: 5 }, radius: 5 },
+        geometry_status: "exact",
+        fingerprint: digest("2"),
+        source_runtime: "managed_dotnet_r25",
+        source_capabilities: ["entity.geometry/2"],
+      }],
+      relations: [],
+      contours: [],
+      features: [{
+        schema_version: "cad.scene-feature/1",
+        feature_id: sceneObjectId("fea", owner === "a" ? "3" : "4"),
+        feature_type: "hole",
+        source_node_ids: [nodeId],
+        source_relation_ids: [],
+        confidence: 0.95,
+        evidence_ids: [evidenceId],
+        algorithm_version: "feature-engine/1",
+        limitations: [],
+      }],
+      issues: [],
+      evidence: [{
+        schema_version: "cad.scene-evidence/1",
+        evidence_id: evidenceId,
+        evidence_type: "circle_radius",
+        evidence_strength: "exact_source_geometry",
+        source_node_ids: [nodeId],
+        source_entity_ids: [`entity-${owner}-0001`],
+        metrics: { radius: 5 },
+        algorithm_version: "feature-engine/1",
+        limitations: [],
+      }],
+    },
+  };
+}
+const scenes = {
+  "owner-a-token": phase10Scene("scn_aaaaaaaaaaaaaaaa", "a"),
+  "owner-b-token": phase10Scene("scn_bbbbbbbbbbbbbbbb", "b"),
+};
 const ownerAKey = `user-${createHash("sha256")
   .update("http://127.0.0.1:4321/oidc/\0owner-a")
   .digest("hex")}`;
@@ -341,6 +442,51 @@ createServer(async (request, response) => {
 
   if (request.method === "GET" && url.pathname === "/api/portal/v1/devices") {
     return json(response, 200, { devices: [ownedDevice] });
+  }
+  if (request.method === "GET" && url.pathname === "/api/portal/v1/scenes") {
+    return json(response, 200, { scenes: [scenes[token].root] });
+  }
+  const sceneMatch = url.pathname.match(
+    /^\/api\/portal\/v1\/scenes\/([^/]+)(?:\/(nodes|relations|contours|features|issues|evidence))?$/,
+  );
+  if (request.method === "GET" && sceneMatch) {
+    const ownedScene = scenes[token];
+    if (sceneMatch[1] !== ownedScene.root.scene_id) {
+      return json(response, 404, { error: "not_found" });
+    }
+    if (!sceneMatch[2]) return json(response, 200, ownedScene.root);
+    const section = sceneMatch[2];
+    let items = ownedScene.sections[section];
+    const requestedType = url.searchParams.get(
+      section === "nodes" ? "entity_type"
+        : section === "relations" ? "relation_type"
+          : section === "features" ? "feature_type"
+            : section === "issues" ? "issue_code"
+              : "unused",
+    );
+    if (requestedType) {
+      items = items.filter((item) => (
+        item.entity_type === requestedType
+        || item.relation_type === requestedType
+        || item.feature_type === requestedType
+        || item.code === requestedType
+      ));
+    }
+    const confidenceMin = Number(url.searchParams.get("confidence_min"));
+    if (Number.isFinite(confidenceMin) && url.searchParams.has("confidence_min")) {
+      items = items.filter((item) => item.confidence >= confidenceMin);
+    }
+    return json(response, 200, {
+      contract_version: "cad.mcp/1.6",
+      correlation_id: `correlation-${token === "owner-a-token" ? "a" : "b"}-0001`,
+      scene_id: ownedScene.root.scene_id,
+      scene_digest: ownedScene.root.scene_digest,
+      section,
+      items,
+      total: items.length,
+      next_cursor: null,
+      resource_uri: `cad://scenes/${ownedScene.root.scene_id}/${section}`,
+    });
   }
   if (
     request.method === "GET"

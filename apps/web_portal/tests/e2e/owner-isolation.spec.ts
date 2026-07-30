@@ -53,3 +53,31 @@ test("two browser owners cannot list or guess each other's device URL", async ({
   await ownerA.close();
   await ownerB.close();
 });
+
+test("two browser owners cannot list or drill into each other's scenes", async ({ browser }) => {
+  const ownerA = await authenticatedContext(browser, "a");
+  const ownerB = await authenticatedContext(browser, "b");
+  const pageA = await ownerA.newPage();
+  const pageB = await ownerB.newPage();
+
+  await Promise.all([pageA.goto("/scenes"), pageB.goto("/scenes")]);
+
+  await expect(pageA.getByText("drawing33-document")).toBeVisible();
+  await expect(pageA.getByText("secret-drawing-owner-b")).toHaveCount(0);
+  await expect(pageB.getByText("secret-drawing-owner-b")).toBeVisible();
+  await expect(pageB.getByText("drawing33-document")).toHaveCount(0);
+
+  await pageA.goto("/scenes/scn_aaaaaaaaaaaaaaaa?section=features");
+  await expect(pageA.getByRole("heading", { name: "drawing33-document" })).toBeVisible();
+  await expect(pageA.locator("li").getByText("hole", { exact: true })).toBeVisible();
+  await expect(pageA.getByText("Write authority")).toHaveCount(0);
+  await expect(pageA.locator('form[method="post"]')).toHaveCount(0);
+
+  await pageA.goto("/scenes/scn_bbbbbbbbbbbbbbbb");
+  await expect(pageA.getByRole("heading", { name: "Không tìm thấy scene" })).toBeVisible();
+  expect(await pageA.content()).not.toContain("secret-drawing-owner-b");
+  expect(await pageA.content()).not.toContain("owner-a-token");
+
+  await ownerA.close();
+  await ownerB.close();
+});
