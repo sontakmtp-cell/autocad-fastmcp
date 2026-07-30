@@ -420,6 +420,11 @@ class DurableGatewayServices:
                 commit_request_executor=self._phase9_commit_request,
                 action_runner=phase9_runner,
                 commit_status_resolver=self._phase9_commit_status,
+                scene_port=(
+                    self.scene_service
+                    if phase10_workflow_scene_steps_enabled
+                    else None
+                ),
             )
 
     async def _phase7_rollback_preview_provider(

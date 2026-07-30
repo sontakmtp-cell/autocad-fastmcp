@@ -50,48 +50,16 @@ class SceneApplicationService:
         request: CadBuildSceneInput,
         correlation_id: str,
     ) -> CadBuildSceneOutput:
-        snapshot = await self.snapshot_repository.get_snapshot(
-            owner_subject, request.source_snapshot_id
-        )
-        if snapshot is None:
-            raise GatewayError("not_found")
-        entities = snapshot.get("entities")
-        if not isinstance(entities, list):
-            raise GatewayError("backend_error")
-        revision = str(snapshot.get("document_revision", ""))
-        if not revision:
-            raise GatewayError("backend_error")
+        snapshot, artifact = await self._build_artifact(owner_subject, request)
+        revision = str(snapshot["document_revision"])
         drawing = snapshot.get("drawing") if isinstance(snapshot.get("drawing"), dict) else {}
         document_id = _document_id(drawing, snapshot)
-        source_capabilities = sorted(
-            {
-                str(capability)
-                for entity in entities
-                if isinstance(entity, dict)
-                for capability in entity.get("source_capabilities", [])
-                if isinstance(capability, str)
-            }
-        )
-        context = SceneBuildContext(
-            source_snapshot_id=request.source_snapshot_id,
-            device_id=str(snapshot["device_id"]),
-            document_id=document_id,
-            document_revision=revision,
-            space=request.space,
-            profile_id=request.analysis_profile,
-            source_capabilities=tuple(source_capabilities),
-            drawing_units=str(drawing.get("units") or "unitless")[:32],
-            build_options=tuple(request.include_sections),
-        )
-        try:
-            artifact = build_scene(entities, context, budgets=SceneBudgets())
-        except ValueError as error:
-            raise GatewayError("invalid_request") from error
-        except Exception as error:
-            if getattr(error, "code", None) == "scene_budget_exceeded":
-                raise GatewayError("scene_budget_exceeded") from error
-            raise
-
+        if (
+            artifact.context.device_id != str(snapshot["device_id"])
+            or artifact.context.document_id != document_id
+            or artifact.context.document_revision != revision
+        ):
+            raise GatewayError("backend_error")
         scene_id = "scn_" + uuid.uuid4().hex
         effective_sections = sorted(
             {
@@ -148,6 +116,53 @@ class SceneApplicationService:
             scene=SceneRoot.model_validate(record["root"]),
             reused=reused,
         )
+
+    async def _build_artifact(
+        self,
+        owner_subject: str,
+        request: CadBuildSceneInput,
+    ) -> tuple[dict[str, Any], Any]:
+        snapshot = await self.snapshot_repository.get_snapshot(
+            owner_subject, request.source_snapshot_id
+        )
+        if snapshot is None:
+            raise GatewayError("not_found")
+        entities = snapshot.get("entities")
+        if not isinstance(entities, list):
+            raise GatewayError("backend_error")
+        revision = str(snapshot.get("document_revision", ""))
+        if not revision:
+            raise GatewayError("backend_error")
+        drawing = snapshot.get("drawing") if isinstance(snapshot.get("drawing"), dict) else {}
+        document_id = _document_id(drawing, snapshot)
+        source_capabilities = sorted(
+            {
+                str(capability)
+                for entity in entities
+                if isinstance(entity, dict)
+                for capability in entity.get("source_capabilities", [])
+                if isinstance(capability, str)
+            }
+        )
+        context = SceneBuildContext(
+            source_snapshot_id=request.source_snapshot_id,
+            device_id=str(snapshot["device_id"]),
+            document_id=document_id,
+            document_revision=revision,
+            space=request.space,
+            profile_id=request.analysis_profile,
+            source_capabilities=tuple(source_capabilities),
+            drawing_units=str(drawing.get("units") or "unitless")[:32],
+        )
+        try:
+            artifact = build_scene(entities, context, budgets=SceneBudgets())
+        except ValueError as error:
+            raise GatewayError("invalid_request") from error
+        except Exception as error:
+            if getattr(error, "code", None) == "scene_budget_exceeded":
+                raise GatewayError("scene_budget_exceeded") from error
+            raise
+        return snapshot, artifact
 
     async def query(
         self,
@@ -241,6 +256,88 @@ class SceneApplicationService:
             "scenes": [item["root"] for item in records]
         }
 
+    async def source_digest(
+        self,
+        *,
+        owner_subject: str,
+        device_id: str,
+        source_snapshot_id: str,
+        document_revision: str,
+        analysis_profile: str,
+    ) -> str:
+        request = CadBuildSceneInput(
+            source_snapshot_id=source_snapshot_id,
+            analysis_profile=analysis_profile,
+            idempotency_key="workflow-source-digest",
+        )
+        snapshot, artifact = await self._build_artifact(owner_subject, request)
+        if (
+            str(snapshot["device_id"]) != device_id
+            or str(snapshot["document_revision"]) != document_revision
+        ):
+            raise GatewayError("binding_mismatch")
+        return str(artifact.source_digest)
+
+    async def dispatch(
+        self,
+        action_kind: str,
+        payload: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        owner_subject = str(payload.get("owner_subject", ""))
+        if not owner_subject:
+            raise GatewayError("invalid_request")
+        if action_kind == "build_scene":
+            built = await self.build(
+                owner_subject,
+                CadBuildSceneInput(
+                    source_snapshot_id=payload["source_snapshot_id"],
+                    analysis_profile=payload["analysis_profile"],
+                    space=payload.get("space", "model"),
+                    include_sections=payload["include_sections"],
+                    idempotency_key=idempotency_key,
+                ),
+                _workflow_correlation_id(idempotency_key),
+            )
+            result = built.scene.model_dump(mode="json")
+        elif action_kind == "query_scene":
+            record = await self.repository.get(owner_subject, payload["scene_id"])
+            if record is None:
+                raise GatewayError("not_found")
+            queried = await self.query(
+                owner_subject,
+                CadQuerySceneInput(
+                    scene_id=payload["scene_id"],
+                    section=payload["section"],
+                    limit=payload.get("limit", 100),
+                ),
+                _workflow_correlation_id(idempotency_key),
+            )
+            result = {
+                **queried.model_dump(mode="json"),
+                **_workflow_scene_binding(record),
+            }
+        elif action_kind == "validate_scene":
+            record = await self.repository.get(owner_subject, payload["scene_id"])
+            if record is None:
+                raise GatewayError("not_found")
+            result = {"valid": True, **_workflow_scene_binding(record)}
+        else:
+            raise GatewayError("workflow_action_invalid")
+        _validate_workflow_binding(result, payload)
+        return result
+
+    async def reconcile(
+        self,
+        action_kind: str,
+        child_ref: dict[str, Any],
+        *,
+        idempotency_key: str,
+    ) -> dict[str, Any] | None:
+        del action_kind, child_ref, idempotency_key
+        return None
+
 
 def _document_id(drawing: dict[str, Any], snapshot: dict[str, Any]) -> str:
     candidate = drawing.get("document_id")
@@ -256,6 +353,35 @@ def _document_id(drawing: dict[str, Any], snapshot: dict[str, Any]) -> str:
         ).hexdigest(),
     }
     return "doc_" + canonical_scene_source_digest(value)[7:39]
+
+
+def _workflow_correlation_id(idempotency_key: str) -> str:
+    return "wf_" + hashlib.sha256(idempotency_key.encode("utf-8")).hexdigest()[:24]
+
+
+def _workflow_scene_binding(record: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "scene_id": record["scene_id"],
+        "scene_digest": record["scene_digest"],
+        "source_digest": record["source_digest"],
+        "source_snapshot_id": record["source_snapshot_id"],
+        "document_revision": record["document_revision"],
+    }
+
+
+def _validate_workflow_binding(
+    result: dict[str, Any], payload: dict[str, Any]
+) -> None:
+    for key in (
+        "scene_id",
+        "scene_digest",
+        "source_digest",
+        "source_snapshot_id",
+        "document_revision",
+    ):
+        expected = payload.get(key)
+        if expected is not None and result.get(key) != expected:
+            raise GatewayError("binding_mismatch")
 
 
 def _filters(request: CadQuerySceneInput) -> dict[str, Any]:

@@ -71,8 +71,8 @@ class Phase10HostTransport:
                         "geometry": {
                             "center": [0.0, 0.0],
                             "radius": 2.0,
-                            "start_angle": 0.0,
-                            "end_angle": 1.0,
+                            "start_angle_radians": 0.0,
+                            "end_angle_radians": 1.0,
                             "elevation": 0.0,
                             "normal": [0.0, 0.0, 1.0],
                         },
@@ -105,6 +105,7 @@ async def test_agent_requests_and_forwards_tier_a_projection_up_to_lab_limit():
 
     assert result.ok is True
     assert result.payload["entities"][0]["geometry_status"] == "exact"
+    assert result.payload["entities"][0]["geometry"]["end_angle_radians"] == 1.0
     assert result.payload["source_capabilities"] == ["entity.geometry.arc/1"]
     manifest = adapter.manifest(
         RuntimeProbe(

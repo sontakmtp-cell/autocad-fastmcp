@@ -163,3 +163,66 @@ async def test_query_rejects_tampered_cursor(service):
             "correlation-c",
         )
     assert error.value.code == "invalid_request"
+
+
+@pytest.mark.asyncio
+async def test_workflow_port_binds_source_build_query_and_validation(service):
+    source_digest = await service.source_digest(
+        owner_subject="alice",
+        device_id="device-a",
+        source_snapshot_id="snapshot-a",
+        document_revision="7419413270066305",
+        analysis_profile="mechanical-2d/1",
+    )
+    common = {
+        "owner_subject": "alice",
+        "device_id": "device-a",
+        "source_snapshot_id": "snapshot-a",
+        "document_revision": "7419413270066305",
+        "source_digest": source_digest,
+    }
+    built = await service.dispatch(
+        "build_scene",
+        {
+            **common,
+            "analysis_profile": "mechanical-2d/1",
+            "space": "model",
+            "include_sections": ["nodes", "issues", "evidence"],
+        },
+        idempotency_key="wf:run:build:1:build_scene:" + source_digest,
+    )
+    queried = await service.dispatch(
+        "query_scene",
+        {
+            **common,
+            "scene_id": built["scene_id"],
+            "scene_digest": built["scene_digest"],
+            "section": "issues",
+            "limit": 20,
+        },
+        idempotency_key="wf:run:query:1:query_scene:" + source_digest,
+    )
+    validated = await service.dispatch(
+        "validate_scene",
+        {
+            **common,
+            "scene_id": built["scene_id"],
+            "scene_digest": built["scene_digest"],
+            "validation_profile": "cleanup-audit/1",
+        },
+        idempotency_key="wf:run:validate:1:validate_scene:" + source_digest,
+    )
+
+    assert queried["scene_id"] == built["scene_id"]
+    assert queried["source_digest"] == source_digest
+    assert validated["valid"] is True
+
+    with pytest.raises(GatewayError) as error:
+        await service.source_digest(
+            owner_subject="alice",
+            device_id="device-b",
+            source_snapshot_id="snapshot-a",
+            document_revision="7419413270066305",
+            analysis_profile="mechanical-2d/1",
+        )
+    assert error.value.code == "binding_mismatch"

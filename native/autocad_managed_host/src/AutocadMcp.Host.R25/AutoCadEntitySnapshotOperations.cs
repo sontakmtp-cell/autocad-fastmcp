@@ -2,6 +2,7 @@ using AutocadMcp.Host.Core;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
+using System.Text.Json;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace AutocadMcp.Host.R25;
@@ -208,22 +209,45 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
         Transaction transaction)
     {
         var projection = ProjectGeometry(entity);
+        var bounds = TryGetBounds(entity);
         return new
         {
             handle = entity.Handle.ToString(),
             type = Bound(GetEntityType(entity), 64),
             layer = Bound(entity.Layer, 255),
             space,
-            bounds = TryGetBounds(entity),
+            bounds,
             geometry = projection.Geometry,
             geometry_status = projection.Status,
             geometry_reason = projection.Reason,
             source_capabilities = projection.Capabilities,
             geometry_truncated = projection.Status == "truncated",
-            fingerprint = Phase8ManagedOperationPack.EntityFingerprint(
-                entity,
-                transaction)
+            fingerprint = ReadFingerprint(entity, transaction, bounds, projection)
         };
+    }
+
+    private static string ReadFingerprint(
+        Entity entity,
+        Transaction transaction,
+        object? bounds,
+        GeometryProjection projection)
+    {
+        if (entity is Line or Circle or Polyline)
+        {
+            return Phase8ManagedOperationPack.EntityFingerprint(entity, transaction);
+        }
+        var value = JsonSerializer.SerializeToElement(
+            new
+            {
+                entity_type = GetEntityType(entity),
+                layer = entity.Layer,
+                bounds,
+                geometry = projection.Geometry,
+                geometry_status = projection.Status,
+                geometry_reason = projection.Reason
+            },
+            HostProtocol.JsonOptions);
+        return $"sha256:{CanonicalJson.Hash(value)}";
     }
 
     private static GeometryProjection ProjectGeometry(Entity entity)
@@ -328,8 +352,8 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
             {
                 center = new[] { arc.Center.X, arc.Center.Y },
                 radius = arc.Radius,
-                start_angle = arc.StartAngle,
-                end_angle = arc.EndAngle,
+                start_angle_radians = arc.StartAngle,
+                end_angle_radians = arc.EndAngle,
                 elevation = arc.Center.Z,
                 normal = new[] { arc.Normal.X, arc.Normal.Y, arc.Normal.Z }
             },
