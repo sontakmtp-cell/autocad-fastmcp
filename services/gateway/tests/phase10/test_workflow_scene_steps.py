@@ -7,7 +7,10 @@ from autocad_gateway.infrastructure.sqlite.phase9_repository import Phase9Reposi
 from autocad_gateway.skills.catalog import SkillCatalog
 from autocad_gateway.skills.catalog_repository import SkillCatalogRepository
 from autocad_gateway.workflows.runner import WorkflowRunner
-from autocad_gateway.workflows.service import WorkflowApplicationService
+from autocad_gateway.workflows.service import (
+    WorkflowApplicationService,
+    WorkflowServiceError,
+)
 
 
 CATALOG_ROOT = Path(__file__).resolve().parents[4] / "packages" / "skill_catalog"
@@ -88,7 +91,7 @@ class ScenePort:
 async def _device(owner_subject: str, device_id: str) -> dict:
     assert (owner_subject, device_id) == ("owner-a", "device-a")
     return {
-        "capabilities": {"scene.core/1"},
+        "capabilities": set(),
         "operation_packs": set(),
         "runtime_release_verified": True,
         "capability_evidence_verified": True,
@@ -114,7 +117,7 @@ async def _snapshot(owner_subject: str, device_id: str, snapshot_id: str) -> dic
 def _service(
     database: SqliteDatabase,
     base_port: BasePort,
-    scene_port: ScenePort,
+    scene_port: ScenePort | None,
 ) -> tuple[WorkflowApplicationService, Phase9Repository]:
     catalog = SkillCatalog.from_fixed_package_root(CATALOG_ROOT)
     catalog_repository = SkillCatalogRepository(database)
@@ -136,6 +139,34 @@ def _service(
     )
     service.initialize_catalog()
     return service, repository
+
+
+@pytest.mark.asyncio
+async def test_scene_cleanup_requires_configured_gateway_scene_port(tmp_path):
+    database = SqliteDatabase(tmp_path / "phase10-workflow-no-scene.sqlite")
+    await database.open()
+    service, _ = _service(database, BasePort(), None)
+
+    with pytest.raises(WorkflowServiceError, match="capability_missing"):
+        await service.start(
+            owner_subject="owner-a",
+            actor_subject="owner-a",
+            skill_id="drawing.cleanup-audit",
+            version="1.1.0",
+            device_id="device-a",
+            source_snapshot_id="snapshot-a",
+            inputs={
+                "source_snapshot_id": "snapshot-a",
+                "document_revision": "revision-a",
+                "layer": "0",
+                "page_size": 50,
+                "max_candidates": 20,
+            },
+            idempotency_key="scene-cleanup-no-port",
+            scopes=("autocad.read",),
+        )
+
+    await database.close()
 
 
 @pytest.mark.asyncio

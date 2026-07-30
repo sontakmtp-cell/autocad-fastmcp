@@ -9,7 +9,10 @@ from autocad_gateway.scenes.service import SceneApplicationService
 from autocad_gateway.skills.catalog import SkillCatalog
 from autocad_gateway.skills.catalog_repository import SkillCatalogRepository
 from autocad_gateway.workflows.runner import WorkflowRunner
-from autocad_gateway.workflows.service import WorkflowApplicationService
+from autocad_gateway.workflows.service import (
+    WorkflowApplicationService,
+    WorkflowServiceError,
+)
 
 
 CATALOG_ROOT = Path(__file__).resolve().parents[4] / "packages" / "skill_catalog"
@@ -199,12 +202,18 @@ class PlateSnapshots:
 async def _device(owner_subject: str, device_id: str) -> dict:
     assert (owner_subject, device_id) == ("owner-a", "device-a")
     return {
-        "capabilities": {"cad.program.v1.compile", "scene.core/1"},
+        "capabilities": {"cad.program.v1.compile"},
         "operation_packs": {"cad.program/1.0-create-core"},
         "runtime_release_verified": True,
         "capability_evidence_verified": True,
         "identity_generation": 1,
     }
+
+
+async def _device_without_compile(owner_subject: str, device_id: str) -> dict:
+    value = await _device(owner_subject, device_id)
+    value["capabilities"] = set()
+    return value
 
 
 async def _snapshot(owner_subject: str, device_id: str, snapshot_id: str) -> dict:
@@ -225,7 +234,8 @@ async def _snapshot(owner_subject: str, device_id: str, snapshot_id: str) -> dic
 def _service(
     database: SqliteDatabase,
     write_port: WritePort,
-    scene_port: AutoDimensionScenePort,
+    scene_port: AutoDimensionScenePort | None,
+    device_resolver=_device,
 ) -> tuple[WorkflowApplicationService, Phase9Repository]:
     catalog = SkillCatalog.from_fixed_package_root(CATALOG_ROOT)
     catalog_repository = SkillCatalogRepository(database)
@@ -240,7 +250,7 @@ def _service(
         policy_epoch=10,
         write_enabled=True,
         enabled_skills={"mechanical.auto-dimension-overall"},
-        device_resolver=_device,
+        device_resolver=device_resolver,
         snapshot_resolver=_snapshot,
         write_preview_executor=lambda *args: None,
         commit_request_executor=lambda *args: None,
@@ -249,6 +259,55 @@ def _service(
     )
     service.initialize_catalog()
     return service, repository
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("scene_port_enabled", "device_resolver"),
+    [(False, _device), (True, _device_without_compile)],
+)
+async def test_auto_dimension_requires_scene_port_and_agent_compile_capability(
+    tmp_path,
+    scene_port_enabled,
+    device_resolver,
+):
+    database = SqliteDatabase(
+        tmp_path
+        / (
+            "auto-dimension-no-scene.sqlite"
+            if not scene_port_enabled
+            else "auto-dimension-no-compile.sqlite"
+        )
+    )
+    await database.open()
+    service, _ = _service(
+        database,
+        WritePort(),
+        AutoDimensionScenePort() if scene_port_enabled else None,
+        device_resolver,
+    )
+
+    with pytest.raises(WorkflowServiceError, match="capability_missing"):
+        await service.start(
+            owner_subject="owner-a",
+            actor_subject="owner-a",
+            skill_id="mechanical.auto-dimension-overall",
+            version="1.1.0",
+            device_id="device-a",
+            source_snapshot_id="snapshot-a",
+            inputs={
+                "source_snapshot_id": "snapshot-a",
+                "document_revision": "revision-a",
+                "layer": "DIM",
+                "entity_ids": ["entity-a"],
+                "profile": "mechanical_mm",
+                "offset": 10.0,
+            },
+            idempotency_key="auto-dimension-support-gate",
+            scopes=("autocad.read", "autocad.write"),
+        )
+
+    await database.close()
 
 
 @pytest.mark.asyncio

@@ -2017,9 +2017,12 @@ class WorkflowApplicationService:
             raise WorkflowServiceError("not_found") from error
 
     def _support(self, manifest: Any, status: str, context: dict[str, Any]) -> Any:
+        capabilities = set(context.get("capabilities", ()))
+        if self.enabled and self.scene_port is not None:
+            capabilities.add("scene.core/1")
         return self.catalog.support_for(
             manifest,
-            capabilities=set(context.get("capabilities", ())),
+            capabilities=capabilities,
             operation_packs=set(context.get("operation_packs", ())),
             policy_epoch=self.policy_epoch,
             required_policy_epoch=self.policy_epoch,
