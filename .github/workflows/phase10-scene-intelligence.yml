@@ -20,6 +20,8 @@ jobs:
           python-version: "3.13"
       - name: Run deterministic Phase 10 conformance
         run: python scripts/test-phase10-conformance.py
+      - name: Validate retained live evidence
+        run: python scripts/validate-phase10-live-evidence.py
 
   portal-read-only:
     runs-on: ubuntu-latest
