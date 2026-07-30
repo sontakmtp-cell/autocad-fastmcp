@@ -194,7 +194,8 @@ async def test_runner_routes_scene_action_and_retains_exact_child_refs(repo):
         scene_port=scene_port,
     ).run_once()
     action = (await repo.list_actions("alice", "run"))[0]
-    assert action["idempotency_key"].endswith(source_digest)
+    assert action["idempotency_key"].startswith("wf:scene:")
+    assert len(action["idempotency_key"]) <= 128
     assert action["child_ref"] == {
         "idempotency_key": action["idempotency_key"],
         "scene_id": "scn_0123456789abcdef",

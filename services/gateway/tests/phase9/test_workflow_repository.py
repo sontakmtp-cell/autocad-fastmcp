@@ -148,7 +148,8 @@ async def test_scene_action_key_and_payload_survive_restart_and_replay(repo):
         source_digest=source_digest,
     )
     assert replayed is False
-    assert created["idempotency_key"].endswith(source_digest)
+    assert created["idempotency_key"].startswith("wf:scene:")
+    assert len(created["idempotency_key"]) <= 128
     await repo.database.close()
     await repo.database.open()
     replay, replayed = await repo.insert_action(
@@ -163,6 +164,7 @@ async def test_scene_action_key_and_payload_survive_restart_and_replay(repo):
     )
     assert replayed is True
     assert replay["action_id"] == created["action_id"]
+    assert replay["idempotency_key"] == created["idempotency_key"]
     with pytest.raises(RepositoryConflict, match="workflow_action_conflict"):
         await repo.insert_action(
             owner_subject="alice",

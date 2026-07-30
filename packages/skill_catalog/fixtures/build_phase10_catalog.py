@@ -289,8 +289,8 @@ def main() -> None:
             "version": AUTO_DIMENSION_VERSION,
             "title": "Scene-backed overall dimension",
             "summary": (
-                "Overall dimension preview gated by immutable part and "
-                "contour scene evidence."
+                "Overall dimension preview gated by immutable exact contour "
+                "or hole scene evidence."
             ),
             "tags": ["phase10", "scene", "write-gated"],
             "guide_digest": _sha((auto_folder / "guide.md").read_bytes()),

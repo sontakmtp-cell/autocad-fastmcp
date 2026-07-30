@@ -47,6 +47,7 @@ class SceneRepository:
             tolerance_digest,
             build_options_digest,
         )
+        now = utc_now()
         with self.database.transaction() as conn:
             replay = conn.execute(
                 """
@@ -65,6 +66,12 @@ class SceneRepository:
                 """,
                 (owner_subject, idempotency_key),
             ).fetchone()
+            if replay is not None and str(replay["expires_at"]) <= now:
+                conn.execute(
+                    "DELETE FROM scene_records WHERE scene_id = ?",
+                    (str(replay["scene_id"]),),
+                )
+                replay = None
             if replay is not None:
                 if (
                     str(replay["binding_request_hash"]) != request_hash
@@ -80,6 +87,15 @@ class SceneRepository:
                     or str(replay["binding_scene_digest"]) != str(root["scene_digest"])
                 ):
                     raise SceneRepositoryConflict("idempotency_conflict")
+                conn.execute(
+                    "UPDATE scene_records SET expires_at = ? WHERE scene_id = ?",
+                    (expires_at, str(replay["scene_id"])),
+                )
+                replay = conn.execute(
+                    "SELECT * FROM scene_records WHERE scene_id = ?",
+                    (str(replay["scene_id"]),),
+                ).fetchone()
+                assert replay is not None
                 return self._record(replay), True
 
             duplicate = conn.execute(
@@ -92,6 +108,12 @@ class SceneRepository:
                 """,
                 identity,
             ).fetchone()
+            if duplicate is not None and str(duplicate["expires_at"]) <= now:
+                conn.execute(
+                    "DELETE FROM scene_records WHERE scene_id = ?",
+                    (str(duplicate["scene_id"]),),
+                )
+                duplicate = None
             if duplicate is not None:
                 if str(duplicate["scene_digest"]) != str(root["scene_digest"]):
                     raise SceneRepositoryConflict("scene_conflict")
@@ -115,6 +137,15 @@ class SceneRepository:
                         utc_now(),
                     ),
                 )
+                conn.execute(
+                    "UPDATE scene_records SET expires_at = ? WHERE scene_id = ?",
+                    (expires_at, str(duplicate["scene_id"])),
+                )
+                duplicate = conn.execute(
+                    "SELECT * FROM scene_records WHERE scene_id = ?",
+                    (str(duplicate["scene_id"]),),
+                ).fetchone()
+                assert duplicate is not None
                 return self._record(duplicate), True
 
             scene_id = str(root.get("scene_id") or new_id("scn").replace("scn-", "scn_"))
@@ -204,19 +235,21 @@ class SceneRepository:
     async def get(
         self, owner_subject: str, scene_id: str
     ) -> dict[str, Any] | None:
+        now = utc_now()
         with self.database.read_connection() as conn:
             row = conn.execute(
                 """
                 SELECT * FROM scene_records
-                WHERE owner_subject = ? AND scene_id = ?
+                WHERE owner_subject = ? AND scene_id = ? AND expires_at > ?
                 """,
-                (owner_subject, scene_id),
+                (owner_subject, scene_id, now),
             ).fetchone()
         return self._record(row) if row is not None else None
 
     async def get_section(
         self, owner_subject: str, scene_id: str, section: str
     ) -> list[dict[str, Any]] | None:
+        now = utc_now()
         with self.database.read_connection() as conn:
             row = conn.execute(
                 """
@@ -224,8 +257,9 @@ class SceneRepository:
                 FROM scene_sections s
                 JOIN scene_records r ON r.scene_id = s.scene_id
                 WHERE r.owner_subject = ? AND r.scene_id = ? AND s.section = ?
+                  AND r.expires_at > ?
                 """,
-                (owner_subject, scene_id, section),
+                (owner_subject, scene_id, section, now),
             ).fetchone()
         if row is None:
             return None
@@ -237,15 +271,16 @@ class SceneRepository:
     async def list(
         self, owner_subject: str, *, limit: int = 100
     ) -> list[dict[str, Any]]:
+        now = utc_now()
         with self.database.read_connection() as conn:
             rows = conn.execute(
                 """
                 SELECT * FROM scene_records
-                WHERE owner_subject = ?
+                WHERE owner_subject = ? AND expires_at > ?
                 ORDER BY created_at DESC, scene_id
                 LIMIT ?
                 """,
-                (owner_subject, min(max(limit, 1), 100)),
+                (owner_subject, now, min(max(limit, 1), 100)),
             ).fetchall()
         return [self._record(row) for row in rows]
 
@@ -253,7 +288,8 @@ class SceneRepository:
         cutoff = now or datetime.now(timezone.utc).isoformat()
         with self.database.transaction() as conn:
             cursor = conn.execute(
-                "DELETE FROM scene_records WHERE expires_at <= ?", (cutoff,)
+                "DELETE FROM scene_records WHERE expires_at <= ?",
+                (cutoff,),
             )
         return int(cursor.rowcount)
 

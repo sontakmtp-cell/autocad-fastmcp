@@ -4,6 +4,8 @@ import pytest
 
 from autocad_gateway.infrastructure.sqlite.database import SqliteDatabase
 from autocad_gateway.infrastructure.sqlite.phase9_repository import Phase9Repository
+from autocad_gateway.scenes.repository import SceneRepository
+from autocad_gateway.scenes.service import SceneApplicationService
 from autocad_gateway.skills.catalog import SkillCatalog
 from autocad_gateway.skills.catalog_repository import SkillCatalogRepository
 from autocad_gateway.workflows.runner import WorkflowRunner
@@ -16,9 +18,11 @@ SCENE_DIGEST = "sha256:" + "d" * 64
 
 
 class WritePort:
-    def __init__(self) -> None:
+    def __init__(self, expected_entity_ids=None, expected_scene_digest=SCENE_DIGEST) -> None:
         self.calls: list[str] = []
         self.preview_inputs: dict | None = None
+        self.expected_entity_ids = expected_entity_ids or ["entity-a"]
+        self.expected_scene_digest = expected_scene_digest
 
     async def dispatch(self, action_kind, payload, *, idempotency_key):
         self.calls.append(action_kind)
@@ -31,14 +35,20 @@ class WritePort:
         assert action_kind == "preview"
         self.preview_inputs = payload["inputs"]
         evidence = self.preview_inputs["_scene_selection_evidence"]
-        assert evidence["scene_digest"] == SCENE_DIGEST
+        if self.expected_scene_digest is None:
+            assert evidence["scene_digest"].startswith("sha256:")
+        else:
+            assert evidence["scene_digest"] == self.expected_scene_digest
         assert evidence["write_authority"] is False
         return {
             "observe": {
                 "snapshot_id": "snapshot-a",
                 "document_revision": "revision-a",
             },
-            "query": {"entity_ids": ["entity-a"], "entity_count": 1},
+            "query": {
+                "entity_ids": self.expected_entity_ids,
+                "entity_count": len(self.expected_entity_ids),
+            },
             "pure": {"semantic_digest": "sha256:" + "e" * 64},
             "prepare": {"program_id": "program-a", "program_revision": 1},
             "preview": {"preview_id": "preview-a", "state": "succeeded"},
@@ -127,6 +137,63 @@ class AutoDimensionScenePort:
 
     async def reconcile(self, action_kind, child_ref, *, idempotency_key):
         return None
+
+
+class PlateSnapshots:
+    value = {
+        "snapshot_id": "snapshot-a",
+        "owner_subject": "owner-a",
+        "device_id": "device-a",
+        "document_revision": "revision-a",
+        "drawing": {
+            "document_id": "document-a",
+            "name": "plate.dwg",
+            "units": "mm",
+        },
+        "entities": [
+            {
+                "entity_id": "plate",
+                "entity_type": "LWPOLYLINE",
+                "layer": "0",
+                "space": "model",
+                "geometry_status": "exact",
+                "geometry": {
+                    "vertices": [
+                        {"x": 0.0, "y": 0.0, "bulge": 0.0},
+                        {"x": 100.0, "y": 0.0, "bulge": 0.0},
+                        {"x": 100.0, "y": 60.0, "bulge": 0.0},
+                        {"x": 0.0, "y": 60.0, "bulge": 0.0},
+                    ],
+                    "closed": True,
+                    "elevation": 0.0,
+                    "normal": [0.0, 0.0, 1.0],
+                },
+                "fingerprint": "sha256:" + "1" * 64,
+                "source_runtime": "fixture",
+                "source_capabilities": ["entity.geometry.polyline/1"],
+            },
+            {
+                "entity_id": "hole",
+                "entity_type": "CIRCLE",
+                "layer": "0",
+                "space": "model",
+                "geometry_status": "exact",
+                "geometry": {
+                    "center": [50.0, 30.0],
+                    "radius": 5.0,
+                    "normal": [0.0, 0.0, 1.0],
+                },
+                "fingerprint": "sha256:" + "2" * 64,
+                "source_runtime": "fixture",
+                "source_capabilities": ["entity.geometry.circle/1"],
+            },
+        ],
+    }
+
+    async def get_snapshot(self, owner_subject: str, snapshot_id: str):
+        if (owner_subject, snapshot_id) != ("owner-a", "snapshot-a"):
+            return None
+        return self.value
 
 
 async def _device(owner_subject: str, device_id: str) -> dict:
@@ -263,13 +330,68 @@ async def test_scene_evidence_gates_planner_and_restart_does_not_commit(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_projected_plate_and_hole_evidence_reaches_preview(tmp_path):
+    database = SqliteDatabase(tmp_path / "auto-dimension-plate-hole.sqlite")
+    await database.open()
+    write_port = WritePort(
+        expected_entity_ids=["hole", "plate"], expected_scene_digest=None
+    )
+    scene_port = SceneApplicationService(
+        SceneRepository(database),
+        PlateSnapshots(),
+        cursor_secret=b"phase10-workflow-test-secret-more-than-32-bytes",
+        mechanical_features_enabled=True,
+    )
+    service, _ = _service(database, write_port, scene_port)
+
+    started = await service.start(
+        owner_subject="owner-a",
+        actor_subject="owner-a",
+        skill_id="mechanical.auto-dimension-overall",
+        version="1.1.0",
+        device_id="device-a",
+        source_snapshot_id="snapshot-a",
+        inputs={
+            "source_snapshot_id": "snapshot-a",
+            "document_revision": "revision-a",
+            "layer": "DIM",
+            "entity_ids": ["plate", "hole"],
+            "profile": "mechanical_mm",
+            "offset": 10.0,
+        },
+        idempotency_key="auto-dimension-plate-hole",
+        scopes=("autocad.read", "autocad.write"),
+    )
+
+    detail = await service.get("owner-a", started["run_id"])
+    assert started["state"] == "waiting_for_user", detail["events"][-1]
+    assert write_port.calls == ["preview"]
+    evidence = write_port.preview_inputs["_scene_selection_evidence"]["evidence"]
+    assert {item["evidence_type"] for item in evidence} >= {"contour", "hole"}
+    assert all(
+        item["evidence_strength"] in {"exact_source_geometry", "derived_exact"}
+        for item in evidence
+    )
+    await database.close()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("evidence_entity_ids", "evidence_type", "evidence_strength"),
     [
         (["other-entity"], "contour", "derived_exact"),
         (["entity-a"], "part", "bounded_heuristic"),
+        (["entity-a"], "part", "derived_exact"),
+        (["entity-a"], "hole", "bounded_heuristic"),
+        (["entity-a"], "source_geometry", "exact_source_geometry"),
     ],
-    ids=["missing-entity", "heuristic-part"],
+    ids=[
+        "missing-entity",
+        "heuristic-part",
+        "exact-part",
+        "heuristic-hole",
+        "generic-source-geometry",
+    ],
 )
 async def test_untrusted_scene_selection_evidence_fails_before_planner(
     tmp_path,

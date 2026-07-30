@@ -192,7 +192,8 @@ async def test_scene_cleanup_is_read_only_and_restart_retains_exact_child_refs(
     assert len(actions) == 3
     assert {action["effect_class"] for action in actions} == {"read"}
     for action in actions:
-        assert action["idempotency_key"].endswith(":" + SOURCE_DIGEST)
+        assert action["idempotency_key"].startswith("wf:scene:")
+        assert len(action["idempotency_key"]) <= 128
         assert action["child_ref"] == {
             "scene_id": "scn_scene_a",
             "scene_digest": SCENE_DIGEST,

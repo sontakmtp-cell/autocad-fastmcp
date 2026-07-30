@@ -1183,6 +1183,7 @@ Dự kiến migration additive:
 ```text
 0012_phase10_scenes.sql
 0013_phase10_scene_request_bindings.sql
+0014_phase10_scene_expiry_lifecycle.sql
 ```
 
 Tên cuối phụ thuộc migration hiện hành.
@@ -2074,8 +2075,9 @@ Delivered:
 - deterministic pure scene engine with grid candidate generation, relations,
   contours/components, evidence-backed mechanical features, read-only issues
   and fail-closed budgets;
-- owner-scoped immutable SQLite migrations `0012_phase10_scenes.sql` and
-  `0013_phase10_scene_request_bindings.sql`, signed cursors and restart-safe
+- owner-scoped immutable SQLite migrations `0012_phase10_scenes.sql`,
+  `0013_phase10_scene_request_bindings.sql` and
+  `0014_phase10_scene_expiry_lifecycle.sql`, signed cursors and restart-safe
   scene/query service;
 - exactly two read-only scene tools and seven bounded resources, all default
   off;
@@ -2087,7 +2089,7 @@ Delivered:
 
 Final local automated results:
 
-- Phase 10 47; `cad_core` 15; Gateway 343; root 416 with 1 skip;
+- Phase 10 53; `cad_core` 15; Gateway 349; root 416 with 1 skip;
 - contracts 144; Desktop Agent 159; Managed Host 75;
 - Portal unit 42, production build passed, E2E 11;
 - Phase 9 regression 94; Phase 8 Python regression 39.
@@ -2112,6 +2114,14 @@ PR review hardening:
   digest;
 - relation evidence identity binds relation, directionality, metrics,
   tolerance and algorithm version without last-write-wins overwrite.
+- exact `hole` evidence can cover selected hole entities for auto-dimension;
+  all part evidence, heuristic hole and generic source-geometry evidence still
+  fail closed;
+- active replay/canonical reuse renews the server-bounded scene retention
+  deadline, expired scenes are hidden and rebuilt, and maintenance sweeps
+  expired records without making scene content mutable;
+- scene workflow child keys bind the full deterministic identity through a
+  bounded SHA-256 key that satisfies the 128-character child contract.
 
 Security review found no open critical/high code blocker in the implemented
 default-off profile: owner isolation, cursor tamper rejection, prompt-text

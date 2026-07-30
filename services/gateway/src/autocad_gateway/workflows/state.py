@@ -4,6 +4,7 @@ This module deliberately has no FastMCP or AutoCAD dependencies.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import Literal
 
@@ -86,7 +87,10 @@ def child_idempotency_key(
     if action in _SCENE_ACTIONS:
         if not isinstance(source_digest, str) or not _DIGEST.fullmatch(source_digest):
             raise ValueError("scene child key requires source_digest")
-        return f"wf:{run_id}:{step_id}:{attempt}:{action}:{source_digest}"
+        material = "\0".join(
+            (run_id, step_id, str(attempt), action, source_digest)
+        ).encode()
+        return "wf:scene:" + hashlib.sha256(material).hexdigest()
     if source_digest is not None:
         raise ValueError("source_digest is only valid for scene child keys")
     return f"wf:{run_id}:{step_id}:{attempt}:{action}"

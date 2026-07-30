@@ -1698,6 +1698,8 @@ class DurableGatewayServices:
         await self.job_service.sweep_deadlines()
         if self.workflow_service is not None:
             await self.workflow_service.maintenance_once()
+        if self.scene_repository is not None:
+            await self.scene_repository.delete_expired()
 
     def _maintenance_done(self, task: asyncio.Task[None]) -> None:
         if task.cancelled():

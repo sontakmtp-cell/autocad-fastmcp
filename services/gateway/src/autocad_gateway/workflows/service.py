@@ -994,7 +994,7 @@ class WorkflowApplicationService:
             item
             for item in items
             if isinstance(item, dict)
-            and item.get("evidence_type") in {"part", "contour"}
+            and item.get("evidence_type") in {"contour", "hole"}
             and isinstance(item.get("evidence_id"), str)
             and item.get("evidence_strength")
             in {"exact_source_geometry", "derived_exact"}
