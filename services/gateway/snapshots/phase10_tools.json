@@ -1,0 +1,24 @@
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "input_schema_sha256": "c90c3d1d62fdad4dff25937bc4890c649e7731b19679e9d455b1664432ae0267",
+    "name": "cad_build_scene",
+    "output_schema_sha256": "f19ec50a9585f251a35e1a9e30e2964e608aa171309fdd0bcbb85e454ee6c17e"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "input_schema_sha256": "2e47b7f7850a62ed94bf9926ceb6cf3a91366162c18741f41bd152e506306430",
+    "name": "cad_query_scene",
+    "output_schema_sha256": "3d5efd1f0e94eac6ebc98aecd13b777c233e08349eb42f02c27bbf711c14a0e6"
+  }
+]

@@ -177,6 +177,19 @@ def build_services(config: GatewayConfig) -> Any:
             phase9_policy_epoch=config.phase9_policy_epoch,
             phase9_catalog_root=str(skill_catalog_package_root()),
             phase9_skill_allowlist=config.phase9_skill_allowlist,
+            phase10_scene_engine_enabled=config.phase10_scene_engine_enabled,
+            phase10_public_scene_tools_enabled=config.phase10_public_scene_tools_enabled,
+            phase10_scene_resources_enabled=config.phase10_scene_resources_enabled,
+            phase10_mechanical_features_enabled=config.phase10_mechanical_features_enabled,
+            phase10_annotation_links_enabled=config.phase10_annotation_links_enabled,
+            phase10_workflow_scene_steps_enabled=config.phase10_workflow_scene_steps_enabled,
+            phase10_portal_scene_views_enabled=config.phase10_portal_scene_views_enabled,
+            phase10_cursor_signing_secret=(
+                config.phase10_cursor_signing_secret.encode("utf-8")
+                if config.phase10_cursor_signing_secret
+                else None
+            ),
+            phase10_scene_retention_hours=config.phase10_scene_retention_hours,
             phase9_enabled_skills=tuple(
                 skill_id
                 for skill_id, enabled in (

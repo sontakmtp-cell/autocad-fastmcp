@@ -33,16 +33,12 @@ def _scene(*, scene_digest: str | None = None) -> tuple[dict, dict]:
         "projection_version": "cad.entity-projection/2",
         "engine_version": "scene-engine/1.0.0",
         "profile_id": "mechanical-2d/1",
-        "tolerance_digest": _digest({"profile": "mechanical-2d/1"}),
         "source_digest": _digest({"snapshot": "snapshot-a"}),
         "scene_digest": scene_digest or _digest(sections),
         "complete": True,
         "counts": {name: len(items) for name, items in sections.items()},
         "warnings": [],
         "capabilities": ["scene.core/1"],
-        "section_digests": {
-            name: _digest(items) for name, items in sections.items()
-        },
     }
     return root, sections
 
@@ -64,12 +60,14 @@ async def test_scene_is_owner_scoped_immutable_and_restart_safe(repo):
         sections=sections,
         request_hash=_digest({"request": 1}),
         idempotency_key="build-a",
+        tolerance_digest=_digest({"profile": "mechanical-2d/1"}),
         build_options_digest=_digest({"sections": sorted(sections)}),
+        section_digests={name: _digest(items) for name, items in sections.items()},
         correlation_id="correlation-a",
         expires_at="2026-08-01T00:00:00+00:00",
     )
     assert not replayed
-    assert first["scene_id"].startswith("scn-")
+    assert first["scene_id"].startswith("scn_")
     assert await repo.get("bob", first["scene_id"]) is None
     assert await repo.get_section("bob", first["scene_id"], "nodes") is None
     assert await repo.get_section("alice", first["scene_id"], "nodes") == sections["nodes"]
@@ -80,7 +78,9 @@ async def test_scene_is_owner_scoped_immutable_and_restart_safe(repo):
         sections=sections,
         request_hash=_digest({"request": 1}),
         idempotency_key="build-a",
+        tolerance_digest=_digest({"profile": "mechanical-2d/1"}),
         build_options_digest=_digest({"sections": sorted(sections)}),
+        section_digests={name: _digest(items) for name, items in sections.items()},
         correlation_id="correlation-b",
         expires_at="2026-08-01T00:00:00+00:00",
     )
@@ -104,7 +104,9 @@ async def test_conflict_expiry_and_no_orphan_sections(repo):
         sections=sections,
         request_hash=_digest({"request": 1}),
         idempotency_key="build-a",
+        tolerance_digest=_digest({"profile": "mechanical-2d/1"}),
         build_options_digest=_digest({"sections": sorted(sections)}),
+        section_digests={name: _digest(items) for name, items in sections.items()},
         correlation_id="correlation-a",
         expires_at="2026-07-01T00:00:00+00:00",
     )
@@ -116,7 +118,11 @@ async def test_conflict_expiry_and_no_orphan_sections(repo):
             sections=conflicting_sections,
             request_hash=_digest({"request": 2}),
             idempotency_key="build-a",
+            tolerance_digest=_digest({"profile": "mechanical-2d/1"}),
             build_options_digest=_digest({"sections": sorted(sections)}),
+            section_digests={
+                name: _digest(items) for name, items in conflicting_sections.items()
+            },
             correlation_id="correlation-b",
             expires_at="2026-08-01T00:00:00+00:00",
         )

@@ -32,7 +32,9 @@ class SceneRepository:
         sections: dict[str, list[dict[str, Any]]],
         request_hash: str,
         idempotency_key: str,
+        tolerance_digest: str,
         build_options_digest: str,
+        section_digests: dict[str, str],
         correlation_id: str,
         expires_at: str,
     ) -> tuple[dict[str, Any], bool]:
@@ -42,7 +44,7 @@ class SceneRepository:
             str(root["projection_version"]),
             str(root["engine_version"]),
             str(root["profile_id"]),
-            str(root["tolerance_digest"]),
+            tolerance_digest,
             build_options_digest,
         )
         with self.database.transaction() as conn:
@@ -76,7 +78,7 @@ class SceneRepository:
                     raise SceneRepositoryConflict("scene_conflict")
                 return self._record(duplicate), True
 
-            scene_id = str(root.get("scene_id") or new_id("scn"))
+            scene_id = str(root.get("scene_id") or new_id("scn").replace("scn-", "scn_"))
             persisted_root = dict(root)
             persisted_root["scene_id"] = scene_id
             try:
@@ -106,7 +108,7 @@ class SceneRepository:
                         str(root["projection_version"]),
                         str(root["engine_version"]),
                         str(root["profile_id"]),
-                        str(root["tolerance_digest"]),
+                        tolerance_digest,
                         build_options_digest,
                         str(root["source_digest"]),
                         str(root["scene_digest"]),
@@ -123,7 +125,7 @@ class SceneRepository:
                     ),
                 )
                 for section, items in sorted(sections.items()):
-                    section_digest = str(root["section_digests"][section])
+                    section_digest = str(section_digests[section])
                     conn.execute(
                         """
                         INSERT INTO scene_sections(
