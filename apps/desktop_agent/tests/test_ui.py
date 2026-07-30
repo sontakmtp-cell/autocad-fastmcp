@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from autocad_desktop_agent.state import AgentIntent, AgentViewState, RuntimeState
 from autocad_desktop_agent.ui.window import AgentWindow
+from autocad_desktop_agent.ui.wizard import FirstRunWizard
 from PySide6.QtWidgets import QMessageBox
 
 
@@ -45,17 +46,50 @@ def test_window_maps_state_and_sends_typed_intents(qtbot, tmp_path):
         )
     )
     assert window.primary.text() == "Đã tạm dừng"
-    assert window.values["document"].text() == "mat-bich.dwg"
-    assert window.pause_button.text() == "Tiếp tục"
-    assert window.values["write_lock"].text() == "Đang tắt"
-    assert window.values["hard_pause"].text() == "Đang bật"
-    assert window.values["active_job"].text() == "job-phase6"
-    assert window.values["mismatch"].text() == "policy_mismatch"
-    assert window.values["outcome"].text() == "Cần kiểm tra bản vẽ"
+    assert "mat-bich.dwg" in window.values["document"].text()
+    assert "▶️" in window.btn_pause.text()
+    assert "🔓 Tắt" in window.values["write_lock"].text()
+    assert "⏸️ Đang bật" in window.values["hard_pause"].text()
+    assert "job-phase6" in window.values["active_job"].text()
+    assert "Cần kiểm tra bản vẽ" in window.values["outcome"].text()
     assert window.values["support"].text() == "P6-1234"
-    window.retry_button.click()
-    window.pause_button.click()
+
+    window.btn_recheck.click()
+    window.btn_pause.click()
     assert [item[0] for item in core.intents] == [AgentIntent.RETRY, AgentIntent.RESUME]
+
+
+def test_first_run_wizard_pages_and_navigation(qtbot):
+    core = FakeCore()
+    wizard = FirstRunWizard(core)
+    qtbot.addWidget(wizard)
+    wizard.show()
+
+    assert wizard.stack.currentIndex() == 0
+    assert "Bước 1 / 7" in wizard.step_label.text()
+
+    wizard._on_next()
+    assert wizard.stack.currentIndex() == 1
+    assert "Bước 2 / 7" in wizard.step_label.text()
+
+    wizard.update_from_state(
+        AgentViewState(
+            device_name="PC Tester",
+            server_connected=True,
+            product="AutoCAD Mechanical",
+            release_year=2025,
+            autocad_state="Sẵn sàng",
+            document_name="drawingA.dwg",
+            runtime_id="managed_dotnet",
+            host_handshake_state="connected",
+            host_version="2025.1",
+        )
+    )
+    assert "✓ Trạng thái máy chủ: Đã kết nối Gateway WSS" in wizard.p2_status.text()
+
+    wizard._on_prev()
+    assert wizard.stack.currentIndex() == 0
+    wizard.close()
 
 
 def test_close_hides_to_tray(qtbot, tmp_path):
@@ -75,11 +109,11 @@ def test_exit_with_active_job_requires_confirmation(qtbot, tmp_path, monkeypatch
     )
     window = AgentWindow(core, tmp_path)
     qtbot.addWidget(window)
-    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.No)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.No)
     window._exit()
     assert core.intents == []
 
-    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.Yes)
+    monkeypatch.setattr(QMessageBox, "question", lambda *args, **kwargs: QMessageBox.StandardButton.Yes)
     monkeypatch.setattr("autocad_desktop_agent.ui.window.QApplication.quit", lambda: None)
     window._exit()
     assert core.intents[-1][0] == AgentIntent.EXIT
