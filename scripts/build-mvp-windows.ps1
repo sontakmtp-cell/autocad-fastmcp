@@ -78,15 +78,19 @@ if "%AUTOCAD_AGENT_GATEWAY_HTTP_URL%"=="" set AUTOCAD_AGENT_GATEWAY_HTTP_URL=htt
 
 set PYTHONPATH=%SCRIPT_DIR%agent\src;%REPO_ROOT%\packages\contracts\src;%REPO_ROOT%\packages\cad_core\src;%REPO_ROOT%\services\gateway\src;%REPO_ROOT%\src;%PYTHONPATH%
 
-if exist "%SCRIPT_DIR%.venv\Scripts\python.exe" (
-    set PYTHON_BIN="%SCRIPT_DIR%.venv\Scripts\python.exe"
-) else if exist "%REPO_ROOT%\.venv\Scripts\python.exe" (
-    set PYTHON_BIN="%REPO_ROOT%\.venv\Scripts\python.exe"
+rem Priority: desktop_agent venv (has PySide6) > local .venv > uv run > system python
+if exist "%REPO_ROOT%\apps\desktop_agent\.venv\Scripts\python.exe" (
+    "%REPO_ROOT%\apps\desktop_agent\.venv\Scripts\python.exe" -m autocad_desktop_agent %*
+) else if exist "%SCRIPT_DIR%.venv\Scripts\python.exe" (
+    "%SCRIPT_DIR%.venv\Scripts\python.exe" -m autocad_desktop_agent %*
 ) else (
-    set PYTHON_BIN=python
+    where uv >NUL 2>&1
+    if not errorlevel 1 (
+        uv run --project "%REPO_ROOT%\apps\desktop_agent" python -m autocad_desktop_agent %*
+    ) else (
+        python -m autocad_desktop_agent %*
+    )
 )
-
-%PYTHON_BIN% -m autocad_desktop_agent %*
 if errorlevel 1 (
     echo.
     echo AutoCAD AI Connector Agent exited with error code %errorlevel%
