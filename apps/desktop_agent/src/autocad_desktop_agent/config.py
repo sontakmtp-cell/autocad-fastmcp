@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
+import uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -106,7 +108,10 @@ class AgentConfig:
             gateway_ws_url=os.environ.get(
                 "AUTOCAD_AGENT_GATEWAY_WS_URL", "ws://127.0.0.1:8000/agent/ws"
             ).strip(),
-            device_id=os.environ.get("AUTOCAD_AGENT_DEVICE_ID", "").strip(),
+            device_id=os.environ.get(
+                "AUTOCAD_AGENT_DEVICE_ID",
+                hashlib.sha256(uuid.getnode().to_bytes(6, "big")).hexdigest()[:16],
+            ).strip(),
             device_name=os.environ.get("AUTOCAD_AGENT_DEVICE_NAME", "Máy AutoCAD Lab").strip(),
             ledger_path=Path(os.environ.get("AUTOCAD_AGENT_LEDGER_PATH", str(local / "agent.db"))),
             package_path=Path(
@@ -115,7 +120,10 @@ class AgentConfig:
                     str(local / "packages" / "autocad.lisp.drawing_info" / "3.3-c1" / "mcp_dispatch.lsp"),
                 )
             ),
-            package_sha256=os.environ.get("AUTOCAD_AGENT_PACKAGE_SHA256", "").strip(),
+            package_sha256=os.environ.get(
+                "AUTOCAD_AGENT_PACKAGE_SHA256",
+                "0" * 64,
+            ).strip(),
             heartbeat_seconds=int(os.environ.get("AUTOCAD_AGENT_HEARTBEAT_SECONDS", "10")),
             runtime_mode=RuntimeMode(
                 os.environ.get("AUTOCAD_MCP_RUNTIME_MODE", "autolisp_compat").strip()
