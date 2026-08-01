@@ -30,7 +30,6 @@ WRITE_TOOLS = {
     "cad_start_workflow",
 }
 _SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
-_FRACTIONAL_SECONDS = re.compile(r"(\.\d{1,6})\d+")
 _GATEWAY_PROCESS_KEYS = {
     "executable",
     "executable_sha256",
@@ -144,10 +143,19 @@ def _snapshot_digest(snapshot: dict[str, Any]) -> str:
     return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
 
 
+def _normalize_timestamp(text: str) -> str:
+    match = re.search(r"\.\d+", text)
+    if match:
+        digits = match.group(0)[1:]
+        normalized = (digits + "000000")[:6]
+        text = text[: match.start()] + "." + normalized + text[match.end() :]
+    return text
+
+
 def _parse_timestamp(value: object, label: str) -> datetime:
     if not isinstance(value, str):
         raise ValueError(f"{label}: timestamp is required")
-    text = _FRACTIONAL_SECONDS.sub(r"\1", value.replace("Z", "+00:00"))
+    text = _normalize_timestamp(value.replace("Z", "+00:00"))
     try:
         parsed = datetime.fromisoformat(text)
     except ValueError as error:

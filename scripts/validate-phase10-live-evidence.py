@@ -101,14 +101,20 @@ def _digest(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-_FRACTIONAL_SECONDS = re.compile(r"(\.\d{1,6})\d+")
+def _normalize_timestamp(text: str) -> str:
+    match = re.search(r"\.\d+", text)
+    if match:
+        digits = match.group(0)[1:]
+        normalized = (digits + "000000")[:6]
+        text = text[: match.start()] + "." + normalized + text[match.end() :]
+    return text
 
 
 def _time(value: object, label: str) -> datetime:
     _require(isinstance(value, str), f"{label}: timestamp is required")
     # Python 3.10 rejects fractional seconds with more than six digits;
-    # truncate any RFC 3339 fraction to microseconds before parsing.
-    text = _FRACTIONAL_SECONDS.sub(r"\1", value.replace("Z", "+00:00"))
+    # pad or truncate any RFC 3339 fraction to microseconds before parsing.
+    text = _normalize_timestamp(value.replace("Z", "+00:00"))
     try:
         parsed = datetime.fromisoformat(text)
     except ValueError as error:
