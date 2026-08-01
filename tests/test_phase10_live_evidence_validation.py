@@ -438,6 +438,9 @@ def _upgrade_restart_artifact(root: Path) -> None:
     )
     before = value["gateway_process_before"]
     after = value["gateway_process_after"]
+    _, drawing_c = _fixture(root, "c")
+    value["scene"] = drawing_c["scene"]
+    value["post_restart_devices"] = drawing_c["public_path"]["devices"]
     old_service = before.get("gateway_service_record", {})
     executable = old_service.get("process", {}).get(
         "executable", before.get("gateway_executable", "/usr/bin/python3.12")
@@ -565,6 +568,10 @@ def _upgrade_restart_artifact(root: Path) -> None:
         "invoked_tools": [item["tool"] for item in invocations],
         "write_tools_invoked": [],
         "tool_invocations": invocations,
+    }
+    value["finalization"] = {
+        "implementation_commit": value["implementation_commit"],
+        "finalized_at": (captured_at + timedelta(minutes=2)).isoformat(),
     }
     _save(path, value)
 
@@ -1249,6 +1256,14 @@ def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
     final = asyncio.run(VALIDATOR.CAPTURE._finalize_fixture(args, "token"))
     assert final["finalization"]["implementation_commit"] == FIXED_COMMIT
     _save(fixture_path, final)
+    restart_path, restart_value = _evidence(
+        root, "phase10-live-gateway-restart-20260730.json"
+    )
+    restart_value["finalization"]["finalized_at"] = (
+        VALIDATOR._time(db_value["captured_at"], "DB captured_at")
+        + timedelta(seconds=1)
+    ).isoformat()
+    _save(restart_path, restart_value)
     VALIDATOR.validate(root)
 
 
@@ -1346,10 +1361,13 @@ def test_restart_query_records_public_producer_path(
     db_path.write_text(json.dumps(db_value), encoding="utf-8")
     provisional_path = tmp_path / "restart-provisional.json"
     provisional_path.write_text(json.dumps(result), encoding="utf-8")
+    before_path = tmp_path / "restart-before.json"
+    before_path.write_text(json.dumps(fixture), encoding="utf-8")
     final = asyncio.run(
         VALIDATOR.CAPTURE._finalize_restart(
             argparse.Namespace(
                 restart_evidence=provisional_path,
+                before=before_path,
                 no_effect_db=db_path,
                 device_id=fixture["public_path"]["device_id"],
             ),
@@ -1382,6 +1400,102 @@ def test_validator_rejects_restart_trace_outside_capture_window(
     _save(path, restart)
     with pytest.raises(ValueError, match="outside the post-restart window"):
         VALIDATOR.validate(root)
+
+
+def test_validator_rejects_future_restart_db_capture(tmp_path: Path) -> None:
+    root = _repo(tmp_path / "future-db-validator")
+    restart_path, restart = _evidence(
+        root, "phase10-live-gateway-restart-20260730.json"
+    )
+    _, db = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    future = datetime.now(timezone.utc) + timedelta(days=1)
+    db["scope"]["window_end"] = future.isoformat()
+    db["captured_at"] = future.isoformat()
+    _save(root / "docs" / "architecture" / "evidence" / "phase10-live-no-effect-db-20260730.json", db)
+    with pytest.raises(ValueError, match="DB window"):
+        VALIDATOR.validate(root)
+
+
+def test_finalize_restart_rejects_future_db_capture(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import argparse
+    import asyncio
+
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT)
+    root = _repo(tmp_path / "future-db-finalizer")
+    _, fixture = _fixture(root, "c")
+    _, restart = _evidence(root, "phase10-live-gateway-restart-20260730.json")
+    restart["schema_version"] = "cad.phase10-live-gateway-restart-provisional/1"
+    restart["status"] = "PROVISIONAL"
+    restart.pop("finalization", None)
+    restart_path = tmp_path / "restart-provisional.json"
+    restart_path.write_text(json.dumps(restart), encoding="utf-8")
+    _, db = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    future = datetime.now(timezone.utc) + timedelta(days=1)
+    db["scope"]["window_end"] = future.isoformat()
+    db["captured_at"] = future.isoformat()
+    db_path = tmp_path / "future-db.json"
+    db_path.write_text(json.dumps(db), encoding="utf-8")
+    before_path = tmp_path / "before.json"
+    before_path.write_text(json.dumps(fixture), encoding="utf-8")
+    with pytest.raises(ValueError, match="DB window"):
+        asyncio.run(
+            VALIDATOR.CAPTURE._finalize_restart(
+                argparse.Namespace(
+                    restart_evidence=restart_path,
+                    before=before_path,
+                    no_effect_db=db_path,
+                    device_id=fixture["public_path"]["device_id"],
+                ),
+                "token",
+            )
+        )
+
+
+@pytest.mark.parametrize("tamper", ("gateway", "section", "summary"))
+def test_finalize_restart_recomputes_provisional_gates(
+    tmp_path: Path, monkeypatch, tamper: str
+) -> None:
+    import argparse
+    import asyncio
+
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT)
+    root = _repo(tmp_path / tamper)
+    _, fixture = _fixture(root, "c")
+    _, restart = _evidence(root, "phase10-live-gateway-restart-20260730.json")
+    restart["schema_version"] = "cad.phase10-live-gateway-restart-provisional/1"
+    restart["status"] = "PROVISIONAL"
+    restart.pop("finalization", None)
+    if tamper == "gateway":
+        restart["gateway_process_after"]["gateway_service_record"]["process"][
+            "executable_sha256"
+        ] = "sha256:" + "f" * 64
+    elif tamper == "section":
+        restart["post_restart_sections"]["nodes"]["items"].pop()
+    else:
+        restart["post_restart_summary_resource"]["scene_digest"] = "sha256:tampered"
+    assert all(restart["gate_results"].values())
+    restart_path = tmp_path / "restart-provisional.json"
+    restart_path.write_text(json.dumps(restart), encoding="utf-8")
+    _, db = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    db["captured_at"] = datetime.now(timezone.utc).isoformat()
+    db_path = tmp_path / "db.json"
+    db_path.write_text(json.dumps(db), encoding="utf-8")
+    before_path = tmp_path / "before.json"
+    before_path.write_text(json.dumps(fixture), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="restart gates failed"):
+        asyncio.run(
+            VALIDATOR.CAPTURE._finalize_restart(
+                argparse.Namespace(
+                    restart_evidence=restart_path,
+                    before=before_path,
+                    no_effect_db=db_path,
+                    device_id=fixture["public_path"]["device_id"],
+                ),
+                "token",
+            )
+        )
 
 
 def test_finalize_rejects_observation_job_outside_db_scope(
@@ -1471,6 +1585,8 @@ def test_cli_action_specific_requirements() -> None:
             "finalize-restart",
             "--restart-evidence",
             "restart.json",
+            "--before",
+            "before.json",
             "--no-effect-db",
             "db.json",
             "--device-id",

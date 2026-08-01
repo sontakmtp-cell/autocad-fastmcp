@@ -1224,6 +1224,13 @@ def validate(root: Path) -> None:
         and restart.get("cad_effect_attempted") is False,
         "Gateway restart: no-effect proof is incomplete",
     )
+    finalization = restart.get("finalization")
+    _require(
+        isinstance(finalization, dict)
+        and finalization.get("implementation_commit") == implementation_commit
+        and isinstance(finalization.get("finalized_at"), str),
+        "Gateway restart: finalization provenance is invalid",
+    )
 
     _require(
         no_effect_db.get("schema_version") == "cad.phase10-live-db-evidence/1",
@@ -1253,6 +1260,7 @@ def validate(root: Path) -> None:
             gateway_after_at=restart["gateway_process_after"]["captured_at"],
             identity_after_at=restart["identity_capture_after"]["captured_at"],
             restart_captured_at=restart["captured_at"],
+            finalized_at=restart["finalization"]["finalized_at"],
         )
     except ValueError as error:
         raise ValueError(f"Gateway restart: {error}") from error

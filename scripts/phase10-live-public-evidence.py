@@ -867,6 +867,7 @@ def _validate_restart_window(
     gateway_after_at: str,
     identity_after_at: str,
     restart_captured_at: str,
+    finalized_at: str,
 ) -> None:
     if not invocations:
         raise ValueError("post-restart invocation trace is empty")
@@ -883,6 +884,7 @@ def _validate_restart_window(
     restart_captured = _parse_timestamp(
         restart_captured_at, "restart captured_at"
     )
+    finalized = _parse_timestamp(finalized_at, "restart finalized_at")
     if not (restart_floor <= first_started and last_completed <= restart_captured):
         raise ValueError(
             "Gateway restart: public invocations are outside the post-restart window"
@@ -895,6 +897,7 @@ def _validate_restart_window(
         window_start <= first_started
         and last_completed <= window_end
         and window_end <= db_captured
+        and db_captured <= finalized
     ):
         raise ValueError(
             "Gateway restart: DB window does not cover the fixture capture or post-restart invocations"
@@ -1951,6 +1954,7 @@ async def _restart_query(
         "operator": args.operator,
         "fixture_id": before["fixture"]["fixture_id"],
         "scene_id": scene_id,
+        "scene": scene,
         "source_digest": scene["source_digest"],
         "scene_digest": scene["scene_digest"],
         "gateway_process_before": process_before,
@@ -1959,6 +1963,7 @@ async def _restart_query(
         "identity_capture_after": identity_after,
         "post_restart_sections": sections,
         "post_restart_summary_resource": resource,
+        "post_restart_devices": devices,
         "post_restart_public_path": {
             "invoked_tools": [item["tool"] for item in invocations],
             "write_tools_invoked": write_tools_invoked,
@@ -1973,6 +1978,7 @@ async def _restart_query(
 
 async def _finalize_restart(args: argparse.Namespace, token: str) -> dict[str, Any]:
     provisional = json.loads(args.restart_evidence.read_text(encoding="utf-8"))
+    before = json.loads(args.before.read_text(encoding="utf-8"))
     if provisional.get("schema_version") != "cad.phase10-live-gateway-restart-provisional/1":
         raise ValueError("restart evidence is not a provisional restart-query artifact")
     if provisional.get("status") != "PROVISIONAL":
@@ -1980,8 +1986,17 @@ async def _finalize_restart(args: argparse.Namespace, token: str) -> dict[str, A
     implementation_commit = provisional.get("implementation_commit")
     if not isinstance(implementation_commit, str) or _git_head() != implementation_commit:
         raise ValueError("finalizer commit differs from provisional restart capture")
+    scene = before.get("scene", {})
+    if (
+        provisional.get("fixture_id") != before.get("fixture", {}).get("fixture_id")
+        or provisional.get("scene_id") != scene.get("scene_id")
+        or provisional.get("source_digest") != scene.get("source_digest")
+        or provisional.get("scene_digest") != scene.get("scene_digest")
+    ):
+        raise ValueError("restart evidence does not match the original fixture")
     no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     invocations = provisional["post_restart_public_path"]["tool_invocations"]
+    finalization_boundary = datetime.now(timezone.utc).isoformat()
     _validate_restart_invocations(invocations, scene_id=provisional["scene_id"])
     _validate_restart_window(
         invocations,
@@ -1989,6 +2004,7 @@ async def _finalize_restart(args: argparse.Namespace, token: str) -> dict[str, A
         gateway_after_at=provisional["gateway_process_after"]["captured_at"],
         identity_after_at=provisional["identity_capture_after"]["captured_at"],
         restart_captured_at=provisional["captured_at"],
+        finalized_at=finalization_boundary,
     )
     db_gates = _db_restart_gates(
         no_effect_db,
@@ -1998,8 +2014,50 @@ async def _finalize_restart(args: argparse.Namespace, token: str) -> dict[str, A
         scene_id=provisional["scene_id"],
         implementation_commit=implementation_commit,
     )
-    base_gates = dict(provisional.get("gate_results", {}))
-    write_tools = provisional["post_restart_public_path"]["write_tools_invoked"]
+    process_before = provisional["gateway_process_before"]
+    process_after = provisional["gateway_process_after"]
+    devices = provisional.get("post_restart_devices")
+    sections = provisional.get("post_restart_sections")
+    resource = provisional.get("post_restart_summary_resource")
+    service_gates = _service_restart_gates(
+        process_before, process_after, implementation_commit=implementation_commit
+    )
+    public_gates = _public_scene_gates(
+        scene, sections, resource, devices, device_id=args.device_id
+    )
+    expected_process_identity = {
+        "device_id": args.device_id,
+        "fixture_id": before["fixture"]["fixture_id"],
+        "scene_id": scene["scene_id"],
+        "source_digest": scene["source_digest"],
+        "scene_digest": scene["scene_digest"],
+        "document_id": scene["document_id"],
+        "document_revision": scene["document_revision"],
+    }
+    base_gates = {
+        **service_gates,
+        **public_gates,
+        "standalone_desktop_agent": (
+            process_before["desktop_agent_pid"]
+            == process_after["desktop_agent_pid"]
+            and process_before["desktop_agent_executable"]
+            == process_after["desktop_agent_executable"]
+            and process_before["desktop_agent_sha256"]
+            == process_after["desktop_agent_sha256"]
+        ),
+        "process_identity_bound": _process_identity_bound(
+            process_before, process_after, expected_process_identity
+        ),
+        "dwg_file_hash_unchanged": before["fixture"]["dwg_file_hash_before"]
+        == before["fixture"]["dwg_file_hash_after"],
+        "document_revision_unchanged": before["source"]["document_revision_before"]
+        == before["source"]["document_revision_after"],
+    }
+    write_tools = _validate_restart_invocations(
+        invocations, scene_id=scene["scene_id"]
+    )
+    if provisional["post_restart_public_path"].get("write_tools_invoked") != write_tools:
+        raise ValueError("restart invocation write summary is invalid")
     gates = {
         **base_gates,
         **db_gates,
@@ -2019,13 +2077,14 @@ async def _finalize_restart(args: argparse.Namespace, token: str) -> dict[str, A
         raise RuntimeError(
             f"restart gates failed: {sorted(name for name, passed in gates.items() if not passed)}"
         )
+    finalized_at = datetime.now(timezone.utc).isoformat()
     return {
         **provisional,
         "schema_version": "cad.phase10-live-gateway-restart/1",
         "status": "PASS",
         "finalization": {
             "implementation_commit": implementation_commit,
-            "finalized_at": datetime.now(timezone.utc).isoformat(),
+            "finalized_at": finalized_at,
         },
         "no_effect_db_binding": _db_evidence_binding(args.no_effect_db, no_effect_db),
         "write_requested": not gates["no_write_requested"],
@@ -2120,6 +2179,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     finalize_restart = subparsers.add_parser("finalize-restart")
     finalize_restart.add_argument("--restart-evidence", required=True, type=Path)
+    finalize_restart.add_argument("--before", required=True, type=Path)
     finalize_restart.add_argument("--no-effect-db", required=True, type=Path)
     finalize_restart.add_argument("--device-id", required=True)
     finalize_restart.add_argument("--output", required=True, type=Path)
@@ -2177,6 +2237,7 @@ def main() -> None:
         command.extend(
             (
                 f"--restart-evidence {args.restart_evidence}",
+                f"--before {args.before}",
                 f"--no-effect-db {args.no_effect_db}",
                 f"--device-id {args.device_id}",
             )
