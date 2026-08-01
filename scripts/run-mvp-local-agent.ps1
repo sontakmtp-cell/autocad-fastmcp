@@ -78,6 +78,17 @@ $env:AUTOCAD_MCP_LT_WRITE_ENABLED = "0"
 $env:AUTOCAD_AGENT_WRITE_LOCK_ENABLED = "0"
 $env:AUTOCAD_MCP_PHASE6_ALLOWED_DEVICE_IDS = $DeviceId
 $env:AUTOCAD_MCP_PROGRAM_POLICY_VERSION = "phase6-policy/1"
+if ($ManagedHost) {
+    # Phase 8 v1: source/compiler + create/transform packs (khop host v1)
+    $env:AUTOCAD_MCP_PROGRAM_V1_SOURCE_ENABLED = "1"
+    $env:AUTOCAD_MCP_PROGRAM_V1_CREATE_PACK_ENABLED = "1"
+    $env:AUTOCAD_MCP_PROGRAM_V1_TRANSFORM_PACK_ENABLED = "1"
+    $env:AUTOCAD_MCP_CHECKPOINT_V2_ENABLED = "1"
+    $env:AUTOCAD_MCP_OPERATION_PACK_ALLOWLIST = (
+        "compiler.core/1,create-equivalent/1,transform.exact/1"
+    )
+    $env:AUTOCAD_MCP_ROLLOUT_POLICY_EPOCH = "1"
+}
 
 $python = Join-Path $agentRoot ".venv\Scripts\python.exe"
 if ($Headless) {

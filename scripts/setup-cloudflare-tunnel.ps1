@@ -17,6 +17,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# cloudflared in thong bao version moi ra stderr khi co autoupdate; PS 5.1
+# coi do la loi. Tat no de cac lenh `2>&1` khong bi nhiem.
+$env:CLOUDFLARED_NO_AUTOUPDATE = "1"
 $CloudflaredDir = Join-Path $env:USERPROFILE ".cloudflared"
 $CertPath = Join-Path $CloudflaredDir "cert.pem"
 $ConfigPath = Join-Path $CloudflaredDir "config.yml"
@@ -207,7 +210,7 @@ function Get-TunnelCandidates {
         # fallback text below
     }
 
-    $text = & $Cf tunnel list 2>&1 | Out-String
+    $text = & $Cf tunnel list 2>$null | Out-String
     $escaped = [regex]::Escape($Name)
     $rx = [regex]::Matches(
         $text,
@@ -299,7 +302,7 @@ function Ensure-NamedTunnel {
         }
 
         Write-Host "    Tao tunnel $altName ..." -ForegroundColor DarkGray
-        $createOut = & $Cf tunnel create $altName 2>&1 | Out-String
+        $createOut = & $Cf tunnel create $altName 2>$null | Out-String
         Write-Host $createOut
         $idMatch = [regex]::Match(
             $createOut,
@@ -313,7 +316,7 @@ function Ensure-NamedTunnel {
     }
 
     Write-Host "    Tao tunnel moi: $Name ..." -ForegroundColor DarkGray
-    $createOut = & $Cf tunnel create $Name 2>&1 | Out-String
+    $createOut = & $Cf tunnel create $Name 2>$null | Out-String
     Write-Host $createOut
 
     $idMatch = [regex]::Match(
@@ -531,7 +534,7 @@ else {
 }
 
 Write-Step "Kiem tra quyen tunnel list"
-$listProbe = & $cf tunnel list 2>&1 | Out-String
+$listProbe = & $cf tunnel list 2>$null | Out-String
 if ($listProbe -match '(?i)Cannot determine default origin certificate|Error locating origin cert|failed to load') {
     throw "cert.pem khong hop le. Chay lai (khong -SkipLogin). Chi tiet: $listProbe"
 }
