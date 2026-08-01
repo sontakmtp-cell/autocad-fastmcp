@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import ctypes
 import hashlib
 import json
-import msvcrt
 import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+if os.name == "nt":
+    import ctypes
+    import msvcrt
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SECTIONS = ("nodes", "relations", "contours", "features", "issues", "evidence")
