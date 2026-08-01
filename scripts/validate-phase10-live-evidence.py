@@ -1202,6 +1202,9 @@ def validate(root: Path) -> None:
         "Gateway restart: post-restart public invocation evidence is missing",
     )
     restart_invocations = restart_public_path.get("tool_invocations")
+    no_effect_db = _load(
+        evidence_root / "phase10-live-no-effect-db-20260730.json"
+    )
     try:
         restart_write_tools = CAPTURE._validate_restart_invocations(
             restart_invocations, scene_id=scene_c["scene_id"]
@@ -1222,9 +1225,6 @@ def validate(root: Path) -> None:
         "Gateway restart: no-effect proof is incomplete",
     )
 
-    no_effect_db = _load(
-        evidence_root / "phase10-live-no-effect-db-20260730.json"
-    )
     _require(
         no_effect_db.get("schema_version") == "cad.phase10-live-db-evidence/1",
         "No-effect DB: schema mismatch",
@@ -1246,6 +1246,16 @@ def validate(root: Path) -> None:
             )
         except ValueError as error:
             raise ValueError(f"Drawing {name.upper()}: {error}") from error
+    try:
+        CAPTURE._validate_restart_window(
+            restart_invocations,
+            no_effect_db,
+            gateway_after_at=restart["gateway_process_after"]["captured_at"],
+            identity_after_at=restart["identity_capture_after"]["captured_at"],
+            restart_captured_at=restart["captured_at"],
+        )
+    except ValueError as error:
+        raise ValueError(f"Gateway restart: {error}") from error
     _require(
         isinstance(no_effect_db.get("failures_retests"), list)
         and isinstance(no_effect_db.get("limitations"), list),

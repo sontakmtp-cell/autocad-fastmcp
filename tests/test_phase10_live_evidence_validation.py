@@ -4,7 +4,7 @@ import copy
 import importlib.util
 import json
 import shutil
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -518,6 +518,18 @@ def _upgrade_restart_artifact(root: Path) -> None:
     value["gate_results"].update(gates)
     value.update(gates)
     captured_at = VALIDATOR._time(value["captured_at"], "restart captured_at")
+    identity_before_at = captured_at - timedelta(minutes=14)
+    identity_after_at = captured_at - timedelta(minutes=13)
+    before["captured_at"] = identity_before_at.isoformat()
+    after["captured_at"] = identity_after_at.isoformat()
+    value["identity_capture_before"] = _identity_capture_from_record(
+        before["gateway_service_record"], captured_at=before["captured_at"]
+    )
+    value["identity_capture_after"] = _identity_capture_from_record(
+        after["gateway_service_record"],
+        captured_at=after["captured_at"],
+        old_pid=before["gateway_pid"],
+    )
     invocations = []
     expected = [
         ("cad_list_devices", {"online_only": True}),
@@ -538,7 +550,7 @@ def _upgrade_restart_artifact(root: Path) -> None:
         ),
     ]
     for index, (tool, arguments) in enumerate(expected):
-        started_at = captured_at - timedelta(seconds=20 - 2 * index)
+        started_at = captured_at - timedelta(minutes=12) + timedelta(seconds=2 * index)
         invocations.append(
             {
                 "tool": tool,
@@ -1280,7 +1292,17 @@ def test_restart_query_records_public_producer_path(
     _, restart = _evidence(
         root, "phase10-live-gateway-restart-20260730.json"
     )
-    db_path, _ = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    db_path, db_value = _evidence(
+        root, "phase10-live-no-effect-db-20260730.json"
+    )
+    now = datetime.now(timezone.utc)
+    db_value["scope"]["window_start"] = (
+        now - timedelta(minutes=1)
+    ).isoformat()
+    db_value["scope"]["window_end"] = (now + timedelta(minutes=1)).isoformat()
+    db_value["captured_at"] = (now + timedelta(minutes=2)).isoformat()
+    db_path = tmp_path / "restart-db.json"
+    db_path.write_text(json.dumps(db_value), encoding="utf-8")
 
     def write(name: str, value: dict) -> Path:
         path = tmp_path / name
@@ -1325,6 +1347,57 @@ def test_restart_query_records_public_producer_path(
     ]
     assert result["post_restart_public_path"]["write_tools_invoked"] == []
     assert result["write_requested"] is False
+
+
+@pytest.mark.parametrize("tamper", ("before_identity", "after_capture"))
+def test_validator_rejects_restart_trace_outside_capture_window(
+    tmp_path: Path, tamper: str
+) -> None:
+    root = _repo(tmp_path / tamper)
+    path, restart = _evidence(
+        root, "phase10-live-gateway-restart-20260730.json"
+    )
+    invocations = restart["post_restart_public_path"]["tool_invocations"]
+    if tamper == "before_identity":
+        before = VALIDATOR._time(
+            restart["identity_capture_after"]["captured_at"], "identity-after"
+        ) - timedelta(seconds=1)
+        invocations[0]["started_at"] = before.isoformat()
+        invocations[0]["completed_at"] = (before + timedelta(milliseconds=1)).isoformat()
+    else:
+        after = VALIDATOR._time(restart["captured_at"], "restart captured_at")
+        invocations[-1]["started_at"] = after.isoformat()
+        invocations[-1]["completed_at"] = (after + timedelta(milliseconds=1)).isoformat()
+    _save(path, restart)
+    with pytest.raises(ValueError, match="outside the post-restart window"):
+        VALIDATOR.validate(root)
+
+
+def test_finalize_rejects_observation_job_outside_db_scope(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import argparse
+    import asyncio
+
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT)
+    root = _repo(tmp_path / "anchor-scope")
+    _, fixture = _fixture(root, "a")
+    provisional = _provisional_capture(tmp_path, fixture)
+    provisional_path = tmp_path / "provisional-anchor.json"
+    provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
+    _, db = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    db["scope"]["anchor_job_ids"] = [
+        provisional["session_binding"]["observation_job_ids"][0]
+    ]
+    db_path = tmp_path / "db-anchor.json"
+    db_path.write_text(json.dumps(db), encoding="utf-8")
+    args = argparse.Namespace(
+        fixture_evidence=provisional_path,
+        no_effect_db=db_path,
+        device_id=provisional["public_path"]["device_id"],
+    )
+    with pytest.raises(ValueError, match="absent from the no-effect DB scope"):
+        asyncio.run(VALIDATOR.CAPTURE._finalize_fixture(args, "token"))
 
 
 def test_cli_finalize_fixture_runs_without_token_file(

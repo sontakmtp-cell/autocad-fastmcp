@@ -860,6 +860,47 @@ def _validate_restart_invocations(
     )
 
 
+def _validate_restart_window(
+    invocations: list[dict[str, Any]],
+    no_effect_db: dict[str, Any],
+    *,
+    gateway_after_at: str,
+    identity_after_at: str,
+    restart_captured_at: str,
+) -> None:
+    if not invocations:
+        raise ValueError("post-restart invocation trace is empty")
+    restart_floor = max(
+        _parse_timestamp(gateway_after_at, "Gateway restart after captured_at"),
+        _parse_timestamp(identity_after_at, "identity-after captured_at"),
+    )
+    first_started = _parse_timestamp(
+        invocations[0]["started_at"], "first post-restart invocation"
+    )
+    last_completed = _parse_timestamp(
+        invocations[-1]["completed_at"], "last post-restart invocation"
+    )
+    restart_captured = _parse_timestamp(
+        restart_captured_at, "restart captured_at"
+    )
+    if not (restart_floor <= first_started and last_completed <= restart_captured):
+        raise ValueError(
+            "Gateway restart: public invocations are outside the post-restart window"
+        )
+    scope = no_effect_db.get("scope", {})
+    window_start = _parse_timestamp(scope.get("window_start"), "DB window_start")
+    window_end = _parse_timestamp(scope.get("window_end"), "DB window_end")
+    db_captured = _parse_timestamp(no_effect_db.get("captured_at"), "DB captured_at")
+    if not (
+        window_start <= first_started
+        and last_completed <= window_end
+        and window_end <= db_captured
+    ):
+        raise ValueError(
+            "Gateway restart: DB window does not cover the fixture capture or post-restart invocations"
+        )
+
+
 def _node_map(sections: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {item["node_id"]: item for item in sections["nodes"]["items"]}
 
@@ -1443,6 +1484,15 @@ def _bind_no_effect_db(
     if not window_end <= db_captured_at:
         raise ValueError("no-effect DB was captured before the audit window closed")
     observation_job_ids = evidence["session_binding"]["observation_job_ids"]
+    scope_anchor_job_ids = scope.get("anchor_job_ids")
+    if (
+        not isinstance(scope_anchor_job_ids, list)
+        or len(scope_anchor_job_ids) != len(set(scope_anchor_job_ids))
+        or not set(observation_job_ids) <= set(scope_anchor_job_ids)
+    ):
+        raise ValueError(
+            "fixture observation jobs are absent from the no-effect DB scope"
+        )
     scene_id = evidence["scene"]["scene_id"]
     if scene_id not in scope.get("scene_ids", []):
         raise ValueError("fixture scene is absent from the no-effect DB scope")
@@ -1846,6 +1896,14 @@ async def _restart_query(
     write_tools_invoked = _validate_restart_invocations(
         invocations, scene_id=scene_id
     )
+    restart_captured_at = datetime.now(timezone.utc).isoformat()
+    _validate_restart_window(
+        invocations,
+        no_effect_db,
+        gateway_after_at=process_after["captured_at"],
+        identity_after_at=identity_after["captured_at"],
+        restart_captured_at=restart_captured_at,
+    )
     service_gates = _service_restart_gates(
         process_before,
         process_after,
@@ -1913,7 +1971,7 @@ async def _restart_query(
         raise RuntimeError("repository HEAD changed during restart capture")
     return {
         "schema_version": "cad.phase10-live-gateway-restart/1",
-        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "captured_at": restart_captured_at,
         "capture_command": args.capture_command,
         "baseline_commit": _git_baseline(),
         "implementation_commit": restart_commit,
