@@ -386,12 +386,14 @@ async def test_capability_is_advertised_only_with_enabled_stable_identity(
     await core._run_session(socket, "token")
     hello = json.loads(socket.sent[0])
     assert "cad.approval.device_local/1" in hello["capabilities"]
+    assert "cad.observe.detail-provenance/1" in hello["capabilities"]
 
     disabled, _ = make_core(tmp_path / "disabled", enabled=False)
     disabled_socket = SessionSocket()
     await disabled._run_session(disabled_socket, "token")
     disabled_hello = json.loads(disabled_socket.sent[0])
     assert "cad.approval.device_local/1" not in disabled_hello["capabilities"]
+    assert "cad.observe.detail-provenance/1" in disabled_hello["capabilities"]
 
 
 def test_ui_has_typed_approval_only_and_host_command_has_no_approval_boolean() -> None:

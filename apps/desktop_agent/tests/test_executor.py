@@ -181,6 +181,7 @@ async def test_executor_returns_commit_safe_managed_detail_snapshot():
 @pytest.mark.asyncio
 async def test_executor_preserves_managed_phase10_geometry_provenance():
     cmd = command(
+        detail_snapshot_contract="cad.observe-detail/2",
         payload={
             "observation_level": "detail",
             "include_preview_image": False,
@@ -211,6 +212,38 @@ async def test_executor_preserves_managed_phase10_geometry_provenance():
         "fingerprint": "sha256:" + "b" * 64,
         "source_runtime": "managed_dotnet",
         "source_capabilities": ["entity.geometry.line/1"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_executor_uses_legacy_detail_shape_without_gateway_negotiation():
+    cmd = command(
+        payload={
+            "observation_level": "detail",
+            "include_preview_image": False,
+            "package": PACKAGE,
+        }
+    )
+    cmd = cmd.model_copy(update={"payload_hash": canonical_payload_hash(cmd.payload)})
+
+    snapshot = (
+        await DrawingInfoExecutor(
+            ReadPort(),
+            PACKAGE,
+            "0.1.0",
+            runtime_broker=ManagedBroker(ManagedDetailReadPort()),
+        ).execute(cmd)
+    )["snapshot"]
+
+    assert set(snapshot["entities"][0]) == {
+        "entity_id",
+        "entity_type",
+        "layer",
+        "space",
+        "bounds",
+        "geometry",
+        "geometry_truncated",
+        "fingerprint",
     }
 
 

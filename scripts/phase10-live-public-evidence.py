@@ -14,9 +14,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastmcp import Client
-
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SECTIONS = ("nodes", "relations", "contours", "features", "issues", "evidence")
 
@@ -84,6 +81,264 @@ def _git_baseline() -> str:
         capture_output=True,
         text=True,
     ).stdout.strip()
+
+
+def _snapshot_digest(snapshot: dict[str, Any]) -> str:
+    canonical = json.dumps(
+        snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _service_restart_gates(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    *,
+    implementation_commit: str,
+) -> dict[str, bool]:
+    old = before.get("gateway_service_record", {})
+    new = after.get("gateway_service_record", {})
+    old_properties = old.get("properties", {})
+    new_properties = new.get("properties", {})
+    old_process = old.get("process", {})
+    new_process = new.get("process", {})
+    old_release = old.get("release", {})
+    new_release = new.get("release", {})
+    exit_proof = after.get("old_gateway_process_exit", {})
+    old_pid = old_properties.get("MainPID")
+    new_pid = new_properties.get("MainPID")
+    old_start = old_process.get("start_identity")
+    new_start = new_process.get("start_identity")
+    executable = new_process.get("executable")
+    executable_hash = new_process.get("executable_sha256")
+    return {
+        "old_gateway_process_exited": (
+            exit_proof.get("source") == "procfs"
+            and exit_proof.get("pid") == old_pid
+            and exit_proof.get("start_identity") == old_start
+            and "proc_stat_after" in exit_proof
+            and exit_proof.get("proc_stat_after") is None
+            and exit_proof.get("probe_exit_code") == 0
+        ),
+        "actual_gateway_process_restart": (
+            isinstance(old_pid, int)
+            and isinstance(new_pid, int)
+            and old_pid > 0
+            and new_pid > 0
+            and old_pid != new_pid
+            and isinstance(old_start, str)
+            and bool(old_start)
+            and isinstance(new_start, str)
+            and bool(new_start)
+            and old_start != new_start
+            and old_process.get("source") == new_process.get("source") == "procfs"
+            and old_process.get("pid") == old_pid
+            and new_process.get("pid") == new_pid
+        ),
+        "authoritative_gateway_service": (
+            old.get("source") == new.get("source") == "systemctl_show"
+            and old_properties.get("Id")
+            == new_properties.get("Id")
+            == "autocad-mcp-phase4.service"
+            and new_properties.get("ActiveState") == "active"
+            and new_properties.get("SubState") == "running"
+            and isinstance(old_properties.get("ExecMainStartTimestampMonotonic"), str)
+            and bool(old_properties["ExecMainStartTimestampMonotonic"])
+            and isinstance(new_properties.get("ExecMainStartTimestampMonotonic"), str)
+            and bool(new_properties["ExecMainStartTimestampMonotonic"])
+            and old_properties.get("ExecMainStartTimestampMonotonic")
+            != new_properties.get("ExecMainStartTimestampMonotonic")
+            and before.get("gateway_pid") == old_pid
+            and after.get("gateway_pid") == new_pid
+        ),
+        "gateway_runtime_identity": (
+            isinstance(executable, str)
+            and executable.startswith("/")
+            and old_process.get("executable") == executable
+            and old_properties.get("ExecStart") == new_properties.get("ExecStart")
+            and executable in str(new_properties.get("ExecStart", ""))
+            and isinstance(executable_hash, str)
+            and executable_hash.startswith("sha256:")
+            and len(executable_hash) == 71
+            and old_process.get("executable_sha256") == executable_hash
+            and old_release.get("source")
+            == new_release.get("source")
+            == "git_rev_parse"
+            and old_release.get("working_directory")
+            == new_release.get("working_directory")
+            == new_properties.get("WorkingDirectory")
+            and old_release.get("commit")
+            == new_release.get("commit")
+            == implementation_commit
+            and implementation_commit[:7]
+            in str(new_properties.get("WorkingDirectory", ""))
+        ),
+    }
+
+
+def _db_restart_gates(
+    evidence: dict[str, Any],
+    process_before: dict[str, Any],
+    process_after: dict[str, Any],
+    *,
+    device_id: str,
+    scene_id: str,
+    implementation_commit: str,
+) -> dict[str, bool]:
+    scope = evidence.get("scope", {})
+    comparison = evidence.get("restart_comparison", {})
+    pre_snapshot = comparison.get("pre_restart_write_snapshot", {})
+    post_snapshot = evidence.get("write_snapshot", {})
+    pre_tables = pre_snapshot.get("tables")
+    post_tables = post_snapshot.get("tables")
+    pre_session = comparison.get("pre_restart_active_agent_session_id")
+    post_session = comparison.get("post_restart_active_agent_session_id")
+    sessions = {
+        item.get("session_id"): item
+        for item in evidence.get("agent_sessions", [])
+        if isinstance(item, dict)
+    }
+    pre_record = sessions.get(pre_session, {})
+    post_record = sessions.get(post_session, {})
+    return {
+        "db_evidence_provenance": (
+            evidence.get("schema_version") == "cad.phase10-live-db-evidence/1"
+            and evidence.get("implementation_commit") == implementation_commit
+        ),
+        "gateway_public_reconnect": (
+            isinstance(pre_session, str)
+            and isinstance(post_session, str)
+            and pre_session != post_session
+            and process_before.get("agent_session_id") == pre_session
+            and process_after.get("agent_session_id") == post_session
+            and evidence.get("active_agent_session_id") == post_session
+            and pre_record.get("device_id") == post_record.get("device_id") == device_id
+            and pre_record.get("disconnected_at") is not None
+            and post_record.get("disconnected_at") is None
+        ),
+        "db_scope_bound": (
+            scope.get("device_id") == device_id
+            and isinstance(scope.get("owner_subject"), str)
+            and bool(scope.get("owner_subject"))
+            and scene_id in scope.get("scene_ids", [])
+        ),
+        "no_write_events_in_window": evidence.get("retrospective_no_write_events")
+        == [],
+        "write_snapshot_unchanged": (
+            isinstance(pre_tables, dict)
+            and isinstance(post_tables, dict)
+            and pre_tables == post_tables
+            and pre_snapshot.get("sha256") == _snapshot_digest(pre_tables)
+            and post_snapshot.get("sha256") == _snapshot_digest(post_tables)
+            and comparison.get("post_restart_write_snapshot_sha256")
+            == post_snapshot.get("sha256")
+        ),
+        "anchor_jobs_read_only": bool(evidence.get("anchor_jobs"))
+        and all(
+            item.get("device_id") == device_id
+            and item.get("effect_class") == "read"
+            and item.get("state") == "succeeded"
+            for item in evidence.get("anchor_jobs", [])
+        ),
+    }
+
+
+def _public_scene_gates(
+    scene: dict[str, Any],
+    sections: dict[str, Any],
+    resource: dict[str, Any],
+    devices: dict[str, Any],
+    *,
+    device_id: str,
+) -> dict[str, bool]:
+    device = next(
+        (
+            item
+            for item in devices.get("devices", [])
+            if item.get("device_id") == device_id
+        ),
+        None,
+    )
+    same_sections = all(
+        sections.get(name, {}).get("items") == scene["sections"][name]["items"]
+        and sections.get(name, {}).get("total") == scene["sections"][name]["total"]
+        and sections.get(name, {}).get("scene_id") == scene["scene_id"]
+        and sections.get(name, {}).get("scene_digest") == scene["scene_digest"]
+        for name in SECTIONS
+    )
+    return {
+        "public_device_online": (
+            isinstance(device, dict)
+            and device.get("status") == "online"
+            and device.get("paused") is False
+            and device.get("runtime_state") == "online_idle"
+        ),
+        "same_scene_retrieved": (
+            same_sections
+            and resource.get("scene_id") == scene["scene_id"]
+            and resource.get("scene_digest") == scene["scene_digest"]
+            and resource.get("source_digest") == scene["source_digest"]
+            and resource.get("document_revision") == scene["document_revision"]
+            and resource.get("counts") == scene["counts"]
+        ),
+        "public_query_succeeded": same_sections
+        and resource.get("schema_version") == "cad.scene/1",
+    }
+
+
+def _db_evidence_binding(path: Path, evidence: dict[str, Any]) -> dict[str, Any]:
+    session_ids = {
+        evidence.get("restart_comparison", {}).get(
+            "pre_restart_active_agent_session_id"
+        ),
+        evidence.get("restart_comparison", {}).get(
+            "post_restart_active_agent_session_id"
+        ),
+    }
+    return {
+        "artifact": str(path),
+        "artifact_sha256": _sha256(path),
+        "schema_version": evidence.get("schema_version"),
+        "scope": evidence.get("scope"),
+        "retrospective_no_write_events": evidence.get(
+            "retrospective_no_write_events"
+        ),
+        "anchor_jobs": [
+            {
+                key: item.get(key)
+                for key in ("job_id", "device_id", "effect_class", "state")
+            }
+            for item in evidence.get("anchor_jobs", [])
+        ],
+        "agent_sessions": [
+            {
+                key: item.get(key)
+                for key in ("session_id", "device_id", "connected_at", "disconnected_at")
+            }
+            for item in evidence.get("agent_sessions", [])
+            if item.get("session_id") in session_ids
+        ],
+        "active_agent_session_id": evidence.get("active_agent_session_id"),
+        "pre_restart_write_snapshot_sha256": evidence.get(
+            "restart_comparison", {}
+        )
+        .get("pre_restart_write_snapshot", {})
+        .get("sha256"),
+        "post_restart_write_snapshot_sha256": evidence.get(
+            "write_snapshot", {}
+        ).get("sha256"),
+    }
+
+
+def _process_identity_bound(
+    before: dict[str, Any],
+    after: dict[str, Any],
+    expected: dict[str, Any],
+) -> bool:
+    return all(
+        before.get(name) == after.get(name) == value
+        for name, value in expected.items()
+    )
 
 
 async def _observe(client: Client, device_id: str, key: str) -> dict[str, Any]:
@@ -227,6 +482,8 @@ def _fixture_gates(fixture: str, sections: dict[str, Any]) -> dict[str, bool]:
 
 
 async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
+    from fastmcp import Client
+
     drawing = args.drawing.resolve()
     process_identity = json.loads(args.process_identity.read_text(encoding="utf-8"))
     required_identity = {
@@ -449,9 +706,12 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
 
 
 async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]:
+    from fastmcp import Client
+
     before = json.loads(args.before.read_text(encoding="utf-8"))
     process_before = json.loads(args.process_before.read_text(encoding="utf-8"))
     process_after = json.loads(args.process_after.read_text(encoding="utf-8"))
+    no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     scene = before["scene"]
     scene_id = scene["scene_id"]
     async with Client(args.endpoint, auth=token, timeout=120) as client:
@@ -466,27 +726,65 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
         resource = _resource_payload(
             await client.read_resource(f"cad://scenes/{scene_id}/summary")
         )
-    same_sections = all(
-        sections[name]["items"] == scene["sections"][name]["items"]
-        and sections[name]["total"] == scene["sections"][name]["total"]
-        for name in SECTIONS
+    service_gates = _service_restart_gates(
+        process_before,
+        process_after,
+        implementation_commit=before["implementation_commit"],
     )
+    db_gates = _db_restart_gates(
+        no_effect_db,
+        process_before,
+        process_after,
+        device_id=args.device_id,
+        scene_id=scene_id,
+        implementation_commit=before["implementation_commit"],
+    )
+    public_gates = _public_scene_gates(
+        scene, sections, resource, devices, device_id=args.device_id
+    )
+    dwg_unchanged = (
+        before["fixture"]["dwg_file_hash_before"]
+        == before["fixture"]["dwg_file_hash_after"]
+    )
+    revision_unchanged = (
+        before["source"]["document_revision_before"]
+        == before["source"]["document_revision_after"]
+    )
+    expected_process_identity = {
+        "device_id": args.device_id,
+        "fixture_id": before["fixture"]["fixture_id"],
+        "scene_id": scene_id,
+        "source_digest": scene["source_digest"],
+        "scene_digest": scene["scene_digest"],
+        "document_id": scene["document_id"],
+        "document_revision": scene["document_revision"],
+    }
     gates = {
-        "actual_gateway_process_restart": process_before["gateway_pid"]
-        != process_after["gateway_pid"],
-        "gateway_public_reconnect": process_before["agent_session_id"]
-        != process_after["agent_session_id"],
+        **service_gates,
+        **db_gates,
+        **public_gates,
         "standalone_desktop_agent": process_before["desktop_agent_pid"]
-        == process_after["desktop_agent_pid"],
-        "same_scene_retrieved": same_sections
-        and scene["scene_digest"] == process_after["scene_digest"],
-        "public_query_succeeded": True,
-        "dwg_file_hash_unchanged": before["no_effect"]["dwg_file_hash_unchanged"],
-        "document_revision_unchanged": before["no_effect"][
-            "document_revision_unchanged"
-        ],
-        "no_write_requested": True,
-        "no_cad_effect_attempted": True,
+        == process_after["desktop_agent_pid"]
+        and process_before["desktop_agent_executable"]
+        == process_after["desktop_agent_executable"]
+        and process_before["desktop_agent_sha256"]
+        == process_after["desktop_agent_sha256"],
+        "process_identity_bound": _process_identity_bound(
+            process_before, process_after, expected_process_identity
+        ),
+        "dwg_file_hash_unchanged": dwg_unchanged,
+        "document_revision_unchanged": revision_unchanged,
+        "no_write_requested": (
+            before["public_path"].get("write_tools_invoked") == []
+            and db_gates["no_write_events_in_window"]
+            and db_gates["anchor_jobs_read_only"]
+        ),
+        "no_cad_effect_attempted": (
+            dwg_unchanged
+            and revision_unchanged
+            and db_gates["no_write_events_in_window"]
+            and db_gates["write_snapshot_unchanged"]
+        ),
     }
     if not all(gates.values()):
         failed = sorted(name for name, passed in gates.items() if not passed)
@@ -506,6 +804,9 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
         "gateway_process_after": process_after,
         "post_restart_sections": sections,
         "post_restart_summary_resource": resource,
+        "no_effect_db_binding": _db_evidence_binding(
+            args.no_effect_db, no_effect_db
+        ),
         "write_requested": False,
         "cad_effect_attempted": False,
         "gate_results": gates,
@@ -530,6 +831,7 @@ def main() -> None:
     parser.add_argument("--before", type=Path)
     parser.add_argument("--process-before", type=Path)
     parser.add_argument("--process-after", type=Path)
+    parser.add_argument("--no-effect-db", type=Path)
     args = parser.parse_args()
     if args.action == "capture" and any(
         value is None
@@ -538,10 +840,16 @@ def main() -> None:
         parser.error("capture requires --fixture, --drawing and --process-identity")
     if args.action == "restart-query" and any(
         value is None
-        for value in (args.before, args.process_before, args.process_after)
+        for value in (
+            args.before,
+            args.process_before,
+            args.process_after,
+            args.no_effect_db,
+        )
     ):
         parser.error(
-            "restart-query requires --before, --process-before and --process-after"
+            "restart-query requires --before, --process-before, --process-after "
+            "and --no-effect-db"
         )
     command = [
         "python scripts/phase10-live-public-evidence.py",
@@ -566,6 +874,7 @@ def main() -> None:
                 f"--before {args.before}",
                 f"--process-before {args.process_before}",
                 f"--process-after {args.process_after}",
+                f"--no-effect-db {args.no_effect_db}",
             )
         )
     args.capture_command = " ".join(command)

@@ -6,10 +6,20 @@ import argparse
 import hashlib
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 
 FIXTURES = ("a", "b", "c")
+SECTIONS = ("nodes", "relations", "contours", "features", "issues", "evidence")
+ITEM_IDS = {
+    "nodes": "node_id",
+    "relations": "relation_id",
+    "contours": "contour_id",
+    "features": "feature_id",
+    "issues": "issue_id",
+    "evidence": "evidence_id",
+}
 GATE_ALIASES = {
     "self_intersection": "invalid_or_self_intersecting_contour",
 }
@@ -26,11 +36,15 @@ GENERIC_FIXTURE_GATES = {
 }
 RESTART_GATES = {
     "actual_gateway_process_restart",
+    "authoritative_gateway_service",
     "document_revision_unchanged",
     "dwg_file_hash_unchanged",
+    "gateway_runtime_identity",
     "gateway_public_reconnect",
     "no_cad_effect_attempted",
     "no_write_requested",
+    "old_gateway_process_exited",
+    "process_identity_bound",
     "public_query_succeeded",
     "same_scene_retrieved",
     "standalone_desktop_agent",
@@ -49,12 +63,15 @@ CLEANUP_GATES = {
 }
 NO_EFFECT_DB_GATES = {
     "active_session_ok",
+    "agent_session_reconnected",
     "anchor_jobs_ok",
     "foreign_keys_ok",
     "integrity_ok",
     "migrations_ok",
     "no_write_events_in_window",
     "scenes_ok",
+    "write_snapshot_sha256_unchanged",
+    "write_snapshot_tables_unchanged",
 }
 
 
@@ -72,6 +89,355 @@ def _require(condition: bool, message: str) -> None:
 
 def _digest(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _time(value: object, label: str) -> datetime:
+    _require(isinstance(value, str), f"{label}: timestamp is required")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise ValueError(f"{label}: invalid timestamp") from error
+    _require(parsed.tzinfo is not None, f"{label}: timestamp must be timezone-aware")
+    return parsed
+
+
+def _canonical_digest(value: object) -> str:
+    encoded = json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()
+    return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+
+def _expected_migrations(root: Path) -> list[dict[str, object]]:
+    migration_root = (
+        root
+        / "services"
+        / "gateway"
+        / "src"
+        / "autocad_gateway"
+        / "infrastructure"
+        / "sqlite"
+        / "migrations"
+    )
+    result = []
+    for path in sorted(migration_root.glob("*.sql")):
+        sql = path.read_text(encoding="utf-8")
+        result.append(
+            {
+                "version": int(path.stem.split("_", 1)[0]),
+                "checksum": hashlib.sha256(sql.encode()).hexdigest(),
+            }
+        )
+    _require(result, "No-effect DB: local migrations are missing")
+    return result
+
+
+def _section_items(scene: dict, section: str, label: str) -> list[dict]:
+    sections = scene.get("sections")
+    _require(isinstance(sections, dict), f"{label}: raw sections are required")
+    value = sections.get(section)
+    _require(isinstance(value, dict), f"{label}: {section} section is required")
+    items = value.get("items")
+    _require(
+        isinstance(items, list) and all(isinstance(item, dict) for item in items),
+        f"{label}: {section} items are invalid",
+    )
+    _require(
+        value.get("scene_id") == scene.get("scene_id")
+        and value.get("scene_digest") == scene.get("scene_digest")
+        and value.get("section") == section
+        and value.get("total") == len(items)
+        and value.get("next_cursor") is None,
+        f"{label}: {section} metadata is not bound or complete",
+    )
+    ids = [item.get(ITEM_IDS[section]) for item in items]
+    _require(
+        all(isinstance(item_id, str) and item_id for item_id in ids)
+        and len(ids) == len(set(ids)),
+        f"{label}: {section} identities are missing or duplicated",
+    )
+    return items
+
+
+def _validate_scene_semantics(
+    evidence: dict, expected: dict, *, name: str, label: str
+) -> None:
+    scene = evidence.get("scene")
+    _require(isinstance(scene, dict), f"{label}: scene is required")
+    raw = {section: _section_items(scene, section, label) for section in SECTIONS}
+    ids = {
+        section: {item[ITEM_IDS[section]] for item in items}
+        for section, items in raw.items()
+    }
+    counts = {section: len(raw[section]) for section in SECTIONS}
+    counts["omitted"] = 0
+    _require(
+        scene.get("complete") is True
+        and scene.get("truncation_reasons") == []
+        and scene.get("counts") == counts,
+        f"{label}: scene completeness/counts do not match raw sections",
+    )
+
+    for section in ("relations", "contours", "features", "issues"):
+        for item in raw[section]:
+            _require(
+                set(item.get("source_node_ids", [])) <= ids["nodes"]
+                and set(item.get("evidence_ids", [])) <= ids["evidence"]
+                and set(item.get("source_relation_ids", [])) <= ids["relations"],
+                f"{label}: {section} contains dangling evidence references",
+            )
+    _require(
+        all(
+            item.get("geometry_status") == "exact"
+            and item.get("source_runtime") == "managed_dotnet"
+            and bool(item.get("source_capabilities"))
+            for item in raw["nodes"]
+        ),
+        f"{label}: node runtime/geometry evidence is incomplete",
+    )
+    _require(
+        scene.get("feature_types")
+        == sorted({item["feature_type"] for item in raw["features"]})
+        and scene.get("issue_codes")
+        == sorted({item["code"] for item in raw["issues"]})
+        and scene.get("relation_types")
+        == sorted({item["relation_type"] for item in raw["relations"]})
+        and scene.get("evidence_strengths")
+        == sorted({item["evidence_strength"] for item in raw["evidence"]})
+        and scene.get("source_capabilities")
+        == sorted(
+            {
+                capability
+                for item in raw["nodes"]
+                for capability in item["source_capabilities"]
+            }
+        ),
+        f"{label}: summarized semantics do not match raw sections",
+    )
+
+    repeat = scene.get("repeat_build")
+    repeated_scene = repeat.get("scene") if isinstance(repeat, dict) else None
+    identity_fields = (
+        "scene_id",
+        "scene_digest",
+        "source_digest",
+        "source_snapshot_id",
+        "document_id",
+        "document_revision",
+        "device_id",
+        "counts",
+    )
+    _require(
+        isinstance(repeated_scene, dict)
+        and repeat.get("reused") is True
+        and all(repeated_scene.get(key) == scene.get(key) for key in identity_fields),
+        f"{label}: repeat build did not reuse the exact scene",
+    )
+
+    feature_types = {item["feature_type"] for item in raw["features"]}
+    issue_codes = {item["code"] for item in raw["issues"]}
+    _require(
+        set(expected.get("features", [])) <= feature_types
+        and set(expected.get("issues", [])) <= issue_codes,
+        f"{label}: expected semantics are absent from raw sections",
+    )
+    if name == "a":
+        circles_by_radius = {
+            item["node_id"]: item.get("geometry", {}).get("radius")
+            for item in raw["nodes"]
+            if item.get("geometry", {}).get("kind") == "circle"
+        }
+        pattern_circle_nodes = {
+            node_id for node_id, radius in circles_by_radius.items() if radius == 5.0
+        }
+        non_pattern_nodes = {
+            node_id for node_id, radius in circles_by_radius.items() if radius == 3.0
+        }
+        hole_nodes = {
+            item["source_node_ids"][0]
+            for item in raw["features"]
+            if item["feature_type"] == "hole" and len(item["source_node_ids"]) == 1
+        }
+        patterns = [
+            set(item["source_node_ids"])
+            for item in raw["features"]
+            if item["feature_type"] == "repeated_hole_pattern"
+        ]
+        _require(
+            len(patterns) == 1
+            and len(non_pattern_nodes) == 1
+            and len(pattern_circle_nodes) == 4
+            and patterns[0] == pattern_circle_nodes
+            and patterns[0] < hole_nodes,
+            f"{label}: non-pattern circle exclusion is not proven",
+        )
+    elif name == "b":
+        slots = [
+            set(item["source_node_ids"])
+            for item in raw["features"]
+            if item["feature_type"] == "slot"
+        ]
+        groups = [
+            set(item["source_node_ids"])
+            for item in raw["features"]
+            if item["feature_type"] == "concentric_group"
+        ]
+        circle_nodes = {
+            item["node_id"] for item in raw["nodes"] if item["entity_type"] == "CIRCLE"
+        }
+        near_slot_nodes = {
+            item["node_id"]
+            for item in raw["nodes"]
+            if item.get("geometry", {}).get("kind") == "polyline"
+            and item["geometry"].get("closed") is True
+            and item["geometry"].get("vertices")
+            == [
+                {"x": 70.0, "y": -5.0},
+                {"x": 90.0, "y": -5.0},
+                {"x": 90.0, "y": 5.0},
+                {"x": 70.0, "y": 5.0},
+            ]
+        }
+        exact_concentric_nodes = {
+            item["node_id"]
+            for item in raw["nodes"]
+            if item.get("geometry", {}).get("kind") == "circle"
+            and item["geometry"].get("center") == {"x": 50.0, "y": 0.0}
+            and item["geometry"].get("radius") in {3.0, 6.0}
+        }
+        near_concentric_nodes = {
+            item["node_id"]
+            for item in raw["nodes"]
+            if item.get("geometry", {}).get("kind") == "circle"
+            and item["geometry"].get("center") == {"x": 50.1, "y": 0.0}
+            and item["geometry"].get("radius") == 9.0
+        }
+        _require(
+            len(slots) == len(groups) == 1
+            and len(near_slot_nodes) == len(near_concentric_nodes) == 1
+            and len(slots[0]) == 4
+            and near_slot_nodes.isdisjoint(slots[0])
+            and groups[0] == exact_concentric_nodes
+            and near_concentric_nodes.isdisjoint(groups[0])
+            and groups[0] < circle_nodes,
+            f"{label}: tolerance-negative feature exclusions are not proven",
+        )
+    else:
+        nodes_by_id = {item["node_id"]: item for item in raw["nodes"]}
+        issue_nodes_by_code = {
+            code: {
+                node_id
+                for item in raw["issues"]
+                if item["code"] == code
+                for node_id in item["source_node_ids"]
+            }
+            for code in {item["code"] for item in raw["issues"]}
+        }
+        zero_length_nodes = {
+            node_id
+            for node_id, item in nodes_by_id.items()
+            if item.get("geometry", {}).get("kind") == "line"
+            and item["geometry"].get("start") == item["geometry"].get("end")
+            == {"x": 20.0, "y": 0.0}
+        }
+        duplicate_nodes = {
+            node_id
+            for node_id, item in nodes_by_id.items()
+            if item.get("geometry", {}).get("kind") == "line"
+            and {
+                (
+                    item["geometry"].get("start", {}).get("x"),
+                    item["geometry"].get("start", {}).get("y"),
+                ),
+                (
+                    item["geometry"].get("end", {}).get("x"),
+                    item["geometry"].get("end", {}).get("y"),
+                ),
+            }
+            == {(0.0, 0.0), (10.0, 0.0)}
+        }
+        bowtie_nodes = {
+            node_id
+            for node_id, item in nodes_by_id.items()
+            if item.get("geometry", {}).get("kind") == "polyline"
+            and item["geometry"].get("vertices")
+            == [
+                {"x": 55.0, "y": 0.0},
+                {"x": 65.0, "y": 10.0},
+                {"x": 55.0, "y": 10.0},
+                {"x": 65.0, "y": 0.0},
+            ]
+        }
+        open_chain_nodes = {
+            node_id
+            for node_id, item in nodes_by_id.items()
+            if item.get("geometry", {}).get("kind") == "line"
+            and {
+                (
+                    item["geometry"].get("start", {}).get("x"),
+                    item["geometry"].get("start", {}).get("y"),
+                ),
+                (
+                    item["geometry"].get("end", {}).get("x"),
+                    item["geometry"].get("end", {}).get("y"),
+                ),
+            }
+            in (
+                {(30.0, 0.0), (40.0, 0.0)},
+                {(40.0, 0.0), (45.0, 5.0)},
+            )
+        }
+        valid_nodes = {
+            node_id
+            for node_id, item in nodes_by_id.items()
+            if (
+                item.get("geometry", {}).get("kind") == "circle"
+                and item["geometry"].get("center") == {"x": 95.0, "y": 5.0}
+                and item["geometry"].get("radius") == 2.0
+            )
+            or (
+                item.get("geometry", {}).get("kind") == "polyline"
+                and item["geometry"].get("vertices")
+                == [
+                    {"x": 85.0, "y": 0.0},
+                    {"x": 105.0, "y": 0.0},
+                    {"x": 105.0, "y": 10.0},
+                    {"x": 85.0, "y": 10.0},
+                ]
+            )
+        }
+        issue_nodes = {
+            node_id for item in raw["issues"] for node_id in item["source_node_ids"]
+        }
+        hole_nodes = {
+            node_id
+            for item in raw["features"]
+            if item["feature_type"] == "hole"
+            for node_id in item["source_node_ids"]
+        }
+        closed_polyline_nodes = {
+            item["node_id"]
+            for item in raw["nodes"]
+            if item.get("geometry", {}).get("kind") == "polyline"
+            and item["geometry"].get("closed") is True
+        }
+        _require(
+            all(item.get("write_authority") is False for item in raw["issues"])
+            and len(zero_length_nodes) == 1
+            and issue_nodes_by_code.get("degenerate_geometry") == zero_length_nodes
+            and len(duplicate_nodes) == 2
+            and issue_nodes_by_code.get("duplicate_geometry") == duplicate_nodes
+            and len(bowtie_nodes) == 1
+            and issue_nodes_by_code.get("self_intersection") == bowtie_nodes
+            and len(open_chain_nodes) == 2
+            and issue_nodes_by_code.get("open_contour")
+            == open_chain_nodes | duplicate_nodes
+            and len(valid_nodes) == 2
+            and valid_nodes.isdisjoint(issue_nodes)
+            and bool(hole_nodes - issue_nodes)
+            and bool(closed_polyline_nodes - issue_nodes),
+            f"{label}: valid geometry exclusion/read-only issues are not proven",
+        )
 
 
 def _validate_common(
@@ -105,6 +471,121 @@ def _validate_true_gates(evidence: dict, required: set[str], label: str) -> None
     _require(not missing, f"{label}: missing gates {sorted(missing)}")
     failed = sorted(name for name in required if gates.get(name) is not True)
     _require(not failed, f"{label}: failed gates {failed}")
+
+
+def _validate_gateway_restart_processes(
+    before: object, after: object, implementation_commit: str
+) -> tuple[dict, dict]:
+    _require(
+        isinstance(before, dict) and isinstance(after, dict),
+        "Gateway restart: raw process records are required",
+    )
+    old_service = before.get("gateway_service_record")
+    new_service = after.get("gateway_service_record")
+    _require(
+        isinstance(old_service, dict) and isinstance(new_service, dict),
+        "Gateway restart: authoritative service records are required",
+    )
+    old_properties = old_service.get("properties")
+    new_properties = new_service.get("properties")
+    old_process = old_service.get("process")
+    new_process = new_service.get("process")
+    old_release = old_service.get("release")
+    new_release = new_service.get("release")
+    exit_proof = after.get("old_gateway_process_exit")
+    _require(
+        all(
+            isinstance(value, dict)
+            for value in (
+                old_properties,
+                new_properties,
+                old_process,
+                new_process,
+                old_release,
+                new_release,
+                exit_proof,
+            )
+        ),
+        "Gateway restart: raw service/process/exit records are incomplete",
+    )
+
+    old_pid = old_properties.get("MainPID")
+    new_pid = new_properties.get("MainPID")
+    old_start = old_process.get("start_identity")
+    new_start = new_process.get("start_identity")
+    _require(
+        isinstance(old_pid, int)
+        and isinstance(new_pid, int)
+        and old_pid > 0
+        and new_pid > 0
+        and old_pid != new_pid
+        and isinstance(old_start, str)
+        and bool(old_start)
+        and isinstance(new_start, str)
+        and bool(new_start)
+        and old_start != new_start
+        and old_process.get("source") == new_process.get("source") == "procfs"
+        and old_process.get("pid") == old_pid
+        and new_process.get("pid") == new_pid
+        and before.get("gateway_pid") == old_pid
+        and after.get("gateway_pid") == new_pid,
+        "Gateway restart: process/start identities do not prove a restart",
+    )
+    _require(
+        exit_proof.get("source") == "procfs"
+        and exit_proof.get("pid") == old_pid
+        and exit_proof.get("start_identity") == old_start
+        and "proc_stat_after" in exit_proof
+        and exit_proof.get("proc_stat_after") is None
+        and exit_proof.get("probe_exit_code") == 0,
+        "Gateway restart: old process exit is not proven from procfs",
+    )
+    _require(
+        old_service.get("source") == new_service.get("source") == "systemctl_show"
+        and old_properties.get("Id")
+        == new_properties.get("Id")
+        == "autocad-mcp-phase4.service"
+        and new_properties.get("ActiveState") == "active"
+        and new_properties.get("SubState") == "running"
+        and isinstance(
+            old_properties.get("ExecMainStartTimestampMonotonic"), str
+        )
+        and bool(old_properties["ExecMainStartTimestampMonotonic"])
+        and isinstance(
+            new_properties.get("ExecMainStartTimestampMonotonic"), str
+        )
+        and bool(new_properties["ExecMainStartTimestampMonotonic"])
+        and old_properties["ExecMainStartTimestampMonotonic"]
+        != new_properties["ExecMainStartTimestampMonotonic"],
+        "Gateway restart: authoritative systemd service restart is not proven",
+    )
+
+    executable = new_process.get("executable")
+    executable_hash = new_process.get("executable_sha256")
+    working_directory = new_properties.get("WorkingDirectory")
+    _require(
+        isinstance(executable, str)
+        and executable.startswith("/")
+        and old_process.get("executable") == executable
+        and old_properties.get("ExecStart") == new_properties.get("ExecStart")
+        and executable in str(new_properties.get("ExecStart", ""))
+        and isinstance(executable_hash, str)
+        and executable_hash.startswith("sha256:")
+        and len(executable_hash) == 71
+        and old_process.get("executable_sha256") == executable_hash
+        and old_release.get("source")
+        == new_release.get("source")
+        == "git_rev_parse"
+        and old_release.get("working_directory")
+        == new_release.get("working_directory")
+        == working_directory
+        and old_release.get("commit")
+        == new_release.get("commit")
+        == implementation_commit
+        and implementation_commit[:7] in str(working_directory),
+        "Gateway restart: runtime/release identity is not proven",
+    )
+    return before, after
 
 
 def validate(root: Path) -> None:
@@ -165,6 +646,7 @@ def validate(root: Path) -> None:
         )
         expected = row.get("expected")
         _require(isinstance(expected, dict), f"{label}: expected outcomes are required")
+        _validate_scene_semantics(evidence, expected, name=name, label=label)
         required_gates = GENERIC_FIXTURE_GATES | {
             GATE_ALIASES.get(item, item)
             for values in expected.values()
@@ -188,6 +670,57 @@ def validate(root: Path) -> None:
             and public_path.get("write_tools_invoked") == [],
             f"{label}: public read-only path is incomplete",
         )
+        source = evidence.get("source")
+        scene = evidence["scene"]
+        fixture_device = public_path.get("device_id")
+        _require(
+            isinstance(source, dict)
+            and source.get("snapshot_id") == scene.get("source_snapshot_id")
+            and fixture.get("document_id") == scene.get("document_id")
+            and fixture_device == scene.get("device_id")
+            and source.get("document_revision_before")
+            == source.get("document_revision_after")
+            == scene.get("document_revision")
+            and source.get("entity_count_before")
+            == source.get("entity_count_after")
+            == scene.get("counts", {}).get("nodes"),
+            f"{label}: source/scene no-effect binding is inconsistent",
+        )
+        observation_job_ids = []
+        for moment in ("observation_before", "observation_after"):
+            observation = source.get(moment)
+            job = observation.get("job") if isinstance(observation, dict) else None
+            request = (
+                observation.get("request") if isinstance(observation, dict) else None
+            )
+            _require(
+                isinstance(job, dict)
+                and isinstance(request, dict)
+                and job.get("job_id") == request.get("job_id")
+                and job.get("device_id") == request.get("device_id") == fixture_device
+                and job.get("snapshot_id") == request.get("snapshot_id")
+                and job.get("state") == "succeeded"
+                and job.get("kind") == "observe"
+                and request.get("document_revision") == scene.get("document_revision")
+                and request.get("entity_count") == scene.get("counts", {}).get("nodes"),
+                f"{label}: {moment} is not a bound successful read observation",
+            )
+            observation_job_ids.append(job["job_id"])
+        _require(
+            len(set(observation_job_ids)) == 2
+            and source["observation_before"]["request"]["snapshot_id"]
+            == source["snapshot_id"]
+            and evidence.get("public_path", {}).get("invoked_tools")
+            == [
+                "cad_list_devices",
+                "cad_observe",
+                "cad_get_job",
+                "cad_build_scene",
+                "cad_query_scene",
+            ],
+            f"{label}: public observation identities/tools are incomplete",
+        )
+        _time(evidence.get("captured_at"), label)
         if baseline_commit is None:
             baseline_commit = evidence["baseline_commit"]
             implementation_commit = evidence["implementation_commit"]
@@ -196,6 +729,19 @@ def validate(root: Path) -> None:
             and evidence["implementation_commit"] == implementation_commit,
             f"{label}: commit provenance differs from Drawing A",
         )
+
+    for field, label in (
+        (("fixture", "dwg_file_hash_before"), "DWG hashes"),
+        (("fixture", "document_id"), "document identities"),
+        (("source", "snapshot_id"), "snapshot identities"),
+        (("scene", "scene_id"), "scene identities"),
+        (("scene", "scene_digest"), "scene digests"),
+        (("scene", "source_digest"), "source digests"),
+    ):
+        values = {
+            fixture_evidence[name][field[0]][field[1]] for name in FIXTURES
+        }
+        _require(len(values) == len(FIXTURES), f"A/B/C: {label} are not distinct")
 
     drawing_c = fixture_evidence["c"]
     scene_c = drawing_c["scene"]
@@ -215,6 +761,8 @@ def validate(root: Path) -> None:
         "Cleanup workflow: commit provenance differs from fixture evidence",
     )
     report = cleanup.get("report")
+    raw_c_issues = scene_c["sections"]["issues"]["items"]
+    raw_c_issue_codes = sorted({item["code"] for item in raw_c_issues})
     _require(
         isinstance(report, dict)
         and report.get("write_authority") is False
@@ -224,13 +772,70 @@ def validate(root: Path) -> None:
         == scene_c["scene_digest"]
         and report.get("source_digest")
         == cleanup.get("source_digest")
-        == scene_c["source_digest"],
+        == scene_c["source_digest"]
+        and report.get("source_snapshot_id")
+        == cleanup.get("source_snapshot_id")
+        == scene_c["source_snapshot_id"]
+        and report.get("document_revision")
+        == cleanup.get("document_revision")
+        == scene_c["document_revision"]
+        and report.get("issue_codes") == raw_c_issue_codes
+        and report.get("issue_count") == len(raw_c_issues)
+        and report.get("validation_ok") is True,
         "Cleanup workflow: report is not bound read-only to Drawing C scene",
+    )
+    started = cleanup.get("started")
+    completed = cleanup.get("completed")
+    final = cleanup.get("final")
+    final_run = final.get("run") if isinstance(final, dict) else None
+    final_steps = final.get("steps") if isinstance(final, dict) else None
+    final_report = next(
+        (
+            step.get("output_ref", {}).get("result")
+            for step in final_steps
+            if isinstance(step, dict) and step.get("step_id") == "report"
+        ),
+        None,
+    ) if isinstance(final_steps, list) else None
+    _require(
+        isinstance(started, dict)
+        and isinstance(completed, dict)
+        and isinstance(final_run, dict)
+        and started.get("run_id")
+        == completed.get("run_id")
+        == final_run.get("run_id")
+        and started.get("state") == "waiting_for_user"
+        and completed.get("state") == final_run.get("state") == "succeeded"
+        and final_run.get("skill_id") == "drawing.cleanup-audit"
+        and final_run.get("skill_version") == "1.1.0"
+        and final_run.get("device_id") == cleanup.get("device_id")
+        and final_run.get("owner_subject")
+        and final_run.get("initial_snapshot_id") == cleanup.get("source_snapshot_id")
+        and final_run.get("initial_document_id") == cleanup.get("document_id")
+        and final_run.get("initial_document_revision")
+        == cleanup.get("document_revision")
+        and final_report == report
+        and {
+            step.get("step_id")
+            for step in final_steps
+            if isinstance(step, dict) and step.get("state") == "succeeded"
+        }
+        == {
+            "build_scene",
+            "query_scene",
+            "validate_scene",
+            "report",
+            "review",
+            "finish",
+        },
+        "Cleanup workflow: durable run/steps do not prove completion",
     )
     _require(
         cleanup.get("write_requested") is False
         and cleanup.get("cad_effect_attempted") is False
-        and cleanup.get("write_tools_invoked") == [],
+        and cleanup.get("write_tools_invoked") == []
+        and cleanup.get("invoked_tools")
+        == ["cad_start_workflow", "cad_get_workflow", "cad_control_workflow"],
         "Cleanup workflow: no-effect proof is incomplete",
     )
 
@@ -254,6 +859,83 @@ def validate(root: Path) -> None:
         and restart.get("scene_digest") == scene_c["scene_digest"]
         and restart.get("source_digest") == scene_c["source_digest"],
         "Gateway restart: Drawing C scene identity mismatch",
+    )
+    before = restart.get("gateway_process_before")
+    after = restart.get("gateway_process_after")
+    before, after = _validate_gateway_restart_processes(
+        before, after, implementation_commit
+    )
+    _require(
+        before.get("agent_session_id") != after.get("agent_session_id")
+        and all(
+            before.get(key) == after.get(key)
+            for key in (
+                "desktop_agent_executable",
+                "desktop_agent_pid",
+                "desktop_agent_sha256",
+                "autocad_pid",
+                "device_id",
+                "active_document_id",
+                "active_document_revision",
+                "active_fixture_id",
+                "fixture_id",
+                "document_id",
+                "document_revision",
+                "scene_id",
+                "scene_digest",
+                "source_digest",
+            )
+        )
+        and before.get("device_id") == drawing_c["public_path"]["device_id"]
+        and before.get("fixture_id") == "phase10-drawing-c-r25/1"
+        and before.get("document_id") == scene_c["document_id"]
+        and before.get("document_revision") == scene_c["document_revision"]
+        and before.get("scene_id") == scene_c["scene_id"]
+        and before.get("scene_digest") == scene_c["scene_digest"]
+        and before.get("source_digest") == scene_c["source_digest"]
+        and before.get("queried_scene_persisted_from_prior_fixture_session") is True
+        and after.get("queried_scene_persisted_from_prior_fixture_session") is True
+        and _time(before.get("captured_at"), "Gateway restart before")
+        < _time(after.get("captured_at"), "Gateway restart after")
+        < _time(restart.get("captured_at"), "Gateway restart"),
+        "Gateway restart: process/session continuity is not proven",
+    )
+    post_sections = restart.get("post_restart_sections")
+    _require(
+        isinstance(post_sections, dict) and set(post_sections) == set(SECTIONS),
+        "Gateway restart: post-restart sections are incomplete",
+    )
+    for section in SECTIONS:
+        post = post_sections[section]
+        original = scene_c["sections"][section]
+        _require(
+            isinstance(post, dict)
+            and post.get("scene_id") == scene_c["scene_id"]
+            and post.get("scene_digest") == scene_c["scene_digest"]
+            and post.get("section") == section
+            and post.get("items") == original.get("items")
+            and post.get("total") == original.get("total")
+            and post.get("next_cursor") is None,
+            f"Gateway restart: {section} payload changed",
+        )
+    summary = restart.get("post_restart_summary_resource")
+    _require(
+        isinstance(summary, dict)
+        and all(
+            summary.get(key) == scene_c.get(key)
+            for key in (
+                "scene_id",
+                "scene_digest",
+                "source_digest",
+                "source_snapshot_id",
+                "document_id",
+                "document_revision",
+                "device_id",
+                "counts",
+                "complete",
+            )
+        ),
+        "Gateway restart: summary resource changed",
     )
     _require(
         restart.get("write_requested") is False
@@ -282,6 +964,19 @@ def validate(root: Path) -> None:
     )
     scope = no_effect_db.get("scope")
     expected_scene_ids = {fixture_evidence[name]["scene"]["scene_id"] for name in FIXTURES}
+    expected_job_bindings = {}
+    for name in FIXTURES:
+        source = fixture_evidence[name]["source"]
+        for moment in ("observation_before", "observation_after"):
+            observation = source[moment]
+            expected_job_bindings[observation["job"]["job_id"]] = {
+                "snapshot_id": observation["request"]["snapshot_id"],
+                "document_id": fixture_evidence[name]["scene"]["document_id"],
+                "document_revision": fixture_evidence[name]["scene"][
+                    "document_revision"
+                ],
+                "entity_count": fixture_evidence[name]["scene"]["counts"]["nodes"],
+            }
     _require(
         isinstance(scope, dict)
         and isinstance(scope.get("owner_subject"), str)
@@ -290,18 +985,182 @@ def validate(root: Path) -> None:
         and set(scope.get("scene_ids", [])) == expected_scene_ids,
         "No-effect DB: owner/device/scene identity is incomplete",
     )
+    window_start = _time(scope.get("window_start"), "No-effect DB window start")
+    window_end = _time(scope.get("window_end"), "No-effect DB window end")
+    _require(window_start < window_end, "No-effect DB: invalid audit window")
+    anchor_jobs = no_effect_db.get("anchor_jobs")
+    _require(
+        isinstance(anchor_jobs, list)
+        and len(anchor_jobs) == len(expected_job_bindings)
+        and {job.get("job_id") for job in anchor_jobs}
+        == set(scope.get("anchor_job_ids", []))
+        == set(expected_job_bindings),
+        "No-effect DB: anchor job identities are incomplete",
+    )
+    for job in anchor_jobs:
+        binding = expected_job_bindings[job["job_id"]]
+        try:
+            result = json.loads(job["result_json"])
+        except (TypeError, json.JSONDecodeError) as error:
+            raise ValueError("No-effect DB: anchor job result is invalid") from error
+        snapshot = result.get("snapshot")
+        drawing = snapshot.get("drawing") if isinstance(snapshot, dict) else None
+        _require(
+            job.get("owner_subject") == scope["owner_subject"]
+            and job.get("device_id") == scope["device_id"]
+            and job.get("effect_class") == "read"
+            and job.get("kind") == "observe"
+            and job.get("state") == "succeeded"
+            and window_start
+            <= _time(job.get("created_at"), "No-effect DB anchor created")
+            <= _time(job.get("updated_at"), "No-effect DB anchor updated")
+            <= window_end
+            and isinstance(snapshot, dict)
+            and isinstance(drawing, dict)
+            and snapshot.get("snapshot_id") == binding["snapshot_id"]
+            and snapshot.get("document_revision") == binding["document_revision"]
+            and drawing.get("document_id") == binding["document_id"]
+            and drawing.get("entity_count") == binding["entity_count"],
+            "No-effect DB: anchor job is not cross-bound to fixture evidence",
+        )
+
+    db_scenes = no_effect_db.get("scenes")
+    _require(
+        isinstance(db_scenes, list)
+        and {scene.get("scene_id") for scene in db_scenes} == expected_scene_ids,
+        "No-effect DB: scene records are incomplete",
+    )
+    fixtures_by_scene = {
+        fixture_evidence[name]["scene"]["scene_id"]: fixture_evidence[name]["scene"]
+        for name in FIXTURES
+    }
+    for scene in db_scenes:
+        fixture_scene = fixtures_by_scene[scene["scene_id"]]
+        _require(
+            scene.get("owner_subject") == scope["owner_subject"]
+            and scene.get("device_id") == scope["device_id"]
+            and scene.get("document_id") == fixture_scene["document_id"]
+            and scene.get("document_revision") == fixture_scene["document_revision"]
+            and scene.get("source_snapshot_id") == fixture_scene["source_snapshot_id"]
+            and scene.get("source_digest") == fixture_scene["source_digest"]
+            and scene.get("scene_digest") == fixture_scene["scene_digest"]
+            and scene.get("complete") == 1
+            and json.loads(scene.get("counts_json", "null"))
+            == fixture_scene["counts"]
+            and window_start
+            <= _time(scene.get("created_at"), "No-effect DB scene created")
+            <= window_end,
+            "No-effect DB: scene record is not cross-bound to fixture evidence",
+        )
+    db_sections = no_effect_db.get("scene_sections")
+    _require(
+        isinstance(db_sections, list)
+        and len(db_sections) == len(FIXTURES) * len(SECTIONS),
+        "No-effect DB: scene section records are incomplete",
+    )
+    seen_sections = set()
+    for section in db_sections:
+        key = (section.get("scene_id"), section.get("section"))
+        _require(
+            key[0] in fixtures_by_scene
+            and key[1] in SECTIONS
+            and key not in seen_sections,
+            "No-effect DB: scene section identity is invalid or duplicated",
+        )
+        seen_sections.add(key)
+        raw_items = fixtures_by_scene[key[0]]["sections"][key[1]]["items"]
+        _require(
+            json.loads(section.get("payload_json", "null")) == raw_items
+            and section.get("item_count") == len(raw_items),
+            "No-effect DB: scene section payload differs from fixture evidence",
+        )
+
+    checks = no_effect_db.get("database_checks")
+    migrations = checks.get("schema_migrations") if isinstance(checks, dict) else None
+    migration_identity = (
+        [
+            {"version": item.get("version"), "checksum": item.get("checksum")}
+            for item in migrations
+        ]
+        if isinstance(migrations, list)
+        else None
+    )
+    _require(
+        isinstance(checks, dict)
+        and checks.get("integrity_check") == ["ok"]
+        and checks.get("foreign_key_check") == []
+        and migration_identity == _expected_migrations(root),
+        "No-effect DB: integrity/foreign-key/migration proof is invalid",
+    )
     write_snapshot = no_effect_db.get("write_snapshot")
     snapshot_digest = (
         write_snapshot.get("sha256") if isinstance(write_snapshot, dict) else None
     )
+    snapshot_tables = (
+        write_snapshot.get("tables") if isinstance(write_snapshot, dict) else None
+    )
+    restart_comparison = no_effect_db.get("restart_comparison")
+    pre_snapshot = (
+        restart_comparison.get("pre_restart_write_snapshot")
+        if isinstance(restart_comparison, dict)
+        else None
+    )
+    pre_tables = pre_snapshot.get("tables") if isinstance(pre_snapshot, dict) else None
+    pre_digest = pre_snapshot.get("sha256") if isinstance(pre_snapshot, dict) else None
     _require(
         no_effect_db.get("retrospective_no_write_events") == []
-        and isinstance(no_effect_db.get("active_agent_session_id"), str)
-        and bool(no_effect_db["active_agent_session_id"])
+        and isinstance(snapshot_tables, dict)
         and isinstance(snapshot_digest, str)
         and snapshot_digest.startswith("sha256:")
-        and len(snapshot_digest) == 71,
+        and len(snapshot_digest) == 71
+        and pre_tables == snapshot_tables
+        and _canonical_digest(pre_tables) == _canonical_digest(snapshot_tables)
+        and pre_digest == snapshot_digest
+        and restart_comparison.get("post_restart_write_snapshot_sha256")
+        == snapshot_digest
+        and restart_comparison.get("sha256_unchanged") is True
+        and restart_comparison.get("tables_byte_identical") is True,
         "No-effect DB: durable no-write snapshot is incomplete",
+    )
+    sessions = no_effect_db.get("agent_sessions")
+    active_session_id = no_effect_db.get("active_agent_session_id")
+    active_sessions = [
+        session
+        for session in sessions
+        if isinstance(session, dict)
+        and session.get("session_id") == active_session_id
+        and session.get("disconnected_at") is None
+        and session.get("device_status") == "online"
+    ] if isinstance(sessions, list) else []
+    old_sessions = [
+        session
+        for session in sessions
+        if isinstance(session, dict)
+        and session.get("session_id")
+        == restart_comparison.get("pre_restart_active_agent_session_id")
+    ] if isinstance(sessions, list) and isinstance(restart_comparison, dict) else []
+    _require(
+        len(active_sessions) == 1
+        and active_sessions[0].get("device_id") == scope["device_id"]
+        and active_sessions[0].get("owner_subject") == scope["owner_subject"]
+        and len(old_sessions) == 1
+        and old_sessions[0].get("disconnected_at") is not None
+        and restart_comparison.get("post_restart_active_agent_session_id")
+        == active_session_id
+        == after.get("agent_session_id")
+        and restart_comparison.get("pre_restart_active_agent_session_id")
+        == before.get("agent_session_id")
+        and active_session_id != before.get("agent_session_id")
+        and _time(
+            restart_comparison.get("pre_restart_captured_at"),
+            "No-effect DB pre-restart capture",
+        )
+        < _time(
+            restart_comparison.get("post_restart_captured_at"),
+            "No-effect DB post-restart capture",
+        )
+        <= _time(no_effect_db.get("captured_at"), "No-effect DB capture"),
+        "No-effect DB: Agent reconnect/session history is invalid",
     )
 
 

@@ -313,7 +313,11 @@ class ReadCommandExecutor:
                                 "source_capabilities"
                             ),
                         }
-                        if managed_dotnet
+                        if (
+                            managed_dotnet
+                            and command.detail_snapshot_contract
+                            == "cad.observe-detail/2"
+                        )
                         else {}
                     ),
                 }

@@ -667,6 +667,7 @@ class CommandMessage(AgentEnvelope):
     payload_hash: str = Field(pattern=_SHA256_PATTERN)
     kind: Literal["observe", "write_fixture"] = "observe"
     effect_class: Literal["read", "write"] = "read"
+    detail_snapshot_contract: Literal["cad.observe-detail/2"] | None = None
     payload: dict[str, Any] = Field(default_factory=dict, max_length=MAX_PAYLOAD_ITEMS)
 
 

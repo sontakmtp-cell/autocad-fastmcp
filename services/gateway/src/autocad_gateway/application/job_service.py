@@ -263,6 +263,15 @@ class DurableJobService:
                         job_state=updated["state"] if updated else raw["state"],
                     )
             else:
+                if (
+                    raw["kind"] == "observe"
+                    and raw["payload"].get("observation_level") == "detail"
+                    and "cad.observe.detail-provenance/1"
+                    in connection.capabilities
+                ):
+                    command_values["detail_snapshot_contract"] = (
+                        "cad.observe-detail/2"
+                    )
                 command = CommandMessage(**command_values)
             try:
                 await connection.send(command.model_dump(mode="json", exclude_none=True))
@@ -967,7 +976,9 @@ class DurableJobService:
                     error_code = validation_error
                     error_summary = "Agent returned invalid C1 observation evidence"
                 else:
-                    snapshot = candidate
+                    snapshot = self._normalize_c1_snapshot(candidate)
+                    if snapshot is not candidate:
+                        result = {**result, "snapshot": snapshot}
         elif target == "failed":
             result = None
             error_code, error_summary = self._safe_agent_error(message.error_code)
@@ -1508,6 +1519,14 @@ class DurableJobService:
                 "truncated": truncated,
             }
             or any(not cls._valid_c1_detail_entity(entity) for entity in entities)
+            or len(
+                {
+                    "geometry_status" in entity
+                    for entity in entities
+                    if isinstance(entity, dict)
+                }
+            )
+            > 1
         ):
             return "backend_error"
         document_revision = snapshot.get("document_revision")
@@ -1576,7 +1595,7 @@ class DurableJobService:
         }
         if (
             not isinstance(entity, dict)
-            or set(entity) != base_keys | provenance_keys
+            or set(entity) not in (base_keys, base_keys | provenance_keys)
         ):
             return False
         entity_type = entity.get("entity_type")
@@ -1708,6 +1727,37 @@ class DurableJobService:
             and all(cls._valid_c1_point(point, 2) for point in points)
             and isinstance(geometry.get("closed"), bool)
         )
+
+    @staticmethod
+    def _normalize_c1_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+        if snapshot.get("observation_level") != "detail":
+            return snapshot
+        entities = snapshot["entities"]
+        if not entities or all("geometry_status" in entity for entity in entities):
+            return snapshot
+        normalized = []
+        for entity in entities:
+            if "geometry_status" in entity:
+                normalized.append(entity)
+                continue
+            geometry = entity.get("geometry")
+            status = (
+                "truncated"
+                if entity["geometry_truncated"]
+                else "bounded_projection"
+                if geometry is not None
+                else "unavailable"
+            )
+            normalized.append(
+                {
+                    **entity,
+                    "geometry_status": status,
+                    "geometry_reason": "legacy_agent_provenance_unavailable",
+                    "source_runtime": "managed_dotnet_legacy",
+                    "source_capabilities": [],
+                }
+            )
+        return {**snapshot, "entities": normalized}
 
     @classmethod
     def _valid_c1_bounds(cls, bounds: Any) -> bool:
