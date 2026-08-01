@@ -78,6 +78,7 @@ _AGENT_SESSION_KEYS = {
     "session_id",
 }
 _CAPTURE_WINDOW_SECONDS = 300
+_FIXTURE_ID_RE = re.compile(r"^phase10-drawing-([abc])-r25/1$")
 _CLAIMED_SERVICE_KEYS = (
     "gateway_service_record",
     "gateway_previous_process_confirmed_exited",
@@ -181,6 +182,25 @@ def _parse_timestamp(value: object, label: str) -> datetime:
     if parsed.tzinfo is None:
         raise ValueError(f"{label}: timestamp must be timezone-aware")
     return parsed
+
+
+def _fixture_letter_from_id(fixture_id: str) -> str:
+    if not isinstance(fixture_id, str):
+        raise ValueError("fixture_id is invalid")
+    match = _FIXTURE_ID_RE.fullmatch(fixture_id)
+    if match is None:
+        raise ValueError("fixture_id is invalid")
+    return match.group(1)
+
+
+def _phase10_key(fixture_letter: str, phase: str, stamp: str) -> str:
+    if fixture_letter not in {"a", "b", "c"}:
+        raise ValueError("fixture letter is invalid")
+    if phase not in {"before", "after", "scene", "scene-repeat"}:
+        raise ValueError("fixture phase is invalid")
+    if re.fullmatch(r"\d{14}", stamp) is None:
+        raise ValueError("capture stamp is invalid")
+    return f"phase10-drawing-{fixture_letter}-{phase}-{stamp}"
 
 
 def _run_raw_command(command: list[str], timeout: int = 30) -> dict[str, Any]:
@@ -888,9 +908,16 @@ def _fixture_gates(fixture: str, sections: dict[str, Any]) -> dict[str, bool]:
     }
 
 
-async def _capture_public(args: argparse.Namespace, token: str) -> dict[str, Any]:
-    from fastmcp import Client
+async def _capture_public(
+    args: argparse.Namespace,
+    token: str,
+    *,
+    client_factory=None,
+) -> dict[str, Any]:
+    if client_factory is None:
+        from fastmcp import Client
 
+        client_factory = Client
     drawing = args.drawing.resolve()
     process_identity = json.loads(args.process_identity.read_text(encoding="utf-8"))
     implementation_commit = _git_head()
@@ -904,6 +931,10 @@ async def _capture_public(args: argparse.Namespace, token: str) -> dict[str, Any
         raise ValueError(f"expected {expected_name}")
     hash_before = _sha256(drawing)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    before_key = _phase10_key(args.fixture, "before", stamp)
+    after_key = _phase10_key(args.fixture, "after", stamp)
+    scene_key = _phase10_key(args.fixture, "scene", stamp)
+    scene_repeat_key = _phase10_key(args.fixture, "scene-repeat", stamp)
     invocations: list[dict[str, Any]] = []
 
     def record(
@@ -924,7 +955,7 @@ async def _capture_public(args: argparse.Namespace, token: str) -> dict[str, Any
             }
         )
 
-    async with Client(args.endpoint, auth=token, timeout=120) as client:
+    async with client_factory(args.endpoint, auth=token, timeout=120) as client:
         tools = sorted(tool.name for tool in await client.list_tools())
         for required in ("cad_build_scene", "cad_query_scene"):
             if required not in tools:
@@ -947,7 +978,7 @@ async def _capture_public(args: argparse.Namespace, token: str) -> dict[str, Any
         before = await _observe(
             client,
             args.device_id,
-            f"phase10-{args.fixture}-before-{stamp}",
+            before_key,
             record=record,
         )
         request = before["request"]
@@ -963,7 +994,7 @@ async def _capture_public(args: argparse.Namespace, token: str) -> dict[str, Any
             )
         build_input = {
             "source_snapshot_id": request["snapshot_id"],
-            "idempotency_key": f"phase10-{args.fixture}-scene-{stamp}",
+            "idempotency_key": scene_key,
             "analysis_profile": "mechanical-2d/1",
             "space": "model",
             "include_sections": list(SECTIONS),
@@ -979,7 +1010,7 @@ async def _capture_public(args: argparse.Namespace, token: str) -> dict[str, Any
         scene = built["scene"]
         repeat_input = {
             **build_input,
-            "idempotency_key": f"phase10-{args.fixture}-scene-repeat-{stamp}",
+            "idempotency_key": scene_repeat_key,
         }
         started_at = datetime.now(timezone.utc).isoformat()
         repeated = _payload(
@@ -1006,7 +1037,7 @@ async def _capture_public(args: argparse.Namespace, token: str) -> dict[str, Any
         after = await _observe(
             client,
             args.device_id,
-            f"phase10-{args.fixture}-after-{stamp}",
+            after_key,
             record=record,
         )
     hash_after = _sha256(drawing)
@@ -1195,25 +1226,28 @@ def _validate_invocation_graph(
             previous["completed_at"], "invocation completed_at"
         ) > _parse_timestamp(current["started_at"], "invocation started_at"):
             raise ValueError("tool invocations overlap in time")
-    fixture_letter = fixture_id.split("/")[0].rsplit("-", 1)[-1]
-    before_key_prefix = f"phase10-drawing-{fixture_letter}-before-"
-    after_key_prefix = f"phase10-drawing-{fixture_letter}-after-"
+    fixture_letter = _fixture_letter_from_id(fixture_id)
+    key_re = re.compile(
+        rf"^phase10-drawing-{fixture_letter}-"
+        r"(before|after|scene|scene-repeat)-(\d{14})$"
+    )
     phases = [
         ("cad_list_devices", None),
-        ("cad_observe", observation_job_ids[0], before_key_prefix),
+        ("cad_observe", observation_job_ids[0], "before"),
         ("cad_get_job", observation_job_ids[0]),
-        ("cad_build_scene", None, False),
-        ("cad_build_scene", None, True),
+        ("cad_build_scene", None, "scene"),
+        ("cad_build_scene", None, "scene-repeat"),
         ("cad_query_scene", None),
         ("read_resource", None),
-        ("cad_observe", observation_job_ids[1], after_key_prefix),
+        ("cad_observe", observation_job_ids[1], "after"),
         ("cad_get_job", observation_job_ids[1]),
     ]
     phase_index = 0
     visited: set[int] = set()
     observed_jobs: list[str] = []
-    observed_keys: list[str] = []
     queried_sections: set[str] = set()
+    key_values: list[str] = []
+    key_stamps: list[str] = []
     for item in ordered:
         tool = item["tool"]
         job_id = item.get("job_id")
@@ -1233,11 +1267,9 @@ def _validate_invocation_graph(
             if arguments != {"online_only": True}:
                 raise ValueError("cad_list_devices invocation arguments are invalid")
         elif tool == "cad_observe":
-            expected_key_prefix = (
-                before_key_prefix
-                if job_id == observation_job_ids[0]
-                else after_key_prefix
-            )
+            expected_phase = phases[phase_index][2]
+            key = arguments.get("idempotency_key")
+            key_match = key_re.fullmatch(key) if isinstance(key, str) else None
             if (
                 set(arguments)
                 != {
@@ -1249,8 +1281,8 @@ def _validate_invocation_graph(
                 or arguments.get("device_id") != device_id
                 or arguments.get("observation_level") != "detail"
                 or arguments.get("include_preview_image") is not False
-                or not isinstance(arguments.get("idempotency_key"), str)
-                or not arguments["idempotency_key"].startswith(expected_key_prefix)
+                or key_match is None
+                or key_match.group(1) != expected_phase
             ):
                 raise ValueError("cad_observe invocation arguments are invalid")
             if job_id not in observation_job_ids:
@@ -1258,23 +1290,26 @@ def _validate_invocation_graph(
                     "cad_observe invocation job ID differs from the retained request"
                 )
             observed_jobs.append(job_id)
-            observed_keys.append(arguments["idempotency_key"])
+            key_values.append(key)
+            key_stamps.append(key_match.group(2))
         elif tool == "cad_get_job":
             if arguments != {"job_id": job_id} or job_id not in observation_job_ids:
                 raise ValueError("cad_get_job invocation arguments are invalid")
         elif tool == "cad_build_scene":
-            repeat = phases[phase_index][2]
+            expected_phase = phases[phase_index][2]
             key = arguments.get("idempotency_key")
+            key_match = key_re.fullmatch(key) if isinstance(key, str) else None
             if (
                 arguments.get("source_snapshot_id") != source_snapshot_id
                 or arguments.get("analysis_profile") != "mechanical-2d/1"
                 or arguments.get("space") != "model"
                 or arguments.get("include_sections") != list(SECTIONS)
-                or not isinstance(key, str)
-                or ("-scene-repeat-" in key) is not repeat
-                or ("-scene-" in key) is False
+                or key_match is None
+                or key_match.group(1) != expected_phase
             ):
                 raise ValueError("cad_build_scene invocation arguments are invalid")
+            key_values.append(key)
+            key_stamps.append(key_match.group(2))
         elif tool == "cad_query_scene":
             section = arguments.get("section")
             if (
@@ -1310,8 +1345,10 @@ def _validate_invocation_graph(
         raise ValueError(
             "expected exactly one cad_query_scene per retained section"
         )
-    if len(observed_keys) != 2 or observed_keys[0] == observed_keys[1]:
+    if len(set(key_values)) != 4:
         raise ValueError("cad_observe idempotency keys are reused")
+    if len(set(key_stamps)) != 1:
+        raise ValueError("invocations are not bound to one capture run")
 
 
 def _bind_no_effect_db(
@@ -1434,11 +1471,15 @@ async def _finalize_fixture(args: argparse.Namespace, token: str) -> dict[str, A
         raise ValueError("fixture evidence is not a provisional capture-public artifact")
     if provisional.get("status") != "PROVISIONAL":
         raise ValueError("fixture evidence is not in PROVISIONAL status")
-    implementation_commit = provisional.get("implementation_commit")
-    if not isinstance(implementation_commit, str) or not re.fullmatch(
-        r"[0-9a-f]{40}", implementation_commit
+    capture_commit = provisional.get("implementation_commit")
+    if not isinstance(capture_commit, str) or not re.fullmatch(
+        r"[0-9a-f]{40}", capture_commit
     ):
         raise ValueError("provisional capture implementation_commit is invalid")
+    finalizer_commit = _git_head()
+    if finalizer_commit != capture_commit:
+        raise ValueError("finalizer commit differs from provisional capture commit")
+    implementation_commit = capture_commit
     no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     invocations = provisional["public_path"]["tool_invocations"]
     _validate_invocation_graph(
@@ -1608,6 +1649,10 @@ async def _finalize_fixture(args: argparse.Namespace, token: str) -> dict[str, A
         **provisional,
         "schema_version": "cad.phase10-live-public-fixture/1",
         "status": "PASS",
+        "finalization": {
+            "implementation_commit": finalizer_commit,
+            "finalized_at": datetime.now(timezone.utc).isoformat(),
+        },
         "no_effect": {
             "dwg_file_hash_unchanged": gates["dwg_file_hash_unchanged"],
             "document_revision_unchanged": gates["document_revision_unchanged"],

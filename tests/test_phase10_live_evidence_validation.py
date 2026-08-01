@@ -24,6 +24,8 @@ EVIDENCE_FILES = (
     "phase10-live-gateway-restart-20260730.json",
     "phase10-live-no-effect-db-20260730.json",
 )
+FIXED_COMMIT = "a" * 40
+TEST_STAMP = "20260730000000"
 
 
 def _repo(path: Path) -> Path:
@@ -63,6 +65,7 @@ def _repo(path: Path) -> Path:
         path, "phase10-live-no-effect-db-20260730.json"
     )
     _upgrade_db_artifact(db_path, db_value, upgraded_fixtures)
+    _patch_evidence_commits(path)
     return path
 
 
@@ -121,6 +124,10 @@ def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
         captured_at - timedelta(seconds=130)
     ).isoformat()
     value["gate_results"]["runtime_identity_bound"] = True
+    value["finalization"] = {
+        "implementation_commit": value["implementation_commit"],
+        "finalized_at": (captured_at + timedelta(seconds=1)).isoformat(),
+    }
     jobs = [
         value["source"]["observation_before"]["job"]["job_id"],
         value["source"]["observation_after"]["job"]["job_id"],
@@ -135,7 +142,9 @@ def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
         "captured_at": captured_at.isoformat(),
     }
     invocations: list[dict] = []
-    fixture_letter = value["fixture"]["fixture_id"].split("/")[0].rsplit("-", 1)[-1]
+    fixture_letter = VALIDATOR.CAPTURE._fixture_letter_from_id(
+        value["fixture"]["fixture_id"]
+    )
 
     def invoke(
         tool: str,
@@ -169,8 +178,8 @@ def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
             "device_id": value["public_path"]["device_id"],
             "observation_level": "detail",
             "include_preview_image": False,
-            "idempotency_key": (
-                f"phase10-drawing-{fixture_letter}-before-20260730T000000"
+            "idempotency_key": VALIDATOR.CAPTURE._phase10_key(
+                fixture_letter, "before", TEST_STAMP
             ),
         },
         1,
@@ -181,7 +190,9 @@ def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
         "cad_build_scene",
         {
             "source_snapshot_id": value["source"]["snapshot_id"],
-            "idempotency_key": f"phase10-drawing-{fixture_letter}-scene-20260730T000000",
+            "idempotency_key": VALIDATOR.CAPTURE._phase10_key(
+                fixture_letter, "scene", TEST_STAMP
+            ),
             "analysis_profile": "mechanical-2d/1",
             "space": "model",
             "include_sections": list(VALIDATOR.SECTIONS),
@@ -192,7 +203,9 @@ def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
         "cad_build_scene",
         {
             "source_snapshot_id": value["source"]["snapshot_id"],
-            "idempotency_key": f"phase10-drawing-{fixture_letter}-scene-repeat-20260730T000000",
+            "idempotency_key": VALIDATOR.CAPTURE._phase10_key(
+                fixture_letter, "scene-repeat", TEST_STAMP
+            ),
             "analysis_profile": "mechanical-2d/1",
             "space": "model",
             "include_sections": list(VALIDATOR.SECTIONS),
@@ -216,8 +229,8 @@ def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
             "device_id": value["public_path"]["device_id"],
             "observation_level": "detail",
             "include_preview_image": False,
-            "idempotency_key": (
-                f"phase10-drawing-{fixture_letter}-after-20260730T000000"
+            "idempotency_key": VALIDATOR.CAPTURE._phase10_key(
+                fixture_letter, "after", TEST_STAMP
             ),
         },
         12,
@@ -251,6 +264,81 @@ def _restamp_invocations(invocations: list[dict], captured_at: str) -> None:
             + timedelta(seconds=5 * (index + 1))
         ).isoformat()
     invocations[-1]["completed_at"] = captured.isoformat()
+
+
+def _patch_evidence_commits(root: Path) -> None:
+    for name in EVIDENCE_FILES:
+        path, value = _evidence(root, name)
+        value["implementation_commit"] = FIXED_COMMIT
+        value["baseline_commit"] = FIXED_COMMIT
+        identity = value.get("runtime_identity")
+        if isinstance(identity, dict):
+            gateway = identity.get("gateway_process")
+            if isinstance(gateway, dict):
+                gateway["release_commit"] = FIXED_COMMIT
+                working_directory = gateway.get("working_directory")
+                if isinstance(working_directory, str):
+                    gateway["working_directory"] = working_directory.replace(
+                        "165de04", FIXED_COMMIT[:7]
+                    )
+        finalization = value.get("finalization")
+        if isinstance(finalization, dict):
+            finalization["implementation_commit"] = FIXED_COMMIT
+        for key in ("gateway_process_before", "gateway_process_after"):
+            record = value.get(key)
+            if not isinstance(record, dict):
+                continue
+            working_directory = record.get("gateway_working_directory")
+            if isinstance(working_directory, str):
+                record["gateway_working_directory"] = working_directory.replace(
+                    "165de04", FIXED_COMMIT[:7]
+                )
+            service = record.get("gateway_service_record")
+            if isinstance(service, dict):
+                release = service.get("release")
+                if isinstance(release, dict):
+                    release["commit"] = FIXED_COMMIT
+                    release_working_directory = release.get(
+                        "working_directory"
+                    )
+                    if isinstance(release_working_directory, str):
+                        release["working_directory"] = (
+                            release_working_directory.replace(
+                                "165de04", FIXED_COMMIT[:7]
+                            )
+                        )
+                properties = service.get("properties")
+                if isinstance(properties, dict):
+                    properties_working_directory = properties.get(
+                        "WorkingDirectory"
+                    )
+                    if isinstance(properties_working_directory, str):
+                        properties["WorkingDirectory"] = (
+                            properties_working_directory.replace(
+                                "165de04", FIXED_COMMIT[:7]
+                            )
+                        )
+        for capture_key in ("identity_capture_before", "identity_capture_after"):
+            capture = value.get(capture_key)
+            if not isinstance(capture, dict):
+                continue
+            for record in capture.get("commands", []):
+                if not isinstance(record, dict):
+                    continue
+                if isinstance(record.get("command"), list):
+                    record["command"] = [
+                        item.replace("165de04", FIXED_COMMIT[:7])
+                        if isinstance(item, str)
+                        else item
+                        for item in record["command"]
+                    ]
+                if record.get("command", [None])[0] == "git":
+                    record["stdout"] = FIXED_COMMIT + "\n"
+                elif isinstance(record.get("stdout"), str):
+                    record["stdout"] = record["stdout"].replace(
+                        "165de04", FIXED_COMMIT[:7]
+                    )
+        _save(path, value)
 
 
 def _identity_capture_from_record(
@@ -494,6 +582,12 @@ def _tamper(root: Path, case: str) -> None:
         "invocation_unknown_tool",
         "invoked_tools_tampered",
         "write_tools_tampered",
+        "key_fixture_letter",
+        "key_old_format",
+        "key_stamp_mismatch",
+        "key_reused",
+        "key_bad_stamp",
+        "finalization_commit",
         "session_binding",
     }:
         path, value = _fixture(root, "c" if case == "identity_hash" else "a")
@@ -605,6 +699,51 @@ def _tamper(root: Path, case: str) -> None:
             ]
         elif case == "write_tools_tampered":
             value["public_path"]["write_tools_invoked"] = ["cad_commit"]
+        elif case == "key_fixture_letter":
+            next(
+                item
+                for item in value["public_path"]["tool_invocations"]
+                if item["tool"] == "cad_observe"
+            )["arguments"]["idempotency_key"] = (
+                "phase10-drawing-b-before-20260730000000"
+            )
+        elif case == "key_old_format":
+            next(
+                item
+                for item in value["public_path"]["tool_invocations"]
+                if item["tool"] == "cad_observe"
+            )["arguments"]["idempotency_key"] = (
+                "phase10-a-before-20260730000000"
+            )
+        elif case == "key_stamp_mismatch":
+            next(
+                item
+                for item in value["public_path"]["tool_invocations"]
+                if item["tool"] == "cad_observe"
+                and item.get("job_id")
+                == value["session_binding"]["observation_job_ids"][1]
+            )["arguments"]["idempotency_key"] = (
+                "phase10-drawing-a-after-20260730000001"
+            )
+        elif case == "key_reused":
+            builds = [
+                item
+                for item in value["public_path"]["tool_invocations"]
+                if item["tool"] == "cad_build_scene"
+            ]
+            builds[1]["arguments"]["idempotency_key"] = builds[0][
+                "arguments"
+            ]["idempotency_key"]
+        elif case == "key_bad_stamp":
+            next(
+                item
+                for item in value["public_path"]["tool_invocations"]
+                if item["tool"] == "cad_observe"
+            )["arguments"]["idempotency_key"] = (
+                "phase10-drawing-a-before-2026"
+            )
+        elif case == "finalization_commit":
+            value["finalization"]["implementation_commit"] = "b" * 40
         elif case == "session_binding":
             value["session_binding"]["observation_job_ids"] = ["job-tampered"]
         else:
@@ -753,6 +892,11 @@ def _tamper(root: Path, case: str) -> None:
             value["captured_at"] = "2026-07-30T14:30:00+07:00"
         else:
             value["anchor_jobs"][0]["updated_at"] = "2026-07-30T15:00:00+07:00"
+    elif case == "db_commit":
+        path, value = _evidence(
+            root, "phase10-live-no-effect-db-20260730.json"
+        )
+        value["implementation_commit"] = "b" * 40
     else:
         path, value = _evidence(
             root, "phase10-live-no-effect-db-20260730.json"
@@ -780,21 +924,86 @@ def test_validator_accepts_cross_bound_raw_restart_evidence(
     VALIDATOR.validate(_repo(tmp_path / "valid"))
 
 
-def test_finalize_fixture_orchestrates_provisional_to_pass(
-    tmp_path: Path,
-) -> None:
-    import argparse
-    import asyncio
+class _FakeMCPClient:
+    def __init__(self, retained: dict):
+        self._retained = retained
+        self._observe_calls = 0
+        self._tool_names = [
+            "cad_build_scene",
+            "cad_query_scene",
+            "cad_list_devices",
+            "cad_observe",
+            "cad_get_job",
+        ]
 
-    root = _repo(tmp_path / "orchestrate")
-    fixture_path, fixture_value = _fixture(root, "a")
-    provisional = copy.deepcopy(fixture_value)
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def list_tools(self):
+        return [type("Tool", (), {"name": name})() for name in self._tool_names]
+
+    async def call_tool(self, name: str, arguments: dict):
+        if name == "cad_list_devices":
+            device = dict(self._retained["public_path"]["devices"]["devices"][0])
+            device.update(
+                {
+                    "status": "online",
+                    "paused": False,
+                    "runtime_state": "online_idle",
+                }
+            )
+            return {"devices": [device]}
+        if name == "cad_observe":
+            moment = (
+                "observation_before"
+                if self._observe_calls == 0
+                else "observation_after"
+            )
+            self._observe_calls += 1
+            return self._retained["source"][moment]["request"]
+        if name == "cad_get_job":
+            before = self._retained["source"]["observation_before"]["job"]
+            after = self._retained["source"]["observation_after"]["job"]
+            return before if arguments["job_id"] == before["job_id"] else after
+        if name == "cad_build_scene":
+            scene = {
+                key: item
+                for key, item in self._retained["scene"].items()
+                if key
+                not in {
+                    "sections",
+                    "repeat_build",
+                    "summary_resource",
+                    "feature_types",
+                    "relation_types",
+                    "issue_codes",
+                    "evidence_strengths",
+                    "source_capabilities",
+                }
+            }
+            if "-scene-repeat-" in arguments["idempotency_key"]:
+                return {"scene": scene, "reused": True}
+            return {"scene": scene}
+        if name == "cad_query_scene":
+            return self._retained["scene"]["sections"][arguments["section"]]
+        raise AssertionError(f"unexpected tool {name}")
+
+    async def read_resource(self, uri: str):
+        return self._retained["scene"]["summary_resource"]
+
+
+def _provisional_capture(tmp_path: Path, retained: dict) -> dict:
+    provisional = copy.deepcopy(retained)
     provisional["schema_version"] = (
         "cad.phase10-live-public-fixture-provisional/1"
     )
     provisional["status"] = "PROVISIONAL"
     provisional.pop("no_effect", None)
     provisional.pop("no_effect_db_binding", None)
+    provisional.pop("finalization", None)
     provisional["gate_results"] = {
         key: item
         for key, item in provisional["gate_results"].items()
@@ -808,6 +1017,21 @@ def test_finalize_fixture_orchestrates_provisional_to_pass(
             "runtime_identity_bound",
         }
     }
+    return provisional
+
+
+def test_finalize_fixture_orchestrates_provisional_to_pass(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import argparse
+    import asyncio
+
+    monkeypatch.setattr(
+        VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT
+    )
+    root = _repo(tmp_path / "orchestrate")
+    fixture_path, fixture_value = _fixture(root, "a")
+    provisional = _provisional_capture(tmp_path, fixture_value)
     provisional_path = tmp_path / "provisional-a.json"
     provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
     db_path, db_value = _evidence(
@@ -829,74 +1053,110 @@ def test_finalize_fixture_orchestrates_provisional_to_pass(
     assert final["no_effect_db_binding"]["artifact"] == str(db_path)
 
 
-def test_finalized_artifact_passes_full_validator_without_mutation(
-    tmp_path: Path,
-) -> None:
+def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
     import argparse
     import asyncio
 
+    monkeypatch.setattr(
+        VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT
+    )
+    monkeypatch.setattr(
+        VALIDATOR.CAPTURE, "_git_baseline", lambda: FIXED_COMMIT
+    )
     root = _repo(tmp_path / "e2e")
     fixture_path, fixture_value = _fixture(root, "a")
-    provisional = copy.deepcopy(fixture_value)
-    provisional["schema_version"] = (
-        "cad.phase10-live-public-fixture-provisional/1"
+    upgraded = copy.deepcopy(fixture_value)
+    _upgrade_fixture_runtime_identity(
+        tmp_path / "upgraded-copy.json", upgraded
     )
-    provisional["status"] = "PROVISIONAL"
-    provisional.pop("no_effect", None)
-    provisional.pop("no_effect_db_binding", None)
-    provisional["gate_results"] = {
-        key: item
-        for key, item in provisional["gate_results"].items()
-        if key
-        not in {
-            "no_write_events_in_window",
-            "anchor_jobs_read_only",
-            "write_snapshot_unchanged",
-            "no_write_requested",
-            "no_cad_effect_attempted",
-            "runtime_identity_bound",
-        }
-    }
+    process_identity = upgraded["runtime_identity"]
+    process_path = tmp_path / "process-identity.json"
+    process_path.write_text(json.dumps(process_identity), encoding="utf-8")
+    drawing_path = tmp_path / "phase10-drawing-a.dwg"
+    shutil.copy2(
+        ROOT / "fixtures" / "phase10" / "live" / "phase10-drawing-a.dwg",
+        drawing_path,
+    )
+    capture_args = argparse.Namespace(
+        endpoint="https://example.invalid/mcp",
+        device_id=process_identity["agent_session"]["device_id"],
+        token_file=tmp_path / "token.json",
+        output=tmp_path / "provisional-a.json",
+        operator="test",
+        fixture="a",
+        drawing=drawing_path,
+        process_identity=process_path,
+        capture_command="capture-public (test)",
+    )
+    retained = fixture_value
+    provisional = asyncio.run(
+        VALIDATOR.CAPTURE._capture_public(
+            capture_args,
+            "token",
+            client_factory=lambda endpoint, auth, timeout: _FakeMCPClient(
+                retained
+            ),
+        )
+    )
     provisional_path = tmp_path / "provisional-a.json"
     provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
-    db_path, _ = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    db_path, db_value = _evidence(
+        root, "phase10-live-no-effect-db-20260730.json"
+    )
+    invocations = provisional["public_path"]["tool_invocations"]
+    first = VALIDATOR._time(
+        invocations[0]["started_at"], "first invocation started_at"
+    )
+    last = VALIDATOR._time(
+        invocations[-1]["completed_at"], "last invocation completed_at"
+    )
+    window_start = min(
+        VALIDATOR._time(
+            db_value["scope"]["window_start"], "DB window start"
+        ),
+        first - timedelta(seconds=60),
+    )
+    window_end = max(
+        VALIDATOR._time(
+            db_value["scope"]["window_end"], "DB window end"
+        ),
+        last + timedelta(seconds=60),
+    )
+    db_value["scope"]["window_start"] = window_start.isoformat()
+    db_value["scope"]["window_end"] = window_end.isoformat()
+    db_value["captured_at"] = (window_end + timedelta(seconds=1)).isoformat()
+    session_id = process_identity["agent_session"]["session_id"]
+    for record in db_value["agent_sessions"]:
+        if record.get("session_id") == session_id:
+            record["disconnected_at"] = None
+    for index, job in enumerate(db_value["anchor_jobs"]):
+        job["created_at"] = (first - timedelta(seconds=30 + index)).isoformat()
+        job["updated_at"] = (last - timedelta(seconds=5 + index)).isoformat()
+    for scene in db_value["scenes"]:
+        scene["created_at"] = (first - timedelta(seconds=20)).isoformat()
+    _save(db_path, db_value)
     args = argparse.Namespace(
         fixture_evidence=provisional_path,
         no_effect_db=db_path,
         device_id=provisional["public_path"]["device_id"],
     )
     final = asyncio.run(VALIDATOR.CAPTURE._finalize_fixture(args, "token"))
-    # The final artifact is written into the retained evidence path with no
-    # further upgrade or mutation, and must pass the full validator.
+    assert final["finalization"]["implementation_commit"] == FIXED_COMMIT
     _save(fixture_path, final)
     VALIDATOR.validate(root)
 
 
-def test_cli_finalize_fixture_runs_without_token_file(tmp_path: Path) -> None:
+def test_cli_finalize_fixture_runs_without_token_file(
+    tmp_path: Path, monkeypatch
+) -> None:
     import sys
 
+    monkeypatch.setattr(
+        VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT
+    )
     root = _repo(tmp_path / "cli")
     fixture_path, fixture_value = _fixture(root, "a")
-    provisional = copy.deepcopy(fixture_value)
-    provisional["schema_version"] = (
-        "cad.phase10-live-public-fixture-provisional/1"
-    )
-    provisional["status"] = "PROVISIONAL"
-    provisional.pop("no_effect", None)
-    provisional.pop("no_effect_db_binding", None)
-    provisional["gate_results"] = {
-        key: item
-        for key, item in provisional["gate_results"].items()
-        if key
-        not in {
-            "no_write_events_in_window",
-            "anchor_jobs_read_only",
-            "write_snapshot_unchanged",
-            "no_write_requested",
-            "no_cad_effect_attempted",
-            "runtime_identity_bound",
-        }
-    }
+    provisional = _provisional_capture(tmp_path, fixture_value)
     provisional_path = tmp_path / "provisional-a.json"
     provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
     db_path, _ = _evidence(root, "phase10-live-no-effect-db-20260730.json")
@@ -984,6 +1244,59 @@ def test_validator_time_accepts_rfc3339_fractional_seconds(value: str) -> None:
     assert VALIDATOR._time(value, "timestamp").tzinfo is not None
 
 
+def test_fixture_letter_parser_and_key_builder() -> None:
+    parser = VALIDATOR.CAPTURE._fixture_letter_from_id
+    builder = VALIDATOR.CAPTURE._phase10_key
+    assert parser("phase10-drawing-a-r25/1") == "a"
+    assert parser("phase10-drawing-c-r25/1") == "c"
+    assert (
+        builder("a", "before", "20260730000000")
+        == "phase10-drawing-a-before-20260730000000"
+    )
+    for invalid in (
+        "phase10-drawing-r25/1",
+        "phase10-drawing-a-r26/1",
+        "phase10-drawing-a-r25/2",
+        "phase10-drawing-d-r25/1",
+        "not-a-fixture",
+    ):
+        with pytest.raises(ValueError):
+            parser(invalid)
+    with pytest.raises(ValueError):
+        builder("r25", "before", "20260730000000")
+    with pytest.raises(ValueError):
+        builder("a", "unknown", "20260730000000")
+    with pytest.raises(ValueError):
+        builder("a", "before", "2026")
+
+
+def test_finalize_rejects_cross_commit_finalization(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import argparse
+    import asyncio
+
+    monkeypatch.setattr(
+        VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT
+    )
+    root = _repo(tmp_path / "cross-commit")
+    _, fixture_value = _fixture(root, "a")
+    provisional = _provisional_capture(tmp_path, fixture_value)
+    provisional_path = tmp_path / "provisional-a.json"
+    provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
+    db_path, _ = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    args = argparse.Namespace(
+        fixture_evidence=provisional_path,
+        no_effect_db=db_path,
+        device_id=provisional["public_path"]["device_id"],
+    )
+    monkeypatch.setattr(
+        VALIDATOR.CAPTURE, "_git_head", lambda: "b" * 40
+    )
+    with pytest.raises(ValueError, match="finalizer commit differs"):
+        asyncio.run(VALIDATOR.CAPTURE._finalize_fixture(args, "token"))
+
+
 @pytest.mark.parametrize(
     ("case", "message"),
     (
@@ -1030,6 +1343,13 @@ def test_validator_time_accepts_rfc3339_fractional_seconds(value: str) -> None:
         ("invocation_query_before_build", "out of phase"),
         ("invocation_second_summary", "out of phase"),
         ("invocation_interleaved_poll", "out of phase"),
+        ("key_fixture_letter", "cad_observe invocation arguments"),
+        ("key_old_format", "cad_observe invocation arguments"),
+        ("key_stamp_mismatch", "not bound to one capture run"),
+        ("key_reused", "cad_build_scene invocation arguments"),
+        ("key_bad_stamp", "cad_observe invocation arguments"),
+        ("finalization_commit", "finalization provenance is invalid"),
+        ("db_commit", "commit provenance differs"),
         ("session_binding", "session binding is not cross-bound"),
         ("db_window_end", "outside the audit window"),
         ("db_sha", "durable no-write snapshot"),

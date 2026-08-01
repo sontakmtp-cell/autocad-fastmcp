@@ -783,6 +783,17 @@ def validate(root: Path) -> None:
             f"{label}: public observation identities/tools are incomplete",
         )
         captured_at = _time(evidence.get("captured_at"), label)
+        finalization = evidence.get("finalization")
+        _require(
+            isinstance(finalization, dict)
+            and finalization.get("implementation_commit")
+            == evidence["implementation_commit"]
+            and _time(
+                finalization.get("finalized_at"), f"{label}: finalized_at"
+            )
+            >= captured_at,
+            f"{label}: finalization provenance is invalid",
+        )
         invocations = evidence.get("public_path", {}).get("tool_invocations")
         try:
             CAPTURE._validate_invocation_graph(
