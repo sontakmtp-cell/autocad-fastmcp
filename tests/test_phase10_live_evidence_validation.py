@@ -1295,14 +1295,6 @@ def test_restart_query_records_public_producer_path(
     db_path, db_value = _evidence(
         root, "phase10-live-no-effect-db-20260730.json"
     )
-    now = datetime.now(timezone.utc)
-    db_value["scope"]["window_start"] = (
-        now - timedelta(minutes=1)
-    ).isoformat()
-    db_value["scope"]["window_end"] = (now + timedelta(minutes=1)).isoformat()
-    db_value["captured_at"] = (now + timedelta(minutes=2)).isoformat()
-    db_path = tmp_path / "restart-db.json"
-    db_path.write_text(json.dumps(db_value), encoding="utf-8")
 
     def write(name: str, value: dict) -> Path:
         path = tmp_path / name
@@ -1326,7 +1318,6 @@ def test_restart_query_records_public_producer_path(
         identity_after=write(
             "identity-after.json", restart["identity_capture_after"]
         ),
-        no_effect_db=db_path,
         capture_command="restart-query (test)",
         operator="test",
     )
@@ -1346,7 +1337,27 @@ def test_restart_query_records_public_producer_path(
         "read_resource",
     ]
     assert result["post_restart_public_path"]["write_tools_invoked"] == []
-    assert result["write_requested"] is False
+    assert result["status"] == "PROVISIONAL"
+    collection_at = datetime.now(timezone.utc)
+    db_value["scope"]["window_start"] = invocations[0]["started_at"]
+    db_value["scope"]["window_end"] = collection_at.isoformat()
+    db_value["captured_at"] = collection_at.isoformat()
+    db_path = tmp_path / "restart-db.json"
+    db_path.write_text(json.dumps(db_value), encoding="utf-8")
+    provisional_path = tmp_path / "restart-provisional.json"
+    provisional_path.write_text(json.dumps(result), encoding="utf-8")
+    final = asyncio.run(
+        VALIDATOR.CAPTURE._finalize_restart(
+            argparse.Namespace(
+                restart_evidence=provisional_path,
+                no_effect_db=db_path,
+                device_id=fixture["public_path"]["device_id"],
+            ),
+            "token",
+        )
+    )
+    assert final["status"] == "PASS"
+    assert VALIDATOR._time(invocations[-1]["completed_at"], "last") <= collection_at
 
 
 @pytest.mark.parametrize("tamper", ("before_identity", "after_capture"))
@@ -1453,6 +1464,40 @@ def test_cli_action_specific_requirements() -> None:
             "device",
             "--output",
             "final.json",
+        ]
+    )
+    parser.parse_args(
+        [
+            "finalize-restart",
+            "--restart-evidence",
+            "restart.json",
+            "--no-effect-db",
+            "db.json",
+            "--device-id",
+            "device",
+            "--output",
+            "final-restart.json",
+        ]
+    )
+    parser.parse_args(
+        [
+            "restart-query",
+            "--device-id",
+            "device",
+            "--token-file",
+            "token.json",
+            "--output",
+            "restart.json",
+            "--before",
+            "before.json",
+            "--process-before",
+            "process-before.json",
+            "--process-after",
+            "process-after.json",
+            "--identity-before",
+            "identity-before.json",
+            "--identity-after",
+            "identity-after.json",
         ]
     )
     with pytest.raises(SystemExit):

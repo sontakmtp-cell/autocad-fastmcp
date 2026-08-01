@@ -1850,7 +1850,6 @@ async def _restart_query(
             "command": list(exit_command),
         },
     }
-    no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     scene = before["scene"]
     scene_id = scene["scene_id"]
     invocations: list[dict[str, Any]] = []
@@ -1897,24 +1896,9 @@ async def _restart_query(
         invocations, scene_id=scene_id
     )
     restart_captured_at = datetime.now(timezone.utc).isoformat()
-    _validate_restart_window(
-        invocations,
-        no_effect_db,
-        gateway_after_at=process_after["captured_at"],
-        identity_after_at=identity_after["captured_at"],
-        restart_captured_at=restart_captured_at,
-    )
     service_gates = _service_restart_gates(
         process_before,
         process_after,
-        implementation_commit=before["implementation_commit"],
-    )
-    db_gates = _db_restart_gates(
-        no_effect_db,
-        process_before,
-        process_after,
-        device_id=args.device_id,
-        scene_id=scene_id,
         implementation_commit=before["implementation_commit"],
     )
     public_gates = _public_scene_gates(
@@ -1939,7 +1923,6 @@ async def _restart_query(
     }
     gates = {
         **service_gates,
-        **db_gates,
         **public_gates,
         "standalone_desktop_agent": process_before["desktop_agent_pid"]
         == process_after["desktop_agent_pid"]
@@ -1952,17 +1935,6 @@ async def _restart_query(
         ),
         "dwg_file_hash_unchanged": dwg_unchanged,
         "document_revision_unchanged": revision_unchanged,
-        "no_write_requested": (
-            write_tools_invoked == []
-            and db_gates["no_write_events_in_window"]
-            and db_gates["anchor_jobs_read_only"]
-        ),
-        "no_cad_effect_attempted": (
-            dwg_unchanged
-            and revision_unchanged
-            and db_gates["no_write_events_in_window"]
-            and db_gates["write_snapshot_unchanged"]
-        ),
     }
     if not all(gates.values()):
         failed = sorted(name for name, passed in gates.items() if not passed)
@@ -1970,7 +1942,8 @@ async def _restart_query(
     if _git_head() != restart_commit:
         raise RuntimeError("repository HEAD changed during restart capture")
     return {
-        "schema_version": "cad.phase10-live-gateway-restart/1",
+        "schema_version": "cad.phase10-live-gateway-restart-provisional/1",
+        "status": "PROVISIONAL",
         "captured_at": restart_captured_at,
         "capture_command": args.capture_command,
         "baseline_commit": _git_baseline(),
@@ -1991,16 +1964,74 @@ async def _restart_query(
             "write_tools_invoked": write_tools_invoked,
             "tool_invocations": invocations,
         },
-        "no_effect_db_binding": _db_evidence_binding(
-            args.no_effect_db, no_effect_db
-        ),
-        "write_requested": not gates["no_write_requested"],
-        "cad_effect_attempted": not gates["no_cad_effect_attempted"],
         "gate_results": gates,
         **gates,
         "failures_retests": [],
         "limitations": [],
+    }
+
+
+async def _finalize_restart(args: argparse.Namespace, token: str) -> dict[str, Any]:
+    provisional = json.loads(args.restart_evidence.read_text(encoding="utf-8"))
+    if provisional.get("schema_version") != "cad.phase10-live-gateway-restart-provisional/1":
+        raise ValueError("restart evidence is not a provisional restart-query artifact")
+    if provisional.get("status") != "PROVISIONAL":
+        raise ValueError("restart evidence is not provisional")
+    implementation_commit = provisional.get("implementation_commit")
+    if not isinstance(implementation_commit, str) or _git_head() != implementation_commit:
+        raise ValueError("finalizer commit differs from provisional restart capture")
+    no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
+    invocations = provisional["post_restart_public_path"]["tool_invocations"]
+    _validate_restart_invocations(invocations, scene_id=provisional["scene_id"])
+    _validate_restart_window(
+        invocations,
+        no_effect_db,
+        gateway_after_at=provisional["gateway_process_after"]["captured_at"],
+        identity_after_at=provisional["identity_capture_after"]["captured_at"],
+        restart_captured_at=provisional["captured_at"],
+    )
+    db_gates = _db_restart_gates(
+        no_effect_db,
+        provisional["gateway_process_before"],
+        provisional["gateway_process_after"],
+        device_id=args.device_id,
+        scene_id=provisional["scene_id"],
+        implementation_commit=implementation_commit,
+    )
+    base_gates = dict(provisional.get("gate_results", {}))
+    write_tools = provisional["post_restart_public_path"]["write_tools_invoked"]
+    gates = {
+        **base_gates,
+        **db_gates,
+        "no_write_requested": (
+            write_tools == []
+            and db_gates["no_write_events_in_window"]
+            and db_gates["anchor_jobs_read_only"]
+        ),
+        "no_cad_effect_attempted": (
+            provisional["dwg_file_hash_unchanged"]
+            and provisional["document_revision_unchanged"]
+            and db_gates["no_write_events_in_window"]
+            and db_gates["write_snapshot_unchanged"]
+        ),
+    }
+    if not all(gates.values()):
+        raise RuntimeError(
+            f"restart gates failed: {sorted(name for name, passed in gates.items() if not passed)}"
+        )
+    return {
+        **provisional,
+        "schema_version": "cad.phase10-live-gateway-restart/1",
         "status": "PASS",
+        "finalization": {
+            "implementation_commit": implementation_commit,
+            "finalized_at": datetime.now(timezone.utc).isoformat(),
+        },
+        "no_effect_db_binding": _db_evidence_binding(args.no_effect_db, no_effect_db),
+        "write_requested": not gates["no_write_requested"],
+        "cad_effect_attempted": not gates["no_cad_effect_attempted"],
+        "gate_results": gates,
+        **gates,
     }
 
 
@@ -2087,6 +2118,13 @@ def build_parser() -> argparse.ArgumentParser:
     finalize.add_argument("--output", required=True, type=Path)
     finalize.add_argument("--operator", default="local-operator")
 
+    finalize_restart = subparsers.add_parser("finalize-restart")
+    finalize_restart.add_argument("--restart-evidence", required=True, type=Path)
+    finalize_restart.add_argument("--no-effect-db", required=True, type=Path)
+    finalize_restart.add_argument("--device-id", required=True)
+    finalize_restart.add_argument("--output", required=True, type=Path)
+    finalize_restart.add_argument("--operator", default="local-operator")
+
     identity = subparsers.add_parser("capture-identity")
     identity.add_argument("--service", default=SERVICE_UNIT)
     identity.add_argument("--old-pid", type=int)
@@ -2104,7 +2142,6 @@ def build_parser() -> argparse.ArgumentParser:
     restart.add_argument("--process-after", required=True, type=Path)
     restart.add_argument("--identity-before", required=True, type=Path)
     restart.add_argument("--identity-after", required=True, type=Path)
-    restart.add_argument("--no-effect-db", required=True, type=Path)
     return parser
 
 
@@ -2136,6 +2173,14 @@ def main() -> None:
                 f"--device-id {args.device_id}",
             )
         )
+    elif args.action == "finalize-restart":
+        command.extend(
+            (
+                f"--restart-evidence {args.restart_evidence}",
+                f"--no-effect-db {args.no_effect_db}",
+                f"--device-id {args.device_id}",
+            )
+        )
     elif args.action == "capture-identity":
         command.append(f"--service {args.service}")
         if args.old_pid is not None:
@@ -2151,7 +2196,6 @@ def main() -> None:
                 f"--process-after {args.process_after}",
                 f"--identity-before {args.identity_before}",
                 f"--identity-after {args.identity_after}",
-                f"--no-effect-db {args.no_effect_db}",
             )
         )
     args.capture_command = " ".join(command)
@@ -2163,6 +2207,7 @@ def main() -> None:
     runner = {
         "capture-public": _capture_public,
         "finalize-fixture": _finalize_fixture,
+        "finalize-restart": _finalize_restart,
         "capture-identity": _capture_identity,
         "restart-query": _restart_query,
     }[args.action]
