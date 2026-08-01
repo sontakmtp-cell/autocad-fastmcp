@@ -792,6 +792,31 @@ def validate(root: Path) -> None:
             f"{label}: public observation identities/tools are incomplete",
         )
         captured_at = _time(evidence.get("captured_at"), label)
+        invocations = evidence.get("public_path", {}).get("tool_invocations")
+        try:
+            CAPTURE._validate_invocation_graph(
+                invocations,
+                observation_job_ids=observation_job_ids,
+                scene_id=scene.get("scene_id"),
+                source_snapshot_id=scene.get("source_snapshot_id"),
+            )
+        except ValueError as error:
+            raise ValueError(f"{label}: {error}") from error
+        first_invocation = _time(
+            invocations[0]["started_at"], f"{label}: first invocation started"
+        )
+        _require(
+            all(
+                _time(item["completed_at"], f"{label}: invocation completed")
+                <= captured_at
+                for item in invocations
+            )
+            and all(
+                item.get("tool") not in CAPTURE.WRITE_TOOLS
+                for item in invocations
+            ),
+            f"{label}: public tool invocation records are incomplete",
+        )
         identity = evidence.get("runtime_identity")
         _require(
             isinstance(identity, dict),
@@ -851,7 +876,7 @@ def validate(root: Path) -> None:
             and _time(
                 autocad["started_at"], f"{label}: autocad started_at"
             )
-            <= captured_at,
+            <= first_invocation,
             f"{label}: AutoCAD executable hash/start identity is invalid",
         )
         _require(
@@ -866,7 +891,7 @@ def validate(root: Path) -> None:
             and _time(
                 managed_host["started_at"], f"{label}: host started_at"
             )
-            <= captured_at,
+            <= first_invocation,
             f"{label}: managed host runtime identity is invalid",
         )
         runtime_evidence = (
@@ -898,11 +923,11 @@ def validate(root: Path) -> None:
             _time(
                 session["connected_at"], f"{label}: session connected_at"
             )
-            <= captured_at
+            <= first_invocation
             and _time(
                 desktop["started_at"], f"{label}: desktop started_at"
             )
-            <= captured_at,
+            <= first_invocation,
             f"{label}: runtime identity timestamps are not before capture",
         )
         fixture_sessions[name] = session["session_id"]
@@ -918,37 +943,6 @@ def validate(root: Path) -> None:
             and _time(binding.get("captured_at"), f"{label}: binding captured_at")
             <= captured_at,
             f"{label}: session binding is not cross-bound",
-        )
-        invocations = evidence.get("public_path", {}).get("tool_invocations")
-        _require(
-            isinstance(invocations, list)
-            and bool(invocations)
-            and all(
-                isinstance(item, dict)
-                and isinstance(item.get("tool"), str)
-                and item.get("outcome") == "succeeded"
-                and isinstance(item.get("arguments"), dict)
-                and _time(item.get("started_at"), f"{label}: invocation started")
-                <= _time(item.get("completed_at"), f"{label}: invocation completed")
-                <= captured_at
-                for item in invocations
-            )
-            and all(
-                item.get("tool") not in CAPTURE.WRITE_TOOLS
-                for item in invocations
-            )
-            and {
-                item.get("tool") for item in invocations
-            }
-            == {
-                "cad_list_devices",
-                "cad_observe",
-                "cad_get_job",
-                "cad_build_scene",
-                "cad_query_scene",
-                "read_resource",
-            },
-            f"{label}: public tool invocation records are incomplete",
         )
         if baseline_commit is None:
             baseline_commit = evidence["baseline_commit"]
@@ -1241,6 +1235,13 @@ def validate(root: Path) -> None:
     window_start = _time(scope.get("window_start"), "No-effect DB window start")
     window_end = _time(scope.get("window_end"), "No-effect DB window end")
     _require(window_start < window_end, "No-effect DB: invalid audit window")
+    db_captured_at = _time(
+        no_effect_db.get("captured_at"), "No-effect DB captured_at"
+    )
+    _require(
+        window_end <= db_captured_at,
+        "No-effect DB: evidence was captured before the audit window closed",
+    )
     db_session_records = {
         item.get("session_id"): item
         for item in no_effect_db.get("agent_sessions", [])
@@ -1256,8 +1257,19 @@ def validate(root: Path) -> None:
         session_id = fixture_sessions[name]
         session_record = db_session_records[session_id]
         disconnected_at = session_record.get("disconnected_at")
+        runtime_session = fixture_evidence[name]["runtime_identity"][
+            "agent_session"
+        ]
         _require(
             _time(
+                session_record.get("connected_at"),
+                f"No-effect DB: Drawing {name.upper()} session connected_at",
+            )
+            == _time(
+                runtime_session["connected_at"],
+                f"No-effect DB: Drawing {name.upper()} runtime connected_at",
+            )
+            and _time(
                 session_record.get("connected_at"),
                 f"No-effect DB: Drawing {name.upper()} session connected_at",
             )
@@ -1271,6 +1283,23 @@ def validate(root: Path) -> None:
                 )
             ),
             f"No-effect DB: Drawing {name.upper()} session was not active at capture",
+        )
+        _require(
+            _time(
+                session_record.get("connected_at"),
+                f"No-effect DB: Drawing {name.upper()} session connected_at",
+            )
+            <= db_captured_at
+            and (
+                disconnected_at is None
+                or _time(
+                    disconnected_at,
+                    f"No-effect DB: Drawing {name.upper()} session disconnected_at",
+                )
+                <= db_captured_at
+            ),
+            f"No-effect DB: Drawing {name.upper()} session timestamp exceeds "
+            "the DB capture time",
         )
     anchor_jobs = no_effect_db.get("anchor_jobs")
     _require(
@@ -1299,6 +1328,8 @@ def validate(root: Path) -> None:
             <= _time(job.get("created_at"), "No-effect DB anchor created")
             <= _time(job.get("updated_at"), "No-effect DB anchor updated")
             <= window_end
+            and _time(job.get("updated_at"), "No-effect DB anchor updated")
+            <= db_captured_at
             and isinstance(snapshot, dict)
             and isinstance(drawing, dict)
             and snapshot.get("snapshot_id") == binding["snapshot_id"]
@@ -1333,7 +1364,9 @@ def validate(root: Path) -> None:
             == fixture_scene["counts"]
             and window_start
             <= _time(scene.get("created_at"), "No-effect DB scene created")
-            <= window_end,
+            <= window_end
+            and _time(scene.get("created_at"), "No-effect DB scene created")
+            <= db_captured_at,
             "No-effect DB: scene record is not cross-bound to fixture evidence",
         )
     db_sections = no_effect_db.get("scene_sections")

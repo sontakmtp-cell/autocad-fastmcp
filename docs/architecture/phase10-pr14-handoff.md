@@ -91,11 +91,12 @@ Không được coi pairing, Agent reconnect hoặc live evidence là thành cô
 1. Expose/deploy `apps/web_portal` dưới đúng `https://cad.kythuatvang.com` bằng cách nhỏ nhất có thể kiểm chứng; không thay đổi security boundary của Gateway.
 2. Tạo enrollment mới sau khi pending session cũ hết hạn; dùng Portal/Auth0 thật để approve.
 3. Chạy packaged standalone Agent với Managed .NET bật và AutoCAD R25 mở; ghi raw Gateway/Agent/Host/AutoCAD/device/session/document/revision/process identity.
-4. Capture mới Drawing A/B/C bằng `scripts/phase10-live-public-evidence.py capture`; không dùng lại artifact `device-0e4...` cũ làm live proof.
-5. Capture DB no-effect mới; chạy `capture-identity` trên VM trước khi restart (raw `systemctl show` + procfs) và sau khi restart kèm `--old-pid` (probe PID cũ đã thoát); chạy `restart-query` qua public scene path với `--identity-before/--identity-after` bắt buộc: build scene, stop Gateway process thật, start process mới, Agent reconnect, query scene cũ public. Script từ chối process JSON tự khai `gateway_service_record`/`old_gateway_process_exit`.
-6. Chạy validator hardened và toàn bộ regression groups phù hợp.
-7. Cập nhật `docs/architecture/Phase-10.md` với fixture/live/negative/restart/no-effect matrix, exact commands, commit SHA, CI và checklist GO.
-8. Stage có chủ đích, commit, push branch và poll CI. Chỉ kết luận `Engineering GO` khi mọi mandatory gate đều có artifact audit được.
+4. Capture mới Drawing A/B/C bằng `scripts/phase10-live-public-evidence.py capture-public` (provisional) rồi `finalize-fixture`; không dùng lại artifact `device-0e4...` cũ làm live proof.
+5. Capture fixture theo 2 phase: chạy `capture-public` (ghi tool invocation thật + provisional artifact chứa job/scene IDs), chờ audit window đóng rồi collect DB evidence, sau đó chạy `finalize-fixture --fixture-evidence <provisional> --no-effect-db <db>` để cross-bind (window bao trùm capture, `window_end <= db.captured_at`, session/job/scene trong DB, invocation graph chính xác) và phát ra artifact PASS. `capture` cũ không còn tồn tại để tránh dependency cycle fixture↔DB.
+6. Chạy `capture-identity` trên VM trước khi restart (raw `systemctl show` + procfs) và sau khi restart kèm `--old-pid` (probe PID cũ đã thoát); chạy `restart-query` qua public scene path với `--identity-before/--identity-after` bắt buộc: build scene, stop Gateway process thật, start process mới, Agent reconnect, query scene cũ public. Script từ chối process JSON tự khai `gateway_service_record`/`old_gateway_process_exit`.
+7. Chạy validator hardened và toàn bộ regression groups phù hợp.
+8. Cập nhật `docs/architecture/Phase-10.md` với fixture/live/negative/restart/no-effect matrix, exact commands, commit SHA, CI và checklist GO.
+9. Stage có chủ đích, commit, push branch và poll CI. Chỉ kết luận `Engineering GO` khi mọi mandatory gate đều có artifact audit được.
 
 ## Safety không được vi phạm
 

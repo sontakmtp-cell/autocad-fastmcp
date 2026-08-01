@@ -128,7 +128,10 @@ def _sha256(path: Path) -> str:
     if handle == ctypes.c_void_p(-1).value:
         raise ctypes.WinError()
     with os.fdopen(msvcrt.open_osfhandle(handle, os.O_RDONLY), "rb") as stream:
-        return "sha256:" + hashlib.file_digest(stream, "sha256").hexdigest()
+        digest = hashlib.sha256()
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+        return "sha256:" + digest.hexdigest()
 
 
 def _git_head() -> str:
@@ -885,7 +888,7 @@ def _fixture_gates(fixture: str, sections: dict[str, Any]) -> dict[str, bool]:
     }
 
 
-async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
+async def _capture_public(args: argparse.Namespace, token: str) -> dict[str, Any]:
     from fastmcp import Client
 
     drawing = args.drawing.resolve()
@@ -1017,64 +1020,10 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
         after["job"].get("result", {}).get("snapshot", {}).get("returned_count")
         or len(after["job"].get("result", {}).get("snapshot", {}).get("entities", []))
     )
-    no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
-    scope = no_effect_db.get("scope", {})
-    window_start = _parse_timestamp(
-        scope.get("window_start"), "no-effect DB window_start"
-    )
-    window_end = _parse_timestamp(
-        scope.get("window_end"), "no-effect DB window_end"
-    )
-    capture_started_at = _parse_timestamp(
-        invocations[0]["started_at"], "fixture capture started_at"
-    )
-    capture_completed_at = _parse_timestamp(
-        invocations[-1]["completed_at"], "fixture capture completed_at"
-    )
-    if not (window_start <= capture_started_at and capture_completed_at <= window_end):
-        raise ValueError("no-effect DB window does not cover the fixture capture")
-    db_sessions = {
-        item.get("session_id"): item
-        for item in no_effect_db.get("agent_sessions", [])
-        if isinstance(item, dict)
-    }
-    session = process_identity["agent_session"]
-    session_id = session.get("session_id")
-    if session_id not in db_sessions:
-        raise ValueError(
-            "process identity session is absent from the no-effect DB evidence"
-        )
-    session_record = db_sessions[session_id]
-    session_connected = _parse_timestamp(
-        session_record.get("connected_at"), "DB session connected_at"
-    )
-    session_disconnected = session_record.get("disconnected_at")
-    if not (
-        session_connected <= capture_started_at
-        and (
-            session_disconnected is None
-            or _parse_timestamp(
-                session_disconnected, "DB session disconnected_at"
-            )
-            >= capture_completed_at
-        )
-    ):
-        raise ValueError(
-            "DB session was not active throughout the fixture capture"
-        )
-    db_anchor_ids = {
-        item.get("job_id")
-        for item in no_effect_db.get("anchor_jobs", [])
-        if isinstance(item, dict)
-    }
     observation_job_ids = [
         before["request"]["job_id"],
         after["request"]["job_id"],
     ]
-    if not set(observation_job_ids) <= db_anchor_ids:
-        raise ValueError(
-            "no-effect DB evidence does not cover the observation jobs"
-        )
     invoked_tools = [invocation["tool"] for invocation in invocations]
     write_tools_invoked = sorted(
         {
@@ -1086,75 +1035,6 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
     gates = _fixture_gates(args.fixture, sections)
     nodes = sections["nodes"]["items"]
     runtime = before["job"].get("runtime_evidence", {}).get("runtime", {})
-    db_events = no_effect_db.get("retrospective_no_write_events")
-    anchor_jobs = no_effect_db.get("anchor_jobs", [])
-    write_snapshot = no_effect_db.get("write_snapshot", {})
-    pre_snapshot = (
-        no_effect_db.get("restart_comparison", {}).get(
-            "pre_restart_write_snapshot", {}
-        )
-        if isinstance(no_effect_db.get("restart_comparison"), dict)
-        else {}
-    )
-    no_write_events_in_window = db_events == []
-    anchor_jobs_read_only = (
-        isinstance(anchor_jobs, list)
-        and bool(anchor_jobs)
-        and all(
-            isinstance(item, dict)
-            and item.get("effect_class") == "read"
-            and item.get("state") == "succeeded"
-            for item in anchor_jobs
-        )
-    )
-    write_snapshot_unchanged = (
-        isinstance(write_snapshot, dict)
-        and isinstance(write_snapshot.get("tables"), dict)
-        and isinstance(pre_snapshot, dict)
-        and write_snapshot.get("tables") == pre_snapshot.get("tables")
-        and write_snapshot.get("sha256")
-        == _snapshot_digest(write_snapshot.get("tables"))
-        and pre_snapshot.get("sha256")
-        == _snapshot_digest(pre_snapshot.get("tables"))
-    )
-    no_write_requested = (
-        write_tools_invoked == []
-        and no_write_events_in_window
-        and anchor_jobs_read_only
-    )
-    no_cad_effect_attempted = (
-        no_write_requested
-        and hash_before == hash_after
-        and revision_before == revision_after
-        and write_snapshot_unchanged
-    )
-    managed_host = session.get("managed_host", {})
-    gateway = process_identity["gateway_process"]
-    desktop = process_identity["desktop_agent_process"]
-    autocad = process_identity["autocad_process"]
-    if managed_host.get("package_hash") != runtime.get("package_hash"):
-        raise ValueError(
-            "managed host package hash differs from observation runtime evidence"
-        )
-    runtime_identity_bound = (
-        gateway.get("release_commit") == implementation_commit
-        and session.get("device_id") == args.device_id
-        and session.get("protocol_version") == "cad.agent/2"
-        and session.get("disconnected_at") is None
-        and managed_host.get("runtime_id") == "managed_dotnet"
-        and managed_host.get("package_hash") == runtime.get("package_hash")
-        and isinstance(managed_host.get("process_id"), int)
-        and managed_host["process_id"] > 0
-        and _SHA256_RE.fullmatch(managed_host.get("executable_sha256", ""))
-        and isinstance(autocad.get("process_id"), int)
-        and autocad["process_id"] > 0
-        and _SHA256_RE.fullmatch(autocad.get("executable_sha256", ""))
-        and isinstance(desktop.get("process_id"), int)
-        and desktop["process_id"] > 0
-        and _SHA256_RE.fullmatch(desktop.get("executable_sha256", ""))
-        and _parse_timestamp(session["connected_at"], "session connected_at")
-        <= capture_completed_at
-    )
     gates.update(
         {
             "dwg_file_hash_unchanged": hash_before == hash_after,
@@ -1171,19 +1051,15 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
             and all(item.get("source_runtime") == "managed_dotnet" for item in nodes),
             "source_capabilities_present": bool(nodes)
             and all(item.get("source_capabilities") for item in nodes),
-            "no_write_events_in_window": no_write_events_in_window,
-            "anchor_jobs_read_only": anchor_jobs_read_only,
-            "write_snapshot_unchanged": write_snapshot_unchanged,
-            "no_write_requested": no_write_requested,
-            "no_cad_effect_attempted": no_cad_effect_attempted,
-            "runtime_identity_bound": runtime_identity_bound,
         }
     )
     if not all(gates.values()):
         failed = sorted(name for name, passed in gates.items() if not passed)
         raise RuntimeError(f"fixture gates failed: {failed}")
+    session_id = process_identity["agent_session"]["session_id"]
     return {
-        "schema_version": "cad.phase10-live-public-fixture/1",
+        "schema_version": "cad.phase10-live-public-fixture-provisional/1",
+        "status": "PROVISIONAL",
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "capture_command": args.capture_command,
         "baseline_commit": _git_baseline(),
@@ -1253,14 +1129,6 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
                 }
             ),
         },
-        "no_effect": {
-            "dwg_file_hash_unchanged": gates["dwg_file_hash_unchanged"],
-            "document_revision_unchanged": gates["document_revision_unchanged"],
-            "entity_count_unchanged": gates["entity_count_unchanged"],
-            "write_requested": not no_write_requested,
-            "cad_effect_attempted": not no_cad_effect_attempted,
-        },
-        "no_effect_db_binding": _db_evidence_binding(args.no_effect_db, no_effect_db),
         "gate_results": gates,
         "failures_retests": (
             [
@@ -1283,7 +1151,432 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
             if args.fixture == "c"
             else []
         ),
+    }
+
+
+def _validate_invocation_graph(
+    invocations: list[dict[str, Any]],
+    *,
+    observation_job_ids: list[str],
+    scene_id: str,
+    source_snapshot_id: str,
+) -> None:
+    if not isinstance(invocations, list) or not invocations:
+        raise ValueError("tool invocation records are missing")
+    for item in invocations:
+        if (
+            not isinstance(item, dict)
+            or not isinstance(item.get("tool"), str)
+            or not isinstance(item.get("arguments"), dict)
+            or item.get("outcome") != "succeeded"
+            or not isinstance(item.get("started_at"), str)
+            or not isinstance(item.get("completed_at"), str)
+        ):
+            raise ValueError("tool invocation record is invalid")
+        if _parse_timestamp(
+            item["started_at"], "invocation started_at"
+        ) > _parse_timestamp(item["completed_at"], "invocation completed_at"):
+            raise ValueError("tool invocation is not chronologically ordered")
+    ordered = sorted(invocations, key=lambda item: item["started_at"])
+    for previous, current in zip(ordered, ordered[1:]):
+        if _parse_timestamp(
+            previous["completed_at"], "invocation completed_at"
+        ) > _parse_timestamp(current["started_at"], "invocation started_at"):
+            raise ValueError("tool invocations overlap in time")
+    by_tool: dict[str, list[dict[str, Any]]] = {}
+    for item in invocations:
+        by_tool.setdefault(item["tool"], []).append(item)
+    expected_tools = {
+        "cad_list_devices",
+        "cad_observe",
+        "cad_get_job",
+        "cad_build_scene",
+        "cad_query_scene",
+        "read_resource",
+    }
+    if set(by_tool) != expected_tools:
+        raise ValueError(
+            "tool invocation trace contains unexpected tools: "
+            + ", ".join(sorted(set(by_tool) ^ expected_tools))
+        )
+    (devices,) = by_tool["cad_list_devices"]
+    if devices.get("arguments") != {"online_only": True}:
+        raise ValueError("cad_list_devices invocation arguments are invalid")
+    observes = by_tool["cad_observe"]
+    if len(observes) != 2:
+        raise ValueError("expected exactly two cad_observe invocations")
+    if [item.get("job_id") for item in observes] != observation_job_ids:
+        raise ValueError(
+            "cad_observe invocations are not bound to the observation job IDs"
+        )
+    for job_id in observation_job_ids:
+        polls = [
+            item
+            for item in by_tool["cad_get_job"]
+            if item.get("job_id") == job_id
+            and item.get("arguments") == {"job_id": job_id}
+        ]
+        if not polls:
+            raise ValueError(f"missing cad_get_job evidence for job {job_id}")
+        terminal = [
+            item for item in invocations if item.get("job_id") == job_id
+        ][-1]
+        if (
+            terminal.get("tool") != "cad_get_job"
+            or terminal.get("outcome") != "succeeded"
+        ):
+            raise ValueError(
+                f"terminal cad_get_job evidence is missing for job {job_id}"
+            )
+    builds = by_tool["cad_build_scene"]
+    if len(builds) != 2:
+        raise ValueError("expected exactly two cad_build_scene invocations")
+    for build in builds:
+        arguments = build.get("arguments", {})
+        if (
+            arguments.get("source_snapshot_id") != source_snapshot_id
+            or arguments.get("analysis_profile") != "mechanical-2d/1"
+            or arguments.get("space") != "model"
+            or arguments.get("include_sections") != list(SECTIONS)
+            or not isinstance(arguments.get("idempotency_key"), str)
+        ):
+            raise ValueError("cad_build_scene invocation arguments are invalid")
+    keys = [build["arguments"]["idempotency_key"] for build in builds]
+    if (
+        len(set(keys)) != 2
+        or not any("-scene-repeat-" in key for key in keys)
+        or not any(
+            "-scene-" in key and "-scene-repeat-" not in key for key in keys
+        )
+    ):
+        raise ValueError("cad_build_scene repeat/reuse invocation is missing")
+    queries = by_tool["cad_query_scene"]
+    if len(queries) != len(SECTIONS):
+        raise ValueError(
+            "expected exactly one cad_query_scene per retained section"
+        )
+    for section in SECTIONS:
+        matches = [
+            item
+            for item in queries
+            if item.get("arguments")
+            == {
+                "scene_id": scene_id,
+                "section": section,
+                "limit": 200,
+            }
+        ]
+        if len(matches) != 1:
+            raise ValueError(
+                f"cad_query_scene evidence for section {section} is missing "
+                "or duplicated"
+            )
+    (summary,) = by_tool["read_resource"]
+    if summary.get("arguments") != {"uri": f"cad://scenes/{scene_id}/summary"}:
+        raise ValueError("summary resource invocation arguments are invalid")
+
+
+def _bind_no_effect_db(
+    evidence: dict[str, Any],
+    no_effect_db: dict[str, Any],
+    *,
+    device_id: str,
+    implementation_commit: str,
+) -> None:
+    if no_effect_db.get("schema_version") != "cad.phase10-live-db-evidence/1":
+        raise ValueError("no-effect DB schema mismatch")
+    if no_effect_db.get("implementation_commit") != implementation_commit:
+        raise ValueError("no-effect DB commit differs from the capture")
+    db_captured_at = _parse_timestamp(
+        no_effect_db.get("captured_at"), "no-effect DB captured_at"
+    )
+    scope = no_effect_db.get("scope", {})
+    window_start = _parse_timestamp(
+        scope.get("window_start"), "no-effect DB window_start"
+    )
+    window_end = _parse_timestamp(
+        scope.get("window_end"), "no-effect DB window_end"
+    )
+    invocations = evidence["public_path"]["tool_invocations"]
+    first_invocation = _parse_timestamp(
+        invocations[0]["started_at"], "first invocation started_at"
+    )
+    last_invocation = _parse_timestamp(
+        invocations[-1]["completed_at"], "last invocation completed_at"
+    )
+    if not (window_start <= first_invocation and last_invocation <= window_end):
+        raise ValueError("no-effect DB window does not cover the fixture capture")
+    if not window_end <= db_captured_at:
+        raise ValueError("no-effect DB was captured before the audit window closed")
+    observation_job_ids = evidence["session_binding"]["observation_job_ids"]
+    anchor_jobs = no_effect_db.get("anchor_jobs", [])
+    anchor_by_id = {
+        item.get("job_id"): item
+        for item in anchor_jobs
+        if isinstance(item, dict)
+    }
+    for job_id in observation_job_ids:
+        job = anchor_by_id.get(job_id)
+        if job is None:
+            raise ValueError(
+                "no-effect DB evidence does not cover the observation jobs"
+            )
+        if (
+            job.get("effect_class") != "read"
+            or job.get("state") != "succeeded"
+        ):
+            raise ValueError("observation anchor job is not a succeeded read")
+        if (
+            _parse_timestamp(job.get("created_at"), "anchor job created_at")
+            > db_captured_at
+            or _parse_timestamp(job.get("updated_at"), "anchor job updated_at")
+            > db_captured_at
+        ):
+            raise ValueError("anchor job timestamp exceeds the DB capture time")
+    scene_id = evidence["scene"]["scene_id"]
+    scene_rows = [
+        item
+        for item in no_effect_db.get("scenes", [])
+        if isinstance(item, dict) and item.get("scene_id") == scene_id
+    ]
+    if len(scene_rows) != 1:
+        raise ValueError(
+            "no-effect DB scene record is missing for the fixture scene"
+        )
+    if (
+        _parse_timestamp(scene_rows[0].get("created_at"), "DB scene created_at")
+        > db_captured_at
+    ):
+        raise ValueError("scene timestamp exceeds the DB capture time")
+    session = evidence["runtime_identity"]["agent_session"]
+    session_id = session.get("session_id")
+    db_sessions = {
+        item.get("session_id"): item
+        for item in no_effect_db.get("agent_sessions", [])
+        if isinstance(item, dict)
+    }
+    session_record = db_sessions.get(session_id)
+    if session_record is None:
+        raise ValueError(
+            "process identity session is absent from the no-effect DB evidence"
+        )
+    session_connected = _parse_timestamp(
+        session_record.get("connected_at"), "DB session connected_at"
+    )
+    if session_connected != _parse_timestamp(
+        session["connected_at"], "runtime identity session connected_at"
+    ):
+        raise ValueError(
+            "session connected_at differs between runtime identity and DB"
+        )
+    if session_connected > first_invocation:
+        raise ValueError("session connected after the first public invocation")
+    session_disconnected = session_record.get("disconnected_at")
+    if not (
+        session_disconnected is None
+        or _parse_timestamp(
+            session_disconnected, "DB session disconnected_at"
+        )
+        >= last_invocation
+    ):
+        raise ValueError("DB session was not active throughout the fixture capture")
+    if session_disconnected is not None and _parse_timestamp(
+        session_disconnected, "DB session disconnected_at"
+    ) > db_captured_at:
+        raise ValueError("session disconnect timestamp exceeds the DB capture time")
+    if no_effect_db.get("retrospective_no_write_events") != []:
+        raise ValueError("no-effect DB contains write events in the audit window")
+
+
+async def _finalize_fixture(args: argparse.Namespace, token: str) -> dict[str, Any]:
+    provisional = json.loads(args.fixture_evidence.read_text(encoding="utf-8"))
+    if provisional.get("schema_version") != (
+        "cad.phase10-live-public-fixture-provisional/1"
+    ):
+        raise ValueError("fixture evidence is not a provisional capture-public artifact")
+    if provisional.get("status") != "PROVISIONAL":
+        raise ValueError("fixture evidence is not in PROVISIONAL status")
+    implementation_commit = _git_head()
+    if provisional.get("implementation_commit") != implementation_commit:
+        raise ValueError("provisional capture commit differs from current checkout")
+    no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
+    invocations = provisional["public_path"]["tool_invocations"]
+    _validate_invocation_graph(
+        invocations,
+        observation_job_ids=provisional["session_binding"]["observation_job_ids"],
+        scene_id=provisional["scene"]["scene_id"],
+        source_snapshot_id=provisional["source"]["snapshot_id"],
+    )
+    _bind_no_effect_db(
+        provisional,
+        no_effect_db,
+        device_id=args.device_id,
+        implementation_commit=implementation_commit,
+    )
+    observation_job_ids = provisional["session_binding"]["observation_job_ids"]
+    write_tools_invoked = sorted(
+        {
+            item["tool"]
+            for item in invocations
+            if item["tool"] in WRITE_TOOLS
+        }
+    )
+    anchor_jobs = no_effect_db.get("anchor_jobs", [])
+    write_snapshot = no_effect_db.get("write_snapshot", {})
+    pre_snapshot = (
+        no_effect_db.get("restart_comparison", {}).get(
+            "pre_restart_write_snapshot", {}
+        )
+        if isinstance(no_effect_db.get("restart_comparison"), dict)
+        else {}
+    )
+    no_write_events_in_window = no_effect_db.get(
+        "retrospective_no_write_events"
+    ) == []
+    anchor_jobs_read_only = (
+        isinstance(anchor_jobs, list)
+        and bool(anchor_jobs)
+        and all(
+            isinstance(item, dict)
+            and item.get("effect_class") == "read"
+            and item.get("state") == "succeeded"
+            for item in anchor_jobs
+        )
+    )
+    write_snapshot_unchanged = (
+        isinstance(write_snapshot, dict)
+        and isinstance(write_snapshot.get("tables"), dict)
+        and isinstance(pre_snapshot, dict)
+        and write_snapshot.get("tables") == pre_snapshot.get("tables")
+        and write_snapshot.get("sha256")
+        == _snapshot_digest(write_snapshot.get("tables"))
+        and pre_snapshot.get("sha256")
+        == _snapshot_digest(pre_snapshot.get("tables"))
+    )
+    no_write_requested = (
+        write_tools_invoked == []
+        and no_write_events_in_window
+        and anchor_jobs_read_only
+    )
+    no_cad_effect_attempted = (
+        no_write_requested
+        and provisional["fixture"]["dwg_file_hash_before"]
+        == provisional["fixture"]["dwg_file_hash_after"]
+        and provisional["source"]["document_revision_before"]
+        == provisional["source"]["document_revision_after"]
+        and write_snapshot_unchanged
+    )
+    session = provisional["runtime_identity"]["agent_session"]
+    runtime = provisional["source"]["observation_before"]["job"].get(
+        "runtime_evidence", {}
+    ).get("runtime", {})
+    session_record = {
+        item.get("session_id"): item
+        for item in no_effect_db.get("agent_sessions", [])
+        if isinstance(item, dict)
+    }[session["session_id"]]
+    session_disconnected = session_record.get("disconnected_at")
+    first_invocation = _parse_timestamp(
+        invocations[0]["started_at"], "first invocation started_at"
+    )
+    runtime_identity_bound = (
+        provisional["runtime_identity"]["gateway_process"]["release_commit"]
+        == implementation_commit
+        and session.get("device_id") == args.device_id
+        and session.get("protocol_version") == "cad.agent/2"
+        and session.get("disconnected_at") is None
+        and session["managed_host"].get("runtime_id") == "managed_dotnet"
+        and session["managed_host"].get("package_hash")
+        == runtime.get("package_hash")
+        and isinstance(session["managed_host"].get("process_id"), int)
+        and session["managed_host"]["process_id"] > 0
+        and _SHA256_RE.fullmatch(
+            session["managed_host"].get("executable_sha256", "")
+        )
+        and _parse_timestamp(
+            session["managed_host"]["started_at"], "host started_at"
+        )
+        <= first_invocation
+        and isinstance(
+            provisional["runtime_identity"]["autocad_process"].get("process_id"),
+            int,
+        )
+        and provisional["runtime_identity"]["autocad_process"]["process_id"] > 0
+        and _SHA256_RE.fullmatch(
+            provisional["runtime_identity"]["autocad_process"].get(
+                "executable_sha256", ""
+            )
+        )
+        and _parse_timestamp(
+            provisional["runtime_identity"]["autocad_process"]["started_at"],
+            "autocad started_at",
+        )
+        <= first_invocation
+        and isinstance(
+            provisional["runtime_identity"]["desktop_agent_process"].get(
+                "process_id"
+            ),
+            int,
+        )
+        and provisional["runtime_identity"]["desktop_agent_process"][
+            "process_id"
+        ]
+        > 0
+        and _SHA256_RE.fullmatch(
+            provisional["runtime_identity"]["desktop_agent_process"].get(
+                "executable_sha256", ""
+            )
+        )
+        and _parse_timestamp(
+            provisional["runtime_identity"]["desktop_agent_process"][
+                "started_at"
+            ],
+            "desktop started_at",
+        )
+        <= first_invocation
+        and _parse_timestamp(
+            session["connected_at"], "session connected_at"
+        )
+        == _parse_timestamp(
+            session_record.get("connected_at"), "DB session connected_at"
+        )
+        and (
+            session_disconnected is None
+            or _parse_timestamp(
+                session_disconnected, "DB session disconnected_at"
+            )
+            >= _parse_timestamp(
+                invocations[-1]["completed_at"], "last invocation completed_at"
+            )
+        )
+    )
+    gates = {
+        **provisional["gate_results"],
+        "no_write_events_in_window": no_write_events_in_window,
+        "anchor_jobs_read_only": anchor_jobs_read_only,
+        "write_snapshot_unchanged": write_snapshot_unchanged,
+        "no_write_requested": no_write_requested,
+        "no_cad_effect_attempted": no_cad_effect_attempted,
+        "runtime_identity_bound": runtime_identity_bound,
+    }
+    if not all(gates.values()):
+        failed = sorted(name for name, passed in gates.items() if not passed)
+        raise RuntimeError(f"fixture gates failed: {failed}")
+    return {
+        **provisional,
+        "schema_version": "cad.phase10-live-public-fixture/1",
         "status": "PASS",
+        "no_effect": {
+            "dwg_file_hash_unchanged": gates["dwg_file_hash_unchanged"],
+            "document_revision_unchanged": gates["document_revision_unchanged"],
+            "entity_count_unchanged": gates["entity_count_unchanged"],
+            "write_requested": not no_write_requested,
+            "cad_effect_attempted": not no_cad_effect_attempted,
+        },
+        "no_effect_db_binding": _db_evidence_binding(
+            args.no_effect_db, no_effect_db
+        ),
+        "gate_results": gates,
     }
 
 
@@ -1508,7 +1801,13 @@ async def _capture_identity(args: argparse.Namespace, token: str) -> dict[str, A
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "action", choices=("capture", "capture-identity", "restart-query")
+        "action",
+        choices=(
+            "capture-public",
+            "finalize-fixture",
+            "capture-identity",
+            "restart-query",
+        ),
     )
     parser.add_argument("--endpoint", default="https://cad.kythuatvang.com/mcp")
     parser.add_argument("--device-id", required=True)
@@ -1520,6 +1819,7 @@ def main() -> None:
     parser.add_argument("--fixture", choices=("a", "b", "c"))
     parser.add_argument("--drawing", type=Path)
     parser.add_argument("--process-identity", type=Path)
+    parser.add_argument("--fixture-evidence", type=Path)
     parser.add_argument("--before", type=Path)
     parser.add_argument("--process-before", type=Path)
     parser.add_argument("--process-after", type=Path)
@@ -1527,18 +1827,19 @@ def main() -> None:
     parser.add_argument("--identity-after", type=Path)
     parser.add_argument("--no-effect-db", type=Path)
     args = parser.parse_args()
-    if args.action == "capture" and any(
+    if args.action == "capture-public" and any(
         value is None
-        for value in (
-            args.fixture,
-            args.drawing,
-            args.process_identity,
-            args.no_effect_db,
-        )
+        for value in (args.fixture, args.drawing, args.process_identity)
     ):
         parser.error(
-            "capture requires --fixture, --drawing, --process-identity "
-            "and --no-effect-db"
+            "capture-public requires --fixture, --drawing and --process-identity"
+        )
+    if args.action == "finalize-fixture" and any(
+        value is None
+        for value in (args.fixture_evidence, args.no_effect_db)
+    ):
+        parser.error(
+            "finalize-fixture requires --fixture-evidence and --no-effect-db"
         )
     if args.action == "restart-query" and any(
         value is None
@@ -1564,12 +1865,18 @@ def main() -> None:
         f"--output {args.output}",
         f"--operator {args.operator}",
     ]
-    if args.action == "capture":
+    if args.action == "capture-public":
         command.extend(
             (
                 f"--fixture {args.fixture}",
                 f"--drawing {args.drawing}",
                 f"--process-identity {args.process_identity}",
+            )
+        )
+    elif args.action == "finalize-fixture":
+        command.extend(
+            (
+                f"--fixture-evidence {args.fixture_evidence}",
                 f"--no-effect-db {args.no_effect_db}",
             )
         )
@@ -1591,7 +1898,8 @@ def main() -> None:
     args.capture_command = " ".join(command)
     token = json.loads(args.token_file.read_text(encoding="utf-8"))["access_token"]
     runner = {
-        "capture": _capture,
+        "capture-public": _capture_public,
+        "finalize-fixture": _finalize_fixture,
         "capture-identity": _capture_identity,
         "restart-query": _restart_query,
     }[args.action]

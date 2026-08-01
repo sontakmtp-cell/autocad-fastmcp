@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import importlib.util
 import json
 import shutil
@@ -53,13 +54,15 @@ def _repo(path: Path) -> Path:
         / "migrations",
     )
     _upgrade_restart_artifact(path)
+    upgraded_fixtures: dict[str, dict] = {}
     for name in VALIDATOR.FIXTURES:
         fixture_path, fixture_value = _fixture(path, name)
         _upgrade_fixture_runtime_identity(fixture_path, fixture_value)
+        upgraded_fixtures[name] = fixture_value
     db_path, db_value = _evidence(
         path, "phase10-live-no-effect-db-20260730.json"
     )
-    _upgrade_db_artifact(db_path, db_value)
+    _upgrade_db_artifact(db_path, db_value, upgraded_fixtures)
     return path
 
 
@@ -72,7 +75,9 @@ def _save(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value), encoding="utf-8")
 
 
-def _upgrade_db_artifact(path: Path, value: dict) -> None:
+def _upgrade_db_artifact(
+    path: Path, value: dict, fixtures: dict[str, dict]
+) -> None:
     pre = value["restart_comparison"]["pre_restart_write_snapshot"]
     post = value["write_snapshot"]
     digest = VALIDATOR._canonical_digest(post["tables"])
@@ -81,15 +86,17 @@ def _upgrade_db_artifact(path: Path, value: dict) -> None:
     value["restart_comparison"]["post_restart_write_snapshot_sha256"] = digest
     value["restart_comparison"]["sha256_unchanged"] = True
     value["restart_comparison"]["tables_byte_identical"] = True
+    for fixture_value in fixtures.values():
+        session_id = fixture_value["runtime_identity"]["agent_session"][
+            "session_id"
+        ]
+        connected_at = fixture_value["runtime_identity"]["agent_session"][
+            "connected_at"
+        ]
+        for record in value["agent_sessions"]:
+            if record.get("session_id") == session_id:
+                record["connected_at"] = connected_at
     _save(path, value)
-
-
-def _stamp_offsets(captured_at: str, count: int) -> list[str]:
-    captured = VALIDATOR._time(captured_at, "captured_at")
-    return [
-        (captured - timedelta(seconds=90 - index * 10)).isoformat()
-        for index in range(count)
-    ]
 
 
 def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
@@ -97,18 +104,22 @@ def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
     identity = value["runtime_identity"]
     autocad = identity["autocad_process"]
     autocad["executable_sha256"] = "sha256:" + "e" * 64
-    autocad["started_at"] = (captured_at - timedelta(seconds=120)).isoformat()
+    autocad["started_at"] = (captured_at - timedelta(seconds=180)).isoformat()
     session = identity["agent_session"]
     session["disconnected_at"] = None
+    session["connected_at"] = (captured_at - timedelta(seconds=120)).isoformat()
     managed_host = session["managed_host"]
     managed_host.update(
         {
             "executable": r"C:\host\autocad_managed_host.exe",
             "executable_sha256": "sha256:" + "d" * 64,
             "process_id": 45678,
-            "started_at": (captured_at - timedelta(seconds=60)).isoformat(),
+            "started_at": (captured_at - timedelta(seconds=150)).isoformat(),
         }
     )
+    identity["desktop_agent_process"]["started_at"] = (
+        captured_at - timedelta(seconds=130)
+    ).isoformat()
     value["gate_results"]["runtime_identity_bound"] = True
     jobs = [
         value["source"]["observation_before"]["job"]["job_id"],
@@ -123,67 +134,84 @@ def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
         "observation_job_ids": jobs,
         "captured_at": captured_at.isoformat(),
     }
-    stamps = _stamp_offsets(captured_at.isoformat(), 7)
-    value["public_path"]["tool_invocations"] = [
+    invocations: list[dict] = []
+    fixture_letter = value["fixture"]["fixture_id"].split("/")[0].rsplit("-", 1)[-1]
+
+    def invoke(
+        tool: str,
+        arguments: dict,
+        index: int,
+        *,
+        job_id: str | None = None,
+    ) -> None:
+        started = (
+            captured_at - timedelta(seconds=90) + timedelta(seconds=5 * index)
+        ).isoformat()
+        completed = (
+            captured_at - timedelta(seconds=90) + timedelta(seconds=5 * (index + 1))
+        ).isoformat()
+        invocations.append(
+            {
+                "tool": tool,
+                "arguments": arguments,
+                "started_at": started,
+                "completed_at": completed,
+                "outcome": "succeeded",
+                "job_id": job_id,
+            }
+        )
+
+    scene_id = value["scene"]["scene_id"]
+    invoke("cad_list_devices", {"online_only": True}, 0)
+    invoke(
+        "cad_observe",
+        {"device_id": value["public_path"]["device_id"]},
+        1,
+        job_id=jobs[0],
+    )
+    invoke("cad_get_job", {"job_id": jobs[0]}, 2, job_id=jobs[0])
+    invoke(
+        "cad_build_scene",
         {
-            "tool": "cad_list_devices",
-            "arguments": {"online_only": True},
-            "started_at": stamps[0],
-            "completed_at": stamps[1],
-            "outcome": "succeeded",
-            "job_id": None,
+            "source_snapshot_id": value["source"]["snapshot_id"],
+            "idempotency_key": f"phase10-drawing-{fixture_letter}-scene-20260730T000000",
+            "analysis_profile": "mechanical-2d/1",
+            "space": "model",
+            "include_sections": list(VALIDATOR.SECTIONS),
         },
+        3,
+    )
+    invoke(
+        "cad_build_scene",
         {
-            "tool": "cad_observe",
-            "arguments": {"device_id": value["public_path"]["device_id"]},
-            "started_at": stamps[1],
-            "completed_at": stamps[2],
-            "outcome": "succeeded",
-            "job_id": jobs[0],
+            "source_snapshot_id": value["source"]["snapshot_id"],
+            "idempotency_key": f"phase10-drawing-{fixture_letter}-scene-repeat-20260730T000000",
+            "analysis_profile": "mechanical-2d/1",
+            "space": "model",
+            "include_sections": list(VALIDATOR.SECTIONS),
         },
-        {
-            "tool": "cad_get_job",
-            "arguments": {"job_id": jobs[0]},
-            "started_at": stamps[2],
-            "completed_at": stamps[3],
-            "outcome": "succeeded",
-            "job_id": jobs[0],
-        },
-        {
-            "tool": "cad_build_scene",
-            "arguments": {"source_snapshot_id": value["source"]["snapshot_id"]},
-            "started_at": stamps[3],
-            "completed_at": stamps[4],
-            "outcome": "succeeded",
-            "job_id": None,
-        },
-        {
-            "tool": "cad_query_scene",
-            "arguments": {"scene_id": value["scene"]["scene_id"], "section": "nodes"},
-            "started_at": stamps[4],
-            "completed_at": stamps[5],
-            "outcome": "succeeded",
-            "job_id": None,
-        },
-        {
-            "tool": "read_resource",
-            "arguments": {
-                "uri": f"cad://scenes/{value['scene']['scene_id']}/summary"
-            },
-            "started_at": stamps[5],
-            "completed_at": stamps[6],
-            "outcome": "succeeded",
-            "job_id": None,
-        },
-        {
-            "tool": "cad_observe",
-            "arguments": {"device_id": value["public_path"]["device_id"]},
-            "started_at": stamps[6],
-            "completed_at": captured_at.isoformat(),
-            "outcome": "succeeded",
-            "job_id": jobs[1],
-        },
-    ]
+        4,
+    )
+    for index, section in enumerate(VALIDATOR.SECTIONS):
+        invoke(
+            "cad_query_scene",
+            {"scene_id": scene_id, "section": section, "limit": 200},
+            5 + index,
+        )
+    invoke(
+        "read_resource",
+        {"uri": f"cad://scenes/{scene_id}/summary"},
+        11,
+    )
+    invoke(
+        "cad_observe",
+        {"device_id": value["public_path"]["device_id"]},
+        12,
+        job_id=jobs[1],
+    )
+    invoke("cad_get_job", {"job_id": jobs[1]}, 13, job_id=jobs[1])
+    invocations[-1]["completed_at"] = captured_at.isoformat()
+    value["public_path"]["tool_invocations"] = invocations
     _save(path, value)
 
 
@@ -413,14 +441,19 @@ def _tamper(root: Path, case: str) -> None:
         "identity_pid",
         "identity_commit",
         "identity_time",
-        "capture_time",
         "source_revision",
         "identity_host_hash",
         "identity_host_start",
         "identity_autocad_hash",
         "identity_autocad_start",
         "session_disconnected",
+        "identity_start_after_invocation",
+        "session_connected_mismatch",
         "invocation_write",
+        "invocation_missing_observe",
+        "invocation_missing_section",
+        "invocation_wrong_scene",
+        "invocation_unknown_tool",
         "session_binding",
     }:
         path, value = _fixture(root, "c" if case == "identity_hash" else "a")
@@ -435,8 +468,16 @@ def _tamper(root: Path, case: str) -> None:
             identity["gateway_process"]["release_commit"] = "d" * 40
         elif case == "identity_time":
             identity["agent_session"]["connected_at"] = "2027-01-01T00:00:00Z"
-        elif case == "capture_time":
-            value["captured_at"] = "2026-07-30T07:25:40Z"
+        elif case == "identity_start_after_invocation":
+            identity["desktop_agent_process"]["started_at"] = (
+                VALIDATOR._time(value["captured_at"], "captured_at")
+                - timedelta(seconds=10)
+            ).isoformat()
+        elif case == "session_connected_mismatch":
+            identity["agent_session"]["connected_at"] = (
+                VALIDATOR._time(value["captured_at"], "captured_at")
+                - timedelta(seconds=300)
+            ).isoformat()
         elif case == "identity_host_hash":
             identity["agent_session"]["managed_host"]["package_hash"] = (
                 "sha256:" + "0" * 64
@@ -462,6 +503,42 @@ def _tamper(root: Path, case: str) -> None:
                     "completed_at": "2026-07-30T07:25:01+00:00",
                     "outcome": "succeeded",
                     "job_id": "job-write",
+                }
+            )
+        elif case == "invocation_missing_observe":
+            value["public_path"]["tool_invocations"] = [
+                item
+                for item in value["public_path"]["tool_invocations"]
+                if not (
+                    item["tool"] == "cad_observe"
+                    and item.get("job_id")
+                    == value["session_binding"]["observation_job_ids"][1]
+                )
+            ]
+        elif case == "invocation_missing_section":
+            value["public_path"]["tool_invocations"] = [
+                item
+                for item in value["public_path"]["tool_invocations"]
+                if not (
+                    item["tool"] == "cad_query_scene"
+                    and item["arguments"].get("section") == "issues"
+                )
+            ]
+        elif case == "invocation_wrong_scene":
+            next(
+                item
+                for item in value["public_path"]["tool_invocations"]
+                if item["tool"] == "cad_build_scene"
+            )["arguments"]["source_snapshot_id"] = "snapshot-tampered"
+        elif case == "invocation_unknown_tool":
+            value["public_path"]["tool_invocations"].append(
+                {
+                    "tool": "cad_unknown_tool",
+                    "arguments": {},
+                    "started_at": "2026-07-30T07:25:00+00:00",
+                    "completed_at": "2026-07-30T07:25:01+00:00",
+                    "outcome": "succeeded",
+                    "job_id": None,
                 }
             )
         elif case == "session_binding":
@@ -523,13 +600,13 @@ def _tamper(root: Path, case: str) -> None:
                 "Id=other.service",
                 1,
             )
-    elif case in {"db_window_end", "db_sha"}:
+    elif case in {"db_window_end", "db_sha", "db_freshness", "db_row_freshness"}:
         path, value = _evidence(
             root, "phase10-live-no-effect-db-20260730.json"
         )
         if case == "db_window_end":
             value["scope"]["window_end"] = "2026-07-30T14:24:00+07:00"
-        else:
+        elif case == "db_sha":
             fake = "sha256:" + "f" * 64
             value["write_snapshot"]["sha256"] = fake
             value["restart_comparison"]["pre_restart_write_snapshot"][
@@ -538,6 +615,10 @@ def _tamper(root: Path, case: str) -> None:
             value["restart_comparison"][
                 "post_restart_write_snapshot_sha256"
             ] = fake
+        elif case == "db_freshness":
+            value["captured_at"] = "2026-07-30T14:30:00+07:00"
+        else:
+            value["anchor_jobs"][0]["updated_at"] = "2026-07-30T15:00:00+07:00"
     else:
         path, value = _evidence(
             root, "phase10-live-no-effect-db-20260730.json"
@@ -563,6 +644,62 @@ def test_validator_accepts_cross_bound_raw_restart_evidence(
     tmp_path: Path,
 ) -> None:
     VALIDATOR.validate(_repo(tmp_path / "valid"))
+
+
+def test_finalize_fixture_orchestrates_provisional_to_pass(
+    tmp_path: Path,
+) -> None:
+    import argparse
+    import asyncio
+
+    root = _repo(tmp_path / "orchestrate")
+    fixture_path, fixture_value = _fixture(root, "a")
+    provisional = copy.deepcopy(fixture_value)
+    provisional["schema_version"] = (
+        "cad.phase10-live-public-fixture-provisional/1"
+    )
+    provisional["status"] = "PROVISIONAL"
+    provisional.pop("no_effect", None)
+    provisional.pop("no_effect_db_binding", None)
+    provisional["gate_results"] = {
+        key: item
+        for key, item in provisional["gate_results"].items()
+        if key
+        not in {
+            "no_write_events_in_window",
+            "anchor_jobs_read_only",
+            "write_snapshot_unchanged",
+            "no_write_requested",
+            "no_cad_effect_attempted",
+            "runtime_identity_bound",
+        }
+    }
+    commit = VALIDATOR.CAPTURE._git_head()
+    provisional["implementation_commit"] = commit
+    provisional["baseline_commit"] = commit
+    provisional["runtime_identity"]["gateway_process"]["release_commit"] = commit
+    provisional_path = tmp_path / "provisional-a.json"
+    provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
+    db_path, db_value = _evidence(
+        root, "phase10-live-no-effect-db-20260730.json"
+    )
+    db_value["implementation_commit"] = commit
+    db_value["baseline_commit"] = commit
+    _save(db_path, db_value)
+    args = argparse.Namespace(
+        fixture_evidence=provisional_path,
+        no_effect_db=db_path,
+        device_id=provisional["public_path"]["device_id"],
+    )
+    final = asyncio.run(VALIDATOR.CAPTURE._finalize_fixture(args, "token"))
+    assert final["schema_version"] == "cad.phase10-live-public-fixture/1"
+    assert final["status"] == "PASS"
+    assert final["gate_results"]["no_write_requested"] is True
+    assert final["gate_results"]["no_cad_effect_attempted"] is True
+    assert final["gate_results"]["runtime_identity_bound"] is True
+    assert final["no_effect"]["write_requested"] is False
+    assert final["no_effect"]["cad_effect_attempted"] is False
+    assert final["no_effect_db_binding"]["artifact"] == str(db_path)
 
 
 def test_validator_rejects_legacy_restart_boolean(tmp_path: Path) -> None:
@@ -617,17 +754,23 @@ def test_validator_time_accepts_rfc3339_fractional_seconds(value: str) -> None:
         ("identity_session", "absent from session history"),
         ("identity_commit", "gateway runtime identity is not cross-bound"),
         ("identity_time", "not before capture"),
-        ("capture_time", "not before capture"),
+        ("identity_start_after_invocation", "not before capture"),
+        ("session_connected_mismatch", "session was not active at capture"),
         ("source_revision", "source/scene no-effect binding"),
         ("identity_host_hash", "not bound to observation runtime evidence"),
         ("identity_host_start", "managed host runtime identity is invalid"),
         ("identity_autocad_hash", "AutoCAD executable hash/start identity"),
         ("identity_autocad_start", "AutoCAD executable hash/start identity"),
         ("session_disconnected", "agent session runtime identity is invalid"),
-        ("invocation_write", "public tool invocation records are incomplete"),
+        ("invocation_write", "unexpected tools"),
+        ("invocation_missing_observe", "exactly two cad_observe"),
+        ("invocation_missing_section", "per retained section"),
+        ("invocation_wrong_scene", "cad_build_scene invocation arguments"),
         ("session_binding", "session binding is not cross-bound"),
         ("db_window_end", "outside the audit window"),
         ("db_sha", "durable no-write snapshot"),
+        ("db_freshness", "before the audit window closed"),
+        ("db_row_freshness", "anchor job is not cross-bound"),
         ("db_anchor_owner", "anchor job is not cross-bound"),
         ("db_scene_binding", "scene record is not cross-bound"),
         ("db_snapshot", "durable no-write snapshot"),
