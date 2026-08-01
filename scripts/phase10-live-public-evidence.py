@@ -48,21 +48,36 @@ _DESKTOP_AGENT_KEYS = {
 _AUTOCAD_PROCESS_KEYS = {
     "edition",
     "executable",
+    "executable_sha256",
     "file_version",
     "host_family",
     "process_id",
     "product",
     "release_year",
     "series",
+    "started_at",
+}
+_MANAGED_HOST_KEYS = {
+    "executable",
+    "executable_sha256",
+    "framework",
+    "package_hash",
+    "package_id",
+    "package_version",
+    "process_id",
+    "runtime_id",
+    "started_at",
 }
 _AGENT_SESSION_KEYS = {
     "agent_version",
     "connected_at",
     "device_id",
+    "disconnected_at",
     "managed_host",
     "protocol_version",
     "session_id",
 }
+_CAPTURE_WINDOW_SECONDS = 300
 _CLAIMED_SERVICE_KEYS = (
     "gateway_service_record",
     "gateway_previous_process_confirmed_exited",
@@ -195,22 +210,43 @@ def _derive_gateway_identity(identity: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("identity capture contains no raw commands")
     records: dict[tuple[str, ...], dict[str, Any]] = {}
     for record in commands:
-        if not isinstance(record, dict) or not isinstance(
-            record.get("command"), list
+        if (
+            not isinstance(record, dict)
+            or not isinstance(record.get("command"), list)
+            or not all(isinstance(item, str) for item in record["command"])
         ):
             raise ValueError("identity capture command record is invalid")
-        records[tuple(record["command"])] = record
-
-    def find(prefix: tuple[str, ...]) -> dict[str, Any]:
-        for command, record in records.items():
-            if command[: len(prefix)] == prefix:
-                return record
-        raise ValueError(
-            f"identity capture is missing raw command {' '.join(prefix)!r}"
+        key = tuple(record["command"])
+        if key in records:
+            raise ValueError(
+                f"identity capture contains duplicate command {' '.join(key)!r}"
+            )
+        records[key] = record
+    capture_window = _parse_timestamp(
+        identity.get("captured_at"), "identity capture captured_at"
+    )
+    for command, record in records.items():
+        stamp = _parse_timestamp(
+            record.get("captured_at"), "identity command captured_at"
         )
+        if abs((stamp - capture_window).total_seconds()) > _CAPTURE_WINDOW_SECONDS:
+            raise ValueError("identity command timestamp is outside the capture window")
 
     service = identity.get("service") or SERVICE_UNIT
-    systemctl = find(("systemctl", "show"))
+    systemctl = records.get(
+        (
+            "systemctl",
+            "show",
+            "--no-pager",
+            "--property=Id,ActiveState,SubState,MainPID,"
+            "ExecMainStartTimestampMonotonic,WorkingDirectory,ExecStart",
+            service,
+        )
+    )
+    if systemctl is None:
+        raise ValueError(
+            "identity capture is missing the exact systemctl show command"
+        )
     if systemctl.get("exit_code") != 0:
         raise ValueError("systemctl show failed; service identity is unavailable")
     properties = _parse_systemctl_properties(systemctl.get("stdout", ""))
@@ -237,23 +273,22 @@ def _derive_gateway_identity(identity: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("systemctl MainPID is not running")
     properties["MainPID"] = pid
 
-    stat = find(("awk",))
-    if stat.get("exit_code") != 0 or f"/proc/{pid}/stat" not in tuple(
-        stat.get("command", [])
-    ):
-        raise ValueError("proc start identity was not read from the service PID")
-    start_identity = stat.get("stdout", "").strip()
-    if not start_identity.isdigit():
-        raise ValueError("proc start identity is unavailable")
-
-    exe = find(("readlink",))
+    exe = records.get(("readlink", "-f", f"/proc/{pid}/exe"))
+    if exe is None:
+        raise ValueError(
+            "identity capture is missing readlink for the service PID"
+        )
+    if exe.get("exit_code") != 0:
+        raise ValueError("readlink of the service executable failed")
     executable = exe.get("stdout", "").strip()
-    if exe.get("exit_code") != 0 or not executable.startswith("/"):
+    if not executable.startswith("/"):
         raise ValueError("proc executable identity is unavailable")
-    if f"/proc/{pid}/exe" not in tuple(exe.get("command", [])):
-        raise ValueError("proc executable was not read from the service PID")
 
-    digest = find(("sha256sum",))
+    digest = records.get(("sha256sum", executable))
+    if digest is None:
+        raise ValueError(
+            "identity capture is missing sha256sum for the exact executable"
+        )
     if digest.get("exit_code") != 0:
         raise ValueError("executable hash command failed")
     fields = digest.get("stdout", "").split()
@@ -265,20 +300,53 @@ def _derive_gateway_identity(identity: dict[str, Any]) -> dict[str, Any]:
     else:
         raise ValueError("executable hash is not a sha256 digest")
 
-    release = find(("git", "-C"))
+    working_directory = properties.get("WorkingDirectory", "")
+    release = records.get(
+        ("git", "-C", working_directory, "rev-parse", "HEAD")
+    )
+    if release is None:
+        raise ValueError(
+            "identity capture is missing git rev-parse in the service "
+            "WorkingDirectory"
+        )
     if release.get("exit_code") != 0:
         raise ValueError("git rev-parse failed in the service working directory")
     commit = release.get("stdout", "").strip()
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
         raise ValueError("deployed commit identity is invalid")
 
+    stat = records.get(("awk", "{print $22}", f"/proc/{pid}/stat"))
+    if stat is None:
+        raise ValueError(
+            "identity capture is missing the exact proc start-time command"
+        )
+    if stat.get("exit_code") != 0:
+        raise ValueError("proc start-time command failed")
+    start_identity = stat.get("stdout", "").strip()
+    if not start_identity.isdigit():
+        raise ValueError("proc start identity is unavailable")
+
     exit_probe: dict[str, Any] | None = None
     for record in commands:
         command = tuple(record.get("command", []))
         if command and command[0] == "test":
+            if (
+                len(command) != 4
+                or command[1] != "!"
+                or command[2] != "-e"
+                or not re.fullmatch(r"/proc/[1-9][0-9]*/stat", command[3])
+            ):
+                raise ValueError(
+                    "old process absence probe must be exactly: "
+                    "test ! -e /proc/<pid>/stat"
+                )
             if record.get("exit_code") != 0:
                 raise ValueError("old Gateway process absence probe failed")
-            exit_probe = {"source": "procfs", "command": list(command)}
+            exit_probe = {
+                "source": "procfs",
+                "pid": int(command[3].split("/")[2]),
+                "command": list(command),
+            }
             break
     return {
         "gateway_pid": pid,
@@ -294,7 +362,7 @@ def _derive_gateway_identity(identity: dict[str, Any]) -> dict[str, Any]:
             },
             "release": {
                 "source": "git_rev_parse",
-                "working_directory": properties.get("WorkingDirectory", ""),
+                "working_directory": working_directory,
                 "commit": commit,
             },
         },
@@ -365,18 +433,29 @@ def _validate_runtime_identity(
         raise ValueError("runtime identity autocad process_id is invalid")
     if not isinstance(autocad["executable"], str) or not autocad["executable"]:
         raise ValueError("runtime identity autocad executable is invalid")
+    if not _SHA256_RE.fullmatch(autocad["executable_sha256"]):
+        raise ValueError("runtime identity autocad executable hash is invalid")
+    _parse_timestamp(autocad["started_at"], "runtime identity autocad started_at")
+    managed_host = session.get("managed_host")
+    if not isinstance(managed_host, dict) or set(managed_host) != _MANAGED_HOST_KEYS:
+        raise ValueError("runtime identity managed_host is incomplete")
+    if managed_host.get("runtime_id") != "managed_dotnet":
+        raise ValueError("runtime identity managed host is not managed_dotnet")
+    if not isinstance(managed_host["process_id"], int) or managed_host["process_id"] <= 0:
+        raise ValueError("runtime identity managed host process_id is invalid")
+    if not isinstance(managed_host["executable"], str) or not managed_host["executable"]:
+        raise ValueError("runtime identity managed host executable is invalid")
+    if not _SHA256_RE.fullmatch(managed_host["executable_sha256"]):
+        raise ValueError("runtime identity managed host executable hash is invalid")
+    _parse_timestamp(managed_host["started_at"], "runtime identity host started_at")
     if session.get("device_id") != device_id:
         raise ValueError("runtime identity session device differs from capture")
     if not isinstance(session.get("session_id"), str) or not session["session_id"]:
         raise ValueError("runtime identity session_id is missing")
     if session.get("protocol_version") != "cad.agent/2":
         raise ValueError("runtime identity protocol version is unexpected")
-    managed_host = session.get("managed_host")
-    if (
-        not isinstance(managed_host, dict)
-        or managed_host.get("runtime_id") != "managed_dotnet"
-    ):
-        raise ValueError("runtime identity managed host is not managed_dotnet")
+    if session.get("disconnected_at") is not None:
+        raise ValueError("runtime identity session is not active")
     _parse_timestamp(session["connected_at"], "runtime identity session connected_at")
 
 
@@ -631,7 +710,14 @@ def _process_identity_bound(
     )
 
 
-async def _observe(client: Client, device_id: str, key: str) -> dict[str, Any]:
+async def _observe(
+    client: Client,
+    device_id: str,
+    key: str,
+    *,
+    record,
+) -> dict[str, Any]:
+    started_at = datetime.now(timezone.utc).isoformat()
     started = _payload(
         await client.call_tool(
             "cad_observe",
@@ -643,11 +729,31 @@ async def _observe(client: Client, device_id: str, key: str) -> dict[str, Any]:
             },
         )
     )
+    record(
+        "cad_observe",
+        {
+            "device_id": device_id,
+            "observation_level": "detail",
+            "include_preview_image": False,
+            "idempotency_key": key,
+        },
+        started_at,
+        job_id=started.get("job_id"),
+    )
     job_id = started["job_id"]
     loop = asyncio.get_running_loop()
     deadline = loop.time() + 120
     while loop.time() < deadline:
-        job = _payload(await client.call_tool("cad_get_job", {"job_id": job_id}))
+        poll_started_at = datetime.now(timezone.utc).isoformat()
+        job = _payload(
+            await client.call_tool("cad_get_job", {"job_id": job_id})
+        )
+        record(
+            "cad_get_job",
+            {"job_id": job_id},
+            poll_started_at,
+            job_id=job_id,
+        )
         if job["state"] in {"succeeded", "failed", "cancelled", "needs_attention"}:
             if job["state"] != "succeeded":
                 raise RuntimeError(f"observation ended as {job['state']}")
@@ -656,14 +762,22 @@ async def _observe(client: Client, device_id: str, key: str) -> dict[str, Any]:
     raise TimeoutError("observation did not finish")
 
 
-async def _query_sections(client: Client, scene_id: str) -> dict[str, Any]:
+async def _query_sections(
+    client: Client, scene_id: str, *, record
+) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for section in SECTIONS:
+        started_at = datetime.now(timezone.utc).isoformat()
         page = _payload(
             await client.call_tool(
                 "cad_query_scene",
                 {"scene_id": scene_id, "section": section, "limit": 200},
             )
+        )
+        record(
+            "cad_query_scene",
+            {"scene_id": scene_id, "section": section, "limit": 200},
+            started_at,
         )
         if page.get("next_cursor") is not None:
             raise RuntimeError(f"{section} evidence unexpectedly paginated")
@@ -776,42 +890,47 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
 
     drawing = args.drawing.resolve()
     process_identity = json.loads(args.process_identity.read_text(encoding="utf-8"))
-    no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     implementation_commit = _git_head()
     _validate_runtime_identity(
         process_identity,
         device_id=args.device_id,
         implementation_commit=implementation_commit,
     )
-    db_sessions = {
-        item.get("session_id")
-        for item in no_effect_db.get("agent_sessions", [])
-        if isinstance(item, dict)
-    }
-    if process_identity["agent_session"]["session_id"] not in db_sessions:
-        raise ValueError(
-            "process identity session is absent from the no-effect DB evidence"
-        )
     expected_name = f"phase10-drawing-{args.fixture}.dwg"
     if drawing.name.lower() != expected_name:
         raise ValueError(f"expected {expected_name}")
     hash_before = _sha256(drawing)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-    invoked_tools = [
-        "cad_list_devices",
-        "cad_observe",
-        "cad_get_job",
-        "cad_build_scene",
-        "cad_query_scene",
-    ]
+    invocations: list[dict[str, Any]] = []
+
+    def record(
+        tool: str,
+        arguments: dict[str, Any],
+        started_at: str,
+        *,
+        job_id: str | None = None,
+    ) -> None:
+        invocations.append(
+            {
+                "tool": tool,
+                "arguments": arguments,
+                "started_at": started_at,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "outcome": "succeeded",
+                "job_id": job_id,
+            }
+        )
+
     async with Client(args.endpoint, auth=token, timeout=120) as client:
         tools = sorted(tool.name for tool in await client.list_tools())
         for required in ("cad_build_scene", "cad_query_scene"):
             if required not in tools:
                 raise RuntimeError(f"{required} is not enabled")
+        started_at = datetime.now(timezone.utc).isoformat()
         devices = _payload(
             await client.call_tool("cad_list_devices", {"online_only": True})
         )
+        record("cad_list_devices", {"online_only": True}, started_at)
         device = next(
             (
                 item
@@ -823,7 +942,10 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
         if device is None:
             raise RuntimeError("standalone Agent is not online")
         before = await _observe(
-            client, args.device_id, f"phase10-{args.fixture}-before-{stamp}"
+            client,
+            args.device_id,
+            f"phase10-{args.fixture}-before-{stamp}",
+            record=record,
         )
         request = before["request"]
         job_snapshot = before["job"].get("result", {}).get("snapshot", {})
@@ -843,30 +965,46 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
             "space": "model",
             "include_sections": list(SECTIONS),
         }
+        started_at = datetime.now(timezone.utc).isoformat()
         built = _payload(
             await client.call_tool(
                 "cad_build_scene",
                 build_input,
             )
         )
+        record("cad_build_scene", build_input, started_at)
         scene = built["scene"]
+        repeat_input = {
+            **build_input,
+            "idempotency_key": f"phase10-{args.fixture}-scene-repeat-{stamp}",
+        }
+        started_at = datetime.now(timezone.utc).isoformat()
         repeated = _payload(
             await client.call_tool(
                 "cad_build_scene",
-                {
-                    **build_input,
-                    "idempotency_key": f"phase10-{args.fixture}-scene-repeat-{stamp}",
-                },
+                repeat_input,
             )
         )
-        sections = await _query_sections(client, scene["scene_id"])
+        record("cad_build_scene", repeat_input, started_at)
+        sections = await _query_sections(
+            client, scene["scene_id"], record=record
+        )
+        started_at = datetime.now(timezone.utc).isoformat()
         resource = _resource_payload(
             await client.read_resource(
                 f"cad://scenes/{scene['scene_id']}/summary"
             )
         )
+        record(
+            "read_resource",
+            {"uri": f"cad://scenes/{scene['scene_id']}/summary"},
+            started_at,
+        )
         after = await _observe(
-            client, args.device_id, f"phase10-{args.fixture}-after-{stamp}"
+            client,
+            args.device_id,
+            f"phase10-{args.fixture}-after-{stamp}",
+            record=record,
         )
     hash_after = _sha256(drawing)
     revision_before = str(request["document_revision"])
@@ -879,12 +1017,75 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
         after["job"].get("result", {}).get("snapshot", {}).get("returned_count")
         or len(after["job"].get("result", {}).get("snapshot", {}).get("entities", []))
     )
+    no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
+    scope = no_effect_db.get("scope", {})
+    window_start = _parse_timestamp(
+        scope.get("window_start"), "no-effect DB window_start"
+    )
+    window_end = _parse_timestamp(
+        scope.get("window_end"), "no-effect DB window_end"
+    )
+    capture_started_at = _parse_timestamp(
+        invocations[0]["started_at"], "fixture capture started_at"
+    )
+    capture_completed_at = _parse_timestamp(
+        invocations[-1]["completed_at"], "fixture capture completed_at"
+    )
+    if not (window_start <= capture_started_at and capture_completed_at <= window_end):
+        raise ValueError("no-effect DB window does not cover the fixture capture")
+    db_sessions = {
+        item.get("session_id"): item
+        for item in no_effect_db.get("agent_sessions", [])
+        if isinstance(item, dict)
+    }
+    session = process_identity["agent_session"]
+    session_id = session.get("session_id")
+    if session_id not in db_sessions:
+        raise ValueError(
+            "process identity session is absent from the no-effect DB evidence"
+        )
+    session_record = db_sessions[session_id]
+    session_connected = _parse_timestamp(
+        session_record.get("connected_at"), "DB session connected_at"
+    )
+    session_disconnected = session_record.get("disconnected_at")
+    if not (
+        session_connected <= capture_started_at
+        and (
+            session_disconnected is None
+            or _parse_timestamp(
+                session_disconnected, "DB session disconnected_at"
+            )
+            >= capture_completed_at
+        )
+    ):
+        raise ValueError(
+            "DB session was not active throughout the fixture capture"
+        )
+    db_anchor_ids = {
+        item.get("job_id")
+        for item in no_effect_db.get("anchor_jobs", [])
+        if isinstance(item, dict)
+    }
+    observation_job_ids = [
+        before["request"]["job_id"],
+        after["request"]["job_id"],
+    ]
+    if not set(observation_job_ids) <= db_anchor_ids:
+        raise ValueError(
+            "no-effect DB evidence does not cover the observation jobs"
+        )
+    invoked_tools = [invocation["tool"] for invocation in invocations]
+    write_tools_invoked = sorted(
+        {
+            invocation["tool"]
+            for invocation in invocations
+            if invocation["tool"] in WRITE_TOOLS
+        }
+    )
     gates = _fixture_gates(args.fixture, sections)
     nodes = sections["nodes"]["items"]
     runtime = before["job"].get("runtime_evidence", {}).get("runtime", {})
-    write_tools_invoked = sorted(
-        tool for tool in invoked_tools if tool in WRITE_TOOLS
-    )
     db_events = no_effect_db.get("retrospective_no_write_events")
     anchor_jobs = no_effect_db.get("anchor_jobs", [])
     write_snapshot = no_effect_db.get("write_snapshot", {})
@@ -927,6 +1128,33 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
         and revision_before == revision_after
         and write_snapshot_unchanged
     )
+    managed_host = session.get("managed_host", {})
+    gateway = process_identity["gateway_process"]
+    desktop = process_identity["desktop_agent_process"]
+    autocad = process_identity["autocad_process"]
+    if managed_host.get("package_hash") != runtime.get("package_hash"):
+        raise ValueError(
+            "managed host package hash differs from observation runtime evidence"
+        )
+    runtime_identity_bound = (
+        gateway.get("release_commit") == implementation_commit
+        and session.get("device_id") == args.device_id
+        and session.get("protocol_version") == "cad.agent/2"
+        and session.get("disconnected_at") is None
+        and managed_host.get("runtime_id") == "managed_dotnet"
+        and managed_host.get("package_hash") == runtime.get("package_hash")
+        and isinstance(managed_host.get("process_id"), int)
+        and managed_host["process_id"] > 0
+        and _SHA256_RE.fullmatch(managed_host.get("executable_sha256", ""))
+        and isinstance(autocad.get("process_id"), int)
+        and autocad["process_id"] > 0
+        and _SHA256_RE.fullmatch(autocad.get("executable_sha256", ""))
+        and isinstance(desktop.get("process_id"), int)
+        and desktop["process_id"] > 0
+        and _SHA256_RE.fullmatch(desktop.get("executable_sha256", ""))
+        and _parse_timestamp(session["connected_at"], "session connected_at")
+        <= capture_completed_at
+    )
     gates.update(
         {
             "dwg_file_hash_unchanged": hash_before == hash_after,
@@ -948,7 +1176,7 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
             "write_snapshot_unchanged": write_snapshot_unchanged,
             "no_write_requested": no_write_requested,
             "no_cad_effect_attempted": no_cad_effect_attempted,
-            "runtime_identity_bound": True,
+            "runtime_identity_bound": runtime_identity_bound,
         }
     )
     if not all(gates.values()):
@@ -970,12 +1198,22 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
             "dwg_file_hash_after": hash_after,
         },
         "runtime_identity": process_identity,
+        "session_binding": {
+            "session_id": session_id,
+            "device_id": args.device_id,
+            "document_id": job_snapshot.get("drawing", {}).get("document_id"),
+            "document_revision": revision_before,
+            "scene_id": scene["scene_id"],
+            "observation_job_ids": observation_job_ids,
+            "captured_at": invocations[-1]["completed_at"],
+        },
         "public_path": {
             "endpoint": args.endpoint,
             "device_id": args.device_id,
             "standalone_desktop_agent": True,
             "invoked_tools": invoked_tools,
             "write_tools_invoked": write_tools_invoked,
+            "tool_invocations": invocations,
             "devices": devices,
         },
         "source": {
@@ -1073,8 +1311,9 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
     if derived_after["exit_probe"] is None:
         raise ValueError("identity-after did not probe the old Gateway process")
     old_pid = derived_before["gateway_pid"]
-    exit_command = tuple(derived_after["exit_probe"].get("command", []))
-    if f"/proc/{old_pid}/stat" not in exit_command:
+    exit_probe = derived_after["exit_probe"]
+    exit_command = tuple(exit_probe.get("command", []))
+    if exit_probe.get("pid") != old_pid:
         raise ValueError(
             "old process exit probe does not target the pre-restart Gateway PID"
         )

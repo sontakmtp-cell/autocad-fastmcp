@@ -461,6 +461,55 @@ def test_derive_rejects_incomplete_or_fabricated_raw_capture() -> None:
         MODULE._derive_gateway_identity(tampered)
 
 
+def test_derive_rejects_ambiguous_or_misbound_raw_commands() -> None:
+    base = _identity_capture(
+        100,
+        "12345",
+        "1000",
+        captured_at="2026-07-30T00:00:00+00:00",
+        old_pid=100,
+    )
+
+    probe_alive = copy.deepcopy(base)
+    for record in probe_alive["commands"]:
+        if record["command"][0] == "test":
+            record["command"] = ["test", "-e", "/proc/100/stat"]
+            record["exit_code"] = 0
+    with pytest.raises(ValueError, match="absence probe"):
+        MODULE._derive_gateway_identity(probe_alive)
+
+    wrong_sha = copy.deepcopy(base)
+    for record in wrong_sha["commands"]:
+        if record["command"][0] == "sha256sum":
+            record["command"] = ["sha256sum", "/usr/bin/python3.13"]
+    with pytest.raises(ValueError, match="exact executable"):
+        MODULE._derive_gateway_identity(wrong_sha)
+
+    wrong_git = copy.deepcopy(base)
+    for record in wrong_git["commands"]:
+        if record["command"][0] == "git":
+            record["command"] = ["git", "-C", "/opt/other", "rev-parse", "HEAD"]
+    with pytest.raises(ValueError, match="WorkingDirectory"):
+        MODULE._derive_gateway_identity(wrong_git)
+
+    wrong_awk = copy.deepcopy(base)
+    for record in wrong_awk["commands"]:
+        if record["command"][0] == "awk":
+            record["command"] = ["awk", "{print $1}", "/proc/100/stat"]
+    with pytest.raises(ValueError, match="start-time"):
+        MODULE._derive_gateway_identity(wrong_awk)
+
+    stale = copy.deepcopy(base)
+    stale["commands"][0]["captured_at"] = "2026-07-29T00:00:00+00:00"
+    with pytest.raises(ValueError, match="outside the capture window"):
+        MODULE._derive_gateway_identity(stale)
+
+    duplicate = copy.deepcopy(base)
+    duplicate["commands"].append(copy.deepcopy(duplicate["commands"][-1]))
+    with pytest.raises(ValueError, match="duplicate command"):
+        MODULE._derive_gateway_identity(duplicate)
+
+
 def test_restart_inputs_reject_caller_supplied_service_records() -> None:
     process = {
         "device_id": DEVICE,

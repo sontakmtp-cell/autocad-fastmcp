@@ -40,6 +40,7 @@ GENERIC_FIXTURE_GATES = {
     "managed_dotnet_runtime",
     "no_cad_effect_attempted",
     "no_write_requested",
+    "runtime_identity_bound",
     "source_capabilities_present",
     "source_runtime_managed",
     "stable_scene_reuse",
@@ -642,6 +643,7 @@ def _validate_restart_raw_captures(
         isinstance(exit_proof, dict)
         and isinstance(exit_probe, dict)
         and exit_probe.get("command") == exit_proof.get("command")
+        and exit_probe.get("pid") == derived_before["gateway_pid"]
         and exit_proof.get("pid") == derived_before["gateway_pid"],
         "Gateway restart: old process exit probe does not match raw capture",
     )
@@ -779,14 +781,14 @@ def validate(root: Path) -> None:
             len(set(observation_job_ids)) == 2
             and source["observation_before"]["request"]["snapshot_id"]
             == source["snapshot_id"]
-            and evidence.get("public_path", {}).get("invoked_tools")
-            == [
+            and set(evidence.get("public_path", {}).get("invoked_tools", []))
+            == {
                 "cad_list_devices",
                 "cad_observe",
                 "cad_get_job",
                 "cad_build_scene",
                 "cad_query_scene",
-            ],
+            },
             f"{label}: public observation identities/tools are incomplete",
         )
         captured_at = _time(evidence.get("captured_at"), label)
@@ -813,6 +815,7 @@ def validate(root: Path) -> None:
         desktop = identity["desktop_agent_process"]
         autocad = identity["autocad_process"]
         session = identity["agent_session"]
+        managed_host = session.get("managed_host")
         _require(
             isinstance(gateway["process_id"], int)
             and gateway["process_id"] > 0
@@ -844,12 +847,51 @@ def validate(root: Path) -> None:
             f"{label}: AutoCAD runtime identity is invalid",
         )
         _require(
+            CAPTURE._SHA256_RE.fullmatch(autocad["executable_sha256"])
+            and _time(
+                autocad["started_at"], f"{label}: autocad started_at"
+            )
+            <= captured_at,
+            f"{label}: AutoCAD executable hash/start identity is invalid",
+        )
+        _require(
+            isinstance(managed_host, dict)
+            and set(managed_host) == CAPTURE._MANAGED_HOST_KEYS
+            and managed_host.get("runtime_id") == "managed_dotnet"
+            and isinstance(managed_host["process_id"], int)
+            and managed_host["process_id"] > 0
+            and isinstance(managed_host["executable"], str)
+            and bool(managed_host["executable"])
+            and CAPTURE._SHA256_RE.fullmatch(managed_host["executable_sha256"])
+            and _time(
+                managed_host["started_at"], f"{label}: host started_at"
+            )
+            <= captured_at,
+            f"{label}: managed host runtime identity is invalid",
+        )
+        runtime_evidence = (
+            source.get("observation_before", {}).get("job", {}).get(
+                "runtime_evidence", {}
+            ).get("runtime", {})
+        )
+        _require(
+            isinstance(runtime_evidence, dict)
+            and managed_host.get("package_hash")
+            == runtime_evidence.get("package_hash")
+            and managed_host.get("package_id")
+            == runtime_evidence.get("package_id")
+            and managed_host.get("package_version")
+            == runtime_evidence.get("package_version")
+            and managed_host.get("framework")
+            == runtime_evidence.get("framework"),
+            f"{label}: managed host is not bound to observation runtime evidence",
+        )
+        _require(
             session.get("device_id") == fixture_device
             and isinstance(session.get("session_id"), str)
             and bool(session["session_id"])
             and session.get("protocol_version") == "cad.agent/2"
-            and isinstance(session.get("managed_host"), dict)
-            and session["managed_host"].get("runtime_id") == "managed_dotnet",
+            and session.get("disconnected_at") is None,
             f"{label}: agent session runtime identity is invalid",
         )
         _require(
@@ -864,6 +906,50 @@ def validate(root: Path) -> None:
             f"{label}: runtime identity timestamps are not before capture",
         )
         fixture_sessions[name] = session["session_id"]
+        binding = evidence.get("session_binding")
+        _require(
+            isinstance(binding, dict)
+            and binding.get("session_id") == session["session_id"]
+            and binding.get("device_id") == fixture_device
+            and binding.get("document_id") == scene.get("document_id")
+            and binding.get("document_revision") == scene.get("document_revision")
+            and binding.get("scene_id") == scene.get("scene_id")
+            and binding.get("observation_job_ids") == observation_job_ids
+            and _time(binding.get("captured_at"), f"{label}: binding captured_at")
+            <= captured_at,
+            f"{label}: session binding is not cross-bound",
+        )
+        invocations = evidence.get("public_path", {}).get("tool_invocations")
+        _require(
+            isinstance(invocations, list)
+            and bool(invocations)
+            and all(
+                isinstance(item, dict)
+                and isinstance(item.get("tool"), str)
+                and item.get("outcome") == "succeeded"
+                and isinstance(item.get("arguments"), dict)
+                and _time(item.get("started_at"), f"{label}: invocation started")
+                <= _time(item.get("completed_at"), f"{label}: invocation completed")
+                <= captured_at
+                for item in invocations
+            )
+            and all(
+                item.get("tool") not in CAPTURE.WRITE_TOOLS
+                for item in invocations
+            )
+            and {
+                item.get("tool") for item in invocations
+            }
+            == {
+                "cad_list_devices",
+                "cad_observe",
+                "cad_get_job",
+                "cad_build_scene",
+                "cad_query_scene",
+                "read_resource",
+            },
+            f"{label}: public tool invocation records are incomplete",
+        )
         if baseline_commit is None:
             baseline_commit = evidence["baseline_commit"]
             implementation_commit = evidence["implementation_commit"]
@@ -1155,6 +1241,37 @@ def validate(root: Path) -> None:
     window_start = _time(scope.get("window_start"), "No-effect DB window start")
     window_end = _time(scope.get("window_end"), "No-effect DB window end")
     _require(window_start < window_end, "No-effect DB: invalid audit window")
+    db_session_records = {
+        item.get("session_id"): item
+        for item in no_effect_db.get("agent_sessions", [])
+        if isinstance(item, dict)
+    }
+    for name in FIXTURES:
+        evidence = fixture_evidence[name]
+        captured_at = _time(evidence["captured_at"], f"Drawing {name.upper()} captured_at")
+        _require(
+            window_start <= captured_at <= window_end,
+            f"No-effect DB: Drawing {name.upper()} capture is outside the audit window",
+        )
+        session_id = fixture_sessions[name]
+        session_record = db_session_records[session_id]
+        disconnected_at = session_record.get("disconnected_at")
+        _require(
+            _time(
+                session_record.get("connected_at"),
+                f"No-effect DB: Drawing {name.upper()} session connected_at",
+            )
+            <= captured_at
+            and (
+                disconnected_at is None
+                or captured_at
+                <= _time(
+                    disconnected_at,
+                    f"No-effect DB: Drawing {name.upper()} session disconnected_at",
+                )
+            ),
+            f"No-effect DB: Drawing {name.upper()} session was not active at capture",
+        )
     anchor_jobs = no_effect_db.get("anchor_jobs")
     _require(
         isinstance(anchor_jobs, list)
@@ -1274,6 +1391,12 @@ def validate(root: Path) -> None:
     )
     pre_tables = pre_snapshot.get("tables") if isinstance(pre_snapshot, dict) else None
     pre_digest = pre_snapshot.get("sha256") if isinstance(pre_snapshot, dict) else None
+    expected_pre = _canonical_digest(pre_tables) if isinstance(pre_tables, dict) else None
+    expected_post = (
+        _canonical_digest(snapshot_tables)
+        if isinstance(snapshot_tables, dict)
+        else None
+    )
     _require(
         no_effect_db.get("retrospective_no_write_events") == []
         and isinstance(snapshot_tables, dict)
@@ -1281,8 +1404,9 @@ def validate(root: Path) -> None:
         and snapshot_digest.startswith("sha256:")
         and len(snapshot_digest) == 71
         and pre_tables == snapshot_tables
-        and _canonical_digest(pre_tables) == _canonical_digest(snapshot_tables)
-        and pre_digest == snapshot_digest
+        and pre_digest == expected_pre
+        and snapshot_digest == expected_post
+        and expected_pre == expected_post
         and restart_comparison.get("post_restart_write_snapshot_sha256")
         == snapshot_digest
         and restart_comparison.get("sha256_unchanged") is True
