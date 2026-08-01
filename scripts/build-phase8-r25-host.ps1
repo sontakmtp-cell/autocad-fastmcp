@@ -96,8 +96,11 @@ $packageContents = @'
   </Components>
 </ApplicationPackage>
 '@
-Set-Content -LiteralPath (Join-Path $bundleRoot "PackageContents.xml") `
-    -Value $packageContents -Encoding utf8NoBOM
+[System.IO.File]::WriteAllText(
+    (Join-Path $bundleRoot "PackageContents.xml"),
+    $packageContents,
+    (New-Object System.Text.UTF8Encoding $false)
+)
 
 $artifactFiles = Get-ChildItem -LiteralPath $r25Root -File |
     Where-Object {
@@ -116,9 +119,17 @@ $aggregateText = (
     ForEach-Object { "$($_.Key):$($_.Value)" }
 ) -join "`n"
 $aggregateBytes = [System.Text.Encoding]::UTF8.GetBytes($aggregateText)
-$aggregateHash = [System.Convert]::ToHexString(
-    [System.Security.Cryptography.SHA256]::HashData($aggregateBytes)
-).ToLowerInvariant()
+$aggregateHasher = [System.Security.Cryptography.SHA256]::Create()
+try {
+    $aggregateHash = (
+        [System.BitConverter]::ToString(
+            $aggregateHasher.ComputeHash($aggregateBytes)
+        )
+    ).Replace("-", "").ToLowerInvariant()
+}
+finally {
+    $aggregateHasher.Dispose()
+}
 $manifest = [ordered]@{
     schema_version = "cad.package-manifest/1"
     package_id = "autocad.managed_host.r25"
@@ -136,9 +147,13 @@ $manifest = [ordered]@{
     artifacts = $artifactHashes
 }
 $manifest | ConvertTo-Json -Depth 6 |
-    Set-Content -LiteralPath (
-        Join-Path $sharedRoot "package-manifest.json"
-    ) -Encoding utf8NoBOM
+    ForEach-Object {
+        [System.IO.File]::WriteAllText(
+            (Join-Path $sharedRoot "package-manifest.json"),
+            $_,
+            (New-Object System.Text.UTF8Encoding $false)
+        )
+    }
 
 Write-Host "Tests passed and unsigned Phase 8 local R25 lab bundle built:"
 Write-Host $bundleRoot

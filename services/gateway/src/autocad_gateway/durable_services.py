@@ -1803,18 +1803,22 @@ class DurableGatewayServices:
         if current_connection:
             await self.job_service.handle_disconnect(connection.device_id)
 
+    def _owner_for_principal(self, principal: Principal) -> str:
+        return self.owner_subject if self.is_phase4 else principal.subject
+
     async def list_devices(
         self, request: CadListDevicesInput, principal: Principal, correlation_id: str
     ) -> CadListDevicesOutput | CadListDevicesOutputC1:
-        if not self.is_phase5_identity and principal.subject != self.owner_subject:
+        if not self.is_phase5_identity and not self.is_phase4 and principal.subject != self.owner_subject:
             output_type = CadListDevicesOutputC1 if self.is_phase4 else CadListDevicesOutput
             return output_type(
                 contract_version=self.contract_version,
                 correlation_id=correlation_id,
                 devices=[],
             )
+        owner = self._owner_for_principal(principal)
         devices = await self.repository.list_devices(
-            principal.subject, online_only=request.online_only, capability=request.capability
+            owner, online_only=request.online_only, capability=request.capability
         )
         output_type = CadListDevicesOutputC1 if self.is_phase4 else CadListDevicesOutput
         device_type = DeviceInfoC1 if self.is_phase4 else DeviceInfo
@@ -1881,8 +1885,9 @@ class DurableGatewayServices:
             datetime.now(timezone.utc) + timedelta(seconds=self.job_deadline_seconds)
         ).isoformat()
         try:
+            owner = self._owner_for_principal(principal)
             job = await self.job_service.create_and_observe(
-                owner_subject=principal.subject,
+                owner_subject=owner,
                 device_id=request.device_id,
                 payload=payload,
                 correlation_id=correlation_id,
@@ -1969,7 +1974,8 @@ class DurableGatewayServices:
     async def query(
         self, request: CadQueryInput, principal: Principal, correlation_id: str
     ) -> CadQueryOutput:
-        snapshot = await self.repository.get_snapshot(principal.subject, request.snapshot_id)
+        owner = self._owner_for_principal(principal)
+        snapshot = await self.repository.get_snapshot(owner, request.snapshot_id)
         if snapshot is None:
             raise GatewayError("not_found")
         if self.is_phase4 and snapshot.get("revision_evidence", {}).get("revision_strength") == "summary_only":
@@ -2024,7 +2030,8 @@ class DurableGatewayServices:
     async def get_job(
         self, request: CadGetJobInput, principal: Principal, correlation_id: str
     ) -> CadGetJobOutput | CadGetJobOutputC1:
-        job = await self.repository.get_job(principal.subject, request.job_id)
+        owner = self._owner_for_principal(principal)
+        job = await self.repository.get_job(owner, request.job_id)
         if job is None:
             raise GatewayError("not_found")
         cursor = 0
@@ -2036,7 +2043,7 @@ class DurableGatewayServices:
             if cursor < 0:
                 raise GatewayError("invalid_request")
         events, next_cursor = await self.repository.list_events(
-            principal.subject, request.job_id, cursor=cursor, limit=request.event_limit
+            owner, request.job_id, cursor=cursor, limit=request.event_limit
         )
         result = job.get("result")
         snapshot_id = None
@@ -2082,7 +2089,8 @@ class DurableGatewayServices:
         )
 
     async def read_snapshot_summary(self, snapshot_id: str, principal: Principal) -> str:
-        snapshot = await self.repository.get_snapshot(principal.subject, snapshot_id)
+        owner = self._owner_for_principal(principal)
+        snapshot = await self.repository.get_snapshot(owner, snapshot_id)
         if snapshot is None:
             raise GatewayError("not_found")
         return canonical_json(
@@ -2139,9 +2147,10 @@ class DurableGatewayServices:
         raise GatewayError("not_found")
 
     async def _require_device(self, device_id: str, principal: Principal) -> dict[str, Any]:
-        if not self.is_phase5_identity and principal.subject != self.owner_subject:
+        if not self.is_phase5_identity and not self.is_phase4 and principal.subject != self.owner_subject:
             raise GatewayError("not_found")
-        value = await self.repository.get_device(principal.subject, device_id)
+        owner = self._owner_for_principal(principal)
+        value = await self.repository.get_device(owner, device_id)
         if value is None:
             raise GatewayError("not_found")
         return value
