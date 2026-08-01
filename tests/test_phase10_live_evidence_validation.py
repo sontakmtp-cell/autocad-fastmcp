@@ -65,6 +65,9 @@ def _repo(path: Path) -> Path:
         path, "phase10-live-no-effect-db-20260730.json"
     )
     _upgrade_db_artifact(db_path, db_value, upgraded_fixtures)
+    for name, fixture_value in upgraded_fixtures.items():
+        fixture_path, _ = _fixture(path, name)
+        _save(fixture_path, fixture_value)
     _patch_evidence_commits(path)
     return path
 
@@ -99,6 +102,10 @@ def _upgrade_db_artifact(
         for record in value["agent_sessions"]:
             if record.get("session_id") == session_id:
                 record["connected_at"] = connected_at
+        fixture_value["finalization"]["finalized_at"] = (
+            VALIDATOR._time(value["captured_at"], "DB captured_at")
+            + timedelta(seconds=1)
+        ).isoformat()
     _save(path, value)
 
 
@@ -159,16 +166,18 @@ def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
         completed = (
             captured_at - timedelta(seconds=90) + timedelta(seconds=5 * (index + 1))
         ).isoformat()
-        invocations.append(
-            {
-                "tool": tool,
-                "arguments": arguments,
-                "started_at": started,
-                "completed_at": completed,
-                "outcome": "succeeded",
-                "job_id": job_id,
-            }
-        )
+        item = {
+            "tool": tool,
+            "arguments": arguments,
+            "started_at": started,
+            "completed_at": completed,
+            "outcome": "succeeded",
+            "job_id": job_id,
+        }
+        if tool == "cad_get_job":
+            item["job_state"] = "succeeded"
+            item["job_result"] = {"state": "succeeded"}
+        invocations.append(item)
 
     scene_id = value["scene"]["scene_id"]
     invoke("cad_list_devices", {"online_only": True}, 0)
@@ -828,6 +837,14 @@ def _tamper(root: Path, case: str) -> None:
             observes[0]["arguments"]["idempotency_key"] = "unrelated-key"
         elif case == "invocation_job_mismatch":
             observes[0]["job_id"] = "job-other"
+        elif case == "invocation_terminal_result":
+            next(
+                item
+                for item in invocations
+                if item["tool"] == "cad_get_job"
+                and item.get("job_id")
+                == value["session_binding"]["observation_job_ids"][1]
+            ).pop("job_result", None)
         elif case == "invocation_reordered":
             invocations[1], invocations[2] = invocations[2], invocations[1]
         elif case == "invocation_after_before_resource":
@@ -1185,6 +1202,71 @@ def test_finalize_fixture_orchestrates_provisional_to_pass(
     assert final["no_effect_db_binding"]["artifact"] == str(db_path)
 
 
+def test_finalize_fixture_rejects_future_db_capture(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import argparse
+    import asyncio
+
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT)
+    root = _repo(tmp_path / "future-fixture-db")
+    _, fixture = _fixture(root, "a")
+    provisional = _provisional_capture(tmp_path, fixture)
+    provisional_path = tmp_path / "provisional.json"
+    provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
+    _, db = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    future = datetime.now(timezone.utc) + timedelta(days=1)
+    db["scope"]["window_end"] = future.isoformat()
+    db["captured_at"] = future.isoformat()
+    db_path = tmp_path / "future-db.json"
+    db_path.write_text(json.dumps(db), encoding="utf-8")
+    with pytest.raises(ValueError, match="captured after fixture finalization"):
+        asyncio.run(
+            VALIDATOR.CAPTURE._finalize_fixture(
+                argparse.Namespace(
+                    fixture_evidence=provisional_path,
+                    no_effect_db=db_path,
+                    device_id=fixture["public_path"]["device_id"],
+                ),
+                "token",
+            )
+        )
+
+
+@pytest.mark.parametrize("tamper", ("section", "summary", "source"))
+def test_finalize_fixture_recomputes_provisional_gates(
+    tmp_path: Path, monkeypatch, tamper: str
+) -> None:
+    import argparse
+    import asyncio
+
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT)
+    root = _repo(tmp_path / tamper)
+    _, fixture = _fixture(root, "a")
+    provisional = _provisional_capture(tmp_path, fixture)
+    if tamper == "section":
+        provisional["scene"]["sections"]["nodes"]["items"].pop()
+    elif tamper == "summary":
+        provisional["scene"]["summary_resource"]["scene_digest"] = "sha256:tampered"
+    else:
+        provisional["scene"]["source_digest"] = "sha256:tampered"
+    assert all(provisional["gate_results"].values())
+    provisional_path = tmp_path / "provisional.json"
+    provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
+    db_path, _ = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    with pytest.raises(RuntimeError, match="fixture gates failed"):
+        asyncio.run(
+            VALIDATOR.CAPTURE._finalize_fixture(
+                argparse.Namespace(
+                    fixture_evidence=provisional_path,
+                    no_effect_db=db_path,
+                    device_id=fixture["public_path"]["device_id"],
+                ),
+                "token",
+            )
+        )
+
+
 def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
     import argparse
     import asyncio
@@ -1229,15 +1311,11 @@ def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
         ),
         first - timedelta(seconds=60),
     )
-    window_end = max(
-        VALIDATOR._time(
-            db_value["scope"]["window_end"], "DB window end"
-        ),
-        last + timedelta(seconds=60),
-    )
+    collection_at = datetime.now(timezone.utc)
+    window_end = collection_at
     db_value["scope"]["window_start"] = window_start.isoformat()
     db_value["scope"]["window_end"] = window_end.isoformat()
-    db_value["captured_at"] = (window_end + timedelta(seconds=1)).isoformat()
+    db_value["captured_at"] = collection_at.isoformat()
     session_id = process_identity["agent_session"]["session_id"]
     for record in db_value["agent_sessions"]:
         if record.get("session_id") == session_id:
@@ -1256,6 +1334,16 @@ def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
     final = asyncio.run(VALIDATOR.CAPTURE._finalize_fixture(args, "token"))
     assert final["finalization"]["implementation_commit"] == FIXED_COMMIT
     _save(fixture_path, final)
+    for name in VALIDATOR.FIXTURES:
+        if name == "a":
+            continue
+        other_path, other_value = _evidence(
+            root, f"phase10-live-r25-drawing-{name}-20260730.json"
+        )
+        other_value["finalization"]["finalized_at"] = (
+            collection_at + timedelta(seconds=1)
+        ).isoformat()
+        _save(other_path, other_value)
     restart_path, restart_value = _evidence(
         root, "phase10-live-gateway-restart-20260730.json"
     )
@@ -1412,7 +1500,7 @@ def test_validator_rejects_future_restart_db_capture(tmp_path: Path) -> None:
     db["scope"]["window_end"] = future.isoformat()
     db["captured_at"] = future.isoformat()
     _save(root / "docs" / "architecture" / "evidence" / "phase10-live-no-effect-db-20260730.json", db)
-    with pytest.raises(ValueError, match="DB window"):
+    with pytest.raises(ValueError, match="captured after fixture finalization"):
         VALIDATOR.validate(root)
 
 
@@ -1754,6 +1842,7 @@ def test_finalize_rejects_cross_commit_finalization(
         ("invocation_observe_key_reused", "cad_observe invocation arguments"),
         ("invocation_observe_key_prefix", "cad_observe invocation arguments"),
         ("invocation_job_mismatch", "out of phase"),
+        ("invocation_terminal_result", "cad_get_job invocation arguments"),
         ("invocation_reordered", "not stored chronologically"),
         ("invocation_after_before_resource", "out of phase"),
         ("invocation_query_before_build", "out of phase"),

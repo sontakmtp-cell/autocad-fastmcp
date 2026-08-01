@@ -776,6 +776,8 @@ async def _observe(
             {"job_id": job_id},
             poll_started_at,
             job_id=job_id,
+            job_state=job.get("state"),
+            job_result=job,
         )
         if job["state"] in {"succeeded", "failed", "cancelled", "needs_attention"}:
             if job["state"] != "succeeded":
@@ -1039,17 +1041,21 @@ async def _capture_public(
         started_at: str,
         *,
         job_id: str | None = None,
+        job_state: str | None = None,
+        job_result: dict[str, Any] | None = None,
     ) -> None:
-        invocations.append(
-            {
-                "tool": tool,
-                "arguments": arguments,
-                "started_at": started_at,
-                "completed_at": datetime.now(timezone.utc).isoformat(),
-                "outcome": "succeeded",
-                "job_id": job_id,
-            }
-        )
+        item = {
+            "tool": tool,
+            "arguments": arguments,
+            "started_at": started_at,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "outcome": "succeeded",
+            "job_id": job_id,
+        }
+        if tool == "cad_get_job":
+            item["job_state"] = job_state
+            item["job_result"] = job_result
+        invocations.append(item)
 
     async with client_factory(args.endpoint, auth=token, timeout=120) as client:
         tools = sorted(tool.name for tool in await client.list_tools())
@@ -1343,6 +1349,7 @@ def _validate_invocation_graph(
     phase_index = 0
     visited: set[int] = set()
     observed_jobs: list[str] = []
+    terminal_job_states: dict[str, str] = {}
     queried_sections: set[str] = set()
     key_values: list[str] = []
     key_stamps: list[str] = []
@@ -1391,8 +1398,16 @@ def _validate_invocation_graph(
             key_values.append(key)
             key_stamps.append(key_match.group(2))
         elif tool == "cad_get_job":
-            if arguments != {"job_id": job_id} or job_id not in observation_job_ids:
+            if (
+                arguments != {"job_id": job_id}
+                or job_id not in observation_job_ids
+                or not isinstance(item.get("job_state"), str)
+                or not isinstance(item.get("job_result"), dict)
+                or item["job_result"].get("state") != item["job_state"]
+            ):
                 raise ValueError("cad_get_job invocation arguments are invalid")
+            if item["job_state"] in {"succeeded", "failed", "cancelled", "needs_attention"}:
+                terminal_job_states[job_id] = item["job_state"]
         elif tool == "cad_build_scene":
             expected_phase = phases[phase_index][2]
             key = arguments.get("idempotency_key")
@@ -1439,6 +1454,8 @@ def _validate_invocation_graph(
         raise ValueError(
             "cad_observe invocations are not bound to the observation job IDs"
         )
+    if terminal_job_states != {job_id: "succeeded" for job_id in observation_job_ids}:
+        raise ValueError("cad_get_job trace lacks terminal succeeded results")
     if queried_sections != set(SECTIONS):
         raise ValueError(
             "expected exactly one cad_query_scene per retained section"
@@ -1449,12 +1466,101 @@ def _validate_invocation_graph(
         raise ValueError("invocations are not bound to one capture run")
 
 
+def _recompute_fixture_gates(
+    evidence: dict[str, Any], *, device_id: str
+) -> dict[str, bool]:
+    fixture = evidence["fixture"]
+    scene = evidence["scene"]
+    sections = scene["sections"]
+    nodes = sections["nodes"]["items"]
+    before = evidence["source"]["observation_before"]
+    after = evidence["source"]["observation_after"]
+    before_job = before["job"]
+    after_job = after["job"]
+    before_request = before["request"]
+    after_request = after["request"]
+    runtime_evidence = before_job.get("runtime_evidence", {}).get("runtime", {})
+    summary = scene["summary_resource"]
+    repeated = scene["repeat_build"]
+    gates = _fixture_gates(
+        _fixture_letter_from_id(fixture["fixture_id"]), sections
+    )
+    gates.update(
+        {
+            "dwg_file_hash_unchanged": (
+                fixture["dwg_file_hash_before"] == fixture["dwg_file_hash_after"]
+            ),
+            "document_revision_unchanged": (
+                evidence["source"]["document_revision_before"]
+                == evidence["source"]["document_revision_after"]
+            ),
+            "entity_count_unchanged": (
+                evidence["source"]["entity_count_before"]
+                == evidence["source"]["entity_count_after"]
+            ),
+            "stable_scene_reuse": (
+                repeated["scene"]["scene_id"] == scene["scene_id"]
+                and repeated["scene"]["source_digest"] == scene["source_digest"]
+                and repeated["scene"]["scene_digest"] == scene["scene_digest"]
+                and repeated["reused"] is True
+            ),
+            "managed_dotnet_runtime": (
+                runtime_evidence.get("id") == "managed_dotnet"
+                and runtime_evidence.get("role") == "primary"
+                and before_job["runtime_evidence"].get("degraded") is False
+            ),
+            "source_runtime_managed": bool(nodes)
+            and all(item.get("source_runtime") == "managed_dotnet" for item in nodes),
+            "source_capabilities_present": bool(nodes)
+            and all(item.get("source_capabilities") for item in nodes),
+            "source_scene_binding": (
+                before_request["snapshot_id"] == scene["source_snapshot_id"]
+                and before_request["device_id"] == after_request["device_id"] == device_id
+                and before_request["document_revision"]
+                == after_request["document_revision"]
+                == scene["document_revision"]
+                and before_job["job_id"] == before_request["job_id"]
+                and after_job["job_id"] == after_request["job_id"]
+                and before_job["state"] == after_job["state"] == "succeeded"
+            ),
+            "scene_sections_complete": all(
+                isinstance(sections.get(name), dict)
+                and sections[name].get("scene_id") == scene["scene_id"]
+                and sections[name].get("scene_digest") == scene["scene_digest"]
+                and sections[name].get("section") == name
+                and sections[name].get("next_cursor") is None
+                for name in SECTIONS
+            ),
+            "summary_resource_bound": (
+                isinstance(summary, dict)
+                and summary.get("schema_version") == "cad.scene/1"
+                and all(
+                    summary.get(key) == scene.get(key)
+                    for key in (
+                        "scene_id",
+                        "scene_digest",
+                        "source_digest",
+                        "source_snapshot_id",
+                        "document_id",
+                        "document_revision",
+                        "device_id",
+                        "counts",
+                        "complete",
+                    )
+                )
+            ),
+        }
+    )
+    return gates
+
+
 def _bind_no_effect_db(
     evidence: dict[str, Any],
     no_effect_db: dict[str, Any],
     *,
     device_id: str,
     implementation_commit: str,
+    finalized_at: str,
 ) -> None:
     if no_effect_db.get("schema_version") != "cad.phase10-live-db-evidence/1":
         raise ValueError("no-effect DB schema mismatch")
@@ -1463,6 +1569,9 @@ def _bind_no_effect_db(
     db_captured_at = _parse_timestamp(
         no_effect_db.get("captured_at"), "no-effect DB captured_at"
     )
+    finalization_time = _parse_timestamp(finalized_at, "fixture finalized_at")
+    if db_captured_at > finalization_time:
+        raise ValueError("no-effect DB was captured after fixture finalization")
     scope = no_effect_db.get("scope", {})
     scope_owner = scope.get("owner_subject")
     if scope.get("device_id") != device_id:
@@ -1606,6 +1715,7 @@ async def _finalize_fixture(args: argparse.Namespace, token: str) -> dict[str, A
     if finalizer_commit != capture_commit:
         raise ValueError("finalizer commit differs from provisional capture commit")
     implementation_commit = capture_commit
+    finalization_boundary = datetime.now(timezone.utc).isoformat()
     no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     invocations = provisional["public_path"]["tool_invocations"]
     _validate_invocation_graph(
@@ -1621,6 +1731,7 @@ async def _finalize_fixture(args: argparse.Namespace, token: str) -> dict[str, A
         no_effect_db,
         device_id=args.device_id,
         implementation_commit=implementation_commit,
+        finalized_at=finalization_boundary,
     )
     observation_job_ids = provisional["session_binding"]["observation_job_ids"]
     write_tools_invoked = sorted(
@@ -1760,7 +1871,7 @@ async def _finalize_fixture(args: argparse.Namespace, token: str) -> dict[str, A
         )
     )
     gates = {
-        **provisional["gate_results"],
+        **_recompute_fixture_gates(provisional, device_id=args.device_id),
         "no_write_events_in_window": no_write_events_in_window,
         "anchor_jobs_read_only": anchor_jobs_read_only,
         "write_snapshot_unchanged": write_snapshot_unchanged,
@@ -1777,7 +1888,7 @@ async def _finalize_fixture(args: argparse.Namespace, token: str) -> dict[str, A
         "status": "PASS",
         "finalization": {
             "implementation_commit": finalizer_commit,
-            "finalized_at": datetime.now(timezone.utc).isoformat(),
+            "finalized_at": finalization_boundary,
         },
         "no_effect": {
             "dwg_file_hash_unchanged": gates["dwg_file_hash_unchanged"],
@@ -1863,17 +1974,21 @@ async def _restart_query(
         started_at: str,
         *,
         job_id: str | None = None,
+        job_state: str | None = None,
+        job_result: dict[str, Any] | None = None,
     ) -> None:
-        invocations.append(
-            {
-                "tool": tool,
-                "arguments": arguments,
-                "started_at": started_at,
-                "completed_at": datetime.now(timezone.utc).isoformat(),
-                "outcome": "succeeded",
-                "job_id": job_id,
-            }
-        )
+        item = {
+            "tool": tool,
+            "arguments": arguments,
+            "started_at": started_at,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+            "outcome": "succeeded",
+            "job_id": job_id,
+        }
+        if tool == "cad_get_job":
+            item["job_state"] = job_state
+            item["job_result"] = job_result
+        invocations.append(item)
 
     async with client_factory(args.endpoint, auth=token, timeout=120) as client:
         started_at = datetime.now(timezone.utc).isoformat()

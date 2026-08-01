@@ -1250,6 +1250,7 @@ def validate(root: Path) -> None:
                 no_effect_db,
                 device_id=evidence["public_path"]["device_id"],
                 implementation_commit=implementation_commit,
+                finalized_at=evidence["finalization"]["finalized_at"],
             )
         except ValueError as error:
             raise ValueError(f"Drawing {name.upper()}: {error}") from error
