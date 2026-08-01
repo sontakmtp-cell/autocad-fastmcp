@@ -7,6 +7,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,57 @@ if os.name == "nt":
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SECTIONS = ("nodes", "relations", "contours", "features", "issues", "evidence")
+SERVICE_UNIT = "autocad-mcp-phase4.service"
+WRITE_TOOLS = {
+    "cad_commit",
+    "cad_commit_rollback",
+    "cad_control_workflow",
+    "cad_prepare_program",
+    "cad_preview",
+    "cad_preview_rollback",
+    "cad_start_workflow",
+}
+_SHA256_RE = re.compile(r"sha256:[0-9a-f]{64}")
+_FRACTIONAL_SECONDS = re.compile(r"(\.\d{1,6})\d+")
+_GATEWAY_PROCESS_KEYS = {
+    "executable",
+    "executable_sha256",
+    "process_id",
+    "release_commit",
+    "service",
+    "working_directory",
+}
+_DESKTOP_AGENT_KEYS = {
+    "executable",
+    "executable_sha256",
+    "process_id",
+    "standalone",
+    "started_at",
+}
+_AUTOCAD_PROCESS_KEYS = {
+    "edition",
+    "executable",
+    "file_version",
+    "host_family",
+    "process_id",
+    "product",
+    "release_year",
+    "series",
+}
+_AGENT_SESSION_KEYS = {
+    "agent_version",
+    "connected_at",
+    "device_id",
+    "managed_host",
+    "protocol_version",
+    "session_id",
+}
+_CLAIMED_SERVICE_KEYS = (
+    "gateway_service_record",
+    "gateway_previous_process_confirmed_exited",
+    "gateway_service",
+    "old_gateway_process_exit",
+)
 
 
 def _payload(result: Any) -> Any:
@@ -90,6 +142,234 @@ def _snapshot_digest(snapshot: dict[str, Any]) -> str:
         snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
     return "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def _parse_timestamp(value: object, label: str) -> datetime:
+    if not isinstance(value, str):
+        raise ValueError(f"{label}: timestamp is required")
+    text = _FRACTIONAL_SECONDS.sub(r"\1", value.replace("Z", "+00:00"))
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError as error:
+        raise ValueError(f"{label}: invalid timestamp") from error
+    if parsed.tzinfo is None:
+        raise ValueError(f"{label}: timestamp must be timezone-aware")
+    return parsed
+
+
+def _run_raw_command(command: list[str], timeout: int = 30) -> dict[str, Any]:
+    completed = subprocess.run(
+        command, capture_output=True, text=True, timeout=timeout
+    )
+    return {
+        "command": list(command),
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+        "exit_code": completed.returncode,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _parse_systemctl_properties(stdout: str) -> dict[str, str]:
+    properties: dict[str, str] = {}
+    for line in stdout.splitlines():
+        if "=" in line:
+            key, _, value = line.partition("=")
+            properties[key] = value
+    return properties
+
+
+def _derive_gateway_identity(identity: dict[str, Any]) -> dict[str, Any]:
+    if identity.get("schema_version") != "cad.phase10-live-identity/1":
+        raise ValueError("identity capture schema_version is invalid")
+    commands = identity.get("commands")
+    if not isinstance(commands, list) or not commands:
+        raise ValueError("identity capture contains no raw commands")
+    records: dict[tuple[str, ...], dict[str, Any]] = {}
+    for record in commands:
+        if not isinstance(record, dict) or not isinstance(
+            record.get("command"), list
+        ):
+            raise ValueError("identity capture command record is invalid")
+        records[tuple(record["command"])] = record
+
+    def find(prefix: tuple[str, ...]) -> dict[str, Any]:
+        for command, record in records.items():
+            if command[: len(prefix)] == prefix:
+                return record
+        raise ValueError(
+            f"identity capture is missing raw command {' '.join(prefix)!r}"
+        )
+
+    service = identity.get("service") or SERVICE_UNIT
+    systemctl = find(("systemctl", "show"))
+    if systemctl.get("exit_code") != 0:
+        raise ValueError("systemctl show failed; service identity is unavailable")
+    properties = _parse_systemctl_properties(systemctl.get("stdout", ""))
+    required_properties = {
+        "Id",
+        "ActiveState",
+        "SubState",
+        "MainPID",
+        "ExecMainStartTimestampMonotonic",
+        "WorkingDirectory",
+        "ExecStart",
+    }
+    if not required_properties <= set(properties):
+        raise ValueError("systemctl show output is incomplete")
+    if properties.get("Id") != service:
+        raise ValueError(
+            f"systemctl reports service {properties.get('Id')!r}, expected {service!r}"
+        )
+    try:
+        pid = int(properties["MainPID"])
+    except (TypeError, ValueError):
+        raise ValueError("systemctl MainPID is not an integer") from None
+    if pid <= 0:
+        raise ValueError("systemctl MainPID is not running")
+    properties["MainPID"] = pid
+
+    stat = find(("awk",))
+    if stat.get("exit_code") != 0 or f"/proc/{pid}/stat" not in tuple(
+        stat.get("command", [])
+    ):
+        raise ValueError("proc start identity was not read from the service PID")
+    start_identity = stat.get("stdout", "").strip()
+    if not start_identity.isdigit():
+        raise ValueError("proc start identity is unavailable")
+
+    exe = find(("readlink",))
+    executable = exe.get("stdout", "").strip()
+    if exe.get("exit_code") != 0 or not executable.startswith("/"):
+        raise ValueError("proc executable identity is unavailable")
+    if f"/proc/{pid}/exe" not in tuple(exe.get("command", [])):
+        raise ValueError("proc executable was not read from the service PID")
+
+    digest = find(("sha256sum",))
+    if digest.get("exit_code") != 0:
+        raise ValueError("executable hash command failed")
+    fields = digest.get("stdout", "").split()
+    raw_hash = fields[0] if fields else ""
+    if re.fullmatch(r"[0-9a-f]{64}", raw_hash):
+        executable_hash = "sha256:" + raw_hash
+    elif _SHA256_RE.fullmatch(raw_hash):
+        executable_hash = raw_hash
+    else:
+        raise ValueError("executable hash is not a sha256 digest")
+
+    release = find(("git", "-C"))
+    if release.get("exit_code") != 0:
+        raise ValueError("git rev-parse failed in the service working directory")
+    commit = release.get("stdout", "").strip()
+    if not re.fullmatch(r"[0-9a-f]{40}", commit):
+        raise ValueError("deployed commit identity is invalid")
+
+    exit_probe: dict[str, Any] | None = None
+    for record in commands:
+        command = tuple(record.get("command", []))
+        if command and command[0] == "test":
+            if record.get("exit_code") != 0:
+                raise ValueError("old Gateway process absence probe failed")
+            exit_probe = {"source": "procfs", "command": list(command)}
+            break
+    return {
+        "gateway_pid": pid,
+        "gateway_service_record": {
+            "source": "systemctl_show",
+            "properties": properties,
+            "process": {
+                "source": "procfs",
+                "pid": pid,
+                "start_identity": start_identity,
+                "executable": executable,
+                "executable_sha256": executable_hash,
+            },
+            "release": {
+                "source": "git_rev_parse",
+                "working_directory": properties.get("WorkingDirectory", ""),
+                "commit": commit,
+            },
+        },
+        "exit_probe": exit_probe,
+    }
+
+
+def _reject_claimed_service_records(
+    process: dict[str, Any], label: str
+) -> None:
+    claimed = sorted(key for key in _CLAIMED_SERVICE_KEYS if key in process)
+    if claimed:
+        raise ValueError(
+            f"{label}: caller-supplied process JSON claims {claimed}; "
+            "service/process identity must come from a raw identity capture"
+        )
+
+
+def _validate_runtime_identity(
+    identity: dict[str, Any],
+    *,
+    device_id: str,
+    implementation_commit: str,
+) -> None:
+    for name, keys in (
+        ("gateway_process", _GATEWAY_PROCESS_KEYS),
+        ("desktop_agent_process", _DESKTOP_AGENT_KEYS),
+        ("autocad_process", _AUTOCAD_PROCESS_KEYS),
+        ("agent_session", _AGENT_SESSION_KEYS),
+    ):
+        value = identity.get(name)
+        if not isinstance(value, dict) or set(value) != keys:
+            raise ValueError(f"runtime identity {name} is incomplete")
+    gateway = identity["gateway_process"]
+    desktop = identity["desktop_agent_process"]
+    autocad = identity["autocad_process"]
+    session = identity["agent_session"]
+    if not isinstance(gateway["process_id"], int) or gateway["process_id"] <= 0:
+        raise ValueError("runtime identity gateway process_id is invalid")
+    if (
+        not isinstance(gateway["executable"], str)
+        or not gateway["executable"].startswith("/")
+    ):
+        raise ValueError("runtime identity gateway executable is invalid")
+    if not _SHA256_RE.fullmatch(gateway["executable_sha256"]):
+        raise ValueError("runtime identity gateway executable hash is invalid")
+    if gateway["service"] != SERVICE_UNIT:
+        raise ValueError("runtime identity gateway service is unexpected")
+    if not re.fullmatch(r"[0-9a-f]{40}", gateway["release_commit"]):
+        raise ValueError("runtime identity gateway release commit is invalid")
+    if gateway["release_commit"] != implementation_commit:
+        raise ValueError("runtime identity gateway commit differs from capture")
+    if (
+        not isinstance(gateway["working_directory"], str)
+        or implementation_commit[:7] not in gateway["working_directory"]
+    ):
+        raise ValueError("runtime identity gateway working directory is invalid")
+    if not isinstance(desktop["process_id"], int) or desktop["process_id"] <= 0:
+        raise ValueError("runtime identity desktop process_id is invalid")
+    if not isinstance(desktop["executable"], str) or not desktop["executable"]:
+        raise ValueError("runtime identity desktop executable is invalid")
+    if not _SHA256_RE.fullmatch(desktop["executable_sha256"]):
+        raise ValueError("runtime identity desktop executable hash is invalid")
+    if desktop.get("standalone") is not True:
+        raise ValueError("runtime identity desktop agent is not standalone")
+    _parse_timestamp(desktop["started_at"], "runtime identity desktop started_at")
+    if not isinstance(autocad["process_id"], int) or autocad["process_id"] <= 0:
+        raise ValueError("runtime identity autocad process_id is invalid")
+    if not isinstance(autocad["executable"], str) or not autocad["executable"]:
+        raise ValueError("runtime identity autocad executable is invalid")
+    if session.get("device_id") != device_id:
+        raise ValueError("runtime identity session device differs from capture")
+    if not isinstance(session.get("session_id"), str) or not session["session_id"]:
+        raise ValueError("runtime identity session_id is missing")
+    if session.get("protocol_version") != "cad.agent/2":
+        raise ValueError("runtime identity protocol version is unexpected")
+    managed_host = session.get("managed_host")
+    if (
+        not isinstance(managed_host, dict)
+        or managed_host.get("runtime_id") != "managed_dotnet"
+    ):
+        raise ValueError("runtime identity managed host is not managed_dotnet")
+    _parse_timestamp(session["connected_at"], "runtime identity session connected_at")
 
 
 def _service_restart_gates(
@@ -488,18 +768,22 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
 
     drawing = args.drawing.resolve()
     process_identity = json.loads(args.process_identity.read_text(encoding="utf-8"))
-    required_identity = {
-        "gateway_process",
-        "desktop_agent_process",
-        "autocad_process",
-        "agent_session",
+    no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
+    implementation_commit = _git_head()
+    _validate_runtime_identity(
+        process_identity,
+        device_id=args.device_id,
+        implementation_commit=implementation_commit,
+    )
+    db_sessions = {
+        item.get("session_id")
+        for item in no_effect_db.get("agent_sessions", [])
+        if isinstance(item, dict)
     }
-    if set(process_identity) != required_identity:
+    if process_identity["agent_session"]["session_id"] not in db_sessions:
         raise ValueError(
-            f"process identity must contain exactly {sorted(required_identity)}"
+            "process identity session is absent from the no-effect DB evidence"
         )
-    if process_identity["agent_session"].get("device_id") != args.device_id:
-        raise ValueError("process identity device does not match --device-id")
     expected_name = f"phase10-drawing-{args.fixture}.dwg"
     if drawing.name.lower() != expected_name:
         raise ValueError(f"expected {expected_name}")
@@ -590,6 +874,51 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
     gates = _fixture_gates(args.fixture, sections)
     nodes = sections["nodes"]["items"]
     runtime = before["job"].get("runtime_evidence", {}).get("runtime", {})
+    write_tools_invoked = sorted(
+        tool for tool in invoked_tools if tool in WRITE_TOOLS
+    )
+    db_events = no_effect_db.get("retrospective_no_write_events")
+    anchor_jobs = no_effect_db.get("anchor_jobs", [])
+    write_snapshot = no_effect_db.get("write_snapshot", {})
+    pre_snapshot = (
+        no_effect_db.get("restart_comparison", {}).get(
+            "pre_restart_write_snapshot", {}
+        )
+        if isinstance(no_effect_db.get("restart_comparison"), dict)
+        else {}
+    )
+    no_write_events_in_window = db_events == []
+    anchor_jobs_read_only = (
+        isinstance(anchor_jobs, list)
+        and bool(anchor_jobs)
+        and all(
+            isinstance(item, dict)
+            and item.get("effect_class") == "read"
+            and item.get("state") == "succeeded"
+            for item in anchor_jobs
+        )
+    )
+    write_snapshot_unchanged = (
+        isinstance(write_snapshot, dict)
+        and isinstance(write_snapshot.get("tables"), dict)
+        and isinstance(pre_snapshot, dict)
+        and write_snapshot.get("tables") == pre_snapshot.get("tables")
+        and write_snapshot.get("sha256")
+        == _snapshot_digest(write_snapshot.get("tables"))
+        and pre_snapshot.get("sha256")
+        == _snapshot_digest(pre_snapshot.get("tables"))
+    )
+    no_write_requested = (
+        write_tools_invoked == []
+        and no_write_events_in_window
+        and anchor_jobs_read_only
+    )
+    no_cad_effect_attempted = (
+        no_write_requested
+        and hash_before == hash_after
+        and revision_before == revision_after
+        and write_snapshot_unchanged
+    )
     gates.update(
         {
             "dwg_file_hash_unchanged": hash_before == hash_after,
@@ -606,8 +935,12 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
             and all(item.get("source_runtime") == "managed_dotnet" for item in nodes),
             "source_capabilities_present": bool(nodes)
             and all(item.get("source_capabilities") for item in nodes),
-            "no_write_requested": True,
-            "no_cad_effect_attempted": True,
+            "no_write_events_in_window": no_write_events_in_window,
+            "anchor_jobs_read_only": anchor_jobs_read_only,
+            "write_snapshot_unchanged": write_snapshot_unchanged,
+            "no_write_requested": no_write_requested,
+            "no_cad_effect_attempted": no_cad_effect_attempted,
+            "runtime_identity_bound": True,
         }
     )
     if not all(gates.values()):
@@ -634,7 +967,7 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
             "device_id": args.device_id,
             "standalone_desktop_agent": True,
             "invoked_tools": invoked_tools,
-            "write_tools_invoked": [],
+            "write_tools_invoked": write_tools_invoked,
             "devices": devices,
         },
         "source": {
@@ -678,9 +1011,10 @@ async def _capture(args: argparse.Namespace, token: str) -> dict[str, Any]:
             "dwg_file_hash_unchanged": gates["dwg_file_hash_unchanged"],
             "document_revision_unchanged": gates["document_revision_unchanged"],
             "entity_count_unchanged": gates["entity_count_unchanged"],
-            "write_requested": False,
-            "cad_effect_attempted": False,
+            "write_requested": not no_write_requested,
+            "cad_effect_attempted": not no_cad_effect_attempted,
         },
+        "no_effect_db_binding": _db_evidence_binding(args.no_effect_db, no_effect_db),
         "gate_results": gates,
         "failures_retests": (
             [
@@ -713,6 +1047,48 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
     before = json.loads(args.before.read_text(encoding="utf-8"))
     process_before = json.loads(args.process_before.read_text(encoding="utf-8"))
     process_after = json.loads(args.process_after.read_text(encoding="utf-8"))
+    _reject_claimed_service_records(process_before, "process-before")
+    _reject_claimed_service_records(process_after, "process-after")
+    identity_before = json.loads(args.identity_before.read_text(encoding="utf-8"))
+    identity_after = json.loads(args.identity_after.read_text(encoding="utf-8"))
+    if (
+        _parse_timestamp(
+            identity_before.get("captured_at"), "identity-before captured_at"
+        )
+        >= _parse_timestamp(
+            identity_after.get("captured_at"), "identity-after captured_at"
+        )
+    ):
+        raise ValueError("identity-after was not captured after identity-before")
+    derived_before = _derive_gateway_identity(identity_before)
+    derived_after = _derive_gateway_identity(identity_after)
+    if derived_after["exit_probe"] is None:
+        raise ValueError("identity-after did not probe the old Gateway process")
+    old_pid = derived_before["gateway_pid"]
+    exit_command = tuple(derived_after["exit_probe"].get("command", []))
+    if f"/proc/{old_pid}/stat" not in exit_command:
+        raise ValueError(
+            "old process exit probe does not target the pre-restart Gateway PID"
+        )
+    old_start = derived_before["gateway_service_record"]["process"]["start_identity"]
+    process_before = {
+        **process_before,
+        "gateway_pid": old_pid,
+        "gateway_service_record": derived_before["gateway_service_record"],
+    }
+    process_after = {
+        **process_after,
+        "gateway_pid": derived_after["gateway_pid"],
+        "gateway_service_record": derived_after["gateway_service_record"],
+        "old_gateway_process_exit": {
+            "source": "procfs",
+            "pid": old_pid,
+            "start_identity": old_start,
+            "proc_stat_after": None,
+            "probe_exit_code": 0,
+            "command": list(exit_command),
+        },
+    }
     no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     scene = before["scene"]
     scene_id = scene["scene_id"]
@@ -804,6 +1180,8 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
         "scene_digest": scene["scene_digest"],
         "gateway_process_before": process_before,
         "gateway_process_after": process_after,
+        "identity_capture_before": identity_before,
+        "identity_capture_after": identity_after,
         "post_restart_sections": sections,
         "post_restart_summary_resource": resource,
         "no_effect_db_binding": _db_evidence_binding(
@@ -819,39 +1197,116 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
     }
 
 
+async def _capture_identity(args: argparse.Namespace, token: str) -> dict[str, Any]:
+    import shutil
+
+    if shutil.which("systemctl") is None:
+        raise RuntimeError(
+            "systemctl is unavailable; capture-identity must run on the Gateway VM"
+        )
+    service = args.service or SERVICE_UNIT
+    systemctl = _run_raw_command(
+        [
+            "systemctl",
+            "show",
+            "--no-pager",
+            "--property=Id,ActiveState,SubState,MainPID,"
+            "ExecMainStartTimestampMonotonic,WorkingDirectory,ExecStart",
+            service,
+        ]
+    )
+    if systemctl["exit_code"] != 0:
+        raise RuntimeError("systemctl show failed on the Gateway VM")
+    properties = _parse_systemctl_properties(systemctl["stdout"])
+    try:
+        pid = int(properties["MainPID"])
+    except (KeyError, TypeError, ValueError):
+        raise RuntimeError("systemctl MainPID is missing or invalid") from None
+    if pid <= 0:
+        raise RuntimeError("Gateway service is not running (MainPID=0)")
+    working_directory = properties.get("WorkingDirectory", "")
+    if not working_directory:
+        raise RuntimeError("systemctl WorkingDirectory is missing")
+    executable = _run_raw_command(["readlink", "-f", f"/proc/{pid}/exe"])
+    if executable["exit_code"] != 0:
+        raise RuntimeError("readlink of /proc/<pid>/exe failed on the Gateway VM")
+    records = [systemctl, executable]
+    records.append(_run_raw_command(["sha256sum", executable["stdout"].strip()]))
+    records.append(
+        _run_raw_command(
+            ["git", "-C", working_directory, "rev-parse", "HEAD"]
+        )
+    )
+    records.append(_run_raw_command(["awk", "{print $22}", f"/proc/{pid}/stat"]))
+    if args.old_pid is not None:
+        probe = _run_raw_command(["test", "!", "-e", f"/proc/{args.old_pid}/stat"])
+        if probe["exit_code"] != 0:
+            raise RuntimeError("old Gateway process is still alive on the VM")
+        records.append(probe)
+    for record in records[1:]:
+        if record["exit_code"] != 0:
+            raise RuntimeError(
+                f"authoritative capture command failed: {record['command'][0]}"
+            )
+    return {
+        "schema_version": "cad.phase10-live-identity/1",
+        "service": service,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "capture_command": args.capture_command,
+        "operator": args.operator,
+        "commands": records,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("action", choices=("capture", "restart-query"))
+    parser.add_argument(
+        "action", choices=("capture", "capture-identity", "restart-query")
+    )
     parser.add_argument("--endpoint", default="https://cad.kythuatvang.com/mcp")
     parser.add_argument("--device-id", required=True)
     parser.add_argument("--token-file", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--operator", default="local-operator")
+    parser.add_argument("--service", default=SERVICE_UNIT)
+    parser.add_argument("--old-pid", type=int)
     parser.add_argument("--fixture", choices=("a", "b", "c"))
     parser.add_argument("--drawing", type=Path)
     parser.add_argument("--process-identity", type=Path)
     parser.add_argument("--before", type=Path)
     parser.add_argument("--process-before", type=Path)
     parser.add_argument("--process-after", type=Path)
+    parser.add_argument("--identity-before", type=Path)
+    parser.add_argument("--identity-after", type=Path)
     parser.add_argument("--no-effect-db", type=Path)
     args = parser.parse_args()
     if args.action == "capture" and any(
         value is None
-        for value in (args.fixture, args.drawing, args.process_identity)
+        for value in (
+            args.fixture,
+            args.drawing,
+            args.process_identity,
+            args.no_effect_db,
+        )
     ):
-        parser.error("capture requires --fixture, --drawing and --process-identity")
+        parser.error(
+            "capture requires --fixture, --drawing, --process-identity "
+            "and --no-effect-db"
+        )
     if args.action == "restart-query" and any(
         value is None
         for value in (
             args.before,
             args.process_before,
             args.process_after,
+            args.identity_before,
+            args.identity_after,
             args.no_effect_db,
         )
     ):
         parser.error(
-            "restart-query requires --before, --process-before, --process-after "
-            "and --no-effect-db"
+            "restart-query requires --before, --process-before, --process-after, "
+            "--identity-before, --identity-after and --no-effect-db"
         )
     command = [
         "python scripts/phase10-live-public-evidence.py",
@@ -868,24 +1323,32 @@ def main() -> None:
                 f"--fixture {args.fixture}",
                 f"--drawing {args.drawing}",
                 f"--process-identity {args.process_identity}",
+                f"--no-effect-db {args.no_effect_db}",
             )
         )
+    elif args.action == "capture-identity":
+        command.append(f"--service {args.service}")
+        if args.old_pid is not None:
+            command.append(f"--old-pid {args.old_pid}")
     else:
         command.extend(
             (
                 f"--before {args.before}",
                 f"--process-before {args.process_before}",
                 f"--process-after {args.process_after}",
+                f"--identity-before {args.identity_before}",
+                f"--identity-after {args.identity_after}",
                 f"--no-effect-db {args.no_effect_db}",
             )
         )
     args.capture_command = " ".join(command)
     token = json.loads(args.token_file.read_text(encoding="utf-8"))["access_token"]
-    result = asyncio.run(
-        _capture(args, token)
-        if args.action == "capture"
-        else _restart_query(args, token)
-    )
+    runner = {
+        "capture": _capture,
+        "capture-identity": _capture_identity,
+        "restart-query": _restart_query,
+    }[args.action]
+    result = asyncio.run(runner(args, token))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(result, indent=2, sort_keys=True) + "\n",

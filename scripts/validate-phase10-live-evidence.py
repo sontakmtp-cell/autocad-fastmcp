@@ -4,10 +4,20 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
+
+_CAPTURE_SCRIPT = Path(__file__).resolve().parent / "phase10-live-public-evidence.py"
+_SPEC = importlib.util.spec_from_file_location(
+    "phase10_live_public_evidence", _CAPTURE_SCRIPT
+)
+assert _SPEC and _SPEC.loader
+CAPTURE = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(CAPTURE)
 
 
 FIXTURES = ("a", "b", "c")
@@ -91,10 +101,16 @@ def _digest(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+_FRACTIONAL_SECONDS = re.compile(r"(\.\d{1,6})\d+")
+
+
 def _time(value: object, label: str) -> datetime:
     _require(isinstance(value, str), f"{label}: timestamp is required")
+    # Python 3.10 rejects fractional seconds with more than six digits;
+    # truncate any RFC 3339 fraction to microseconds before parsing.
+    text = _FRACTIONAL_SECONDS.sub(r"\1", value.replace("Z", "+00:00"))
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(text)
     except ValueError as error:
         raise ValueError(f"{label}: invalid timestamp") from error
     _require(parsed.tzinfo is not None, f"{label}: timestamp must be timezone-aware")
@@ -588,6 +604,52 @@ def _validate_gateway_restart_processes(
     return before, after
 
 
+def _validate_restart_raw_captures(
+    restart: dict, before: dict, after: dict
+) -> None:
+    identity_before = restart.get("identity_capture_before")
+    identity_after = restart.get("identity_capture_after")
+    _require(
+        isinstance(identity_before, dict) and isinstance(identity_after, dict),
+        "Gateway restart: raw identity captures are required",
+    )
+    derived_before = CAPTURE._derive_gateway_identity(identity_before)
+    derived_after = CAPTURE._derive_gateway_identity(identity_after)
+    _require(
+        derived_before["gateway_service_record"]
+        == before.get("gateway_service_record"),
+        "Gateway restart: before service record does not match raw capture",
+    )
+    _require(
+        derived_after["gateway_service_record"]
+        == after.get("gateway_service_record"),
+        "Gateway restart: after service record does not match raw capture",
+    )
+    _require(
+        before.get("gateway_pid") == derived_before["gateway_pid"]
+        and after.get("gateway_pid") == derived_after["gateway_pid"],
+        "Gateway restart: gateway PID does not match raw capture",
+    )
+    exit_proof = after.get("old_gateway_process_exit")
+    exit_probe = derived_after.get("exit_probe")
+    _require(
+        isinstance(exit_proof, dict)
+        and isinstance(exit_probe, dict)
+        and exit_probe.get("command") == exit_proof.get("command")
+        and exit_proof.get("pid") == derived_before["gateway_pid"],
+        "Gateway restart: old process exit probe does not match raw capture",
+    )
+    _require(
+        CAPTURE._parse_timestamp(
+            identity_before.get("captured_at"), "identity-before captured_at"
+        )
+        < CAPTURE._parse_timestamp(
+            identity_after.get("captured_at"), "identity-after captured_at"
+        ),
+        "Gateway restart: raw identity capture ordering is invalid",
+    )
+
+
 def validate(root: Path) -> None:
     fixture_root = root / "fixtures" / "phase10" / "live"
     evidence_root = root / "docs" / "architecture" / "evidence"
@@ -606,6 +668,7 @@ def validate(root: Path) -> None:
     _require(set(by_name) == set(FIXTURES), "fixtures must be exactly A, B and C")
 
     fixture_evidence: dict[str, dict] = {}
+    fixture_sessions: dict[str, str] = {}
     baseline_commit = implementation_commit = None
     for name in FIXTURES:
         row = by_name[name]
@@ -720,7 +783,81 @@ def validate(root: Path) -> None:
             ],
             f"{label}: public observation identities/tools are incomplete",
         )
-        _time(evidence.get("captured_at"), label)
+        captured_at = _time(evidence.get("captured_at"), label)
+        identity = evidence.get("runtime_identity")
+        _require(
+            isinstance(identity, dict),
+            f"{label}: runtime identity is required",
+        )
+        for part_name, value, keys in (
+            ("gateway_process", identity.get("gateway_process"),
+             CAPTURE._GATEWAY_PROCESS_KEYS),
+            ("desktop_agent_process", identity.get("desktop_agent_process"),
+             CAPTURE._DESKTOP_AGENT_KEYS),
+            ("autocad_process", identity.get("autocad_process"),
+             CAPTURE._AUTOCAD_PROCESS_KEYS),
+            ("agent_session", identity.get("agent_session"),
+             CAPTURE._AGENT_SESSION_KEYS),
+        ):
+            _require(
+                isinstance(value, dict) and set(value) == keys,
+                f"{label}: runtime identity {part_name} is incomplete",
+            )
+        gateway = identity["gateway_process"]
+        desktop = identity["desktop_agent_process"]
+        autocad = identity["autocad_process"]
+        session = identity["agent_session"]
+        _require(
+            isinstance(gateway["process_id"], int)
+            and gateway["process_id"] > 0
+            and isinstance(gateway["executable"], str)
+            and gateway["executable"].startswith("/")
+            and CAPTURE._SHA256_RE.fullmatch(gateway["executable_sha256"])
+            and gateway["service"] == CAPTURE.SERVICE_UNIT
+            and re.fullmatch(r"[0-9a-f]{40}", gateway["release_commit"])
+            and gateway["release_commit"] == evidence["implementation_commit"]
+            and isinstance(gateway["working_directory"], str)
+            and evidence["implementation_commit"][:7]
+            in gateway["working_directory"],
+            f"{label}: gateway runtime identity is not cross-bound",
+        )
+        _require(
+            isinstance(desktop["process_id"], int)
+            and desktop["process_id"] > 0
+            and isinstance(desktop["executable"], str)
+            and bool(desktop["executable"])
+            and CAPTURE._SHA256_RE.fullmatch(desktop["executable_sha256"])
+            and desktop.get("standalone") is True,
+            f"{label}: desktop agent runtime identity is invalid",
+        )
+        _require(
+            isinstance(autocad["process_id"], int)
+            and autocad["process_id"] > 0
+            and isinstance(autocad["executable"], str)
+            and bool(autocad["executable"]),
+            f"{label}: AutoCAD runtime identity is invalid",
+        )
+        _require(
+            session.get("device_id") == fixture_device
+            and isinstance(session.get("session_id"), str)
+            and bool(session["session_id"])
+            and session.get("protocol_version") == "cad.agent/2"
+            and isinstance(session.get("managed_host"), dict)
+            and session["managed_host"].get("runtime_id") == "managed_dotnet",
+            f"{label}: agent session runtime identity is invalid",
+        )
+        _require(
+            _time(
+                session["connected_at"], f"{label}: session connected_at"
+            )
+            <= captured_at
+            and _time(
+                desktop["started_at"], f"{label}: desktop started_at"
+            )
+            <= captured_at,
+            f"{label}: runtime identity timestamps are not before capture",
+        )
+        fixture_sessions[name] = session["session_id"]
         if baseline_commit is None:
             baseline_commit = evidence["baseline_commit"]
             implementation_commit = evidence["implementation_commit"]
@@ -865,6 +1002,21 @@ def validate(root: Path) -> None:
     before, after = _validate_gateway_restart_processes(
         before, after, implementation_commit
     )
+    _validate_restart_raw_captures(restart, before, after)
+    desktop_c = drawing_c.get("runtime_identity", {}).get(
+        "desktop_agent_process", {}
+    )
+    _require(
+        isinstance(desktop_c, dict)
+        and before.get("desktop_agent_pid") == after.get("desktop_agent_pid")
+        and before.get("desktop_agent_executable")
+        == after.get("desktop_agent_executable")
+        == desktop_c.get("executable")
+        and before.get("desktop_agent_sha256")
+        == after.get("desktop_agent_sha256")
+        == desktop_c.get("executable_sha256"),
+        "Gateway restart: standalone Agent identity differs from Drawing C",
+    )
     _require(
         before.get("agent_session_id") != after.get("agent_session_id")
         and all(
@@ -984,6 +1136,15 @@ def validate(root: Path) -> None:
         and scope.get("device_id") == drawing_c["public_path"].get("device_id")
         and set(scope.get("scene_ids", [])) == expected_scene_ids,
         "No-effect DB: owner/device/scene identity is incomplete",
+    )
+    db_session_ids = {
+        item.get("session_id")
+        for item in no_effect_db.get("agent_sessions", [])
+        if isinstance(item, dict)
+    }
+    _require(
+        set(fixture_sessions.values()) <= db_session_ids,
+        "No-effect DB: fixture runtime sessions are absent from session history",
     )
     window_start = _time(scope.get("window_start"), "No-effect DB window start")
     window_end = _time(scope.get("window_end"), "No-effect DB window end")

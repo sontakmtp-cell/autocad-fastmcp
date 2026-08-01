@@ -64,6 +64,97 @@ def _save(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value), encoding="utf-8")
 
 
+def _identity_capture_from_record(
+    record: dict, *, captured_at: str, old_pid: int | None = None
+) -> dict:
+    properties = record["properties"]
+    process = record["process"]
+    release = record["release"]
+    pid = process["pid"]
+    executable = process["executable"]
+    systemctl_stdout = "\n".join(
+        (
+            f"Id={properties['Id']}",
+            f"ActiveState={properties['ActiveState']}",
+            f"SubState={properties['SubState']}",
+            f"MainPID={properties['MainPID']}",
+            f"ExecMainStartTimestampMonotonic="
+            f"{properties['ExecMainStartTimestampMonotonic']}",
+            f"WorkingDirectory={properties['WorkingDirectory']}",
+            f"ExecStart={properties['ExecStart']}",
+            "",
+        )
+    )
+    commands = [
+        {
+            "command": [
+                "systemctl",
+                "show",
+                "--no-pager",
+                "--property=Id,ActiveState,SubState,MainPID,"
+                "ExecMainStartTimestampMonotonic,WorkingDirectory,ExecStart",
+                properties["Id"],
+            ],
+            "stdout": systemctl_stdout,
+            "stderr": "",
+            "exit_code": 0,
+            "captured_at": captured_at,
+        },
+        {
+            "command": ["readlink", "-f", f"/proc/{pid}/exe"],
+            "stdout": executable + "\n",
+            "stderr": "",
+            "exit_code": 0,
+            "captured_at": captured_at,
+        },
+        {
+            "command": ["sha256sum", executable],
+            "stdout": f"{process['executable_sha256'][7:]}  {executable}\n",
+            "stderr": "",
+            "exit_code": 0,
+            "captured_at": captured_at,
+        },
+        {
+            "command": [
+                "git",
+                "-C",
+                release["working_directory"],
+                "rev-parse",
+                "HEAD",
+            ],
+            "stdout": release["commit"] + "\n",
+            "stderr": "",
+            "exit_code": 0,
+            "captured_at": captured_at,
+        },
+        {
+            "command": ["awk", "{print $22}", f"/proc/{pid}/stat"],
+            "stdout": process["start_identity"] + "\n",
+            "stderr": "",
+            "exit_code": 0,
+            "captured_at": captured_at,
+        },
+    ]
+    if old_pid is not None:
+        commands.append(
+            {
+                "command": ["test", "!", "-e", f"/proc/{old_pid}/stat"],
+                "stdout": "",
+                "stderr": "",
+                "exit_code": 0,
+                "captured_at": captured_at,
+            }
+        )
+    return {
+        "schema_version": "cad.phase10-live-identity/1",
+        "service": properties["Id"],
+        "captured_at": captured_at,
+        "capture_command": "capture-identity",
+        "operator": "test",
+        "commands": commands,
+    }
+
+
 def _upgrade_restart_artifact(root: Path) -> None:
     path, value = _evidence(
         root, "phase10-live-gateway-restart-20260730.json"
@@ -129,7 +220,17 @@ def _upgrade_restart_artifact(root: Path) -> None:
         "start_identity": "1000",
         "proc_stat_after": None,
         "probe_exit_code": 0,
+        "command": ["test", "!", "-e", f"/proc/{before['gateway_pid']}/stat"],
     }
+    value["identity_capture_before"] = _identity_capture_from_record(
+        before["gateway_service_record"],
+        captured_at=before.get("captured_at") or value["captured_at"],
+    )
+    value["identity_capture_after"] = _identity_capture_from_record(
+        after["gateway_service_record"],
+        captured_at=after.get("captured_at") or value["captured_at"],
+        old_pid=before["gateway_pid"],
+    )
     after.pop("gateway_previous_process_confirmed_exited", None)
     gates = {
         "authoritative_gateway_service": True,
@@ -184,6 +285,33 @@ def _tamper(root: Path, case: str) -> None:
             for item in value["scene"]["sections"]["features"]["items"]
             if item["feature_type"] != "repeated_hole_pattern"
         ]
+    elif case in {
+        "identity_hash",
+        "identity_pid",
+        "identity_session",
+        "identity_commit",
+        "identity_time",
+        "capture_time",
+        "source_revision",
+    }:
+        path, value = _fixture(root, "c" if case == "identity_hash" else "a")
+        identity = value["runtime_identity"]
+        if case == "identity_hash":
+            identity["desktop_agent_process"]["executable_sha256"] = (
+                "sha256:" + "0" * 64
+            )
+        elif case == "identity_pid":
+            identity["autocad_process"]["process_id"] = 0
+        elif case == "identity_session":
+            identity["agent_session"]["session_id"] = "session-tampered"
+        elif case == "identity_commit":
+            identity["gateway_process"]["release_commit"] = "d" * 40
+        elif case == "identity_time":
+            identity["agent_session"]["connected_at"] = "2027-01-01T00:00:00Z"
+        elif case == "capture_time":
+            value["captured_at"] = "2026-01-01T00:00:00Z"
+        else:
+            value["source"]["document_revision_before"] = "999999"
     elif case == "scene_identity":
         path, value = _fixture(root, "b")
         value["scene"]["scene_id"] = "scn_tampered"
@@ -208,6 +336,21 @@ def _tamper(root: Path, case: str) -> None:
             value["gateway_process_after"]["gateway_service_record"]["process"][
                 "start_identity"
             ] = "1000"
+    elif case in {"restart_raw", "restart_raw_service"}:
+        path, value = _evidence(
+            root, "phase10-live-gateway-restart-20260730.json"
+        )
+        if case == "restart_raw":
+            value["identity_capture_after"]["captured_at"] = (
+                "2020-01-01T00:00:00Z"
+            )
+        else:
+            systemctl = value["identity_capture_before"]["commands"][0]
+            systemctl["stdout"] = systemctl["stdout"].replace(
+                "Id=autocad-mcp-phase4.service",
+                "Id=other.service",
+                1,
+            )
     else:
         path, value = _evidence(
             root, "phase10-live-no-effect-db-20260730.json"
@@ -252,6 +395,23 @@ def test_validator_rejects_legacy_restart_boolean(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
+    "value",
+    (
+        "2026-07-30T07:31:14Z",
+        "2026-07-30T07:31:14+00:00",
+        "2026-07-30T07:31:14+07:00",
+        "2026-07-30T07:31:14.1Z",
+        "2026-07-30T07:31:14.123Z",
+        "2026-07-30T07:31:14.123456Z",
+        "2026-07-30T07:31:14.8026601Z",
+        "2026-07-30T07:31:14.802660123Z",
+    ),
+)
+def test_validator_time_accepts_rfc3339_fractional_seconds(value: str) -> None:
+    assert VALIDATOR._time(value, "timestamp").tzinfo is not None
+
+
+@pytest.mark.parametrize(
     ("case", "message"),
     (
         ("a_radius", "non-pattern circle exclusion"),
@@ -263,6 +423,15 @@ def test_validator_rejects_legacy_restart_boolean(tmp_path: Path) -> None:
         ("restart_pid", "process/start identities"),
         ("restart_exit", "old process exit"),
         ("restart_start", "process/start identities"),
+        ("restart_raw", "raw identity capture ordering"),
+        ("restart_raw_service", "reports service"),
+        ("identity_hash", "standalone Agent identity differs"),
+        ("identity_pid", "AutoCAD runtime identity is invalid"),
+        ("identity_session", "absent from session history"),
+        ("identity_commit", "gateway runtime identity is not cross-bound"),
+        ("identity_time", "not before capture"),
+        ("capture_time", "not before capture"),
+        ("source_revision", "source/scene no-effect binding"),
         ("db_anchor_owner", "anchor job is not cross-bound"),
         ("db_scene_binding", "scene record is not cross-bound"),
         ("db_snapshot", "durable no-write snapshot"),

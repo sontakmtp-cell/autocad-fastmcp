@@ -314,3 +314,168 @@ def test_public_query_rejects_partial_or_unbound_results(mutate: str) -> None:
         scene, sections, resource, devices, device_id=DEVICE
     )
     assert not all(gates.values())
+
+
+def _identity_capture(
+    pid: int,
+    start_identity: str,
+    monotonic: str,
+    *,
+    captured_at: str,
+    old_pid: int | None = None,
+) -> dict:
+    working_directory = f"/opt/releases/{COMMIT[:7]}/services/gateway"
+    executable = "/usr/bin/python3.12"
+    executable_hex = "b" * 64
+    systemctl_stdout = "\n".join(
+        (
+            "Id=autocad-mcp-phase4.service",
+            "ActiveState=active",
+            "SubState=running",
+            f"MainPID={pid}",
+            f"ExecMainStartTimestampMonotonic={monotonic}",
+            f"WorkingDirectory={working_directory}",
+            f"ExecStart={{ path={executable} ; argv[]={executable} app.py }}",
+            "",
+        )
+    )
+    commands = [
+        {
+            "command": [
+                "systemctl",
+                "show",
+                "--no-pager",
+                "--property=Id,ActiveState,SubState,MainPID,"
+                "ExecMainStartTimestampMonotonic,WorkingDirectory,ExecStart",
+                "autocad-mcp-phase4.service",
+            ],
+            "stdout": systemctl_stdout,
+            "stderr": "",
+            "exit_code": 0,
+            "captured_at": captured_at,
+        },
+        {
+            "command": ["readlink", "-f", f"/proc/{pid}/exe"],
+            "stdout": executable + "\n",
+            "stderr": "",
+            "exit_code": 0,
+            "captured_at": captured_at,
+        },
+        {
+            "command": ["sha256sum", executable],
+            "stdout": f"{executable_hex}  {executable}\n",
+            "stderr": "",
+            "exit_code": 0,
+            "captured_at": captured_at,
+        },
+        {
+            "command": ["git", "-C", working_directory, "rev-parse", "HEAD"],
+            "stdout": COMMIT + "\n",
+            "stderr": "",
+            "exit_code": 0,
+            "captured_at": captured_at,
+        },
+        {
+            "command": ["awk", "{print $22}", f"/proc/{pid}/stat"],
+            "stdout": start_identity + "\n",
+            "stderr": "",
+            "exit_code": 0,
+            "captured_at": captured_at,
+        },
+    ]
+    if old_pid is not None:
+        commands.append(
+            {
+                "command": ["test", "!", "-e", f"/proc/{old_pid}/stat"],
+                "stdout": "",
+                "stderr": "",
+                "exit_code": 0,
+                "captured_at": captured_at,
+            }
+        )
+    return {
+        "schema_version": "cad.phase10-live-identity/1",
+        "service": "autocad-mcp-phase4.service",
+        "captured_at": captured_at,
+        "capture_command": "capture-identity",
+        "operator": "test",
+        "commands": commands,
+    }
+
+
+def test_derive_gateway_identity_parses_raw_authoritative_output() -> None:
+    before = _identity_capture(
+        100,
+        "12345",
+        "1000",
+        captured_at="2026-07-30T00:00:00+00:00",
+    )
+    after = _identity_capture(
+        200,
+        "67890",
+        "2000",
+        captured_at="2026-07-30T00:01:00+00:00",
+        old_pid=100,
+    )
+    derived_before = MODULE._derive_gateway_identity(before)
+    derived_after = MODULE._derive_gateway_identity(after)
+    assert derived_before["gateway_pid"] == 100
+    assert derived_after["gateway_pid"] == 200
+    assert (
+        derived_before["gateway_service_record"]["process"]["start_identity"]
+        == "12345"
+    )
+    assert (
+        derived_before["gateway_service_record"]["process"]["executable_sha256"]
+        == "sha256:" + "b" * 64
+    )
+    assert (
+        derived_before["gateway_service_record"]["release"]["commit"] == COMMIT
+    )
+    assert derived_after["exit_probe"] is not None
+    assert f"/proc/100/stat" in tuple(derived_after["exit_probe"]["command"])
+
+
+def test_derive_rejects_incomplete_or_fabricated_raw_capture() -> None:
+    identity = _identity_capture(
+        100, "start", "1000", captured_at="2026-07-30T00:00:00+00:00"
+    )
+    identity["commands"][0]["stdout"] = (
+        "Id=other.service\nActiveState=active\nSubState=running\n"
+        "MainPID=100\nExecMainStartTimestampMonotonic=1000\n"
+        "WorkingDirectory=/opt/releases\nExecStart=x\n"
+    )
+    with pytest.raises(ValueError, match="reports service"):
+        MODULE._derive_gateway_identity(identity)
+
+    no_probe = _identity_capture(
+        200, "67890", "2000", captured_at="2026-07-30T00:01:00+00:00"
+    )
+    assert MODULE._derive_gateway_identity(no_probe)["exit_probe"] is None
+
+    tampered = _identity_capture(
+        100, "12345", "1000", captured_at="2026-07-30T00:00:00+00:00"
+    )
+    tampered["commands"][1]["stdout"] = "python\n"
+    with pytest.raises(ValueError, match="executable"):
+        MODULE._derive_gateway_identity(tampered)
+
+
+def test_restart_inputs_reject_caller_supplied_service_records() -> None:
+    process = {
+        "device_id": DEVICE,
+        "gateway_service_record": {"source": "systemctl_show"},
+    }
+    with pytest.raises(ValueError, match="caller-supplied"):
+        MODULE._reject_claimed_service_records(process, "process-before")
+
+    process = {
+        "device_id": DEVICE,
+        "old_gateway_process_exit": {"source": "procfs"},
+    }
+    with pytest.raises(ValueError, match="caller-supplied"):
+        MODULE._reject_claimed_service_records(process, "process-after")
+
+    assert MODULE._reject_claimed_service_records(
+        {"device_id": DEVICE}, "process-before"
+    ) is None
