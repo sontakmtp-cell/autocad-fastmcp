@@ -808,6 +808,58 @@ async def _query_sections(
     return result
 
 
+def _validate_restart_invocations(
+    invocations: list[dict[str, Any]], *, scene_id: str
+) -> list[str]:
+    expected = [
+        ("cad_list_devices", {"online_only": True}),
+        *[
+            (
+                "cad_query_scene",
+                {"scene_id": scene_id, "section": section, "limit": 200},
+            )
+            for section in SECTIONS
+        ],
+        ("read_resource", {"uri": f"cad://scenes/{scene_id}/summary"}),
+    ]
+    if not isinstance(invocations, list) or len(invocations) != len(expected):
+        raise ValueError("post-restart invocation trace is incomplete")
+    for index, (item, (tool, arguments)) in enumerate(zip(invocations, expected)):
+        if (
+            not isinstance(item, dict)
+            or set(item)
+            != {
+                "tool",
+                "arguments",
+                "started_at",
+                "completed_at",
+                "outcome",
+                "job_id",
+            }
+            or item.get("tool") != tool
+            or item.get("arguments") != arguments
+            or item.get("outcome") != "succeeded"
+            or item.get("job_id") is not None
+        ):
+            raise ValueError("post-restart invocation trace is invalid")
+        started = _parse_timestamp(
+            item.get("started_at"), "post-restart invocation started_at"
+        )
+        completed = _parse_timestamp(
+            item.get("completed_at"), "post-restart invocation completed_at"
+        )
+        if completed < started:
+            raise ValueError("post-restart invocation completed before it started")
+        if index and _parse_timestamp(
+            invocations[index - 1].get("completed_at"),
+            "post-restart invocation completed_at",
+        ) > started:
+            raise ValueError("post-restart invocations overlap")
+    return sorted(
+        {item["tool"] for item in invocations if item["tool"] in WRITE_TOOLS}
+    )
+
+
 def _node_map(sections: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {item["node_id"]: item for item in sections["nodes"]["items"]}
 
@@ -920,11 +972,11 @@ async def _capture_public(
         client_factory = Client
     drawing = args.drawing.resolve()
     process_identity = json.loads(args.process_identity.read_text(encoding="utf-8"))
-    implementation_commit = _git_head()
+    capture_commit = _git_head()
     _validate_runtime_identity(
         process_identity,
         device_id=args.device_id,
-        implementation_commit=implementation_commit,
+        implementation_commit=capture_commit,
     )
     expected_name = f"phase10-drawing-{args.fixture}.dwg"
     if drawing.name.lower() != expected_name:
@@ -1087,6 +1139,8 @@ async def _capture_public(
     if not all(gates.values()):
         failed = sorted(name for name, passed in gates.items() if not passed)
         raise RuntimeError(f"fixture gates failed: {failed}")
+    if _git_head() != capture_commit:
+        raise RuntimeError("repository HEAD changed during capture")
     session_id = process_identity["agent_session"]["session_id"]
     return {
         "schema_version": "cad.phase10-live-public-fixture-provisional/1",
@@ -1094,7 +1148,7 @@ async def _capture_public(
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "capture_command": args.capture_command,
         "baseline_commit": _git_baseline(),
-        "implementation_commit": _git_head(),
+        "implementation_commit": capture_commit,
         "operator": args.operator,
         "fixture": {
             "fixture_id": f"phase10-drawing-{args.fixture}-r25/1",
@@ -1366,6 +1420,11 @@ def _bind_no_effect_db(
         no_effect_db.get("captured_at"), "no-effect DB captured_at"
     )
     scope = no_effect_db.get("scope", {})
+    scope_owner = scope.get("owner_subject")
+    if scope.get("device_id") != device_id:
+        raise ValueError("no-effect DB scope device differs from the fixture")
+    if not isinstance(scope_owner, str) or not scope_owner:
+        raise ValueError("no-effect DB scope owner is invalid")
     window_start = _parse_timestamp(
         scope.get("window_start"), "no-effect DB window_start"
     )
@@ -1384,6 +1443,9 @@ def _bind_no_effect_db(
     if not window_end <= db_captured_at:
         raise ValueError("no-effect DB was captured before the audit window closed")
     observation_job_ids = evidence["session_binding"]["observation_job_ids"]
+    scene_id = evidence["scene"]["scene_id"]
+    if scene_id not in scope.get("scene_ids", []):
+        raise ValueError("fixture scene is absent from the no-effect DB scope")
     anchor_jobs = no_effect_db.get("anchor_jobs", [])
     anchor_by_id = {
         item.get("job_id"): item
@@ -1399,8 +1461,10 @@ def _bind_no_effect_db(
         if (
             job.get("effect_class") != "read"
             or job.get("state") != "succeeded"
+            or job.get("device_id") != device_id
+            or job.get("owner_subject") != scope_owner
         ):
-            raise ValueError("observation anchor job is not a succeeded read")
+            raise ValueError("observation anchor job is not cross-bound")
         if (
             _parse_timestamp(job.get("created_at"), "anchor job created_at")
             > db_captured_at
@@ -1408,7 +1472,6 @@ def _bind_no_effect_db(
             > db_captured_at
         ):
             raise ValueError("anchor job timestamp exceeds the DB capture time")
-    scene_id = evidence["scene"]["scene_id"]
     scene_rows = [
         item
         for item in no_effect_db.get("scenes", [])
@@ -1418,6 +1481,11 @@ def _bind_no_effect_db(
         raise ValueError(
             "no-effect DB scene record is missing for the fixture scene"
         )
+    if (
+        scene_rows[0].get("device_id") != device_id
+        or scene_rows[0].get("owner_subject") != scope_owner
+    ):
+        raise ValueError("no-effect DB scene record is not cross-bound")
     if (
         _parse_timestamp(scene_rows[0].get("created_at"), "DB scene created_at")
         > db_captured_at
@@ -1435,6 +1503,11 @@ def _bind_no_effect_db(
         raise ValueError(
             "process identity session is absent from the no-effect DB evidence"
         )
+    if (
+        session_record.get("device_id") != device_id
+        or session_record.get("owner_subject") != scope_owner
+    ):
+        raise ValueError("no-effect DB session is not cross-bound")
     session_connected = _parse_timestamp(
         session_record.get("connected_at"), "DB session connected_at"
     )
@@ -1667,10 +1740,21 @@ async def _finalize_fixture(args: argparse.Namespace, token: str) -> dict[str, A
     }
 
 
-async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]:
-    from fastmcp import Client
+async def _restart_query(
+    args: argparse.Namespace,
+    token: str,
+    *,
+    client_factory=None,
+) -> dict[str, Any]:
+    if client_factory is None:
+        from fastmcp import Client
+
+        client_factory = Client
 
     before = json.loads(args.before.read_text(encoding="utf-8"))
+    restart_commit = _git_head()
+    if before.get("implementation_commit") != restart_commit:
+        raise ValueError("restart checkout differs from fixture capture commit")
     process_before = json.loads(args.process_before.read_text(encoding="utf-8"))
     process_after = json.loads(args.process_after.read_text(encoding="utf-8"))
     _reject_claimed_service_records(process_before, "process-before")
@@ -1719,18 +1803,49 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
     no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     scene = before["scene"]
     scene_id = scene["scene_id"]
-    async with Client(args.endpoint, auth=token, timeout=120) as client:
+    invocations: list[dict[str, Any]] = []
+
+    def record(
+        tool: str,
+        arguments: dict[str, Any],
+        started_at: str,
+        *,
+        job_id: str | None = None,
+    ) -> None:
+        invocations.append(
+            {
+                "tool": tool,
+                "arguments": arguments,
+                "started_at": started_at,
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "outcome": "succeeded",
+                "job_id": job_id,
+            }
+        )
+
+    async with client_factory(args.endpoint, auth=token, timeout=120) as client:
+        started_at = datetime.now(timezone.utc).isoformat()
         devices = _payload(
             await client.call_tool("cad_list_devices", {"online_only": True})
         )
+        record("cad_list_devices", {"online_only": True}, started_at)
         if not any(
             item["device_id"] == args.device_id for item in devices["devices"]
         ):
             raise RuntimeError("Agent did not reconnect")
-        sections = await _query_sections(client, scene_id)
+        sections = await _query_sections(client, scene_id, record=record)
+        started_at = datetime.now(timezone.utc).isoformat()
         resource = _resource_payload(
             await client.read_resource(f"cad://scenes/{scene_id}/summary")
         )
+        record(
+            "read_resource",
+            {"uri": f"cad://scenes/{scene_id}/summary"},
+            started_at,
+        )
+    write_tools_invoked = _validate_restart_invocations(
+        invocations, scene_id=scene_id
+    )
     service_gates = _service_restart_gates(
         process_before,
         process_after,
@@ -1780,7 +1895,7 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
         "dwg_file_hash_unchanged": dwg_unchanged,
         "document_revision_unchanged": revision_unchanged,
         "no_write_requested": (
-            before["public_path"].get("write_tools_invoked") == []
+            write_tools_invoked == []
             and db_gates["no_write_events_in_window"]
             and db_gates["anchor_jobs_read_only"]
         ),
@@ -1794,12 +1909,14 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
     if not all(gates.values()):
         failed = sorted(name for name, passed in gates.items() if not passed)
         raise RuntimeError(f"restart gates failed: {failed}")
+    if _git_head() != restart_commit:
+        raise RuntimeError("repository HEAD changed during restart capture")
     return {
         "schema_version": "cad.phase10-live-gateway-restart/1",
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "capture_command": args.capture_command,
         "baseline_commit": _git_baseline(),
-        "implementation_commit": _git_head(),
+        "implementation_commit": restart_commit,
         "operator": args.operator,
         "fixture_id": before["fixture"]["fixture_id"],
         "scene_id": scene_id,
@@ -1811,11 +1928,16 @@ async def _restart_query(args: argparse.Namespace, token: str) -> dict[str, Any]
         "identity_capture_after": identity_after,
         "post_restart_sections": sections,
         "post_restart_summary_resource": resource,
+        "post_restart_public_path": {
+            "invoked_tools": [item["tool"] for item in invocations],
+            "write_tools_invoked": write_tools_invoked,
+            "tool_invocations": invocations,
+        },
         "no_effect_db_binding": _db_evidence_binding(
             args.no_effect_db, no_effect_db
         ),
-        "write_requested": False,
-        "cad_effect_attempted": False,
+        "write_requested": not gates["no_write_requested"],
+        "cad_effect_attempted": not gates["no_cad_effect_attempted"],
         "gate_results": gates,
         **gates,
         "failures_retests": [],

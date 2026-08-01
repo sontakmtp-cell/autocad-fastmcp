@@ -1196,6 +1196,26 @@ def validate(root: Path) -> None:
         ),
         "Gateway restart: summary resource changed",
     )
+    restart_public_path = restart.get("post_restart_public_path")
+    _require(
+        isinstance(restart_public_path, dict),
+        "Gateway restart: post-restart public invocation evidence is missing",
+    )
+    restart_invocations = restart_public_path.get("tool_invocations")
+    try:
+        restart_write_tools = CAPTURE._validate_restart_invocations(
+            restart_invocations, scene_id=scene_c["scene_id"]
+        )
+    except ValueError as error:
+        raise ValueError(f"Gateway restart: {error}") from error
+    _require(
+        restart_public_path.get("invoked_tools")
+        == [item["tool"] for item in restart_invocations]
+        and restart_public_path.get("write_tools_invoked")
+        == restart_write_tools
+        == [],
+        "Gateway restart: post-restart invocation summaries are invalid",
+    )
     _require(
         restart.get("write_requested") is False
         and restart.get("cad_effect_attempted") is False,
@@ -1216,6 +1236,16 @@ def validate(root: Path) -> None:
         and no_effect_db.get("implementation_commit") == implementation_commit,
         "No-effect DB: commit provenance differs from fixture evidence",
     )
+    for name, evidence in fixture_evidence.items():
+        try:
+            CAPTURE._bind_no_effect_db(
+                evidence,
+                no_effect_db,
+                device_id=evidence["public_path"]["device_id"],
+                implementation_commit=implementation_commit,
+            )
+        except ValueError as error:
+            raise ValueError(f"Drawing {name.upper()}: {error}") from error
     _require(
         isinstance(no_effect_db.get("failures_retests"), list)
         and isinstance(no_effect_db.get("limitations"), list),

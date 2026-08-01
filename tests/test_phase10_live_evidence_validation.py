@@ -517,6 +517,43 @@ def _upgrade_restart_artifact(root: Path) -> None:
     }
     value["gate_results"].update(gates)
     value.update(gates)
+    captured_at = VALIDATOR._time(value["captured_at"], "restart captured_at")
+    invocations = []
+    expected = [
+        ("cad_list_devices", {"online_only": True}),
+        *[
+            (
+                "cad_query_scene",
+                {
+                    "scene_id": value["scene_id"],
+                    "section": section,
+                    "limit": 200,
+                },
+            )
+            for section in VALIDATOR.SECTIONS
+        ],
+        (
+            "read_resource",
+            {"uri": f"cad://scenes/{value['scene_id']}/summary"},
+        ),
+    ]
+    for index, (tool, arguments) in enumerate(expected):
+        started_at = captured_at - timedelta(seconds=20 - 2 * index)
+        invocations.append(
+            {
+                "tool": tool,
+                "arguments": arguments,
+                "started_at": started_at.isoformat(),
+                "completed_at": (started_at + timedelta(seconds=1)).isoformat(),
+                "outcome": "succeeded",
+                "job_id": None,
+            }
+        )
+    value["post_restart_public_path"] = {
+        "invoked_tools": [item["tool"] for item in invocations],
+        "write_tools_invoked": [],
+        "tool_invocations": invocations,
+    }
     _save(path, value)
 
 
@@ -839,7 +876,12 @@ def _tamper(root: Path, case: str) -> None:
             root, "phase10-live-cleanup-workflow-20260730.json"
         )
         value["report"]["issue_count"] += 1
-    elif case in {"restart_pid", "restart_exit", "restart_start"}:
+    elif case in {
+        "restart_pid",
+        "restart_exit",
+        "restart_start",
+        "restart_public_trace",
+    }:
         path, value = _evidence(
             root, "phase10-live-gateway-restart-20260730.json"
         )
@@ -851,10 +893,12 @@ def _tamper(root: Path, case: str) -> None:
             value["gateway_process_after"]["old_gateway_process_exit"][
                 "proc_stat_after"
             ] = "still-running"
-        else:
+        elif case == "restart_start":
             value["gateway_process_after"]["gateway_service_record"]["process"][
                 "start_identity"
             ] = "1000"
+        else:
+            value["post_restart_public_path"]["tool_invocations"].pop()
     elif case in {"restart_raw", "restart_raw_service"}:
         path, value = _evidence(
             root, "phase10-live-gateway-restart-20260730.json"
@@ -892,6 +936,47 @@ def _tamper(root: Path, case: str) -> None:
             value["captured_at"] = "2026-07-30T14:30:00+07:00"
         else:
             value["anchor_jobs"][0]["updated_at"] = "2026-07-30T15:00:00+07:00"
+    elif case in {
+        "db_scope_device",
+        "db_job_device",
+        "db_scene_device",
+        "db_session_device",
+        "db_scope_scene",
+        "db_owner_mismatch",
+    }:
+        path, value = _evidence(
+            root, "phase10-live-no-effect-db-20260730.json"
+        )
+        _, fixture = _fixture(root, "a")
+        if case == "db_scope_device":
+            value["scope"]["device_id"] = "wrong-device"
+        elif case == "db_job_device":
+            job_ids = set(fixture["session_binding"]["observation_job_ids"])
+            next(
+                item for item in value["anchor_jobs"] if item["job_id"] in job_ids
+            )["device_id"] = "wrong-device"
+        elif case == "db_scene_device":
+            next(
+                item
+                for item in value["scenes"]
+                if item["scene_id"] == fixture["scene"]["scene_id"]
+            )["device_id"] = "wrong-device"
+        elif case == "db_session_device":
+            session_id = fixture["runtime_identity"]["agent_session"]["session_id"]
+            next(
+                item
+                for item in value["agent_sessions"]
+                if item["session_id"] == session_id
+            )["device_id"] = "wrong-device"
+        elif case == "db_scope_scene":
+            value["scope"]["scene_ids"].remove(fixture["scene"]["scene_id"])
+        else:
+            session_id = fixture["runtime_identity"]["agent_session"]["session_id"]
+            next(
+                item
+                for item in value["agent_sessions"]
+                if item["session_id"] == session_id
+            )["owner_subject"] = "other-owner"
     elif case == "db_commit":
         path, value = _evidence(
             root, "phase10-live-no-effect-db-20260730.json"
@@ -995,6 +1080,34 @@ class _FakeMCPClient:
         return self._retained["scene"]["summary_resource"]
 
 
+def _capture_public_args(tmp_path: Path, fixture_value: dict):
+    import argparse
+
+    upgraded = copy.deepcopy(fixture_value)
+    _upgrade_fixture_runtime_identity(
+        tmp_path / "upgraded-copy.json", upgraded
+    )
+    process_identity = upgraded["runtime_identity"]
+    process_path = tmp_path / "process-identity.json"
+    process_path.write_text(json.dumps(process_identity), encoding="utf-8")
+    drawing_path = tmp_path / "phase10-drawing-a.dwg"
+    shutil.copy2(
+        ROOT / "fixtures" / "phase10" / "live" / "phase10-drawing-a.dwg",
+        drawing_path,
+    )
+    return argparse.Namespace(
+        endpoint="https://example.invalid/mcp",
+        device_id=process_identity["agent_session"]["device_id"],
+        token_file=tmp_path / "token.json",
+        output=tmp_path / "provisional-a.json",
+        operator="test",
+        fixture="a",
+        drawing=drawing_path,
+        process_identity=process_path,
+        capture_command="capture-public (test)",
+    )
+
+
 def _provisional_capture(tmp_path: Path, retained: dict) -> dict:
     provisional = copy.deepcopy(retained)
     provisional["schema_version"] = (
@@ -1065,28 +1178,9 @@ def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
     )
     root = _repo(tmp_path / "e2e")
     fixture_path, fixture_value = _fixture(root, "a")
-    upgraded = copy.deepcopy(fixture_value)
-    _upgrade_fixture_runtime_identity(
-        tmp_path / "upgraded-copy.json", upgraded
-    )
-    process_identity = upgraded["runtime_identity"]
-    process_path = tmp_path / "process-identity.json"
-    process_path.write_text(json.dumps(process_identity), encoding="utf-8")
-    drawing_path = tmp_path / "phase10-drawing-a.dwg"
-    shutil.copy2(
-        ROOT / "fixtures" / "phase10" / "live" / "phase10-drawing-a.dwg",
-        drawing_path,
-    )
-    capture_args = argparse.Namespace(
-        endpoint="https://example.invalid/mcp",
-        device_id=process_identity["agent_session"]["device_id"],
-        token_file=tmp_path / "token.json",
-        output=tmp_path / "provisional-a.json",
-        operator="test",
-        fixture="a",
-        drawing=drawing_path,
-        process_identity=process_path,
-        capture_command="capture-public (test)",
+    capture_args = _capture_public_args(tmp_path, fixture_value)
+    process_identity = json.loads(
+        capture_args.process_identity.read_text(encoding="utf-8")
     )
     retained = fixture_value
     provisional = asyncio.run(
@@ -1144,6 +1238,93 @@ def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
     assert final["finalization"]["implementation_commit"] == FIXED_COMMIT
     _save(fixture_path, final)
     VALIDATOR.validate(root)
+
+
+def test_capture_public_rejects_head_change(tmp_path: Path, monkeypatch) -> None:
+    import asyncio
+
+    root = _repo(tmp_path / "head-change")
+    _, fixture_value = _fixture(root, "a")
+    capture_args = _capture_public_args(tmp_path, fixture_value)
+    heads = iter((FIXED_COMMIT, "b" * 40))
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_head", lambda: next(heads))
+    monkeypatch.setattr(
+        VALIDATOR.CAPTURE, "_git_baseline", lambda: FIXED_COMMIT
+    )
+    with pytest.raises(RuntimeError, match="HEAD changed during capture"):
+        asyncio.run(
+            VALIDATOR.CAPTURE._capture_public(
+                capture_args,
+                "token",
+                client_factory=lambda endpoint, auth, timeout: _FakeMCPClient(
+                    fixture_value
+                ),
+            )
+        )
+
+
+def test_restart_query_records_public_producer_path(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import argparse
+    import asyncio
+
+    monkeypatch.setattr(
+        VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT
+    )
+    monkeypatch.setattr(
+        VALIDATOR.CAPTURE, "_git_baseline", lambda: FIXED_COMMIT
+    )
+    root = _repo(tmp_path / "restart-producer")
+    _, fixture = _fixture(root, "c")
+    _, restart = _evidence(
+        root, "phase10-live-gateway-restart-20260730.json"
+    )
+    db_path, _ = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+
+    def write(name: str, value: dict) -> Path:
+        path = tmp_path / name
+        path.write_text(json.dumps(value), encoding="utf-8")
+        return path
+
+    process_before = copy.deepcopy(restart["gateway_process_before"])
+    process_after = copy.deepcopy(restart["gateway_process_after"])
+    for process in (process_before, process_after):
+        for key in VALIDATOR.CAPTURE._CLAIMED_SERVICE_KEYS:
+            process.pop(key, None)
+    args = argparse.Namespace(
+        endpoint="https://example.invalid/mcp",
+        device_id=fixture["public_path"]["device_id"],
+        before=write("before.json", fixture),
+        process_before=write("process-before.json", process_before),
+        process_after=write("process-after.json", process_after),
+        identity_before=write(
+            "identity-before.json", restart["identity_capture_before"]
+        ),
+        identity_after=write(
+            "identity-after.json", restart["identity_capture_after"]
+        ),
+        no_effect_db=db_path,
+        capture_command="restart-query (test)",
+        operator="test",
+    )
+    result = asyncio.run(
+        VALIDATOR.CAPTURE._restart_query(
+            args,
+            "token",
+            client_factory=lambda endpoint, auth, timeout: _FakeMCPClient(
+                fixture
+            ),
+        )
+    )
+    invocations = result["post_restart_public_path"]["tool_invocations"]
+    assert [item["tool"] for item in invocations] == [
+        "cad_list_devices",
+        *("cad_query_scene" for _ in VALIDATOR.SECTIONS),
+        "read_resource",
+    ]
+    assert result["post_restart_public_path"]["write_tools_invoked"] == []
+    assert result["write_requested"] is False
 
 
 def test_cli_finalize_fixture_runs_without_token_file(
@@ -1309,15 +1490,16 @@ def test_finalize_rejects_cross_commit_finalization(
         ("restart_pid", "process/start identities"),
         ("restart_exit", "old process exit"),
         ("restart_start", "process/start identities"),
+        ("restart_public_trace", "invocation trace is incomplete"),
         ("restart_raw", "raw identity capture ordering"),
         ("restart_raw_service", "reports service"),
         ("identity_hash", "standalone Agent identity differs"),
         ("identity_pid", "AutoCAD runtime identity is invalid"),
-        ("identity_session", "absent from session history"),
+        ("identity_session", "absent from the no-effect DB evidence"),
         ("identity_commit", "gateway runtime identity is not cross-bound"),
         ("identity_time", "not before capture"),
         ("identity_start_after_invocation", "not before capture"),
-        ("session_connected_mismatch", "session was not active at capture"),
+        ("session_connected_mismatch", "connected_at differs between runtime identity and DB"),
         ("source_revision", "source/scene no-effect binding"),
         ("identity_host_hash", "not bound to observation runtime evidence"),
         ("identity_host_start", "managed host runtime identity is invalid"),
@@ -1351,12 +1533,18 @@ def test_finalize_rejects_cross_commit_finalization(
         ("finalization_commit", "finalization provenance is invalid"),
         ("db_commit", "commit provenance differs"),
         ("session_binding", "session binding is not cross-bound"),
-        ("db_window_end", "outside the audit window"),
+        ("db_window_end", "window does not cover the fixture capture"),
         ("db_sha", "durable no-write snapshot"),
         ("db_freshness", "before the audit window closed"),
-        ("db_row_freshness", "anchor job is not cross-bound"),
+        ("db_row_freshness", "anchor job timestamp exceeds the DB capture time"),
         ("db_anchor_owner", "anchor job is not cross-bound"),
         ("db_scene_binding", "scene record is not cross-bound"),
+        ("db_scope_device", "scope device differs"),
+        ("db_job_device", "anchor job is not cross-bound"),
+        ("db_scene_device", "scene record is not cross-bound"),
+        ("db_session_device", "session is not cross-bound"),
+        ("db_scope_scene", "scene is absent"),
+        ("db_owner_mismatch", "session is not cross-bound"),
         ("db_snapshot", "durable no-write snapshot"),
         ("db_migration", "migration proof"),
     ),
