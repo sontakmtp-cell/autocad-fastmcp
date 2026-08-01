@@ -1160,9 +1160,12 @@ def _validate_invocation_graph(
     observation_job_ids: list[str],
     scene_id: str,
     source_snapshot_id: str,
+    device_id: str,
+    fixture_id: str,
 ) -> None:
     if not isinstance(invocations, list) or not invocations:
         raise ValueError("tool invocation records are missing")
+    parsed_started_at: dict[int, datetime] = {}
     for item in invocations:
         if (
             not isinstance(item, dict)
@@ -1177,103 +1180,138 @@ def _validate_invocation_graph(
             item["started_at"], "invocation started_at"
         ) > _parse_timestamp(item["completed_at"], "invocation completed_at"):
             raise ValueError("tool invocation is not chronologically ordered")
-    ordered = sorted(invocations, key=lambda item: item["started_at"])
+    parsed_started_at = {
+        index: _parse_timestamp(item["started_at"], "invocation started_at")
+        for index, item in enumerate(invocations)
+    }
+    ordered = sorted(
+        invocations,
+        key=lambda item: parsed_started_at[invocations.index(item)],
+    )
+    if ordered != invocations:
+        raise ValueError("tool invocations are not stored chronologically")
     for previous, current in zip(ordered, ordered[1:]):
         if _parse_timestamp(
             previous["completed_at"], "invocation completed_at"
         ) > _parse_timestamp(current["started_at"], "invocation started_at"):
             raise ValueError("tool invocations overlap in time")
-    by_tool: dict[str, list[dict[str, Any]]] = {}
-    for item in invocations:
-        by_tool.setdefault(item["tool"], []).append(item)
-    expected_tools = {
-        "cad_list_devices",
-        "cad_observe",
-        "cad_get_job",
-        "cad_build_scene",
-        "cad_query_scene",
-        "read_resource",
-    }
-    if set(by_tool) != expected_tools:
+    fixture_letter = fixture_id.split("/")[0].rsplit("-", 1)[-1]
+    before_key_prefix = f"phase10-drawing-{fixture_letter}-before-"
+    after_key_prefix = f"phase10-drawing-{fixture_letter}-after-"
+    phases = [
+        ("cad_list_devices", None),
+        ("cad_observe", observation_job_ids[0], before_key_prefix),
+        ("cad_get_job", observation_job_ids[0]),
+        ("cad_build_scene", None, False),
+        ("cad_build_scene", None, True),
+        ("cad_query_scene", None),
+        ("read_resource", None),
+        ("cad_observe", observation_job_ids[1], after_key_prefix),
+        ("cad_get_job", observation_job_ids[1]),
+    ]
+    phase_index = 0
+    visited: set[int] = set()
+    observed_jobs: list[str] = []
+    observed_keys: list[str] = []
+    queried_sections: set[str] = set()
+    for item in ordered:
+        tool = item["tool"]
+        job_id = item.get("job_id")
+        while phase_index < len(phases):
+            expected = phases[phase_index]
+            if (
+                expected[0] == tool
+                and (len(expected) < 2 or expected[1] is None or expected[1] == job_id)
+            ):
+                break
+            phase_index += 1
+        if phase_index >= len(phases) or phases[phase_index][0] != tool:
+            raise ValueError(f"tool invocation {tool} is out of phase")
+        visited.add(phase_index)
+        arguments = item.get("arguments", {})
+        if tool == "cad_list_devices":
+            if arguments != {"online_only": True}:
+                raise ValueError("cad_list_devices invocation arguments are invalid")
+        elif tool == "cad_observe":
+            expected_key_prefix = (
+                before_key_prefix
+                if job_id == observation_job_ids[0]
+                else after_key_prefix
+            )
+            if (
+                set(arguments)
+                != {
+                    "device_id",
+                    "observation_level",
+                    "include_preview_image",
+                    "idempotency_key",
+                }
+                or arguments.get("device_id") != device_id
+                or arguments.get("observation_level") != "detail"
+                or arguments.get("include_preview_image") is not False
+                or not isinstance(arguments.get("idempotency_key"), str)
+                or not arguments["idempotency_key"].startswith(expected_key_prefix)
+            ):
+                raise ValueError("cad_observe invocation arguments are invalid")
+            if job_id not in observation_job_ids:
+                raise ValueError(
+                    "cad_observe invocation job ID differs from the retained request"
+                )
+            observed_jobs.append(job_id)
+            observed_keys.append(arguments["idempotency_key"])
+        elif tool == "cad_get_job":
+            if arguments != {"job_id": job_id} or job_id not in observation_job_ids:
+                raise ValueError("cad_get_job invocation arguments are invalid")
+        elif tool == "cad_build_scene":
+            repeat = phases[phase_index][2]
+            key = arguments.get("idempotency_key")
+            if (
+                arguments.get("source_snapshot_id") != source_snapshot_id
+                or arguments.get("analysis_profile") != "mechanical-2d/1"
+                or arguments.get("space") != "model"
+                or arguments.get("include_sections") != list(SECTIONS)
+                or not isinstance(key, str)
+                or ("-scene-repeat-" in key) is not repeat
+                or ("-scene-" in key) is False
+            ):
+                raise ValueError("cad_build_scene invocation arguments are invalid")
+        elif tool == "cad_query_scene":
+            section = arguments.get("section")
+            if (
+                arguments
+                != {
+                    "scene_id": scene_id,
+                    "section": section,
+                    "limit": 200,
+                }
+                or section not in SECTIONS
+                or section in queried_sections
+            ):
+                raise ValueError(
+                    "cad_query_scene invocation arguments are invalid or duplicated"
+                )
+            queried_sections.add(section)
+        else:
+            if arguments != {"uri": f"cad://scenes/{scene_id}/summary"}:
+                raise ValueError("summary resource invocation arguments are invalid")
+        if tool not in {"cad_get_job", "cad_query_scene"}:
+            phase_index += 1
+    if visited != set(range(len(phases))):
+        missing = sorted(set(range(len(phases))) - visited)
         raise ValueError(
-            "tool invocation trace contains unexpected tools: "
-            + ", ".join(sorted(set(by_tool) ^ expected_tools))
+            "tool invocation trace is missing expected phase(s): "
+            + ", ".join(str(index) for index in missing)
         )
-    (devices,) = by_tool["cad_list_devices"]
-    if devices.get("arguments") != {"online_only": True}:
-        raise ValueError("cad_list_devices invocation arguments are invalid")
-    observes = by_tool["cad_observe"]
-    if len(observes) != 2:
-        raise ValueError("expected exactly two cad_observe invocations")
-    if [item.get("job_id") for item in observes] != observation_job_ids:
+    if observed_jobs != observation_job_ids:
         raise ValueError(
             "cad_observe invocations are not bound to the observation job IDs"
         )
-    for job_id in observation_job_ids:
-        polls = [
-            item
-            for item in by_tool["cad_get_job"]
-            if item.get("job_id") == job_id
-            and item.get("arguments") == {"job_id": job_id}
-        ]
-        if not polls:
-            raise ValueError(f"missing cad_get_job evidence for job {job_id}")
-        terminal = [
-            item for item in invocations if item.get("job_id") == job_id
-        ][-1]
-        if (
-            terminal.get("tool") != "cad_get_job"
-            or terminal.get("outcome") != "succeeded"
-        ):
-            raise ValueError(
-                f"terminal cad_get_job evidence is missing for job {job_id}"
-            )
-    builds = by_tool["cad_build_scene"]
-    if len(builds) != 2:
-        raise ValueError("expected exactly two cad_build_scene invocations")
-    for build in builds:
-        arguments = build.get("arguments", {})
-        if (
-            arguments.get("source_snapshot_id") != source_snapshot_id
-            or arguments.get("analysis_profile") != "mechanical-2d/1"
-            or arguments.get("space") != "model"
-            or arguments.get("include_sections") != list(SECTIONS)
-            or not isinstance(arguments.get("idempotency_key"), str)
-        ):
-            raise ValueError("cad_build_scene invocation arguments are invalid")
-    keys = [build["arguments"]["idempotency_key"] for build in builds]
-    if (
-        len(set(keys)) != 2
-        or not any("-scene-repeat-" in key for key in keys)
-        or not any(
-            "-scene-" in key and "-scene-repeat-" not in key for key in keys
-        )
-    ):
-        raise ValueError("cad_build_scene repeat/reuse invocation is missing")
-    queries = by_tool["cad_query_scene"]
-    if len(queries) != len(SECTIONS):
+    if queried_sections != set(SECTIONS):
         raise ValueError(
             "expected exactly one cad_query_scene per retained section"
         )
-    for section in SECTIONS:
-        matches = [
-            item
-            for item in queries
-            if item.get("arguments")
-            == {
-                "scene_id": scene_id,
-                "section": section,
-                "limit": 200,
-            }
-        ]
-        if len(matches) != 1:
-            raise ValueError(
-                f"cad_query_scene evidence for section {section} is missing "
-                "or duplicated"
-            )
-    (summary,) = by_tool["read_resource"]
-    if summary.get("arguments") != {"uri": f"cad://scenes/{scene_id}/summary"}:
-        raise ValueError("summary resource invocation arguments are invalid")
+    if len(observed_keys) != 2 or observed_keys[0] == observed_keys[1]:
+        raise ValueError("cad_observe idempotency keys are reused")
 
 
 def _bind_no_effect_db(
@@ -1396,9 +1434,11 @@ async def _finalize_fixture(args: argparse.Namespace, token: str) -> dict[str, A
         raise ValueError("fixture evidence is not a provisional capture-public artifact")
     if provisional.get("status") != "PROVISIONAL":
         raise ValueError("fixture evidence is not in PROVISIONAL status")
-    implementation_commit = _git_head()
-    if provisional.get("implementation_commit") != implementation_commit:
-        raise ValueError("provisional capture commit differs from current checkout")
+    implementation_commit = provisional.get("implementation_commit")
+    if not isinstance(implementation_commit, str) or not re.fullmatch(
+        r"[0-9a-f]{40}", implementation_commit
+    ):
+        raise ValueError("provisional capture implementation_commit is invalid")
     no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     invocations = provisional["public_path"]["tool_invocations"]
     _validate_invocation_graph(
@@ -1406,6 +1446,8 @@ async def _finalize_fixture(args: argparse.Namespace, token: str) -> dict[str, A
         observation_job_ids=provisional["session_binding"]["observation_job_ids"],
         scene_id=provisional["scene"]["scene_id"],
         source_snapshot_id=provisional["source"]["snapshot_id"],
+        device_id=args.device_id,
+        fixture_id=provisional["fixture"]["fixture_id"],
     )
     _bind_no_effect_db(
         provisional,
@@ -1798,76 +1840,64 @@ async def _capture_identity(args: argparse.Namespace, token: str) -> dict[str, A
     }
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "action",
-        choices=(
-            "capture-public",
-            "finalize-fixture",
-            "capture-identity",
-            "restart-query",
-        ),
-    )
-    parser.add_argument("--endpoint", default="https://cad.kythuatvang.com/mcp")
-    parser.add_argument("--device-id", required=True)
-    parser.add_argument("--token-file", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
-    parser.add_argument("--operator", default="local-operator")
-    parser.add_argument("--service", default=SERVICE_UNIT)
-    parser.add_argument("--old-pid", type=int)
-    parser.add_argument("--fixture", choices=("a", "b", "c"))
-    parser.add_argument("--drawing", type=Path)
-    parser.add_argument("--process-identity", type=Path)
-    parser.add_argument("--fixture-evidence", type=Path)
-    parser.add_argument("--before", type=Path)
-    parser.add_argument("--process-before", type=Path)
-    parser.add_argument("--process-after", type=Path)
-    parser.add_argument("--identity-before", type=Path)
-    parser.add_argument("--identity-after", type=Path)
-    parser.add_argument("--no-effect-db", type=Path)
+    subparsers = parser.add_subparsers(dest="action", required=True)
+    endpoint_default = "https://cad.kythuatvang.com/mcp"
+
+    capture_public = subparsers.add_parser("capture-public")
+    capture_public.add_argument("--endpoint", default=endpoint_default)
+    capture_public.add_argument("--device-id", required=True)
+    capture_public.add_argument("--token-file", required=True, type=Path)
+    capture_public.add_argument("--output", required=True, type=Path)
+    capture_public.add_argument("--operator", default="local-operator")
+    capture_public.add_argument("--fixture", required=True, choices=("a", "b", "c"))
+    capture_public.add_argument("--drawing", required=True, type=Path)
+    capture_public.add_argument("--process-identity", required=True, type=Path)
+
+    finalize = subparsers.add_parser("finalize-fixture")
+    finalize.add_argument("--fixture-evidence", required=True, type=Path)
+    finalize.add_argument("--no-effect-db", required=True, type=Path)
+    finalize.add_argument("--device-id", required=True)
+    finalize.add_argument("--output", required=True, type=Path)
+    finalize.add_argument("--operator", default="local-operator")
+
+    identity = subparsers.add_parser("capture-identity")
+    identity.add_argument("--service", default=SERVICE_UNIT)
+    identity.add_argument("--old-pid", type=int)
+    identity.add_argument("--output", required=True, type=Path)
+    identity.add_argument("--operator", default="local-operator")
+
+    restart = subparsers.add_parser("restart-query")
+    restart.add_argument("--endpoint", default=endpoint_default)
+    restart.add_argument("--device-id", required=True)
+    restart.add_argument("--token-file", required=True, type=Path)
+    restart.add_argument("--output", required=True, type=Path)
+    restart.add_argument("--operator", default="local-operator")
+    restart.add_argument("--before", required=True, type=Path)
+    restart.add_argument("--process-before", required=True, type=Path)
+    restart.add_argument("--process-after", required=True, type=Path)
+    restart.add_argument("--identity-before", required=True, type=Path)
+    restart.add_argument("--identity-after", required=True, type=Path)
+    restart.add_argument("--no-effect-db", required=True, type=Path)
+    return parser
+
+
+def main() -> None:
+    parser = build_parser()
     args = parser.parse_args()
-    if args.action == "capture-public" and any(
-        value is None
-        for value in (args.fixture, args.drawing, args.process_identity)
-    ):
-        parser.error(
-            "capture-public requires --fixture, --drawing and --process-identity"
-        )
-    if args.action == "finalize-fixture" and any(
-        value is None
-        for value in (args.fixture_evidence, args.no_effect_db)
-    ):
-        parser.error(
-            "finalize-fixture requires --fixture-evidence and --no-effect-db"
-        )
-    if args.action == "restart-query" and any(
-        value is None
-        for value in (
-            args.before,
-            args.process_before,
-            args.process_after,
-            args.identity_before,
-            args.identity_after,
-            args.no_effect_db,
-        )
-    ):
-        parser.error(
-            "restart-query requires --before, --process-before, --process-after, "
-            "--identity-before, --identity-after and --no-effect-db"
-        )
     command = [
         "python scripts/phase10-live-public-evidence.py",
         args.action,
-        f"--endpoint {args.endpoint}",
-        f"--device-id {args.device_id}",
-        "--token-file <redacted>",
         f"--output {args.output}",
         f"--operator {args.operator}",
     ]
     if args.action == "capture-public":
         command.extend(
             (
+                f"--endpoint {args.endpoint}",
+                f"--device-id {args.device_id}",
+                "--token-file <redacted>",
                 f"--fixture {args.fixture}",
                 f"--drawing {args.drawing}",
                 f"--process-identity {args.process_identity}",
@@ -1878,6 +1908,7 @@ def main() -> None:
             (
                 f"--fixture-evidence {args.fixture_evidence}",
                 f"--no-effect-db {args.no_effect_db}",
+                f"--device-id {args.device_id}",
             )
         )
     elif args.action == "capture-identity":
@@ -1887,6 +1918,9 @@ def main() -> None:
     else:
         command.extend(
             (
+                f"--endpoint {args.endpoint}",
+                f"--device-id {args.device_id}",
+                "--token-file <redacted>",
                 f"--before {args.before}",
                 f"--process-before {args.process_before}",
                 f"--process-after {args.process_after}",
@@ -1896,7 +1930,11 @@ def main() -> None:
             )
         )
     args.capture_command = " ".join(command)
-    token = json.loads(args.token_file.read_text(encoding="utf-8"))["access_token"]
+    token: str | None = None
+    if args.action in {"capture-public", "restart-query"}:
+        token = json.loads(args.token_file.read_text(encoding="utf-8"))[
+            "access_token"
+        ]
     runner = {
         "capture-public": _capture_public,
         "finalize-fixture": _finalize_fixture,

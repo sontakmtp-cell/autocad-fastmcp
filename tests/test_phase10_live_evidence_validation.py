@@ -165,7 +165,14 @@ def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
     invoke("cad_list_devices", {"online_only": True}, 0)
     invoke(
         "cad_observe",
-        {"device_id": value["public_path"]["device_id"]},
+        {
+            "device_id": value["public_path"]["device_id"],
+            "observation_level": "detail",
+            "include_preview_image": False,
+            "idempotency_key": (
+                f"phase10-drawing-{fixture_letter}-before-20260730T000000"
+            ),
+        },
         1,
         job_id=jobs[0],
     )
@@ -205,14 +212,45 @@ def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
     )
     invoke(
         "cad_observe",
-        {"device_id": value["public_path"]["device_id"]},
+        {
+            "device_id": value["public_path"]["device_id"],
+            "observation_level": "detail",
+            "include_preview_image": False,
+            "idempotency_key": (
+                f"phase10-drawing-{fixture_letter}-after-20260730T000000"
+            ),
+        },
         12,
         job_id=jobs[1],
     )
     invoke("cad_get_job", {"job_id": jobs[1]}, 13, job_id=jobs[1])
     invocations[-1]["completed_at"] = captured_at.isoformat()
     value["public_path"]["tool_invocations"] = invocations
+    value["public_path"]["invoked_tools"] = [
+        item["tool"] for item in invocations
+    ]
+    value["public_path"]["write_tools_invoked"] = sorted(
+        {
+            item["tool"]
+            for item in invocations
+            if item["tool"] in VALIDATOR.CAPTURE.WRITE_TOOLS
+        }
+    )
     _save(path, value)
+
+
+def _restamp_invocations(invocations: list[dict], captured_at: str) -> None:
+    captured = VALIDATOR._time(captured_at, "captured_at")
+    for index, item in enumerate(invocations):
+        item["started_at"] = (
+            captured - timedelta(seconds=90) + timedelta(seconds=5 * index)
+        ).isoformat()
+        item["completed_at"] = (
+            captured
+            - timedelta(seconds=90)
+            + timedelta(seconds=5 * (index + 1))
+        ).isoformat()
+    invocations[-1]["completed_at"] = captured.isoformat()
 
 
 def _identity_capture_from_record(
@@ -454,6 +492,8 @@ def _tamper(root: Path, case: str) -> None:
         "invocation_missing_section",
         "invocation_wrong_scene",
         "invocation_unknown_tool",
+        "invoked_tools_tampered",
+        "write_tools_tampered",
         "session_binding",
     }:
         path, value = _fixture(root, "c" if case == "identity_hash" else "a")
@@ -495,12 +535,20 @@ def _tamper(root: Path, case: str) -> None:
                 "2026-07-30T00:00:00Z"
             )
         elif case == "invocation_write":
+            last_completed = VALIDATOR._time(
+                value["public_path"]["tool_invocations"][-1]["completed_at"],
+                "last completed",
+            )
             value["public_path"]["tool_invocations"].append(
                 {
                     "tool": "cad_commit",
                     "arguments": {},
-                    "started_at": "2026-07-30T07:25:00+00:00",
-                    "completed_at": "2026-07-30T07:25:01+00:00",
+                    "started_at": (
+                        last_completed + timedelta(seconds=1)
+                    ).isoformat(),
+                    "completed_at": (
+                        last_completed + timedelta(seconds=2)
+                    ).isoformat(),
                     "outcome": "succeeded",
                     "job_id": "job-write",
                 }
@@ -531,20 +579,106 @@ def _tamper(root: Path, case: str) -> None:
                 if item["tool"] == "cad_build_scene"
             )["arguments"]["source_snapshot_id"] = "snapshot-tampered"
         elif case == "invocation_unknown_tool":
+            last_completed = VALIDATOR._time(
+                value["public_path"]["tool_invocations"][-1]["completed_at"],
+                "last completed",
+            )
             value["public_path"]["tool_invocations"].append(
                 {
                     "tool": "cad_unknown_tool",
                     "arguments": {},
-                    "started_at": "2026-07-30T07:25:00+00:00",
-                    "completed_at": "2026-07-30T07:25:01+00:00",
+                    "started_at": (
+                        last_completed + timedelta(seconds=1)
+                    ).isoformat(),
+                    "completed_at": (
+                        last_completed + timedelta(seconds=2)
+                    ).isoformat(),
                     "outcome": "succeeded",
                     "job_id": None,
                 }
             )
+        elif case == "invoked_tools_tampered":
+            value["public_path"]["invoked_tools"] = [
+                tool
+                for tool in value["public_path"]["invoked_tools"]
+                if tool != "read_resource"
+            ]
+        elif case == "write_tools_tampered":
+            value["public_path"]["write_tools_invoked"] = ["cad_commit"]
         elif case == "session_binding":
             value["session_binding"]["observation_job_ids"] = ["job-tampered"]
         else:
             value["source"]["document_revision_before"] = "999999"
+    elif case.startswith("invocation_") and case != "invocation_write":
+        path, value = _fixture(root, "a")
+        invocations = value["public_path"]["tool_invocations"]
+        observes = [item for item in invocations if item["tool"] == "cad_observe"]
+        if case == "invocation_observe_device":
+            for item in observes:
+                item["arguments"]["device_id"] = "wrong-device"
+        elif case == "invocation_observe_level":
+            observes[0]["arguments"]["observation_level"] = "summary"
+        elif case == "invocation_observe_preview":
+            observes[0]["arguments"]["include_preview_image"] = True
+        elif case == "invocation_observe_swapped":
+            observes[0]["job_id"], observes[1]["job_id"] = (
+                observes[1]["job_id"],
+                observes[0]["job_id"],
+            )
+        elif case == "invocation_observe_key_reused":
+            observes[1]["arguments"]["idempotency_key"] = observes[0][
+                "arguments"
+            ]["idempotency_key"]
+        elif case == "invocation_observe_key_prefix":
+            observes[0]["arguments"]["idempotency_key"] = "unrelated-key"
+        elif case == "invocation_job_mismatch":
+            observes[0]["job_id"] = "job-other"
+        elif case == "invocation_reordered":
+            invocations[1], invocations[2] = invocations[2], invocations[1]
+        elif case == "invocation_after_before_resource":
+            read_index = next(
+                index
+                for index, item in enumerate(invocations)
+                if item["tool"] == "read_resource"
+            )
+            invocations[read_index], invocations[read_index + 1] = (
+                invocations[read_index + 1],
+                invocations[read_index],
+            )
+            _restamp_invocations(invocations, value["captured_at"])
+        elif case == "invocation_query_before_build":
+            query_index = next(
+                index
+                for index, item in enumerate(invocations)
+                if item["tool"] == "cad_query_scene"
+            )
+            invocations[query_index], invocations[3] = (
+                invocations[3],
+                invocations[query_index],
+            )
+            _restamp_invocations(invocations, value["captured_at"])
+        elif case == "invocation_second_summary":
+            summary = copy.deepcopy(
+                next(
+                    item
+                    for item in invocations
+                    if item["tool"] == "read_resource"
+                )
+            )
+            last_completed = VALIDATOR._time(
+                invocations[-1]["completed_at"], "last completed"
+            )
+            summary["started_at"] = (
+                last_completed + timedelta(seconds=1)
+            ).isoformat()
+            summary["completed_at"] = (
+                last_completed + timedelta(seconds=2)
+            ).isoformat()
+            invocations.append(summary)
+        else:  # invocation_interleaved_poll
+            invocations[2], invocations[3] = invocations[3], invocations[2]
+            _restamp_invocations(invocations, value["captured_at"])
+        _save(path, value)
     elif case == "identity_session":
         path, value = _evidence(
             root, "phase10-live-no-effect-db-20260730.json"
@@ -674,18 +808,11 @@ def test_finalize_fixture_orchestrates_provisional_to_pass(
             "runtime_identity_bound",
         }
     }
-    commit = VALIDATOR.CAPTURE._git_head()
-    provisional["implementation_commit"] = commit
-    provisional["baseline_commit"] = commit
-    provisional["runtime_identity"]["gateway_process"]["release_commit"] = commit
     provisional_path = tmp_path / "provisional-a.json"
     provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
     db_path, db_value = _evidence(
         root, "phase10-live-no-effect-db-20260730.json"
     )
-    db_value["implementation_commit"] = commit
-    db_value["baseline_commit"] = commit
-    _save(db_path, db_value)
     args = argparse.Namespace(
         fixture_evidence=provisional_path,
         no_effect_db=db_path,
@@ -700,6 +827,128 @@ def test_finalize_fixture_orchestrates_provisional_to_pass(
     assert final["no_effect"]["write_requested"] is False
     assert final["no_effect"]["cad_effect_attempted"] is False
     assert final["no_effect_db_binding"]["artifact"] == str(db_path)
+
+
+def test_finalized_artifact_passes_full_validator_without_mutation(
+    tmp_path: Path,
+) -> None:
+    import argparse
+    import asyncio
+
+    root = _repo(tmp_path / "e2e")
+    fixture_path, fixture_value = _fixture(root, "a")
+    provisional = copy.deepcopy(fixture_value)
+    provisional["schema_version"] = (
+        "cad.phase10-live-public-fixture-provisional/1"
+    )
+    provisional["status"] = "PROVISIONAL"
+    provisional.pop("no_effect", None)
+    provisional.pop("no_effect_db_binding", None)
+    provisional["gate_results"] = {
+        key: item
+        for key, item in provisional["gate_results"].items()
+        if key
+        not in {
+            "no_write_events_in_window",
+            "anchor_jobs_read_only",
+            "write_snapshot_unchanged",
+            "no_write_requested",
+            "no_cad_effect_attempted",
+            "runtime_identity_bound",
+        }
+    }
+    provisional_path = tmp_path / "provisional-a.json"
+    provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
+    db_path, _ = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    args = argparse.Namespace(
+        fixture_evidence=provisional_path,
+        no_effect_db=db_path,
+        device_id=provisional["public_path"]["device_id"],
+    )
+    final = asyncio.run(VALIDATOR.CAPTURE._finalize_fixture(args, "token"))
+    # The final artifact is written into the retained evidence path with no
+    # further upgrade or mutation, and must pass the full validator.
+    _save(fixture_path, final)
+    VALIDATOR.validate(root)
+
+
+def test_cli_finalize_fixture_runs_without_token_file(tmp_path: Path) -> None:
+    import sys
+
+    root = _repo(tmp_path / "cli")
+    fixture_path, fixture_value = _fixture(root, "a")
+    provisional = copy.deepcopy(fixture_value)
+    provisional["schema_version"] = (
+        "cad.phase10-live-public-fixture-provisional/1"
+    )
+    provisional["status"] = "PROVISIONAL"
+    provisional.pop("no_effect", None)
+    provisional.pop("no_effect_db_binding", None)
+    provisional["gate_results"] = {
+        key: item
+        for key, item in provisional["gate_results"].items()
+        if key
+        not in {
+            "no_write_events_in_window",
+            "anchor_jobs_read_only",
+            "write_snapshot_unchanged",
+            "no_write_requested",
+            "no_cad_effect_attempted",
+            "runtime_identity_bound",
+        }
+    }
+    provisional_path = tmp_path / "provisional-a.json"
+    provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
+    db_path, _ = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    output_path = tmp_path / "final-a.json"
+    sys.argv = [
+        "phase10-live-public-evidence.py",
+        "finalize-fixture",
+        "--fixture-evidence",
+        str(provisional_path),
+        "--no-effect-db",
+        str(db_path),
+        "--device-id",
+        provisional["public_path"]["device_id"],
+        "--output",
+        str(output_path),
+    ]
+    VALIDATOR.CAPTURE.main()
+    final = json.loads(output_path.read_text(encoding="utf-8"))
+    assert final["schema_version"] == "cad.phase10-live-public-fixture/1"
+    assert final["status"] == "PASS"
+
+
+def test_cli_action_specific_requirements() -> None:
+    parser = VALIDATOR.CAPTURE.build_parser()
+    parser.parse_args(
+        [
+            "capture-identity",
+            "--output",
+            "identity.json",
+        ]
+    )
+    parser.parse_args(
+        [
+            "finalize-fixture",
+            "--fixture-evidence",
+            "provisional.json",
+            "--no-effect-db",
+            "db.json",
+            "--device-id",
+            "device",
+            "--output",
+            "final.json",
+        ]
+    )
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "capture-public",
+                "--output",
+                "capture.json",
+            ]
+        )
 
 
 def test_validator_rejects_legacy_restart_boolean(tmp_path: Path) -> None:
@@ -762,10 +1011,25 @@ def test_validator_time_accepts_rfc3339_fractional_seconds(value: str) -> None:
         ("identity_autocad_hash", "AutoCAD executable hash/start identity"),
         ("identity_autocad_start", "AutoCAD executable hash/start identity"),
         ("session_disconnected", "agent session runtime identity is invalid"),
-        ("invocation_write", "unexpected tools"),
-        ("invocation_missing_observe", "exactly two cad_observe"),
+        ("invocation_write", "out of phase"),
+        ("invocation_missing_observe", "missing expected phase"),
         ("invocation_missing_section", "per retained section"),
         ("invocation_wrong_scene", "cad_build_scene invocation arguments"),
+        ("invocation_unknown_tool", "out of phase"),
+        ("invoked_tools_tampered", "invoked_tools does not match"),
+        ("write_tools_tampered", "write_tools_invoked does not match"),
+        ("invocation_observe_device", "cad_observe invocation arguments"),
+        ("invocation_observe_level", "cad_observe invocation arguments"),
+        ("invocation_observe_preview", "cad_observe invocation arguments"),
+        ("invocation_observe_swapped", "cad_observe invocation arguments"),
+        ("invocation_observe_key_reused", "cad_observe invocation arguments"),
+        ("invocation_observe_key_prefix", "cad_observe invocation arguments"),
+        ("invocation_job_mismatch", "out of phase"),
+        ("invocation_reordered", "not stored chronologically"),
+        ("invocation_after_before_resource", "out of phase"),
+        ("invocation_query_before_build", "out of phase"),
+        ("invocation_second_summary", "out of phase"),
+        ("invocation_interleaved_poll", "out of phase"),
         ("session_binding", "session binding is not cross-bound"),
         ("db_window_end", "outside the audit window"),
         ("db_sha", "durable no-write snapshot"),

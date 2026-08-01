@@ -737,8 +737,7 @@ def validate(root: Path) -> None:
         public_path = evidence.get("public_path")
         _require(
             isinstance(public_path, dict)
-            and public_path.get("standalone_desktop_agent") is True
-            and public_path.get("write_tools_invoked") == [],
+            and public_path.get("standalone_desktop_agent") is True,
             f"{label}: public read-only path is incomplete",
         )
         source = evidence.get("source")
@@ -780,15 +779,7 @@ def validate(root: Path) -> None:
         _require(
             len(set(observation_job_ids)) == 2
             and source["observation_before"]["request"]["snapshot_id"]
-            == source["snapshot_id"]
-            and set(evidence.get("public_path", {}).get("invoked_tools", []))
-            == {
-                "cad_list_devices",
-                "cad_observe",
-                "cad_get_job",
-                "cad_build_scene",
-                "cad_query_scene",
-            },
+            == source["snapshot_id"],
             f"{label}: public observation identities/tools are incomplete",
         )
         captured_at = _time(evidence.get("captured_at"), label)
@@ -799,6 +790,8 @@ def validate(root: Path) -> None:
                 observation_job_ids=observation_job_ids,
                 scene_id=scene.get("scene_id"),
                 source_snapshot_id=scene.get("source_snapshot_id"),
+                device_id=fixture_device,
+                fixture_id=fixture.get("fixture_id"),
             )
         except ValueError as error:
             raise ValueError(f"{label}: {error}") from error
@@ -816,6 +809,23 @@ def validate(root: Path) -> None:
                 for item in invocations
             ),
             f"{label}: public tool invocation records are incomplete",
+        )
+        _require(
+            evidence.get("public_path", {}).get("invoked_tools")
+            == [item["tool"] for item in invocations],
+            f"{label}: invoked_tools does not match tool_invocations",
+        )
+        derived_write_tools = sorted(
+            {
+                item["tool"]
+                for item in invocations
+                if item["tool"] in CAPTURE.WRITE_TOOLS
+            }
+        )
+        _require(
+            evidence.get("public_path", {}).get("write_tools_invoked")
+            == derived_write_tools,
+            f"{label}: write_tools_invoked does not match tool_invocations",
         )
         identity = evidence.get("runtime_identity")
         _require(
