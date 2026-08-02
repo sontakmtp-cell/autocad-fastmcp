@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import hashlib
 import json
 import os
 import re
 import subprocess
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 if os.name == "nt":
@@ -2480,6 +2481,178 @@ async def _capture_identity(args: argparse.Namespace, token: str) -> dict[str, A
     }
 
 
+def _windows_process(pid: int) -> dict[str, Any]:
+    if os.name != "nt":
+        raise RuntimeError("runtime identity capture must run on Windows")
+    import win32api
+    import win32con
+    import win32process
+
+    handle = win32api.OpenProcess(
+        win32con.PROCESS_QUERY_LIMITED_INFORMATION, False, pid
+    )
+    try:
+        executable = Path(win32process.GetModuleFileNameEx(handle, 0)).resolve()
+        started_at = win32process.GetProcessTimes(handle)["CreationTime"]
+    finally:
+        handle.Close()
+    return {
+        "process_id": pid,
+        "executable": str(executable),
+        "executable_sha256": _sha256(executable),
+        "started_at": started_at.astimezone(timezone.utc).isoformat(),
+    }
+
+
+def _windows_file_version(path: str) -> str:
+    import win32api
+
+    version = win32api.GetFileVersionInfo(path, "\\")
+    return ".".join(
+        str(value)
+        for value in (
+            version["FileVersionMS"] >> 16,
+            version["FileVersionMS"] & 0xFFFF,
+            version["FileVersionLS"] >> 16,
+            version["FileVersionLS"] & 0xFFFF,
+        )
+    )
+
+
+async def _capture_runtime_identity(
+    args: argparse.Namespace, token: str | None
+) -> dict[str, Any]:
+    del token
+    gateway_capture = json.loads(args.gateway_identity.read_text(encoding="utf-8"))
+    derived_gateway = _derive_gateway_identity(gateway_capture)
+    service_record = derived_gateway["gateway_service_record"]
+    service_properties = service_record["properties"]
+    gateway_process = service_record["process"]
+    gateway_release = service_record["release"]
+    implementation_commit = _git_head()
+    if gateway_release["commit"] != implementation_commit:
+        raise ValueError("Gateway release differs from runtime identity capture commit")
+
+    database = json.loads(args.db_evidence.read_text(encoding="utf-8"))
+    scope = database.get("scope", {})
+    gates = database.get("gate_results", {})
+    if (
+        database.get("schema_version") != "cad.phase10-live-db-evidence/1"
+        or database.get("implementation_commit") != implementation_commit
+        or database.get("status") != "PASS"
+        or not isinstance(gates, dict)
+        or not gates
+        or not all(value is True for value in gates.values())
+        or not isinstance(scope.get("owner_subject"), str)
+        or not scope["owner_subject"]
+        or scope.get("device_id") != args.device_id
+    ):
+        raise ValueError("DB evidence does not match runtime identity capture")
+    session_id = database.get("active_agent_session_id")
+    sessions = [
+        item
+        for item in database.get("agent_sessions", [])
+        if isinstance(item, dict) and item.get("session_id") == session_id
+    ]
+    if not isinstance(session_id, str) or len(sessions) != 1:
+        raise ValueError("DB evidence does not contain one active Agent session")
+    session = sessions[0]
+    if (
+        session.get("device_id") != args.device_id
+        or session.get("owner_subject") != scope["owner_subject"]
+        or session.get("device_status") != "online"
+        or session.get("disconnected_at") is not None
+        or session.get("protocol_version") != "cad.agent/2"
+    ):
+        raise ValueError("DB evidence Agent session is not active and compatible")
+
+    desktop = _windows_process(args.desktop_agent_pid)
+    if PureWindowsPath(desktop["executable"]).name != "KythuatvangAutoCADAgent.exe":
+        raise ValueError("desktop Agent process is not the standalone executable")
+    autocad = _windows_process(args.autocad_pid)
+    if PureWindowsPath(autocad["executable"]).name.lower() != "acad.exe":
+        raise ValueError("AutoCAD process executable is unexpected")
+
+    bootstrap = json.loads(args.bootstrap.read_text(encoding="utf-8"))
+    secret = bootstrap.get("session_secret_base64")
+    try:
+        secret_bytes = base64.b64decode(secret, validate=True)
+    except (TypeError, ValueError) as error:
+        raise ValueError("Managed Host bootstrap secret is invalid") from error
+    if (
+        bootstrap.get("protocol_version") != "cad.host/1"
+        or bootstrap.get("host_pid") != args.autocad_pid
+        or bootstrap.get("host_family") != "R25"
+        or not isinstance(bootstrap.get("pipe_name"), str)
+        or not bootstrap["pipe_name"]
+        or len(secret_bytes) != 32
+    ):
+        raise ValueError("Managed Host bootstrap is invalid")
+    host_started_at = bootstrap.get("created_at")
+    _parse_timestamp(host_started_at, "Managed Host bootstrap created_at")
+
+    host_executable = args.managed_host_executable.resolve()
+    manifest_path = host_executable.parent.parent / "Shared" / "package-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    host_hash = _sha256(host_executable)
+    if (
+        manifest.get("package_hash") != bootstrap.get("package_hash")
+        or manifest.get("artifacts", {}).get(host_executable.name)
+        != host_hash.removeprefix("sha256:")
+    ):
+        raise ValueError("Managed Host package does not match its signed manifest")
+
+    file_version = _windows_file_version(autocad["executable"])
+    identity = {
+        "gateway_process": {
+            "process_id": derived_gateway["gateway_pid"],
+            "service": service_properties["Id"],
+            "executable": gateway_process["executable"],
+            "executable_sha256": gateway_process["executable_sha256"],
+            "working_directory": gateway_release["working_directory"],
+            "release_commit": gateway_release["commit"],
+        },
+        "desktop_agent_process": {
+            **desktop,
+            "standalone": True,
+        },
+        "autocad_process": {
+            **autocad,
+            "product": "AutoCAD",
+            "edition": "Mechanical 2025",
+            "release_year": 2025,
+            "series": "R25.0",
+            "file_version": file_version,
+            "host_family": "R25",
+        },
+        "agent_session": {
+            "session_id": session_id,
+            "device_id": args.device_id,
+            "connected_at": session.get("connected_at"),
+            "disconnected_at": None,
+            "protocol_version": session.get("protocol_version"),
+            "agent_version": session.get("agent_version"),
+            "managed_host": {
+                "package_id": manifest.get("package_id"),
+                "package_version": manifest.get("package_version"),
+                "package_hash": manifest.get("package_hash"),
+                "runtime_id": "managed_dotnet",
+                "framework": ".NET 8",
+                "process_id": args.autocad_pid,
+                "executable": str(host_executable),
+                "executable_sha256": host_hash,
+                "started_at": host_started_at,
+            },
+        },
+    }
+    _validate_runtime_identity(
+        identity,
+        device_id=args.device_id,
+        implementation_commit=implementation_commit,
+    )
+    return identity
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="action", required=True)
@@ -2515,6 +2688,28 @@ def build_parser() -> argparse.ArgumentParser:
     identity.add_argument("--old-pid", type=int)
     identity.add_argument("--output", required=True, type=Path)
     identity.add_argument("--operator", default="local-operator")
+
+    runtime_identity = subparsers.add_parser("capture-runtime-identity")
+    runtime_identity.add_argument("--gateway-identity", required=True, type=Path)
+    runtime_identity.add_argument("--db-evidence", required=True, type=Path)
+    runtime_identity.add_argument("--device-id", required=True)
+    runtime_identity.add_argument("--desktop-agent-pid", required=True, type=int)
+    runtime_identity.add_argument("--autocad-pid", required=True, type=int)
+    runtime_identity.add_argument(
+        "--managed-host-executable", required=True, type=Path
+    )
+    runtime_identity.add_argument(
+        "--bootstrap",
+        type=Path,
+        default=(
+            Path(os.environ.get("LOCALAPPDATA", ""))
+            / "KythuatVang"
+            / "AutoCADMcp"
+            / "managed-host-r25.json"
+        ),
+    )
+    runtime_identity.add_argument("--output", required=True, type=Path)
+    runtime_identity.add_argument("--operator", default="local-operator")
 
     restart = subparsers.add_parser("restart-query")
     restart.add_argument("--endpoint", default=endpoint_default)
@@ -2571,6 +2766,18 @@ def main() -> None:
         command.append(f"--service {args.service}")
         if args.old_pid is not None:
             command.append(f"--old-pid {args.old_pid}")
+    elif args.action == "capture-runtime-identity":
+        command.extend(
+            (
+                f"--gateway-identity {args.gateway_identity}",
+                f"--db-evidence {args.db_evidence}",
+                f"--device-id {args.device_id}",
+                f"--desktop-agent-pid {args.desktop_agent_pid}",
+                f"--autocad-pid {args.autocad_pid}",
+                f"--managed-host-executable {args.managed_host_executable}",
+                f"--bootstrap {args.bootstrap}",
+            )
+        )
     else:
         command.extend(
             (
@@ -2595,6 +2802,7 @@ def main() -> None:
         "finalize-fixture": _finalize_fixture,
         "finalize-restart": _finalize_restart,
         "capture-identity": _capture_identity,
+        "capture-runtime-identity": _capture_runtime_identity,
         "restart-query": _restart_query,
     }[args.action]
     result = asyncio.run(runner(args, token))

@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -78,6 +79,10 @@ NO_EFFECT_DB_GATES = {
 }
 # Evidence is local to one lab clock; allow only a small, explicit skew.
 _VALIDATION_CLOCK_SKEW = timedelta(seconds=5)
+_POST_CAPTURE_STATUS_PATHS = {
+    "docs/architecture/Phase-10.md",
+    "docs/architecture/phase10-conformance-matrix.md",
+}
 
 
 def _load(path: Path) -> dict:
@@ -94,6 +99,78 @@ def _require(condition: bool, message: str) -> None:
 
 def _digest(path: Path) -> str:
     return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _git_head(root: Path) -> str:
+    try:
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ValueError("Current Git HEAD is unavailable") from error
+    _require(
+        re.fullmatch(r"[0-9a-f]{40}", head) is not None,
+        "Current Git HEAD is invalid",
+    )
+    return head
+
+
+def _git_is_ancestor(root: Path, ancestor: str, descendant: str) -> bool:
+    try:
+        completed = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            cwd=root,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as error:
+        raise ValueError("Current Git ancestry is unavailable") from error
+    if completed.returncode == 0:
+        return True
+    if completed.returncode == 1:
+        return False
+    raise ValueError("Current Git ancestry is unavailable")
+
+
+def _git_changed_paths(root: Path, earlier: str, later: str) -> list[str]:
+    try:
+        completed = subprocess.run(
+            ["git", "diff", "--name-only", "--no-renames", earlier, later],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ValueError("Current Git change list is unavailable") from error
+    return [path for path in completed.stdout.splitlines() if path]
+
+
+def _validate_same_implementation(
+    root: Path, implementation_commit: str, current_head: str
+) -> None:
+    _require(
+        _git_is_ancestor(root, implementation_commit, current_head),
+        "Phase 10 live evidence implementation_commit is not an ancestor of current Git HEAD",
+    )
+    changed_paths = _git_changed_paths(root, implementation_commit, current_head)
+    disallowed = sorted(
+        path
+        for path in changed_paths
+        if not (
+            path.startswith("docs/architecture/evidence/")
+            or path in _POST_CAPTURE_STATUS_PATHS
+        )
+    )
+    _require(
+        not disallowed,
+        "Phase 10 live evidence implementation changed after capture: "
+        + ", ".join(disallowed),
+    )
 
 
 def _normalize_timestamp(text: str) -> str:
@@ -560,6 +637,7 @@ def _validate_restart_raw_captures(
 
 def validate(root: Path) -> None:
     validation_time = datetime.now(timezone.utc) + _VALIDATION_CLOCK_SKEW
+    current_head = _git_head(root)
     fixture_root = root / "fixtures" / "phase10" / "live"
     evidence_root = root / "docs" / "architecture" / "evidence"
     manifest = _load(fixture_root / "manifest.json")
@@ -881,6 +959,8 @@ def validate(root: Path) -> None:
             and evidence["implementation_commit"] == implementation_commit,
             f"{label}: commit provenance differs from Drawing A",
         )
+
+    _validate_same_implementation(root, implementation_commit, current_head)
 
     for field, label in (
         (("fixture", "dwg_file_hash_before"), "DWG hashes"),

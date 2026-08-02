@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "phase10-live-db-evidence.py"
@@ -169,3 +171,97 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
         first["write_snapshot"]["sha256"]
         == cli_evidence["write_snapshot"]["sha256"]
     )
+
+    pre_path = tmp_path / "pre-restart.json"
+    pre_path.write_text(json.dumps(first), encoding="utf-8")
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "UPDATE agent_sessions SET disconnected_at=? WHERE session_id='session-live'",
+        ("2026-07-30T06:43:30+00:00",),
+    )
+    connection.execute(
+        "INSERT INTO agent_sessions VALUES(?,?,?,?,?)",
+        (
+            "session-after",
+            "device-live",
+            "2026-07-30T06:43:31+00:00",
+            "2026-07-30T06:44:00+00:00",
+            None,
+        ),
+    )
+    connection.commit()
+    connection.close()
+
+    post = module.collect_evidence(
+        database,
+        owner="owner-live",
+        device="device-live",
+        window_start="2026-07-30T06:15:00+00:00",
+        window_end="2026-07-30T06:43:00+00:00",
+        implementation_commit="a" * 40,
+        pre_restart_evidence=pre_path,
+    )
+    comparison = post["restart_comparison"]
+    assert post["status"] == "PASS"
+    assert comparison["pre_restart_active_agent_session_id"] == "session-live"
+    assert comparison["post_restart_active_agent_session_id"] == "session-after"
+    assert comparison["pre_restart_write_snapshot"] == first["write_snapshot"]
+    assert comparison["post_restart_write_snapshot_sha256"] == post["write_snapshot"]["sha256"]
+    assert comparison["sha256_unchanged"] is True
+    assert comparison["tables_byte_identical"] is True
+
+    with pytest.raises(ValueError, match="pre-restart evidence is missing"):
+        module.collect_evidence(
+            database,
+            owner="owner-live",
+            device="device-live",
+            window_start="2026-07-30T06:15:00+00:00",
+            window_end="2026-07-30T06:43:00+00:00",
+            implementation_commit="a" * 40,
+            pre_restart_evidence=tmp_path / "missing.json",
+        )
+
+    tampered = json.loads(pre_path.read_text(encoding="utf-8"))
+    tampered["write_snapshot"]["sha256"] = "sha256:" + "0" * 64
+    tampered_path = tmp_path / "tampered-pre-restart.json"
+    tampered_path.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(ValueError, match="write snapshot digest is invalid"):
+        module.collect_evidence(
+            database,
+            owner="owner-live",
+            device="device-live",
+            window_start="2026-07-30T06:15:00+00:00",
+            window_end="2026-07-30T06:43:00+00:00",
+            implementation_commit="a" * 40,
+            pre_restart_evidence=tampered_path,
+        )
+
+    wrong_scope = json.loads(pre_path.read_text(encoding="utf-8"))
+    wrong_scope["scope"]["device_id"] = "other-device"
+    wrong_scope_path = tmp_path / "wrong-scope-pre-restart.json"
+    wrong_scope_path.write_text(json.dumps(wrong_scope), encoding="utf-8")
+    with pytest.raises(ValueError, match="scope differs from post capture"):
+        module.collect_evidence(
+            database,
+            owner="owner-live",
+            device="device-live",
+            window_start="2026-07-30T06:15:00+00:00",
+            window_end="2026-07-30T06:43:00+00:00",
+            implementation_commit="a" * 40,
+            pre_restart_evidence=wrong_scope_path,
+        )
+
+    wrong_commit = json.loads(pre_path.read_text(encoding="utf-8"))
+    wrong_commit["implementation_commit"] = "b" * 40
+    wrong_commit_path = tmp_path / "wrong-commit-pre-restart.json"
+    wrong_commit_path.write_text(json.dumps(wrong_commit), encoding="utf-8")
+    with pytest.raises(ValueError, match="commit differs from post capture"):
+        module.collect_evidence(
+            database,
+            owner="owner-live",
+            device="device-live",
+            window_start="2026-07-30T06:15:00+00:00",
+            window_end="2026-07-30T06:43:00+00:00",
+            implementation_commit="a" * 40,
+            pre_restart_evidence=wrong_commit_path,
+        )

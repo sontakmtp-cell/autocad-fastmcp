@@ -345,6 +345,13 @@ Explicit rollback plan from checkpoint/receipt, with preview and conflict detect
 
 Owner identity is stable `(issuer, subject)`, not email, `client_id` or `azp`.
 
+The signed-in product flow requests the complete user scope bundle once:
+`autocad.read autocad.write autocad.device.manage`. This lets one authorized
+session use observation, the existing Phase 6–9 write workflow and device
+management without a second login. Holding the scopes does not bypass policy:
+CAD writes still require exact device/document binding, preview, trusted
+approval, commit, validation and recovery/rollback controls.
+
 Trust boundaries:
 
 | Credential | Holder | Used for |

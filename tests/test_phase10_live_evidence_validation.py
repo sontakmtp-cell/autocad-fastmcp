@@ -28,6 +28,17 @@ FIXED_COMMIT = "a" * 40
 TEST_STAMP = "20260730000000"
 
 
+@pytest.fixture(autouse=True)
+def _fixed_validator_head(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(VALIDATOR, "_git_head", lambda root: FIXED_COMMIT)
+    monkeypatch.setattr(
+        VALIDATOR, "_git_is_ancestor", lambda root, ancestor, descendant: True
+    )
+    monkeypatch.setattr(
+        VALIDATOR, "_git_changed_paths", lambda root, earlier, later: []
+    )
+
+
 def _repo(path: Path) -> Path:
     shutil.copytree(
         ROOT / "fixtures" / "phase10" / "live",
@@ -1043,6 +1054,36 @@ def test_validator_accepts_cross_bound_raw_restart_evidence(
     tmp_path: Path,
 ) -> None:
     VALIDATOR.validate(_repo(tmp_path / "valid"))
+
+
+def test_validator_accepts_evidence_commit_with_only_status_docs_changed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(VALIDATOR, "_git_head", lambda root: "b" * 40)
+    monkeypatch.setattr(
+        VALIDATOR,
+        "_git_changed_paths",
+        lambda root, earlier, later: [
+            "docs/architecture/evidence/phase10-live-r25-drawing-a-20260730.json",
+            "docs/architecture/Phase-10.md",
+        ],
+    )
+    VALIDATOR.validate(_repo(tmp_path / "status-only"))
+
+
+def test_validator_rejects_evidence_when_runtime_code_changed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(VALIDATOR, "_git_head", lambda root: "b" * 40)
+    monkeypatch.setattr(
+        VALIDATOR,
+        "_git_changed_paths",
+        lambda root, earlier, later: [
+            "scripts/validate-phase10-live-evidence.py",
+        ],
+    )
+    with pytest.raises(ValueError, match="implementation changed after capture"):
+        VALIDATOR.validate(_repo(tmp_path / "runtime-changed"))
 
 
 class _FakeMCPClient:

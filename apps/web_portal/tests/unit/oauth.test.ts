@@ -26,6 +26,9 @@ describe("OAuth account selection", () => {
 
     expect(url.searchParams.get("prompt")).toBe("login");
     expect(url.searchParams.get("client_id")).toBe("unit-test-client");
+    expect(url.searchParams.get("scope")).toBe(
+      "openid profile email autocad.read autocad.write autocad.device.manage",
+    );
     expect(url.searchParams.get("nonce")).toBeTruthy();
     expect(url.searchParams.get("returnTo")).toBeNull();
   });

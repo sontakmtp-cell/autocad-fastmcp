@@ -40,7 +40,7 @@ $lines = @(
     "PORTAL_OIDC_CLIENT_ID=$OAuthClientId",
     "PORTAL_OIDC_CLIENT_SECRET=",
     "PORTAL_OIDC_AUDIENCE=$OAuthAudience",
-    "PORTAL_OIDC_SCOPES=openid profile email autocad.read autocad.device.manage"
+    "PORTAL_OIDC_SCOPES=openid profile email autocad.read autocad.write autocad.device.manage"
 )
 Write-Phase5RestrictedText `
     -LiteralPath $target `

@@ -1651,8 +1651,12 @@ Fixtures:
 
 - tools/resources only under Phase 10 flag/profile;
 - read-only annotations;
-- OAuth `autocad.read` sufficient;
-- write scope not required for scene build/query;
+- the signed-in Phase 10 product flow requests
+  `autocad.read autocad.write autocad.device.manage` in one consent;
+- scene build/query still authorize on `autocad.read`; the broader token only
+  exposes the existing Phase 5 device lifecycle and Phase 6–9 write workflow;
+- possession of `autocad.write` never bypasses preview, trusted approval,
+  exact execution binding, commit, validation or recovery/rollback;
 - bounded structured output;
 - resource links valid;
 - old tool schema snapshots unchanged;

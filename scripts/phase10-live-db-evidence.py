@@ -189,6 +189,77 @@ def _expected_migrations() -> list[dict[str, Any]]:
     return result
 
 
+def _snapshot_digest(tables: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        tables, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return "sha256:" + hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _parse_timestamp(value: object, label: str) -> datetime:
+    if not isinstance(value, str):
+        raise ValueError(f"{label} is missing")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(f"{label} is invalid") from error
+    if parsed.tzinfo is None:
+        raise ValueError(f"{label} must include an offset")
+    return parsed
+
+
+def _load_pre_restart_evidence(
+    path: Path,
+    *,
+    owner: str,
+    device: str,
+    implementation_commit: str,
+) -> dict[str, Any]:
+    if not path.is_file():
+        raise ValueError("pre-restart evidence is missing")
+    try:
+        evidence = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ValueError("pre-restart evidence is not valid JSON") from error
+    if not isinstance(evidence, dict):
+        raise ValueError("pre-restart evidence must be an object")
+    if evidence.get("schema_version") != "cad.phase10-live-db-evidence/1":
+        raise ValueError("pre-restart evidence schema mismatch")
+    if evidence.get("status") != "PASS":
+        raise ValueError("pre-restart evidence did not pass")
+    if evidence.get("implementation_commit") != implementation_commit:
+        raise ValueError("pre-restart evidence commit differs from post capture")
+    scope = evidence.get("scope")
+    if not isinstance(scope, dict) or (
+        scope.get("owner_subject") != owner or scope.get("device_id") != device
+    ):
+        raise ValueError("pre-restart evidence scope differs from post capture")
+    _parse_timestamp(evidence.get("captured_at"), "pre-restart evidence captured_at")
+    gates = evidence.get("gate_results")
+    if not isinstance(gates, dict) or not gates or not all(gates.values()):
+        raise ValueError("pre-restart evidence gates did not pass")
+    snapshot = evidence.get("write_snapshot")
+    if not isinstance(snapshot, dict) or not isinstance(snapshot.get("tables"), dict):
+        raise ValueError("pre-restart evidence write snapshot is missing")
+    if snapshot.get("sha256") != _snapshot_digest(snapshot["tables"]):
+        raise ValueError("pre-restart evidence write snapshot digest is invalid")
+    active_session_id = evidence.get("active_agent_session_id")
+    sessions = evidence.get("agent_sessions")
+    active_sessions = [
+        session
+        for session in sessions
+        if isinstance(session, dict)
+        and session.get("session_id") == active_session_id
+        and session.get("device_id") == device
+        and session.get("owner_subject") == owner
+        and session.get("device_status") == "online"
+        and session.get("disconnected_at") is None
+    ] if isinstance(sessions, list) and isinstance(active_session_id, str) else []
+    if len(active_sessions) != 1:
+        raise ValueError("pre-restart active agent session is invalid")
+    return evidence
+
+
 def collect_evidence(
     database: Path,
     *,
@@ -199,6 +270,7 @@ def collect_evidence(
     implementation_commit: str,
     anchor_job_ids: tuple[str, ...] = ANCHOR_JOB_IDS,
     scene_ids: tuple[str, ...] = SCENE_IDS,
+    pre_restart_evidence: Path | None = None,
 ) -> dict[str, Any]:
     if not COMMIT_RE.fullmatch(implementation_commit):
         raise ValueError("implementation_commit must be a 40-character lowercase SHA")
@@ -258,9 +330,6 @@ def collect_evidence(
             )
             for name, (sql, parameter_keys) in SNAPSHOT_QUERIES.items()
         }
-        snapshot_json = json.dumps(
-            snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-        )
         sessions = _rows(
             connection.execute(
                 "SELECT s.*,d.status AS device_status,d.owner_subject "
@@ -310,10 +379,11 @@ def collect_evidence(
         and all(sections == SCENE_SECTIONS for sections in sections_by_scene.values()),
         "active_session_ok": len(active_sessions) == 1,
     }
-    return {
+    captured_at = datetime.now(timezone.utc).isoformat()
+    evidence = {
         "schema_version": "cad.phase10-live-db-evidence/1",
         "implementation_commit": implementation_commit,
-        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "captured_at": captured_at,
         "database": str(database),
         "scope": {
             "owner_subject": owner,
@@ -333,7 +403,7 @@ def collect_evidence(
         "scenes": scenes,
         "scene_sections": scene_sections,
         "write_snapshot": {
-            "sha256": "sha256:" + hashlib.sha256(snapshot_json.encode()).hexdigest(),
+            "sha256": _snapshot_digest(snapshot),
             "tables": snapshot,
         },
         "agent_sessions": sessions,
@@ -343,6 +413,38 @@ def collect_evidence(
         "gate_results": gates,
         "status": "PASS" if all(gates.values()) else "FAIL",
     }
+    if pre_restart_evidence is not None:
+        pre = _load_pre_restart_evidence(
+            pre_restart_evidence,
+            owner=owner,
+            device=device,
+            implementation_commit=implementation_commit,
+        )
+        if _parse_timestamp(
+            pre["captured_at"], "pre-restart evidence captured_at"
+        ) >= _parse_timestamp(captured_at, "post-restart evidence captured_at"):
+            raise ValueError("pre-restart evidence was not captured before post capture")
+        pre_snapshot = pre["write_snapshot"]
+        comparison = {
+            "pre_restart_active_agent_session_id": pre["active_agent_session_id"],
+            "post_restart_active_agent_session_id": evidence["active_agent_session_id"],
+            "pre_restart_write_snapshot": pre_snapshot,
+            "post_restart_write_snapshot_sha256": evidence["write_snapshot"]["sha256"],
+            "pre_restart_captured_at": pre["captured_at"],
+            "post_restart_captured_at": captured_at,
+            "sha256_unchanged": (
+                pre_snapshot["sha256"] == evidence["write_snapshot"]["sha256"]
+            ),
+            "tables_byte_identical": (
+                pre_snapshot["tables"] == evidence["write_snapshot"]["tables"]
+            ),
+        }
+        evidence["restart_comparison"] = comparison
+        gates["pre_restart_write_snapshot_unchanged"] = comparison[
+            "tables_byte_identical"
+        ]
+        evidence["status"] = "PASS" if all(gates.values()) else "FAIL"
+    return evidence
 
 
 def main() -> int:
@@ -357,6 +459,7 @@ def main() -> int:
     parser.add_argument("--implementation-commit", required=True)
     parser.add_argument("--anchor-job-id", action="append")
     parser.add_argument("--scene-id", action="append")
+    parser.add_argument("--pre-restart-evidence", type=Path)
     args = parser.parse_args()
     evidence = collect_evidence(
         args.database,
@@ -367,6 +470,7 @@ def main() -> int:
         implementation_commit=args.implementation_commit,
         anchor_job_ids=tuple(args.anchor_job_id or ANCHOR_JOB_IDS),
         scene_ids=tuple(args.scene_id or SCENE_IDS),
+        pre_restart_evidence=args.pre_restart_evidence,
     )
     json.dump(evidence, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
     sys.stdout.write("\n")

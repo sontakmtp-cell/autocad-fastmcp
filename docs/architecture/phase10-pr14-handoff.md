@@ -1,6 +1,6 @@
 # Phase 10 PR #14 — Handoff cho agent tiếp theo
 
-Cập nhật: 2026-07-30
+Cập nhật: 2026-08-02
 
 ## Trạng thái bắt buộc
 
@@ -8,8 +8,7 @@ Cập nhật: 2026-07-30
 - Nhánh: `codex/phase-10-scene-graph-drawing-intelligence`.
 - Không làm trên `main`; không triển khai Phase 11.
 - PR: [#14](https://github.com/sontakmtp-cell/autocad-fastmcp/pull/14).
-- Local đã khôi phục về `8663714` (đúng head PR #14 trên `origin`); bộ sửa 3 blocker dưới đây đang ở dạng thay đổi chưa commit trong working tree, chưa push.
-- Chưa được tuyên bố Engineering GO. Trạng thái hiện tại là `Engineering NO-GO` vì thiếu live pairing/Agent evidence.
+- Live stack đã pair thật qua Portal/Auth0; standalone Agent và Managed Host R25 đang online. Chưa được tuyên bố Engineering GO vì A/B/C, restart và DB no-effect vẫn phải được capture lại trên đúng implementation commit cuối.
 - `Customer Pilot NO-GO` vẫn giữ nguyên.
 
 ## Những gì đã làm được
@@ -59,44 +58,32 @@ Full Gateway pytest từng treo ở khoảng 124 giây và 244 giây sau thay đ
 
 ## Runtime hiện tại
 
-- Gateway release remote: `/opt/autocad-mcp/releases/20260730T1625-phase10-pr14-59fefa1`.
+- Gateway release remote đang chạy commit `6f3d0c5`; phải deploy lại đúng implementation commit cuối trước capture.
 - systemd unit: `autocad-mcp-phase4.service`.
 - Profile phải là `phase9_workflow` để bật Phase 9 public workflow và Phase 10 scene engine.
 - Cloudflared unit: `autocad-mcp-cloudflared.service`.
-- AutoCAD Full/Mechanical 2025 đang dùng fixture A: `fixtures\phase10\live\phase10-drawing-a.dwg`; phải kiểm tra lại PID trước capture.
+- AutoCAD Mechanical 2025 đã báo `cad.host/1 local pipe ready`; phải kiểm tra lại PID và fixture đang mở trước từng capture.
 - Agent standalone build: `dist\phase10-agent-pr14\app\KythuatvangAutoCADAgent.exe`.
+- Device đã pair thật: `device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476`.
 - Không stage các thư mục `.pytest-tmp-*`, `tmp/`, `acad.err`; không dùng `git add -A`.
 
-## Blocker live đã xác nhận
+## Blocker live đã được gỡ
 
-Local pairing marker giả đã được di chuyển khỏi identity directory để không giả paired state:
-
-```text
-C:\Users\haing\AppData\Local\Kythuatvang\AutoCADAgent\paired-before-real-pairing-20260730.json
-```
-
-Một enrollment thật đã từng bị `429 rate_limited` vì còn pending session cũ; DB không bị xóa. Sau khi hết hạn, enrollment mới tạo thành công nhưng URL `/pair?...` trả `Not Found`.
-
-Root cause đã xác minh bằng Cloudflare log:
-
-- Tunnel hiện chỉ map `cad.kythuatvang.com` vào Gateway `127.0.0.1:8765`.
-- Không có Portal web service/ingress đang chạy.
-- `apps/web_portal` có source trong release nhưng không được expose dưới public origin.
-- Gateway có API `/api/portal/v1/pairings/...`, nhưng không phục vụ web page `/pair`.
-
-Không được coi pairing, Agent reconnect hoặc live evidence là thành công khi chưa thấy Portal/Auth0 approval thật và session-token/`cad.agent/2` Hello thật.
+- Portal đã được expose dưới public origin, Auth0/Google approval đã hoàn tất và Agent có session `cad.agent/2` thật.
+- Bundle Managed Host đúng đã được build/cài; `AUTOCADMCPSTATUS` xác nhận R25 `0.8.0` và local pipe sẵn sàng.
+- OAuth consent chủ đích xin đủ `autocad.read autocad.write autocad.device.manage`. Token có write scope không cho phép ghi trực tiếp: mọi write vẫn bắt buộc `prepare -> preview -> trusted approval -> commit -> validate`, kèm recovery/rollback.
 
 ## Việc agent sau phải làm
 
-1. Expose/deploy `apps/web_portal` dưới đúng `https://cad.kythuatvang.com` bằng cách nhỏ nhất có thể kiểm chứng; không thay đổi security boundary của Gateway.
-2. Tạo enrollment mới sau khi pending session cũ hết hạn; dùng Portal/Auth0 thật để approve.
-3. Chạy packaged standalone Agent với Managed .NET bật và AutoCAD R25 mở; ghi raw Gateway/Agent/Host/AutoCAD/device/session/document/revision/process identity.
-4. Capture mới Drawing A/B/C bằng `scripts/phase10-live-public-evidence.py capture-public` (provisional) rồi `finalize-fixture`; không dùng lại artifact `device-0e4...` cũ làm live proof.
-5. Capture fixture theo 2 phase: chạy `capture-public` (ghi tool invocation thật + provisional artifact chứa job/scene IDs), chờ audit window đóng rồi collect DB evidence bằng `phase10-live-db-evidence.py ... --implementation-commit <capture-commit>`, sau đó chạy `finalize-fixture --fixture-evidence <provisional> --no-effect-db <db>` để cross-bind (window bao trùm capture, `window_end <= db.captured_at`, session/job/scene trong DB, invocation graph chính xác) và phát ra artifact PASS. `capture` cũ không còn tồn tại để tránh dependency cycle fixture↔DB.
-6. Chạy `capture-identity` trên VM trước khi restart (raw `systemctl show` + procfs) và sau khi restart kèm `--old-pid` (probe PID cũ đã thoát); chạy `restart-query` qua public scene path với `--identity-before/--identity-after` bắt buộc: build scene, stop Gateway process thật, start process mới, Agent reconnect, query scene cũ public. `restart-query` chỉ phát artifact `PROVISIONAL`; sau khi audit window đóng, collect DB evidence rồi chạy `finalize-restart --restart-evidence <provisional> --before <fixture-capture> --no-effect-db <db> --device-id <device> --output <final>`. Chỉ artifact `finalize-restart` có `status: PASS` mới được đưa vào validator. Script từ chối process JSON tự khai `gateway_service_record`/`old_gateway_process_exit`.
-7. Chạy validator hardened và toàn bộ regression groups phù hợp.
-8. Cập nhật `docs/architecture/Phase-10.md` với fixture/live/negative/restart/no-effect matrix, exact commands, commit SHA, CI và checklist GO.
-9. Stage có chủ đích, commit, push branch và poll CI. Chỉ kết luận `Engineering GO` khi mọi mandatory gate đều có artifact audit được.
+1. Commit/push toàn bộ code, test và tài liệu; deploy Gateway/Portal đúng implementation commit đó. Từ đây không thay code runtime cho tới khi evidence hoàn tất.
+2. Chạy OAuth public read E2E với `--token-output tmp/phase10-live/token.json`. File token chỉ tồn tại trong lúc capture, không commit và phải xóa ngay sau đó.
+3. Trên VM chạy `capture-identity`; collect DB evidence PASS hiện tại cho đúng owner/device/session; tại Windows chạy `capture-runtime-identity` để cross-bind Gateway release, DB session, standalone Agent PID, AutoCAD PID, bootstrap và hash Managed Host. Dùng output này làm `--process-identity` cho mọi fixture.
+4. Với từng Drawing A/B/C, người vận hành mở đúng DWG trong AutoCAD rồi chạy `capture-public` để tạo provisional artifact. Không sửa JSON và không dùng artifact cũ.
+5. Từ job/scene ID của ba provisional artifact, collect DB evidence **trước restart** với audit window bao trùm toàn bộ capture. Artifact phải `PASS`.
+6. Chạy `capture-identity` trước restart; chạy `restart-query`; restart systemd Gateway thật; đợi cùng standalone Agent reconnect; chạy `capture-identity --old-pid ...` sau restart.
+7. Collect DB evidence **sau restart** bằng cùng IDs và thêm `--pre-restart-evidence <pre.json>`. Producer phải chứng minh snapshot write trước/sau giống hệt và session sau restart đang online.
+8. Chạy `finalize-fixture` cho A/B/C và `finalize-restart`; mọi gate phải được tính lại từ raw evidence và artifact cuối phải `PASS`.
+9. Xóa đúng file token tạm, chạy validator + regression matrix, commit chỉ retained evidence/status docs, push và đợi CI của head mới nhất xanh. Chỉ kết luận `Engineering GO` khi mọi mandatory gate audit được; `Customer Pilot` vẫn `NO-GO`.
 
 ## Safety không được vi phạm
 
