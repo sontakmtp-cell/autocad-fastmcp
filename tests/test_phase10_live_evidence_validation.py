@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import copy
 import importlib.util
 import json
@@ -66,12 +67,14 @@ def _repo(path: Path) -> Path:
         / "sqlite"
         / "migrations",
     )
-    _upgrade_restart_artifact(path)
     upgraded_fixtures: dict[str, dict] = {}
     for name in VALIDATOR.FIXTURES:
         fixture_path, fixture_value = _fixture(path, name)
         _upgrade_fixture_runtime_identity(fixture_path, fixture_value)
         upgraded_fixtures[name] = fixture_value
+        _save(fixture_path, fixture_value)
+    _upgrade_restart_artifact(path)
+    _, upgraded_fixtures["c"] = _fixture(path, "c")
     db_path, db_value = _evidence(
         path, "phase10-live-no-effect-db-20260730.json"
     )
@@ -103,6 +106,28 @@ def _upgrade_db_artifact(
     value["restart_comparison"]["post_restart_write_snapshot_sha256"] = digest
     value["restart_comparison"]["sha256_unchanged"] = True
     value["restart_comparison"]["tables_byte_identical"] = True
+    value["restart_comparison"]["pre_restart_active_agent_session_id"] = (
+        fixtures["c"]["runtime_identity"]["agent_session"]["session_id"]
+    )
+    restart = json.loads(
+        path.with_name("phase10-live-gateway-restart-20260730.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    post_session = restart["runtime_identity_after"]["agent_session"]
+    for record in value["agent_sessions"]:
+        if record.get("session_id") == post_session["session_id"]:
+            record.update(
+                {
+                    "connected_at": post_session["connected_at"],
+                    "active_document_id": post_session["active_document_id"],
+                    "active_document_revision": post_session[
+                        "active_document_revision"
+                    ],
+                    "protocol_version": post_session["protocol_version"],
+                    "agent_version": post_session["agent_version"],
+                }
+            )
     for fixture_value in fixtures.values():
         session_id = fixture_value["runtime_identity"]["agent_session"][
             "session_id"
@@ -123,10 +148,21 @@ def _upgrade_db_artifact(
 def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
     captured_at = VALIDATOR._time(value["captured_at"], "fixture captured_at")
     identity = value["runtime_identity"]
+    identity.update(
+        {
+            "schema_version": "cad.phase10-live-runtime-identity/1",
+            "captured_at": captured_at.isoformat(),
+            "operator": "test",
+        }
+    )
     autocad = identity["autocad_process"]
     autocad["executable_sha256"] = "sha256:" + "e" * 64
     autocad["started_at"] = (captured_at - timedelta(seconds=180)).isoformat()
     session = identity["agent_session"]
+    session["active_document_id"] = value["fixture"]["document_id"]
+    session["active_document_revision"] = value["source"][
+        "document_revision_after"
+    ]
     session["disconnected_at"] = None
     session["connected_at"] = (captured_at - timedelta(seconds=120)).isoformat()
     managed_host = session["managed_host"]
@@ -291,16 +327,21 @@ def _patch_evidence_commits(root: Path) -> None:
         path, value = _evidence(root, name)
         value["implementation_commit"] = FIXED_COMMIT
         value["baseline_commit"] = FIXED_COMMIT
-        identity = value.get("runtime_identity")
-        if isinstance(identity, dict):
-            gateway = identity.get("gateway_process")
-            if isinstance(gateway, dict):
-                gateway["release_commit"] = FIXED_COMMIT
-                working_directory = gateway.get("working_directory")
-                if isinstance(working_directory, str):
-                    gateway["working_directory"] = working_directory.replace(
-                        "165de04", FIXED_COMMIT[:7]
-                    )
+        for identity_key in (
+            "runtime_identity",
+            "runtime_identity_before",
+            "runtime_identity_after",
+        ):
+            identity = value.get(identity_key)
+            if isinstance(identity, dict):
+                gateway = identity.get("gateway_process")
+                if isinstance(gateway, dict):
+                    gateway["release_commit"] = FIXED_COMMIT
+                    working_directory = gateway.get("working_directory")
+                    if isinstance(working_directory, str):
+                        gateway["working_directory"] = working_directory.replace(
+                            "165de04", FIXED_COMMIT[:7]
+                        )
         finalization = value.get("finalization")
         if isinstance(finalization, dict):
             finalization["implementation_commit"] = FIXED_COMMIT
@@ -458,7 +499,7 @@ def _upgrade_restart_artifact(root: Path) -> None:
     )
     before = value["gateway_process_before"]
     after = value["gateway_process_after"]
-    _, drawing_c = _fixture(root, "c")
+    drawing_c_path, drawing_c = _fixture(root, "c")
     value["scene"] = drawing_c["scene"]
     value["post_restart_devices"] = drawing_c["public_path"]["devices"]
     old_service = before.get("gateway_service_record", {})
@@ -484,7 +525,9 @@ def _upgrade_restart_artifact(root: Path) -> None:
     process = {
         "source": "procfs",
         "executable": executable,
-        "executable_sha256": "sha256:" + "a" * 64,
+        "executable_sha256": drawing_c["runtime_identity"]["gateway_process"][
+            "executable_sha256"
+        ],
     }
     before["gateway_service_record"] = {
         "source": "systemctl_show",
@@ -545,6 +588,39 @@ def _upgrade_restart_artifact(root: Path) -> None:
     identity_after_at = captured_at - timedelta(minutes=13)
     before["captured_at"] = identity_before_at.isoformat()
     after["captured_at"] = identity_after_at.isoformat()
+    runtime_before = drawing_c["runtime_identity"]
+    runtime_before["captured_at"] = before["captured_at"]
+    runtime_after = copy.deepcopy(runtime_before)
+    runtime_after["captured_at"] = after["captured_at"]
+    runtime_after["agent_session"]["session_id"] = after["agent_session_id"]
+    runtime_after["agent_session"]["connected_at"] = (
+        identity_after_at - timedelta(seconds=1)
+    ).isoformat()
+    runtime_after["gateway_process"] = {
+        "process_id": after["gateway_pid"],
+        "service": after["gateway_service_record"]["properties"]["Id"],
+        "executable": after["gateway_service_record"]["process"]["executable"],
+        "executable_sha256": after["gateway_service_record"]["process"][
+            "executable_sha256"
+        ],
+        "working_directory": after["gateway_service_record"]["release"][
+            "working_directory"
+        ],
+        "release_commit": after["gateway_service_record"]["release"]["commit"],
+    }
+    before.update(
+        VALIDATOR.CAPTURE._restart_process_from_runtime(
+            drawing_c, runtime_before
+        )
+    )
+    after.update(
+        VALIDATOR.CAPTURE._restart_process_from_runtime(
+            drawing_c, runtime_after
+        )
+    )
+    value["runtime_identity_before"] = copy.deepcopy(runtime_before)
+    value["runtime_identity_after"] = runtime_after
+    _save(drawing_c_path, drawing_c)
     value["identity_capture_before"] = _identity_capture_from_record(
         before["gateway_service_record"], captured_at=before["captured_at"]
     )
@@ -1572,6 +1648,191 @@ def test_capture_public_rejects_head_change(tmp_path: Path, monkeypatch) -> None
         )
 
 
+def test_capture_public_rejects_runtime_for_another_document(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+
+    root = _repo(tmp_path / "wrong-runtime-document")
+    _, fixture_value = _fixture(root, "a")
+    capture_args = _capture_public_args(tmp_path, fixture_value)
+    identity = json.loads(capture_args.process_identity.read_text(encoding="utf-8"))
+    identity["agent_session"]["active_document_id"] = "wrong-document"
+    capture_args.process_identity.write_text(json.dumps(identity), encoding="utf-8")
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT)
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_baseline", lambda: FIXED_COMMIT)
+
+    with pytest.raises(RuntimeError, match="active fixture document"):
+        asyncio.run(
+            VALIDATOR.CAPTURE._capture_public(
+                capture_args,
+                "token",
+                client_factory=lambda endpoint, auth, timeout: _FakeMCPClient(
+                    fixture_value
+                ),
+            )
+        )
+
+
+def _capture_runtime_after(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fixture: dict,
+    restart: dict,
+    session_id: str,
+) -> dict:
+    import argparse
+    import asyncio
+
+    runtime_before = fixture["runtime_identity"]
+    host = tmp_path / "bundle" / "Contents" / "R25" / "ManagedHost.dll"
+    host.parent.mkdir(parents=True)
+    host.write_bytes(b"managed-host")
+    managed_host = runtime_before["agent_session"]["managed_host"]
+    managed_host.update(
+        {
+            "process_id": runtime_before["autocad_process"]["process_id"],
+            "executable": str(host.resolve()),
+            "executable_sha256": "sha256:" + "c" * 64,
+        }
+    )
+    shared = host.parent.parent / "Shared"
+    shared.mkdir()
+    shared.joinpath("package-manifest.json").write_text(
+        json.dumps(
+            {
+                "package_id": managed_host["package_id"],
+                "package_version": managed_host["package_version"],
+                "package_hash": managed_host["package_hash"],
+                "artifacts": {host.name: "c" * 64},
+            }
+        ),
+        encoding="utf-8",
+    )
+    bootstrap = tmp_path / "managed-host-r25.json"
+    bootstrap.write_text(
+        json.dumps(
+            {
+                "protocol_version": "cad.host/1",
+                "pipe_name": "phase10-test",
+                "session_secret_base64": base64.b64encode(b"x" * 32).decode(),
+                "host_pid": runtime_before["autocad_process"]["process_id"],
+                "host_family": "R25",
+                "package_hash": managed_host["package_hash"],
+                "created_at": managed_host["started_at"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    runtime_db = tmp_path / "runtime-db.json"
+    session = runtime_before["agent_session"]
+    connected_at = (datetime.now(timezone.utc) - timedelta(seconds=5)).isoformat()
+    runtime_db.write_text(
+        json.dumps(
+            {
+                "schema_version": "cad.phase10-live-session-evidence/1",
+                "implementation_commit": FIXED_COMMIT,
+                "status": "PASS",
+                "gate_results": {
+                    "integrity_ok": True,
+                    "foreign_keys_ok": True,
+                    "migrations_ok": True,
+                    "active_cad_agent_session_ok": True,
+                },
+                "scope": {
+                    "owner_subject": "owner-test",
+                    "device_id": session["device_id"],
+                },
+                "database_checks": {
+                    "integrity_check": ["ok"],
+                    "foreign_key_check": [],
+                    "schema_migrations": VALIDATOR.CAPTURE._expected_db_migrations(),
+                },
+                "active_agent_session_id": session_id,
+                "agent_sessions": [
+                    {
+                        "session_id": session_id,
+                        "device_id": session["device_id"],
+                        "owner_subject": "owner-test",
+                        "device_status": "online",
+                        "connected_at": connected_at,
+                        "disconnected_at": None,
+                        "protocol_version": session["protocol_version"],
+                        "agent_version": session["agent_version"],
+                        "active_document_id": session["active_document_id"],
+                        "active_document_revision": session[
+                            "active_document_revision"
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    gateway_identity = tmp_path / "identity-after.json"
+    gateway_identity.write_text(
+        json.dumps(restart["identity_capture_after"]), encoding="utf-8"
+    )
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT)
+
+    def windows_process(pid: int) -> dict:
+        source = (
+            runtime_before["desktop_agent_process"]
+            if pid == runtime_before["desktop_agent_process"]["process_id"]
+            else runtime_before["autocad_process"]
+        )
+        return {
+            key: value
+            for key, value in source.items()
+            if key
+            not in {
+                "standalone",
+                "product",
+                "edition",
+                "release_year",
+                "series",
+                "file_version",
+                "host_family",
+            }
+        }
+
+    monkeypatch.setattr(
+        VALIDATOR.CAPTURE,
+        "_windows_process",
+        windows_process,
+    )
+    monkeypatch.setattr(
+        VALIDATOR.CAPTURE,
+        "_windows_file_version",
+        lambda path: runtime_before["autocad_process"]["file_version"],
+    )
+    original_sha = VALIDATOR.CAPTURE._sha256
+    monkeypatch.setattr(
+        VALIDATOR.CAPTURE,
+        "_sha256",
+        lambda path: "sha256:" + "c" * 64
+        if Path(path).name == host.name
+        else original_sha(path),
+    )
+    return asyncio.run(
+        VALIDATOR.CAPTURE._capture_runtime_identity(
+            argparse.Namespace(
+                gateway_identity=gateway_identity,
+                db_evidence=runtime_db,
+                device_id=session["device_id"],
+                desktop_agent_pid=runtime_before["desktop_agent_process"][
+                    "process_id"
+                ],
+                autocad_pid=runtime_before["autocad_process"]["process_id"],
+                managed_host_executable=host,
+                bootstrap=bootstrap,
+                operator="test",
+            ),
+            None,
+        )
+    )
+
+
 def test_restart_query_records_public_producer_path(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -1598,17 +1859,41 @@ def test_restart_query_records_public_producer_path(
         path.write_text(json.dumps(value), encoding="utf-8")
         return path
 
-    process_before = copy.deepcopy(restart["gateway_process_before"])
-    process_after = copy.deepcopy(restart["gateway_process_after"])
-    for process in (process_before, process_after):
-        for key in VALIDATOR.CAPTURE._CLAIMED_SERVICE_KEYS:
-            process.pop(key, None)
+    runtime_after = _capture_runtime_after(
+        tmp_path,
+        monkeypatch,
+        fixture,
+        restart,
+        db_value["restart_comparison"]["post_restart_active_agent_session_id"],
+    )
+    post_session = runtime_after["agent_session"]
+    post_record = next(
+        item
+        for item in db_value["agent_sessions"]
+        if item["session_id"] == post_session["session_id"]
+    )
+    post_record.update(
+        {
+            "connected_at": post_session["connected_at"],
+            "active_document_id": post_session["active_document_id"],
+            "active_document_revision": post_session["active_document_revision"],
+            "protocol_version": post_session["protocol_version"],
+            "agent_version": post_session["agent_version"],
+            "device_id": post_session["device_id"],
+            "owner_subject": db_value["scope"]["owner_subject"],
+        }
+    )
+    before_session_id = fixture["runtime_identity"]["agent_session"]["session_id"]
+    db_value["restart_comparison"]["pre_restart_active_agent_session_id"] = (
+        before_session_id
+    )
     args = argparse.Namespace(
         endpoint="https://example.invalid/mcp",
         device_id=fixture["public_path"]["device_id"],
         before=write("before.json", fixture),
-        process_before=write("process-before.json", process_before),
-        process_after=write("process-after.json", process_after),
+        runtime_identity_after=write(
+            "runtime-identity-after.json", runtime_after
+        ),
         identity_before=write(
             "identity-before.json", restart["identity_capture_before"]
         ),
@@ -1627,6 +1912,20 @@ def test_restart_query_records_public_producer_path(
             ),
         )
     )
+    assert result["runtime_identity_before"] == fixture["runtime_identity"]
+    assert result["runtime_identity_after"] == runtime_after
+    for process, runtime in (
+        (result["gateway_process_before"], fixture["runtime_identity"]),
+        (result["gateway_process_after"], runtime_after),
+    ):
+        assert process["active_document_id"] == runtime["agent_session"][
+            "active_document_id"
+        ]
+        assert process["active_document_revision"] == runtime["agent_session"][
+            "active_document_revision"
+        ]
+        assert "active_fixture_id" not in process
+        assert "queried_scene_persisted_from_prior_fixture_session" not in process
     invocations = result["post_restart_public_path"]["tool_invocations"]
     assert [item["tool"] for item in invocations] == [
         "cad_list_devices",
@@ -1658,6 +1957,88 @@ def test_restart_query_records_public_producer_path(
     )
     assert final["status"] == "PASS"
     assert VALIDATOR._time(invocations[-1]["completed_at"], "last") <= collection_at
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("active_document_id", "wrong-document"),
+        ("active_document_revision", "wrong-revision"),
+        ("session_id", None),
+    ),
+)
+def test_validator_rejects_tampered_restart_runtime_session(
+    tmp_path: Path, field: str, value: str | None
+) -> None:
+    root = _repo(tmp_path / field)
+    path, restart = _evidence(
+        root, "phase10-live-gateway-restart-20260730.json"
+    )
+    if value is None:
+        value = restart["runtime_identity_before"]["agent_session"]["session_id"]
+    restart["runtime_identity_after"]["agent_session"][field] = value
+    _save(path, restart)
+
+    with pytest.raises(ValueError, match="runtime continuity"):
+        VALIDATOR.validate(root)
+
+
+def test_finalize_restart_rejects_post_session_db_runtime_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import argparse
+    import asyncio
+
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT)
+    root = _repo(tmp_path / "finalizer-post-session")
+    restart_path, restart = _evidence(
+        root, "phase10-live-gateway-restart-20260730.json"
+    )
+    restart["schema_version"] = "cad.phase10-live-gateway-restart-provisional/1"
+    restart["status"] = "PROVISIONAL"
+    _save(restart_path, restart)
+    db_path, db = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    post_session_id = db["restart_comparison"][
+        "post_restart_active_agent_session_id"
+    ]
+    post_record = next(
+        record
+        for record in db["agent_sessions"]
+        if record["session_id"] == post_session_id
+    )
+    post_record["agent_version"] = "wrong-version"
+    _save(db_path, db)
+
+    with pytest.raises(RuntimeError, match="gateway_public_reconnect"):
+        asyncio.run(
+            VALIDATOR.CAPTURE._finalize_restart(
+                argparse.Namespace(
+                    restart_evidence=restart_path,
+                    before=_fixture(root, "c")[0],
+                    no_effect_db=db_path,
+                    device_id=restart["gateway_process_after"]["device_id"],
+                ),
+                "token",
+            )
+        )
+
+
+def test_validator_rejects_post_session_db_runtime_mismatch(tmp_path: Path) -> None:
+    root = _repo(tmp_path / "validator-post-session")
+    db_path, db = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    post_session_id = db["restart_comparison"][
+        "post_restart_active_agent_session_id"
+    ]
+    post_record = next(
+        record
+        for record in db["agent_sessions"]
+        if record["session_id"] == post_session_id
+    )
+    post_record["active_document_revision"] = "wrong-revision"
+    _save(db_path, db)
+
+    with pytest.raises(ValueError, match="Agent reconnect/session history"):
+        VALIDATOR.validate(root)
 
 
 @pytest.mark.parametrize("tamper", ("before_identity", "after_capture"))
@@ -1955,16 +2336,36 @@ def test_cli_action_specific_requirements() -> None:
             "restart.json",
             "--before",
             "before.json",
-            "--process-before",
-            "process-before.json",
-            "--process-after",
-            "process-after.json",
+            "--runtime-identity-after",
+            "runtime-identity-after.json",
             "--identity-before",
             "identity-before.json",
             "--identity-after",
             "identity-after.json",
         ]
     )
+    with pytest.raises(SystemExit):
+        parser.parse_args(
+            [
+                "restart-query",
+                "--device-id",
+                "device",
+                "--token-file",
+                "token.json",
+                "--output",
+                "restart.json",
+                "--before",
+                "before.json",
+                "--process-before",
+                "operator-process-before.json",
+                "--process-after",
+                "operator-process-after.json",
+                "--identity-before",
+                "identity-before.json",
+                "--identity-after",
+                "identity-after.json",
+            ]
+        )
     with pytest.raises(SystemExit):
         parser.parse_args(
             [

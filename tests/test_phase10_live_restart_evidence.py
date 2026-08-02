@@ -123,11 +123,20 @@ def _db() -> dict:
             {
                 "session_id": "session-before",
                 "device_id": DEVICE,
+                "owner_subject": "owner-live",
+                "device_status": "offline",
                 "disconnected_at": "2026-07-30T00:01:00+00:00",
             },
             {
                 "session_id": "session-after",
                 "device_id": DEVICE,
+                "owner_subject": "owner-live",
+                "device_status": "online",
+                "connected_at": "2026-07-30T00:00:30+00:00",
+                "active_document_id": "document-live",
+                "active_document_revision": "revision-live",
+                "protocol_version": "cad.agent/2",
+                "agent_version": "0.1.0",
                 "disconnected_at": None,
             },
         ],
@@ -193,6 +202,68 @@ def _scene_query() -> tuple[dict, dict, dict, dict]:
     return scene, sections, resource, devices
 
 
+def _runtime_after() -> dict:
+    return {
+        "captured_at": "2026-07-30T00:00:40+00:00",
+        "agent_session": {
+            "session_id": "session-after",
+            "device_id": DEVICE,
+            "connected_at": "2026-07-30T00:00:30+00:00",
+            "disconnected_at": None,
+            "active_document_id": "document-live",
+            "active_document_revision": "revision-live",
+            "protocol_version": "cad.agent/2",
+            "agent_version": "0.1.0",
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    (
+        "connected_at",
+        "active_document_id",
+        "active_document_revision",
+        "protocol_version",
+        "agent_version",
+        "owner_subject",
+        "device_id",
+        "chronology",
+    ),
+)
+def test_restart_post_session_is_cross_bound_to_runtime(
+    tamper: str,
+) -> None:
+    evidence = _db()
+    runtime_after = _runtime_after()
+    post_record = evidence["agent_sessions"][1]
+    if tamper == "chronology":
+        value = "2026-07-30T00:00:41+00:00"
+        post_record["connected_at"] = value
+        runtime_after["agent_session"]["connected_at"] = value
+    elif tamper == "owner_subject":
+        post_record[tamper] = "other-owner"
+    elif tamper == "device_id":
+        post_record[tamper] = "other-device"
+    else:
+        post_record[tamper] = "wrong-value"
+    assert not MODULE._restart_runtime_session_db_bound(
+        evidence,
+        runtime_after,
+        device_id=DEVICE,
+        first_invocation_at="2026-07-30T00:01:00+00:00",
+    )
+
+
+def test_restart_post_session_accepts_bound_runtime() -> None:
+    assert MODULE._restart_runtime_session_db_bound(
+        _db(),
+        _runtime_after(),
+        device_id=DEVICE,
+        first_invocation_at="2026-07-30T00:01:00+00:00",
+    )
+
+
 def test_restart_inputs_derive_all_gates_from_raw_records() -> None:
     before, after = _processes()
     assert all(
@@ -208,6 +279,8 @@ def test_restart_inputs_derive_all_gates_from_raw_records() -> None:
             device_id=DEVICE,
             scene_id=SCENE_ID,
             implementation_commit=COMMIT,
+            runtime_after=_runtime_after(),
+            first_invocation_at="2026-07-30T00:01:00+00:00",
         ).values()
     )
     scene, sections, resource, devices = _scene_query()
@@ -297,6 +370,8 @@ def test_db_restart_rejects_write_or_unbound_records(
         device_id=DEVICE,
         scene_id=SCENE_ID,
         implementation_commit=COMMIT,
+        runtime_after=_runtime_after(),
+        first_invocation_at="2026-07-30T00:01:00+00:00",
     )
     assert gates[failed_gate] is False
 

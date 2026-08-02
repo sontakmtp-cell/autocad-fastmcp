@@ -116,6 +116,8 @@ _MANAGED_HOST_KEYS = {
     "started_at",
 }
 _AGENT_SESSION_KEYS = {
+    "active_document_id",
+    "active_document_revision",
     "agent_version",
     "connected_at",
     "device_id",
@@ -558,6 +560,14 @@ def _validate_runtime_identity(
     if session.get("disconnected_at") is not None:
         raise ValueError("runtime identity session is not active")
     _parse_timestamp(session["connected_at"], "runtime identity session connected_at")
+    if not isinstance(session.get("active_document_id"), str) or not session[
+        "active_document_id"
+    ]:
+        raise ValueError("runtime identity active document_id is missing")
+    if not isinstance(session.get("active_document_revision"), str) or not session[
+        "active_document_revision"
+    ]:
+        raise ValueError("runtime identity active document revision is missing")
 
 
 def _service_restart_gates(
@@ -646,6 +656,56 @@ def _service_restart_gates(
     }
 
 
+def _restart_runtime_session_db_bound(
+    evidence: dict[str, Any],
+    runtime_after: dict[str, Any],
+    *,
+    device_id: str,
+    first_invocation_at: str,
+) -> bool:
+    scope = evidence.get("scope", {})
+    comparison = evidence.get("restart_comparison", {})
+    post_session_id = comparison.get("post_restart_active_agent_session_id")
+    sessions = {
+        item.get("session_id"): item
+        for item in evidence.get("agent_sessions", [])
+        if isinstance(item, dict)
+    }
+    record = sessions.get(post_session_id, {})
+    session = runtime_after.get("agent_session", {})
+    try:
+        connected_at = _parse_timestamp(
+            record.get("connected_at"), "post-restart DB session connected_at"
+        )
+        runtime_captured_at = _parse_timestamp(
+            runtime_after.get("captured_at"), "runtime-after captured_at"
+        )
+        first_invocation = _parse_timestamp(
+            first_invocation_at, "first post-restart invocation"
+        )
+        runtime_connected_at = _parse_timestamp(
+            session.get("connected_at"), "runtime-after session connected_at"
+        )
+    except ValueError:
+        return False
+    return (
+        post_session_id == evidence.get("active_agent_session_id")
+        == session.get("session_id")
+        and record.get("device_id") == session.get("device_id") == device_id
+        and record.get("owner_subject") == scope.get("owner_subject")
+        and record.get("device_status") == "online"
+        and record.get("disconnected_at") is None
+        and session.get("disconnected_at") is None
+        and connected_at == runtime_connected_at
+        and record.get("active_document_id") == session.get("active_document_id")
+        and record.get("active_document_revision")
+        == session.get("active_document_revision")
+        and record.get("protocol_version") == session.get("protocol_version")
+        and record.get("agent_version") == session.get("agent_version")
+        and connected_at <= runtime_captured_at <= first_invocation
+    )
+
+
 def _db_restart_gates(
     evidence: dict[str, Any],
     process_before: dict[str, Any],
@@ -654,6 +714,8 @@ def _db_restart_gates(
     device_id: str,
     scene_id: str,
     implementation_commit: str,
+    runtime_after: dict[str, Any],
+    first_invocation_at: str,
 ) -> dict[str, bool]:
     scope = evidence.get("scope", {})
     comparison = evidence.get("restart_comparison", {})
@@ -685,6 +747,12 @@ def _db_restart_gates(
             and pre_record.get("device_id") == post_record.get("device_id") == device_id
             and pre_record.get("disconnected_at") is not None
             and post_record.get("disconnected_at") is None
+            and _restart_runtime_session_db_bound(
+                evidence,
+                runtime_after,
+                device_id=device_id,
+                first_invocation_at=first_invocation_at,
+            )
         ),
         "db_scope_bound": (
             scope.get("device_id") == device_id
@@ -809,6 +877,140 @@ def _process_identity_bound(
         before.get(name) == after.get(name) == value
         for name, value in expected.items()
     )
+
+
+def _restart_process_from_runtime(
+    fixture: dict[str, Any], runtime: dict[str, Any]
+) -> dict[str, Any]:
+    captured_at = runtime.get("captured_at")
+    _parse_timestamp(captured_at, "runtime identity captured_at")
+    scene = fixture["scene"]
+    desktop = runtime["desktop_agent_process"]
+    autocad = runtime["autocad_process"]
+    session = runtime["agent_session"]
+    return {
+        "captured_at": captured_at,
+        "desktop_agent_pid": desktop["process_id"],
+        "desktop_agent_executable": desktop["executable"],
+        "desktop_agent_sha256": desktop["executable_sha256"],
+        "autocad_pid": autocad["process_id"],
+        "agent_session_id": session["session_id"],
+        "device_id": fixture["public_path"]["device_id"],
+        "active_document_id": session["active_document_id"],
+        "active_document_revision": session["active_document_revision"],
+        "fixture_id": fixture["fixture"]["fixture_id"],
+        "document_id": scene["document_id"],
+        "document_revision": scene["document_revision"],
+        "scene_id": scene["scene_id"],
+        "scene_digest": scene["scene_digest"],
+        "source_digest": scene["source_digest"],
+    }
+
+
+def _validate_restart_runtime_continuity(
+    before: dict[str, Any], after: dict[str, Any]
+) -> None:
+    expected_schema = "cad.phase10-live-runtime-identity/1"
+    if (
+        before.get("schema_version") != expected_schema
+        or after.get("schema_version") != expected_schema
+    ):
+        raise ValueError("restart runtime identity schema is invalid")
+    if not (
+        _parse_timestamp(before.get("captured_at"), "runtime-before captured_at")
+        < _parse_timestamp(after.get("captured_at"), "runtime-after captured_at")
+    ):
+        raise ValueError("runtime-after was not captured after runtime-before")
+    if (
+        before.get("desktop_agent_process")
+        != after.get("desktop_agent_process")
+        or before.get("autocad_process") != after.get("autocad_process")
+        or before.get("agent_session", {}).get("managed_host")
+        != after.get("agent_session", {}).get("managed_host")
+        or before.get("agent_session", {}).get("device_id")
+        != after.get("agent_session", {}).get("device_id")
+        or before.get("agent_session", {}).get("protocol_version")
+        != after.get("agent_session", {}).get("protocol_version")
+        or before.get("agent_session", {}).get("agent_version")
+        != after.get("agent_session", {}).get("agent_version")
+        or before.get("agent_session", {}).get("active_document_id")
+        != after.get("agent_session", {}).get("active_document_id")
+        or before.get("agent_session", {}).get("active_document_revision")
+        != after.get("agent_session", {}).get("active_document_revision")
+        or before.get("agent_session", {}).get("session_id")
+        == after.get("agent_session", {}).get("session_id")
+    ):
+        raise ValueError("Agent/AutoCAD runtime continuity is not proven")
+
+
+def _runtime_gateway_bound(
+    runtime: dict[str, Any], derived: dict[str, Any]
+) -> bool:
+    gateway = runtime.get("gateway_process", {})
+    service = derived.get("gateway_service_record", {})
+    properties = service.get("properties", {})
+    process = service.get("process", {})
+    release = service.get("release", {})
+    return (
+        gateway.get("process_id") == derived.get("gateway_pid")
+        and gateway.get("service") == properties.get("Id") == SERVICE_UNIT
+        and gateway.get("executable") == process.get("executable")
+        and gateway.get("executable_sha256")
+        == process.get("executable_sha256")
+        and gateway.get("working_directory")
+        == release.get("working_directory")
+        == properties.get("WorkingDirectory")
+        and gateway.get("release_commit") == release.get("commit")
+    )
+
+
+def _validate_restart_runtime_artifact(
+    fixture: dict[str, Any],
+    restart: dict[str, Any],
+    *,
+    device_id: str,
+    implementation_commit: str,
+) -> None:
+    runtime_before = restart.get("runtime_identity_before")
+    runtime_after = restart.get("runtime_identity_after")
+    if (
+        not isinstance(runtime_before, dict)
+        or not isinstance(runtime_after, dict)
+        or runtime_before != fixture.get("runtime_identity")
+    ):
+        raise ValueError("restart runtime identity before is missing or changed")
+    _validate_runtime_identity(
+        runtime_before,
+        device_id=device_id,
+        implementation_commit=implementation_commit,
+    )
+    _validate_runtime_identity(
+        runtime_after,
+        device_id=device_id,
+        implementation_commit=implementation_commit,
+    )
+    _validate_restart_runtime_continuity(runtime_before, runtime_after)
+    scene = fixture["scene"]
+    if (
+        runtime_before["agent_session"]["active_document_id"]
+        != scene["document_id"]
+        or runtime_before["agent_session"]["active_document_revision"]
+        != scene["document_revision"]
+    ):
+        raise ValueError("restart runtime is not bound to the fixture document")
+    process_before = restart["gateway_process_before"]
+    process_after = restart["gateway_process_after"]
+    expected_before = _restart_process_from_runtime(fixture, runtime_before)
+    expected_after = _restart_process_from_runtime(fixture, runtime_after)
+    derived_before = _derive_gateway_identity(restart["identity_capture_before"])
+    derived_after = _derive_gateway_identity(restart["identity_capture_after"])
+    if not (
+        all(process_before.get(key) == value for key, value in expected_before.items())
+        and all(process_after.get(key) == value for key, value in expected_after.items())
+        and _runtime_gateway_bound(runtime_before, derived_before)
+        and _runtime_gateway_bound(runtime_after, derived_after)
+    ):
+        raise ValueError("restart process identity differs from raw runtime capture")
 
 
 async def _observe(
@@ -1361,6 +1563,15 @@ async def _capture_public(
     hash_after = _sha256(drawing)
     revision_before = str(request["document_revision"])
     revision_after = str(after["request"]["document_revision"])
+    runtime_session = process_identity["agent_session"]
+    if (
+        runtime_session["active_document_id"]
+        != job_snapshot.get("drawing", {}).get("document_id")
+        or runtime_session["active_document_revision"] != revision_before
+    ):
+        raise RuntimeError(
+            "runtime identity was not captured for the active fixture document"
+        )
     entity_count_before = int(
         before["job"].get("result", {}).get("snapshot", {}).get("returned_count")
         or len(before["job"].get("result", {}).get("snapshot", {}).get("entities", []))
@@ -2150,10 +2361,25 @@ async def _restart_query(
     restart_commit = _git_head()
     if before.get("implementation_commit") != restart_commit:
         raise ValueError("restart checkout differs from fixture capture commit")
-    process_before = json.loads(args.process_before.read_text(encoding="utf-8"))
-    process_after = json.loads(args.process_after.read_text(encoding="utf-8"))
-    _reject_claimed_service_records(process_before, "process-before")
-    _reject_claimed_service_records(process_after, "process-after")
+    runtime_before = before.get("runtime_identity")
+    runtime_after = json.loads(
+        args.runtime_identity_after.read_text(encoding="utf-8")
+    )
+    if not isinstance(runtime_before, dict):
+        raise ValueError("fixture runtime identity is missing")
+    _validate_runtime_identity(
+        runtime_before,
+        device_id=args.device_id,
+        implementation_commit=restart_commit,
+    )
+    _validate_runtime_identity(
+        runtime_after,
+        device_id=args.device_id,
+        implementation_commit=restart_commit,
+    )
+    _validate_restart_runtime_continuity(runtime_before, runtime_after)
+    process_before = _restart_process_from_runtime(before, runtime_before)
+    process_after = _restart_process_from_runtime(before, runtime_after)
     identity_before = json.loads(args.identity_before.read_text(encoding="utf-8"))
     identity_after = json.loads(args.identity_after.read_text(encoding="utf-8"))
     if (
@@ -2167,6 +2393,11 @@ async def _restart_query(
         raise ValueError("identity-after was not captured after identity-before")
     derived_before = _derive_gateway_identity(identity_before)
     derived_after = _derive_gateway_identity(identity_after)
+    if not (
+        _runtime_gateway_bound(runtime_before, derived_before)
+        and _runtime_gateway_bound(runtime_after, derived_after)
+    ):
+        raise ValueError("runtime identity is not bound to raw Gateway capture")
     if derived_after["exit_probe"] is None:
         raise ValueError("identity-after did not probe the old Gateway process")
     old_pid = derived_before["gateway_pid"]
@@ -2263,6 +2494,8 @@ async def _restart_query(
     )
     expected_process_identity = {
         "device_id": args.device_id,
+        "active_document_id": scene["document_id"],
+        "active_document_revision": scene["document_revision"],
         "fixture_id": before["fixture"]["fixture_id"],
         "scene_id": scene_id,
         "source_digest": scene["source_digest"],
@@ -2305,6 +2538,8 @@ async def _restart_query(
         "scene_digest": scene["scene_digest"],
         "gateway_process_before": process_before,
         "gateway_process_after": process_after,
+        "runtime_identity_before": runtime_before,
+        "runtime_identity_after": runtime_after,
         "identity_capture_before": identity_before,
         "identity_capture_after": identity_after,
         "post_restart_sections": sections,
@@ -2340,6 +2575,12 @@ async def _finalize_restart(args: argparse.Namespace, token: str) -> dict[str, A
         or provisional.get("scene_digest") != scene.get("scene_digest")
     ):
         raise ValueError("restart evidence does not match the original fixture")
+    _validate_restart_runtime_artifact(
+        before,
+        provisional,
+        device_id=args.device_id,
+        implementation_commit=implementation_commit,
+    )
     no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     invocations = provisional["post_restart_public_path"]["tool_invocations"]
     finalization_boundary = datetime.now(timezone.utc).isoformat()
@@ -2362,6 +2603,8 @@ async def _finalize_restart(args: argparse.Namespace, token: str) -> dict[str, A
         device_id=args.device_id,
         scene_id=provisional["scene_id"],
         implementation_commit=implementation_commit,
+        runtime_after=provisional["runtime_identity_after"],
+        first_invocation_at=invocations[0]["started_at"],
     )
     process_before = provisional["gateway_process_before"]
     process_after = provisional["gateway_process_after"]
@@ -2376,6 +2619,8 @@ async def _finalize_restart(args: argparse.Namespace, token: str) -> dict[str, A
     )
     expected_process_identity = {
         "device_id": args.device_id,
+        "active_document_id": scene["document_id"],
+        "active_document_revision": scene["document_revision"],
         "fixture_id": before["fixture"]["fixture_id"],
         "scene_id": scene["scene_id"],
         "source_digest": scene["source_digest"],
@@ -2644,6 +2889,9 @@ async def _capture_runtime_identity(
 
     file_version = _windows_file_version(autocad["executable"])
     identity = {
+        "schema_version": "cad.phase10-live-runtime-identity/1",
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "operator": args.operator,
         "gateway_process": {
             "process_id": derived_gateway["gateway_pid"],
             "service": service_properties["Id"],
@@ -2668,6 +2916,10 @@ async def _capture_runtime_identity(
         "agent_session": {
             "session_id": session_id,
             "device_id": args.device_id,
+            "active_document_id": session.get("active_document_id"),
+            "active_document_revision": session.get(
+                "active_document_revision"
+            ),
             "connected_at": session.get("connected_at"),
             "disconnected_at": None,
             "protocol_version": session.get("protocol_version"),
@@ -2758,8 +3010,7 @@ def build_parser() -> argparse.ArgumentParser:
     restart.add_argument("--output", required=True, type=Path)
     restart.add_argument("--operator", default="local-operator")
     restart.add_argument("--before", required=True, type=Path)
-    restart.add_argument("--process-before", required=True, type=Path)
-    restart.add_argument("--process-after", required=True, type=Path)
+    restart.add_argument("--runtime-identity-after", required=True, type=Path)
     restart.add_argument("--identity-before", required=True, type=Path)
     restart.add_argument("--identity-after", required=True, type=Path)
     return parser
@@ -2825,8 +3076,7 @@ def main() -> None:
                 f"--device-id {args.device_id}",
                 "--token-file <redacted>",
                 f"--before {args.before}",
-                f"--process-before {args.process_before}",
-                f"--process-after {args.process_after}",
+                f"--runtime-identity-after {args.runtime_identity_after}",
                 f"--identity-before {args.identity_before}",
                 f"--identity-after {args.identity_after}",
             )

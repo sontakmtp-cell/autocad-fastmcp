@@ -52,6 +52,8 @@ def _inputs(tmp_path: Path) -> argparse.Namespace:
                         "device_id": DEVICE,
                         "owner_subject": "owner-a",
                         "device_status": "online",
+                        "active_document_id": "doc-a",
+                        "active_document_revision": "revision-a",
                         "connected_at": "2026-08-02T07:00:00+00:00",
                         "disconnected_at": None,
                         "protocol_version": "cad.agent/2",
@@ -103,6 +105,7 @@ def _inputs(tmp_path: Path) -> argparse.Namespace:
         autocad_pid=20,
         managed_host_executable=host,
         bootstrap=bootstrap,
+        operator="test-operator",
     )
 
 
@@ -159,9 +162,14 @@ def test_capture_runtime_identity_builds_valid_identity(
 
     identity = asyncio.run(CAPTURE._capture_runtime_identity(args, None))
 
+    assert identity["schema_version"] == "cad.phase10-live-runtime-identity/1"
+    assert identity["operator"] == "test-operator"
+    assert identity["captured_at"]
     assert identity["gateway_process"]["release_commit"] == COMMIT
     assert identity["desktop_agent_process"]["standalone"] is True
     assert identity["autocad_process"]["process_id"] == 20
+    assert identity["agent_session"]["active_document_id"] == "doc-a"
+    assert identity["agent_session"]["active_document_revision"] == "revision-a"
     assert identity["agent_session"]["managed_host"]["process_id"] == 20
     assert "session_secret_base64" not in json.dumps(identity)
 
@@ -206,6 +214,12 @@ def test_capture_runtime_identity_rejects_failed_db_evidence(
                 {"checksum": "0" * 64}
             ),
             "does not match",
+        ),
+        (
+            lambda value: value["agent_sessions"][0].update(
+                {"active_document_id": None}
+            ),
+            "active document_id is missing",
         ),
     ],
 )

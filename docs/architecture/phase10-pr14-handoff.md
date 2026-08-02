@@ -77,11 +77,11 @@ Full Gateway pytest từng treo ở khoảng 124 giây và 244 giây sau thay đ
 
 1. Commit/push toàn bộ code, test và tài liệu; deploy Gateway/Portal đúng implementation commit đó. Từ đây không thay code runtime cho tới khi evidence hoàn tất.
 2. Chạy OAuth public read E2E với `--token-output tmp/phase10-live/token.json`. File token chỉ tồn tại trong lúc capture, không commit và phải xóa ngay sau đó.
-3. Trên VM chạy `capture-identity` và `phase10-live-db-evidence.py --session-only` cho đúng owner/device/session; tại Windows chạy `capture-runtime-identity` để cross-bind Gateway release, DB session, standalone Agent PID, AutoCAD PID, bootstrap và hash Managed Host. Session proof có schema riêng để không tạo vòng phụ thuộc với scene chưa được capture. Dùng output này làm `--process-identity` cho mọi fixture.
-4. Với từng Drawing A/B/C, người vận hành mở đúng DWG trong AutoCAD rồi chạy `capture-public` để tạo provisional artifact. Không sửa JSON và không dùng artifact cũ.
+3. Trên VM chạy `capture-identity` cho Gateway. Với **từng** Drawing A/B/C, người vận hành mở đúng DWG, đợi heartbeat rồi collect DB evidence `--session-only`; tại Windows chạy `capture-runtime-identity` và dùng đúng output đó làm `--process-identity` cho fixture tương ứng. Runtime identity phải bind đúng active document/revision nên không dùng chung một output cho ba bản vẽ.
+4. Ngay sau mỗi runtime identity, chạy `capture-public` để tạo provisional artifact; capture theo thứ tự A, B, C để C vẫn active lúc restart. Không sửa JSON và không dùng artifact cũ.
 5. Từ job/scene ID của ba provisional artifact, collect DB evidence **trước restart** với audit window bao trùm toàn bộ capture. Artifact phải `PASS`.
-6. Chạy `capture-identity` trước restart; chạy `restart-query`; restart systemd Gateway thật; đợi cùng standalone Agent reconnect; chạy `capture-identity --old-pid ...` sau restart.
-7. Collect DB evidence **sau restart** bằng cùng IDs và thêm `--pre-restart-evidence <pre.json>`. Producer phải chứng minh snapshot write trước/sau giống hệt và session sau restart đang online.
+6. Chạy `capture-identity` trước restart; restart systemd Gateway thật; đợi cùng standalone Agent reconnect; chạy `capture-identity --old-pid ...`, collect lại DB evidence `--session-only` cho session mới rồi chạy `capture-runtime-identity`. Cuối cùng chạy `restart-query --runtime-identity-after <output-vừa-capture>`; process-before được derive trực tiếp từ fixture C, không tạo/sửa JSON process thủ công.
+7. Collect DB evidence **sau restart** bằng cùng IDs và thêm `--pre-restart-evidence <pre.json>`. Producer phải chứng minh snapshot write trước/sau giống hệt; session sau restart khớp runtime identity theo thời điểm kết nối, active document/revision, protocol và phiên bản Agent.
 8. Chạy `finalize-fixture` cho A/B/C và `finalize-restart`; mọi gate phải được tính lại từ raw evidence và artifact cuối phải `PASS`.
 9. Xóa đúng file token tạm, chạy validator + regression matrix, commit chỉ retained evidence/status docs, push và đợi CI của head mới nhất xanh. Chỉ kết luận `Engineering GO` khi mọi mandatory gate audit được; `Customer Pilot` vẫn `NO-GO`.
 

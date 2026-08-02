@@ -1119,6 +1119,12 @@ def validate(root: Path) -> None:
         == desktop_c.get("executable_sha256"),
         "Gateway restart: standalone Agent identity differs from Drawing C",
     )
+    CAPTURE._validate_restart_runtime_artifact(
+        drawing_c,
+        restart,
+        device_id=drawing_c["public_path"]["device_id"],
+        implementation_commit=implementation_commit,
+    )
     _require(
         before.get("agent_session_id") != after.get("agent_session_id")
         and all(
@@ -1131,7 +1137,6 @@ def validate(root: Path) -> None:
                 "device_id",
                 "active_document_id",
                 "active_document_revision",
-                "active_fixture_id",
                 "fixture_id",
                 "document_id",
                 "document_revision",
@@ -1141,14 +1146,14 @@ def validate(root: Path) -> None:
             )
         )
         and before.get("device_id") == drawing_c["public_path"]["device_id"]
+        and before.get("active_document_id") == scene_c["document_id"]
+        and before.get("active_document_revision") == scene_c["document_revision"]
         and before.get("fixture_id") == "phase10-drawing-c-r25/1"
         and before.get("document_id") == scene_c["document_id"]
         and before.get("document_revision") == scene_c["document_revision"]
         and before.get("scene_id") == scene_c["scene_id"]
         and before.get("scene_digest") == scene_c["scene_digest"]
         and before.get("source_digest") == scene_c["source_digest"]
-        and before.get("queried_scene_persisted_from_prior_fixture_session") is True
-        and after.get("queried_scene_persisted_from_prior_fixture_session") is True
         and _time(before.get("captured_at"), "Gateway restart before")
         < _time(after.get("captured_at"), "Gateway restart after")
         < _time(restart.get("captured_at"), "Gateway restart"),
@@ -1560,6 +1565,14 @@ def validate(root: Path) -> None:
         and restart_comparison.get("pre_restart_active_agent_session_id")
         == before.get("agent_session_id")
         and active_session_id != before.get("agent_session_id")
+        and CAPTURE._restart_runtime_session_db_bound(
+            no_effect_db,
+            restart["runtime_identity_after"],
+            device_id=scope["device_id"],
+            first_invocation_at=restart["post_restart_public_path"][
+                "tool_invocations"
+            ][0]["started_at"],
+        )
         and _time(
             restart_comparison.get("pre_restart_captured_at"),
             "No-effect DB pre-restart capture",
