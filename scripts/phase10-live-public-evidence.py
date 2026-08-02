@@ -305,6 +305,18 @@ def _parse_systemctl_properties(stdout: str) -> dict[str, str]:
     return properties
 
 
+def _parse_systemd_exec_start(value: object) -> dict[str, str] | None:
+    if not isinstance(value, str):
+        return None
+    match = re.match(r"^\{\s*path=(.*?)\s*;\s*argv\[\]=(.*?)\s*;", value)
+    if match is None:
+        return None
+    path, argv = (item.strip() for item in match.groups())
+    if not path.startswith("/") or not argv:
+        return None
+    return {"path": path, "argv": argv}
+
+
 def _derive_gateway_identity(identity: dict[str, Any]) -> dict[str, Any]:
     if identity.get("schema_version") != "cad.phase10-live-identity/1":
         raise ValueError("identity capture schema_version is invalid")
@@ -387,6 +399,18 @@ def _derive_gateway_identity(identity: dict[str, Any]) -> dict[str, Any]:
     if not executable.startswith("/"):
         raise ValueError("proc executable identity is unavailable")
 
+    exec_start = _parse_systemd_exec_start(properties.get("ExecStart"))
+    if exec_start is None:
+        raise ValueError("systemd ExecStart identity is invalid")
+    launcher = records.get(("readlink", "-f", exec_start["path"]))
+    if launcher is None:
+        raise ValueError("identity capture is missing launcher symlink resolution")
+    if launcher.get("exit_code") != 0:
+        raise ValueError("launcher symlink resolution failed")
+    launcher_executable = launcher.get("stdout", "").strip()
+    if launcher_executable != executable:
+        raise ValueError("systemd launcher does not resolve to the service executable")
+
     digest = records.get(("sha256sum", executable))
     if digest is None:
         raise ValueError(
@@ -462,6 +486,9 @@ def _derive_gateway_identity(identity: dict[str, Any]) -> dict[str, Any]:
                 "start_identity": start_identity,
                 "executable": executable,
                 "executable_sha256": executable_hash,
+                "launcher_path": exec_start["path"],
+                "launcher_argv": exec_start["argv"],
+                "launcher_resolved_executable": launcher_executable,
             },
             "release": {
                 "source": "git_rev_parse",
@@ -591,6 +618,10 @@ def _service_restart_gates(
     new_start = new_process.get("start_identity")
     executable = new_process.get("executable")
     executable_hash = new_process.get("executable_sha256")
+    old_exec = _parse_systemd_exec_start(old_properties.get("ExecStart"))
+    new_exec = _parse_systemd_exec_start(new_properties.get("ExecStart"))
+    working_directory = new_properties.get("WorkingDirectory")
+    expected_exec_path = f"{working_directory}/.venv/bin/python"
     return {
         "old_gateway_process_exited": (
             exit_proof.get("source") == "procfs"
@@ -635,8 +666,20 @@ def _service_restart_gates(
             isinstance(executable, str)
             and executable.startswith("/")
             and old_process.get("executable") == executable
-            and old_properties.get("ExecStart") == new_properties.get("ExecStart")
-            and executable in str(new_properties.get("ExecStart", ""))
+            and old_process.get("launcher_resolved_executable")
+            == old_process.get("executable")
+            and new_process.get("launcher_resolved_executable") == executable
+            and old_exec
+            == {
+                "path": old_process.get("launcher_path"),
+                "argv": old_process.get("launcher_argv"),
+            }
+            and new_exec
+            == {
+                "path": expected_exec_path,
+                "argv": f"{expected_exec_path} -m autocad_gateway",
+            }
+            and old_exec == new_exec
             and isinstance(executable_hash, str)
             and executable_hash.startswith("sha256:")
             and len(executable_hash) == 71
@@ -2717,10 +2760,16 @@ async def _capture_identity(args: argparse.Namespace, token: str) -> dict[str, A
     working_directory = properties.get("WorkingDirectory", "")
     if not working_directory:
         raise RuntimeError("systemctl WorkingDirectory is missing")
+    exec_start = _parse_systemd_exec_start(properties.get("ExecStart"))
+    if exec_start is None:
+        raise RuntimeError("systemctl ExecStart is missing or invalid")
     executable = _run_raw_command(["readlink", "-f", f"/proc/{pid}/exe"])
     if executable["exit_code"] != 0:
         raise RuntimeError("readlink of /proc/<pid>/exe failed on the Gateway VM")
-    records = [systemctl, executable]
+    launcher = _run_raw_command(["readlink", "-f", exec_start["path"]])
+    if launcher["exit_code"] != 0:
+        raise RuntimeError("readlink of systemd ExecStart failed on the Gateway VM")
+    records = [systemctl, executable, launcher]
     records.append(_run_raw_command(["sha256sum", executable["stdout"].strip()]))
     records.append(
         _run_raw_command(

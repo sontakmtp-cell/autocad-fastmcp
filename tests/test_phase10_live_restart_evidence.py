@@ -16,25 +16,39 @@ SPEC.loader.exec_module(MODULE)
 COMMIT = "a" * 40
 DEVICE = "device-live"
 SCENE_ID = "scene-live"
+WORKING_DIRECTORY = f"/opt/releases/{COMMIT[:7]}/services/gateway"
+
+
+def _exec_start(
+    pid: int, *, path: str | None = None, argv0: str | None = None
+) -> str:
+    launcher = f"{WORKING_DIRECTORY}/.venv/bin/python"
+    return (
+        f"{{ path={path or launcher} ; argv[]={argv0 or launcher} -m autocad_gateway ; "
+        f"ignore_errors=no ; start_time=[Wed 2026-07-30 00:00:{pid % 60:02d} UTC] ; "
+        f"stop_time=[n/a] ; pid={pid} ; code=(null) ; status=0/0 }}"
+    )
 
 
 def _processes() -> tuple[dict, dict]:
-    working_directory = f"/opt/releases/{COMMIT[:7]}/services/gateway"
+    launcher = f"{WORKING_DIRECTORY}/.venv/bin/python"
     common_properties = {
         "Id": "autocad-mcp-phase4.service",
         "ActiveState": "active",
         "SubState": "running",
-        "ExecStart": "{ path=/usr/bin/python3.12 ; argv[]=/usr/bin/python3.12 app.py }",
-        "WorkingDirectory": working_directory,
+        "WorkingDirectory": WORKING_DIRECTORY,
     }
     common_process_record = {
         "source": "procfs",
         "executable": "/usr/bin/python3.12",
         "executable_sha256": "sha256:" + "b" * 64,
+        "launcher_path": launcher,
+        "launcher_argv": f"{launcher} -m autocad_gateway",
+        "launcher_resolved_executable": "/usr/bin/python3.12",
     }
     common_release = {
         "source": "git_rev_parse",
-        "working_directory": working_directory,
+        "working_directory": WORKING_DIRECTORY,
         "commit": COMMIT,
     }
     common_service = {
@@ -61,6 +75,7 @@ def _processes() -> tuple[dict, dict]:
             **common_service,
             "properties": {
                 **common_properties,
+                "ExecStart": _exec_start(100),
                 "MainPID": 100,
                 "ExecMainStartTimestampMonotonic": "1000",
             },
@@ -79,6 +94,7 @@ def _processes() -> tuple[dict, dict]:
             **common_service,
             "properties": {
                 **common_properties,
+                "ExecStart": _exec_start(200),
                 "MainPID": 200,
                 "ExecMainStartTimestampMonotonic": "2000",
             },
@@ -306,6 +322,20 @@ def test_restart_inputs_derive_all_gates_from_raw_records() -> None:
     assert not MODULE._process_identity_bound(before, after, expected)
 
 
+def test_service_restart_accepts_stable_launcher_with_new_systemd_metadata() -> None:
+    before, after = _processes()
+    before_service = before["gateway_service_record"]
+    after_service = after["gateway_service_record"]
+    assert before_service["properties"]["ExecStart"] != after_service["properties"][
+        "ExecStart"
+    ]
+    assert "/.venv/bin/python" in before_service["properties"]["ExecStart"]
+    assert before_service["process"]["executable"] == "/usr/bin/python3.12"
+    assert MODULE._service_restart_gates(
+        before, after, implementation_commit=COMMIT
+    )["gateway_runtime_identity"]
+
+
 @pytest.mark.parametrize(
     ("change", "failed_gate"),
     [
@@ -318,6 +348,24 @@ def test_restart_inputs_derive_all_gates_from_raw_records() -> None:
         (("after", "properties", "Id", "other.service"), "authoritative_gateway_service"),
         (("after", "release", "commit", "d" * 40), "gateway_runtime_identity"),
         (("after", "process", "executable", "python"), "gateway_runtime_identity"),
+        (
+            (
+                "after",
+                "properties",
+                "ExecStart",
+                _exec_start(200, path="/opt/other/.venv/bin/python"),
+            ),
+            "gateway_runtime_identity",
+        ),
+        (
+            (
+                "after",
+                "properties",
+                "ExecStart",
+                _exec_start(200, argv0="/opt/other/.venv/bin/python"),
+            ),
+            "gateway_runtime_identity",
+        ),
     ],
 )
 def test_service_restart_rejects_unproven_or_mismatched_identity(
@@ -399,7 +447,6 @@ def _identity_capture(
     captured_at: str,
     old_pid: int | None = None,
 ) -> dict:
-    working_directory = f"/opt/releases/{COMMIT[:7]}/services/gateway"
     executable = "/usr/bin/python3.12"
     executable_hex = "b" * 64
     systemctl_stdout = "\n".join(
@@ -409,8 +456,8 @@ def _identity_capture(
             "SubState=running",
             f"MainPID={pid}",
             f"ExecMainStartTimestampMonotonic={monotonic}",
-            f"WorkingDirectory={working_directory}",
-            f"ExecStart={{ path={executable} ; argv[]={executable} app.py }}",
+            f"WorkingDirectory={WORKING_DIRECTORY}",
+            f"ExecStart={_exec_start(pid)}",
             "",
         )
     )
@@ -437,6 +484,17 @@ def _identity_capture(
             "captured_at": captured_at,
         },
         {
+            "command": [
+                "readlink",
+                "-f",
+                f"{WORKING_DIRECTORY}/.venv/bin/python",
+            ],
+            "stdout": executable + "\n",
+            "stderr": "",
+            "exit_code": 0,
+            "captured_at": captured_at,
+        },
+        {
             "command": ["sha256sum", executable],
             "stdout": f"{executable_hex}  {executable}\n",
             "stderr": "",
@@ -444,7 +502,7 @@ def _identity_capture(
             "captured_at": captured_at,
         },
         {
-            "command": ["git", "-C", working_directory, "rev-parse", "HEAD"],
+            "command": ["git", "-C", WORKING_DIRECTORY, "rev-parse", "HEAD"],
             "stdout": COMMIT + "\n",
             "stderr": "",
             "exit_code": 0,
@@ -504,6 +562,9 @@ def test_derive_gateway_identity_parses_raw_authoritative_output() -> None:
         derived_before["gateway_service_record"]["process"]["executable_sha256"]
         == "sha256:" + "b" * 64
     )
+    assert derived_before["gateway_service_record"]["process"].get(
+        "launcher_resolved_executable"
+    ) == "/usr/bin/python3.12"
     assert (
         derived_before["gateway_service_record"]["release"]["commit"] == COMMIT
     )
@@ -583,6 +644,35 @@ def test_derive_rejects_ambiguous_or_misbound_raw_commands() -> None:
     duplicate["commands"].append(copy.deepcopy(duplicate["commands"][-1]))
     with pytest.raises(ValueError, match="duplicate command"):
         MODULE._derive_gateway_identity(duplicate)
+
+
+@pytest.mark.parametrize(
+    "tamper", ("missing_launcher", "wrong_launcher", "duplicate_launcher")
+)
+def test_derive_rejects_unproven_launcher_resolution(tamper: str) -> None:
+    identity = _identity_capture(
+        100,
+        "12345",
+        "1000",
+        captured_at="2026-07-30T00:00:00+00:00",
+    )
+    launcher = f"{WORKING_DIRECTORY}/.venv/bin/python"
+    record = next(
+        item
+        for item in identity["commands"]
+        if item["command"] == ["readlink", "-f", launcher]
+    )
+    if tamper == "missing_launcher":
+        identity["commands"].remove(record)
+        message = "missing launcher symlink"
+    elif tamper == "wrong_launcher":
+        record["stdout"] = "/usr/bin/python3.11\n"
+        message = "does not resolve"
+    else:
+        identity["commands"].append(copy.deepcopy(record))
+        message = "duplicate command"
+    with pytest.raises(ValueError, match=message):
+        MODULE._derive_gateway_identity(identity)
 
 
 def test_restart_inputs_reject_caller_supplied_service_records() -> None:

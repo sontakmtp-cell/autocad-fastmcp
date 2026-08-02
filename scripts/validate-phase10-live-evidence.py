@@ -560,29 +560,12 @@ def _validate_gateway_restart_processes(
         "Gateway restart: authoritative systemd service restart is not proven",
     )
 
-    executable = new_process.get("executable")
-    executable_hash = new_process.get("executable_sha256")
-    working_directory = new_properties.get("WorkingDirectory")
     _require(
-        isinstance(executable, str)
-        and executable.startswith("/")
-        and old_process.get("executable") == executable
-        and old_properties.get("ExecStart") == new_properties.get("ExecStart")
-        and executable in str(new_properties.get("ExecStart", ""))
-        and isinstance(executable_hash, str)
-        and executable_hash.startswith("sha256:")
-        and len(executable_hash) == 71
-        and old_process.get("executable_sha256") == executable_hash
-        and old_release.get("source")
-        == new_release.get("source")
-        == "git_rev_parse"
-        and old_release.get("working_directory")
-        == new_release.get("working_directory")
-        == working_directory
-        and old_release.get("commit")
-        == new_release.get("commit")
-        == implementation_commit
-        and implementation_commit[:7] in str(working_directory),
+        CAPTURE._service_restart_gates(
+            before,
+            after,
+            implementation_commit=implementation_commit,
+        )["gateway_runtime_identity"],
         "Gateway restart: runtime/release identity is not proven",
     )
     return before, after

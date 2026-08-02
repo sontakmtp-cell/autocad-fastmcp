@@ -370,15 +370,20 @@ def _patch_evidence_commits(root: Path) -> None:
                         )
                 properties = service.get("properties")
                 if isinstance(properties, dict):
-                    properties_working_directory = properties.get(
-                        "WorkingDirectory"
-                    )
-                    if isinstance(properties_working_directory, str):
-                        properties["WorkingDirectory"] = (
-                            properties_working_directory.replace(
+                    for property_name in ("WorkingDirectory", "ExecStart"):
+                        property_value = properties.get(property_name)
+                        if isinstance(property_value, str):
+                            properties[property_name] = property_value.replace(
                                 "165de04", FIXED_COMMIT[:7]
                             )
-                        )
+                process = service.get("process")
+                if isinstance(process, dict):
+                    for process_name in ("launcher_path", "launcher_argv"):
+                        process_value = process.get(process_name)
+                        if isinstance(process_value, str):
+                            process[process_name] = process_value.replace(
+                                "165de04", FIXED_COMMIT[:7]
+                            )
         for capture_key in ("identity_capture_before", "identity_capture_after"):
             capture = value.get(capture_key)
             if not isinstance(capture, dict):
@@ -441,6 +446,13 @@ def _identity_capture_from_record(
         {
             "command": ["readlink", "-f", f"/proc/{pid}/exe"],
             "stdout": executable + "\n",
+            "stderr": "",
+            "exit_code": 0,
+            "captured_at": captured_at,
+        },
+        {
+            "command": ["readlink", "-f", process["launcher_path"]],
+            "stdout": process["launcher_resolved_executable"] + "\n",
             "stderr": "",
             "exit_code": 0,
             "captured_at": captured_at,
@@ -510,11 +522,16 @@ def _upgrade_restart_artifact(root: Path) -> None:
         "working_directory", before.get("gateway_working_directory")
     )
     commit = value["implementation_commit"]
+    launcher = f"{working_directory}/.venv/bin/python"
     properties = {
         "Id": "autocad-mcp-phase4.service",
         "ActiveState": "active",
         "SubState": "running",
-        "ExecStart": f"{{ path={executable} ; argv[]={executable} app.py }}",
+        "ExecStart": (
+            f"{{ path={launcher} ; argv[]={launcher} -m autocad_gateway ; "
+            "ignore_errors=no ; start_time=[n/a] ; stop_time=[n/a] ; "
+            "pid=0 ; code=(null) ; status=0/0 }"
+        ),
         "WorkingDirectory": working_directory,
     }
     release = {
@@ -528,6 +545,9 @@ def _upgrade_restart_artifact(root: Path) -> None:
         "executable_sha256": drawing_c["runtime_identity"]["gateway_process"][
             "executable_sha256"
         ],
+        "launcher_path": launcher,
+        "launcher_argv": f"{launcher} -m autocad_gateway",
+        "launcher_resolved_executable": executable,
     }
     before["gateway_service_record"] = {
         "source": "systemctl_show",
