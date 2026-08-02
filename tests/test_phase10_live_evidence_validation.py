@@ -1238,6 +1238,35 @@ def test_finalize_fixture_rejects_future_db_capture(
         )
 
 
+def test_finalize_fixture_rejects_capture_after_finalization(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import argparse
+    import asyncio
+
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT)
+    root = _repo(tmp_path / "future-fixture-capture")
+    _, fixture = _fixture(root, "a")
+    provisional = _provisional_capture(tmp_path, fixture)
+    provisional["captured_at"] = (
+        datetime.now(timezone.utc) + timedelta(days=1)
+    ).isoformat()
+    provisional_path = tmp_path / "provisional.json"
+    provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
+    db_path, _ = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    with pytest.raises(ValueError, match="Fixture capture occurred after finalization"):
+        asyncio.run(
+            VALIDATOR.CAPTURE._finalize_fixture(
+                argparse.Namespace(
+                    fixture_evidence=provisional_path,
+                    no_effect_db=db_path,
+                    device_id=fixture["public_path"]["device_id"],
+                ),
+                "token",
+            )
+        )
+
+
 @pytest.mark.parametrize("tamper", ("section", "summary", "source"))
 def test_finalize_fixture_recomputes_provisional_gates(
     tmp_path: Path, monkeypatch, tamper: str
@@ -1682,6 +1711,43 @@ def test_finalize_restart_rejects_future_db_capture(
     before_path = tmp_path / "before.json"
     before_path.write_text(json.dumps(fixture), encoding="utf-8")
     with pytest.raises(ValueError, match="DB window"):
+        asyncio.run(
+            VALIDATOR.CAPTURE._finalize_restart(
+                argparse.Namespace(
+                    restart_evidence=restart_path,
+                    before=before_path,
+                    no_effect_db=db_path,
+                    device_id=fixture["public_path"]["device_id"],
+                ),
+                "token",
+            )
+        )
+
+
+def test_finalize_restart_rejects_capture_after_finalization(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import argparse
+    import asyncio
+
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT)
+    root = _repo(tmp_path / "future-restart-capture-finalizer")
+    _, fixture = _fixture(root, "c")
+    _, restart = _evidence(root, "phase10-live-gateway-restart-20260730.json")
+    restart["schema_version"] = "cad.phase10-live-gateway-restart-provisional/1"
+    restart["status"] = "PROVISIONAL"
+    restart.pop("finalization", None)
+    restart["captured_at"] = (
+        datetime.now(timezone.utc) + timedelta(days=1)
+    ).isoformat()
+    restart_path = tmp_path / "restart-provisional.json"
+    restart_path.write_text(json.dumps(restart), encoding="utf-8")
+    db_path, _ = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    before_path = tmp_path / "before.json"
+    before_path.write_text(json.dumps(fixture), encoding="utf-8")
+    with pytest.raises(
+        ValueError, match="Gateway restart capture occurred after finalization"
+    ):
         asyncio.run(
             VALIDATOR.CAPTURE._finalize_restart(
                 argparse.Namespace(

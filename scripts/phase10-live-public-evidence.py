@@ -230,6 +230,15 @@ def _parse_timestamp(value: object, label: str) -> datetime:
     return parsed
 
 
+def _validate_capture_finalization_boundary(
+    captured_at: object, finalization_boundary: str, *, label: str
+) -> None:
+    if _parse_timestamp(captured_at, f"{label} captured_at") > _parse_timestamp(
+        finalization_boundary, f"{label} finalization boundary"
+    ):
+        raise ValueError(f"{label} capture occurred after finalization")
+
+
 def _fixture_letter_from_id(fixture_id: str) -> str:
     if not isinstance(fixture_id, str):
         raise ValueError("fixture_id is invalid")
@@ -1908,6 +1917,9 @@ async def _finalize_fixture(args: argparse.Namespace, token: str) -> dict[str, A
         raise ValueError("finalizer commit differs from provisional capture commit")
     implementation_commit = capture_commit
     finalization_boundary = datetime.now(timezone.utc).isoformat()
+    _validate_capture_finalization_boundary(
+        provisional.get("captured_at"), finalization_boundary, label="Fixture"
+    )
     no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     invocations = provisional["public_path"]["tool_invocations"]
     try:
@@ -2308,6 +2320,9 @@ async def _finalize_restart(args: argparse.Namespace, token: str) -> dict[str, A
     no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     invocations = provisional["post_restart_public_path"]["tool_invocations"]
     finalization_boundary = datetime.now(timezone.utc).isoformat()
+    _validate_capture_finalization_boundary(
+        provisional.get("captured_at"), finalization_boundary, label="Gateway restart"
+    )
     _validate_restart_invocations(invocations, scene_id=provisional["scene_id"])
     _validate_restart_window(
         invocations,
@@ -2388,14 +2403,13 @@ async def _finalize_restart(args: argparse.Namespace, token: str) -> dict[str, A
         raise RuntimeError(
             f"restart gates failed: {sorted(name for name, passed in gates.items() if not passed)}"
         )
-    finalized_at = datetime.now(timezone.utc).isoformat()
     return {
         **provisional,
         "schema_version": "cad.phase10-live-gateway-restart/1",
         "status": "PASS",
         "finalization": {
             "implementation_commit": implementation_commit,
-            "finalized_at": finalized_at,
+            "finalized_at": finalization_boundary,
         },
         "no_effect_db_binding": _db_evidence_binding(args.no_effect_db, no_effect_db),
         "write_requested": not gates["no_write_requested"],
