@@ -453,7 +453,7 @@ class AgentCore:
                 hashlib.sha256,
             ).hexdigest()
             fixture_proof = "phase4-c1"
-        capabilities = ["observe"]
+        capabilities = ["observe", "cad.observe.detail-provenance/1"]
         approval_identity = None
         if (
             protocol_version == "cad.agent/2"

@@ -1,0 +1,40 @@
+{
+  "schema": "autocad-mcp.phase10-performance-evidence/1",
+  "recorded_at": "2026-07-30",
+  "status": "controlled_headless_observation",
+  "fixture": "headless_plate_four_holes",
+  "command": "python scripts/test-phase10-conformance.py",
+  "observation": {
+    "source_entities": 5,
+    "projected_nodes": 5,
+    "spatial_cells": 20,
+    "relation_candidates": 10,
+    "relations": 8,
+    "contours": 1,
+    "features": 6,
+    "issues": 0,
+    "projected_bytes": 2539,
+    "scene_bytes": 10649,
+    "peak_python_bytes": 69348,
+    "build_seconds": 0.011468,
+    "complete": true
+  },
+  "deterministic_adversarial_gates": {
+    "dense_overlap_entities": 300,
+    "dense_overlap_result": "scene_budget_exceeded",
+    "large_grid_entities": 5000,
+    "maximum_spatial_cells": 50000,
+    "maximum_relation_candidates": 250000,
+    "result": "bounded counters passed"
+  },
+  "gate_policy": {
+    "timing_only_ci_gate": false,
+    "correctness_uses_deterministic_counters": true,
+    "wall_time_is_observation_only": true
+  },
+  "limitations": [
+    "This is one local Python allocation observation, not a statistically controlled benchmark.",
+    "Native process peak memory and production scale are not measured.",
+    "One live R25 run retains build time and unchanged revision; the required three-drawing matrix remains incomplete."
+  ]
+}

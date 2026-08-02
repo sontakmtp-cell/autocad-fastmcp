@@ -126,8 +126,10 @@ Phase OAuth phải có một spike riêng để chọn provider hoặc authoriza
 - Scope đề xuất:
   - `autocad.read`
   - `autocad.write`
-  - `autocad.admin`
-- App ChatGPT bình thường không được cấp `autocad.admin`.
+  - `autocad.device.manage`
+- Signed-in product flow xin cả ba scope trong một consent. Mỗi operation vẫn
+  kiểm tra scope phù hợp; `autocad.write` không thay preview, trusted approval,
+  commit, validation hay recovery/rollback.
 - `execute_lisp` vẫn bị chặn dù token có scope ghi.
 
 Không tự viết một OAuth server đơn giản thiếu kiểm chứng để dùng production. Nếu dùng provider bên ngoài, phải có test discovery, login, refresh và revoke thực tế.
@@ -154,7 +156,7 @@ Không tự viết một OAuth server đơn giản thiếu kiểm chứng để 
 | `AUTOCAD_MCP_IPC_TIMEOUT` | Timeout File IPC | Giữ hiện trạng |
 | `AUTOCAD_MCP_OAUTH_ISSUER` | OAuth issuer | Bắt buộc ở production |
 | `AUTOCAD_MCP_OAUTH_AUDIENCE` | Resource audience | Bắt buộc ở production |
-| `AUTOCAD_MCP_OAUTH_SCOPES` | Scope đọc/ghi, phân tách bằng space | `autocad.read autocad.write` |
+| `AUTOCAD_MCP_OAUTH_SCOPES` | Bundle scope signed-in, phân tách bằng space | `autocad.read autocad.write autocad.device.manage` |
 
 Các secret OAuth không được lưu trong repo, `.env.example`, script hoặc log.
 
@@ -221,8 +223,10 @@ No Authentication không được xem là hoàn thành production, dù URL tunne
 
 - Scope đọc chỉ chạy operation đọc.
 - Scope ghi chạy operation vẽ/sửa thông thường.
+- Scope `autocad.device.manage` chỉ cho lifecycle thiết bị owner-scoped.
 - Operation phá hủy hoặc thay file cần xác nhận rõ ràng và audit.
-- Không cấp scope admin cho app ChatGPT mặc định.
+- Signed-in product flow xin read/write/device.manage cùng lúc, nhưng không có
+  scope nào thay trusted approval hoặc exact execution binding.
 - `execute_lisp` không được mở lại bằng scope.
 
 ### 7.4. Path allowlist bắt buộc
@@ -417,7 +421,8 @@ Tên file OAuth có thể đổi theo SDK/provider sau spike; không khóa cứn
 7. Kết nối lại app ChatGPT bằng OAuth.
 
 Đã triển khai trong repo: OIDC discovery/JWKS JWT verifier, protected-resource
-metadata, Bearer challenge và policy `autocad.read`/`autocad.write` trong
+metadata, Bearer challenge và policy `autocad.read`/`autocad.write`/
+`autocad.device.manage` trong
 `src/autocad_mcp/oauth.py`, cùng script `scripts/run-phase4-oauth.ps1`.
 Provider OIDC thật và hostname HTTPS ổn định vẫn cần cấu hình trước khi chạy
 E2E login/refresh/revoke với ChatGPT.
@@ -480,7 +485,8 @@ CI không yêu cầu AutoCAD; test AutoCAD thật được đánh dấu integrat
 
 1. OAuth login/refresh/revoke hoạt động.
 2. Production profile không thể chạy No Authentication.
-3. Scope đọc/ghi được enforce server-side.
+3. Scope read/write/device.manage được enforce server-side; CAD write vẫn cần
+   preview, trusted approval, commit, validation và recovery.
 4. Path allowlist fail-closed.
 5. Annotation write/read đúng; ChatGPT hiển thị confirmation phù hợp.
 6. Operation nguy hiểm có server-side confirmation và audit.

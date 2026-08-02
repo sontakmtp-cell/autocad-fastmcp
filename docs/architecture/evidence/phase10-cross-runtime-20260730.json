@@ -1,0 +1,40 @@
+{
+  "schema": "autocad-mcp.phase10-cross-runtime-evidence/1",
+  "recorded_at": "2026-07-30",
+  "status": "headless_pass_live_partial",
+  "command": "$env:PYTHONPATH='packages/cad_core/src;packages/contracts/src;services/gateway/src;apps/desktop_agent/src;src'; uv run --project services/gateway --group test python -m pytest -q apps/desktop_agent/tests/test_phase10_projection.py tests/test_phase10_projection.py --basetemp=.pytest_cache/phase10-cross-runtime",
+  "result": "5 passed",
+  "matrix": [
+    {
+      "runtime": "Managed .NET R25 projection contract",
+      "evidence": "Agent forwards the bounded Tier A projection and rejects requests above the 5000 entity lab cap.",
+      "status": "contract_simulated",
+      "live": false
+    },
+    {
+      "runtime": "ezdxf headless",
+      "evidence": "LINE, CIRCLE, ARC and LWPOLYLINE normalized subset matches the R25 public source shape; unsupported geometry is explicit and bounded.",
+      "status": "passed",
+      "live": false
+    },
+    {
+      "runtime": "AutoCAD LT compatibility",
+      "evidence": "The compatibility manifest does not claim Phase 10 source geometry or write authority.",
+      "status": "passed_negative_capability",
+      "live": false
+    },
+    {
+      "runtime": "AutoCAD Mechanical 2025 R25",
+      "evidence": "Signed lab package 0.10.3 projected 41 exact LINE/CIRCLE/ARC/LWPOLYLINE entities from drawing33.dwg with unchanged revision and in-process repository/service reopen retrieval.",
+      "status": "partial",
+      "live": true
+    }
+  ],
+  "retest_note": "An initial isolated pytest invocation omitted the repository PYTHONPATH and failed during collection. The conformance entrypoint sets the required paths; the corrected command passed 5 tests.",
+  "limitations": [
+    "Shape compatibility is not live R25 parity.",
+    "The required separate Drawings A, B and C and their expected feature/issue outcomes are not all recorded.",
+    "The retained live combined fixture did not produce hole/repeated-hole, slot, concentric or degenerate evidence."
+  ],
+  "engineering_decision": "NO-GO"
+}

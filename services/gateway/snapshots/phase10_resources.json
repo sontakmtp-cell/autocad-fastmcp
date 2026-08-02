@@ -1,0 +1,51 @@
+[
+  {
+    "_meta": {"fastmcp": {"tags": []}},
+    "description": "Read one bounded owner-scoped immutable scene summary.",
+    "mimeType": "application/json",
+    "name": "Drawing scene summary",
+    "uriTemplate": "cad://scenes/{scene_id}/summary"
+  },
+  {
+    "_meta": {"fastmcp": {"tags": []}},
+    "description": "Read the first bounded nodes page and next cursor.",
+    "mimeType": "application/json",
+    "name": "Drawing scene nodes",
+    "uriTemplate": "cad://scenes/{scene_id}/nodes"
+  },
+  {
+    "_meta": {"fastmcp": {"tags": []}},
+    "description": "Read the first bounded relations page and next cursor.",
+    "mimeType": "application/json",
+    "name": "Drawing scene relations",
+    "uriTemplate": "cad://scenes/{scene_id}/relations"
+  },
+  {
+    "_meta": {"fastmcp": {"tags": []}},
+    "description": "Read the first bounded contours page and next cursor.",
+    "mimeType": "application/json",
+    "name": "Drawing scene contours",
+    "uriTemplate": "cad://scenes/{scene_id}/contours"
+  },
+  {
+    "_meta": {"fastmcp": {"tags": []}},
+    "description": "Read the first bounded features page and next cursor.",
+    "mimeType": "application/json",
+    "name": "Drawing scene features",
+    "uriTemplate": "cad://scenes/{scene_id}/features"
+  },
+  {
+    "_meta": {"fastmcp": {"tags": []}},
+    "description": "Read the first bounded issues page and next cursor.",
+    "mimeType": "application/json",
+    "name": "Drawing scene issues",
+    "uriTemplate": "cad://scenes/{scene_id}/issues"
+  },
+  {
+    "_meta": {"fastmcp": {"tags": []}},
+    "description": "Read the first bounded evidence page and next cursor.",
+    "mimeType": "application/json",
+    "name": "Drawing scene evidence",
+    "uriTemplate": "cad://scenes/{scene_id}/evidence"
+  }
+]

@@ -49,9 +49,9 @@ class SkillCatalogRepository:
         now = utc_now()
         canonical = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
         with self.database.transaction() as conn:
-            old = conn.execute("SELECT manifest_digest,workflow_digest,catalog_release_digest FROM skill_versions WHERE skill_id=? AND version=?", (manifest["skill_id"], manifest["version"])).fetchone()
+            old = conn.execute("SELECT manifest_digest,workflow_digest FROM skill_versions WHERE skill_id=? AND version=?", (manifest["skill_id"], manifest["version"])).fetchone()
             if old is not None:
-                if tuple(old) != (manifest["manifest_digest"], reference["digest"], release_digest):
+                if tuple(old) != (manifest["manifest_digest"], reference["digest"]):
                     raise CatalogLifecycleError("immutable_version_conflict")
                 return
             conn.execute("INSERT INTO workflow_definitions(workflow_id,version,definition_json,definition_digest,step_count,planner_refs_json,template_refs_json,created_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(workflow_id,version) DO NOTHING", (workflow["workflow_id"], workflow["version"], json.dumps(workflow, sort_keys=True, separators=(",", ":")), workflow["definition_digest"], len(workflow["steps"]), "[]", "[]", now))

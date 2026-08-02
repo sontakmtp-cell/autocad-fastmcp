@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
-from autocad_contracts import CommandMessage, canonical_payload_hash
+from autocad_contracts import CommandMessage, RuntimeEvidence, canonical_payload_hash
 
 from autocad_desktop_agent.executor import AgentExecutionError, DrawingInfoExecutor
 
@@ -64,6 +64,9 @@ class DetailReadPort(ReadPort):
                         "space": "model",
                         "bounds": {"min": [0, 0, 0], "max": [10, 5, 0]},
                         "geometry": {"start": [0, 0], "end": [10, 5]},
+                        "geometry_status": "exact",
+                        "geometry_reason": None,
+                        "source_capabilities": ["entity.geometry.line/1"],
                         "geometry_truncated": False,
                         "fingerprint": "sha256:" + "b" * 64,
                     }
@@ -92,6 +95,17 @@ class ChangedRevisionReadPort(ReadPort):
         return result
 
 
+class ManagedDetailReadPort(DetailReadPort):
+    async def drawing_info(self):
+        result = await super().drawing_info()
+        result.payload["revision"] = {"revision": 7}
+        return result
+
+    async def entity_snapshot(self, *, expected_revision):
+        assert expected_revision == 7
+        return await super().entity_snapshot()
+
+
 class ManagedBroker:
     def __init__(self, adapter):
         self.adapter = adapter
@@ -99,7 +113,7 @@ class ManagedBroker:
     async def select_read_runtime(self):
         return SimpleNamespace(
             adapter=self.adapter,
-            evidence=SimpleNamespace(id="managed_dotnet"),
+            evidence=RuntimeEvidence(id="managed_dotnet", role="primary"),
         )
 
 
@@ -161,6 +175,75 @@ async def test_executor_returns_commit_safe_managed_detail_snapshot():
         "revision_schema": "cad.revision/1",
         "revision_strength": "database_object_fingerprint",
         "commit_safe": True,
+    }
+
+
+@pytest.mark.asyncio
+async def test_executor_preserves_managed_phase10_geometry_provenance():
+    cmd = command(
+        detail_snapshot_contract="cad.observe-detail/2",
+        payload={
+            "observation_level": "detail",
+            "include_preview_image": False,
+            "package": PACKAGE,
+        }
+    )
+    cmd = cmd.model_copy(update={"payload_hash": canonical_payload_hash(cmd.payload)})
+
+    snapshot = (
+        await DrawingInfoExecutor(
+            ReadPort(),
+            PACKAGE,
+            "0.1.0",
+            runtime_broker=ManagedBroker(ManagedDetailReadPort()),
+        ).execute(cmd)
+    )["snapshot"]
+
+    assert snapshot["entities"][0] == {
+        "entity_id": "2A",
+        "entity_type": "LINE",
+        "layer": "0",
+        "space": "model",
+        "bounds": {"min": [0, 0, 0], "max": [10, 5, 0]},
+        "geometry": {"start": [0, 0], "end": [10, 5]},
+        "geometry_status": "exact",
+        "geometry_reason": None,
+        "geometry_truncated": False,
+        "fingerprint": "sha256:" + "b" * 64,
+        "source_runtime": "managed_dotnet",
+        "source_capabilities": ["entity.geometry.line/1"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_executor_uses_legacy_detail_shape_without_gateway_negotiation():
+    cmd = command(
+        payload={
+            "observation_level": "detail",
+            "include_preview_image": False,
+            "package": PACKAGE,
+        }
+    )
+    cmd = cmd.model_copy(update={"payload_hash": canonical_payload_hash(cmd.payload)})
+
+    snapshot = (
+        await DrawingInfoExecutor(
+            ReadPort(),
+            PACKAGE,
+            "0.1.0",
+            runtime_broker=ManagedBroker(ManagedDetailReadPort()),
+        ).execute(cmd)
+    )["snapshot"]
+
+    assert set(snapshot["entities"][0]) == {
+        "entity_id",
+        "entity_type",
+        "layer",
+        "space",
+        "bounds",
+        "geometry",
+        "geometry_truncated",
+        "fingerprint",
     }
 
 

@@ -1,0 +1,15 @@
+{
+  "expected": {
+    "contour": "ctr_514bc9099bbd55c5d691ea5c5bdb431feb3b794f762540a36d22f87776a481cc",
+    "directed_relation": "rel_a54f2e33b75e162c80157dcedaae8d7d086ae1e11321043a7745ee1f876d79f5",
+    "evidence": "evd_d48771e383e35a69106b6d3e40f99bfe24214a00a7783d8a45ddd810855c0819",
+    "feature": "fea_7bb25e3c96a9ad586cffd43efd402a1444bbb02ab245b6b5917d620adbafd436",
+    "issue": "iss_f6026eacbccdfd06394837471a9155332fec6b41e243212fe369586cfd574c64",
+    "node_a": "nod_8e38bfb78a659bdef9cdcb2ec03efd121290ed81dd428f9aab3ed270b1ff6c47",
+    "node_b": "nod_7ea5d1148e7ff768b9bc173abad76a2c2c4c30eefaca5df8bf755951cf84f943",
+    "scene_digest": "sha256:077248e660595423c0604ce67f87388bff2e9915d07632c39460f4346794f773",
+    "source_digest": "sha256:1923b723a0405953bf2ba6645d9b90aaecf10a10399927898e9d15d95e74a37a",
+    "symmetric_relation": "rel_d8ee9aed5b50359f5b2dc4136232187a14d6ffcc33c71a5b78c4a52ac7d4f403"
+  },
+  "fixture_version": "cad.phase10.scene-digest-vector/1"
+}

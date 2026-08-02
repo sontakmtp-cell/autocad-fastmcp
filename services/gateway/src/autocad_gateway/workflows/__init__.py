@@ -7,6 +7,7 @@ from .state import (
     validate_run_transition,
     validate_safe_retry,
 )
+from .runner import SceneWorkflowPort
 
 __all__ = [
     "TERMINAL_RUN_STATES",
@@ -14,4 +15,5 @@ __all__ = [
     "child_idempotency_key",
     "validate_run_transition",
     "validate_safe_retry",
+    "SceneWorkflowPort",
 ]

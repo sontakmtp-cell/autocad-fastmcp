@@ -123,6 +123,62 @@ async def test_duplicate_start_wait_step_and_action_are_idempotent(repo):
 
 
 @pytest.mark.asyncio
+async def test_scene_action_key_and_payload_survive_restart_and_replay(repo):
+    await _run(repo)
+    await repo.create_step(
+        owner_subject="alice",
+        run_id="run",
+        step_id="scene",
+        attempt=1,
+        kind="build_scene",
+    )
+    source_digest = "sha256:" + "a" * 64
+    payload = {
+        "source_snapshot_id": "snapshot-a",
+        "source_digest": source_digest,
+    }
+    created, replayed = await repo.insert_action(
+        owner_subject="alice",
+        run_id="run",
+        step_id="scene",
+        attempt=1,
+        action_kind="build_scene",
+        payload=payload,
+        retry_class="read",
+        source_digest=source_digest,
+    )
+    assert replayed is False
+    assert created["idempotency_key"].startswith("wf:scene:")
+    assert len(created["idempotency_key"]) <= 128
+    await repo.database.close()
+    await repo.database.open()
+    replay, replayed = await repo.insert_action(
+        owner_subject="alice",
+        run_id="run",
+        step_id="scene",
+        attempt=1,
+        action_kind="build_scene",
+        payload=payload,
+        retry_class="read",
+        source_digest=source_digest,
+    )
+    assert replayed is True
+    assert replay["action_id"] == created["action_id"]
+    assert replay["idempotency_key"] == created["idempotency_key"]
+    with pytest.raises(RepositoryConflict, match="workflow_action_conflict"):
+        await repo.insert_action(
+            owner_subject="alice",
+            run_id="run",
+            step_id="scene",
+            attempt=1,
+            action_kind="build_scene",
+            payload={**payload, "source_snapshot_id": "snapshot-b"},
+            retry_class="read",
+            source_digest=source_digest,
+        )
+
+
+@pytest.mark.asyncio
 async def test_started_write_is_never_reclaimed_and_unknown_enters_recovery(repo):
     await _run(repo)
     await repo.transition_run(owner_subject="alice", run_id="run", expected_state="created", expected_version=0, target="running")
@@ -231,6 +287,7 @@ async def test_cancel_keeps_started_write_but_cancels_not_started_actions(repo):
         )
     claimed = await repo.claim_action("worker")
     await repo.mark_dispatch_started(claimed["action_id"], "worker")
+    claimed_kind = claimed["action_kind"]
     result = await repo.cancel_run(
         owner_subject="alice",
         run_id="run",
@@ -242,7 +299,10 @@ async def test_cancel_keeps_started_write_but_cancels_not_started_actions(repo):
         action["action_kind"]: action["state"]
         for action in await repo.list_actions("alice", "run")
     }
-    assert states == {"commit": "started", "rollback": "cancelled"}
+    assert states[claimed_kind] == "started"
+    assert {
+        state for action_kind, state in states.items() if action_kind != claimed_kind
+    } == {"cancelled"}
     assert await repo.claim_action("other") is None
 
 

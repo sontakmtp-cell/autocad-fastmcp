@@ -1,6 +1,7 @@
 """Run the Phase 4 public MCP read flow with a real OAuth protocol client.
 
-Tokens and dynamically registered client information stay in memory only.
+Tokens and dynamically registered client information stay in memory unless an
+operator explicitly requests a short-lived token file for a live evidence run.
 The script prints the authorization URL, waits for the loopback callback, then
 runs initialize -> tools/list -> cad_list_devices -> cad_observe -> cad_get_job.
 """
@@ -10,6 +11,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
+import tempfile
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -43,7 +47,58 @@ class MemoryStorage:
         self.client_info = client_info
 
 
-async def run(endpoint: str, device_id: str, timeout_seconds: float) -> None:
+def write_access_token(path: Path, token: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, delete=False
+    ) as stream:
+        temporary = Path(stream.name)
+        _restrict_token_file(temporary)
+        json.dump({"access_token": token}, stream)
+        stream.write("\n")
+    os.replace(temporary, path)
+
+
+def _restrict_token_file(path: Path) -> None:
+    if os.name != "nt":
+        os.chmod(path, 0o600)
+        return
+    import win32api
+    import win32con
+    import win32security
+    import ntsecuritycon
+
+    token = win32security.OpenProcessToken(
+        win32api.GetCurrentProcess(), win32con.TOKEN_QUERY
+    )
+    try:
+        user_sid = win32security.GetTokenInformation(
+            token, win32security.TokenUser
+        )[0]
+    finally:
+        token.Close()
+    dacl = win32security.ACL()
+    dacl.AddAccessAllowedAce(
+        win32security.ACL_REVISION,
+        ntsecuritycon.FILE_GENERIC_READ | ntsecuritycon.FILE_GENERIC_WRITE,
+        user_sid,
+    )
+    descriptor = win32security.SECURITY_DESCRIPTOR()
+    descriptor.SetSecurityDescriptorDacl(1, dacl, 0)
+    win32security.SetFileSecurity(
+        str(path),
+        win32security.DACL_SECURITY_INFORMATION
+        | win32security.PROTECTED_DACL_SECURITY_INFORMATION,
+        descriptor,
+    )
+
+
+async def run(
+    endpoint: str,
+    device_id: str,
+    timeout_seconds: float,
+    token_output: Path | None = None,
+) -> None:
     loop = asyncio.get_running_loop()
     callback: asyncio.Future[tuple[str, str | None]] = loop.create_future()
 
@@ -84,6 +139,7 @@ async def run(endpoint: str, device_id: str, timeout_seconds: float) -> None:
     async def callback_handler() -> tuple[str, str | None]:
         return await asyncio.wait_for(callback, timeout=timeout_seconds)
 
+    storage = MemoryStorage()
     auth = OAuthClientProvider(
         endpoint,
         OAuthClientMetadata(
@@ -96,7 +152,7 @@ async def run(endpoint: str, device_id: str, timeout_seconds: float) -> None:
             software_id="autocad-mcp-phase4-e2e",
             software_version="1",
         ),
-        MemoryStorage(),
+        storage,
         redirect_handler=redirect_handler,
         callback_handler=callback_handler,
         timeout=timeout_seconds,
@@ -179,6 +235,11 @@ async def run(endpoint: str, device_id: str, timeout_seconds: float) -> None:
                         ),
                         flush=True,
                     )
+                    if token_output is not None:
+                        if storage.tokens is None:
+                            raise RuntimeError("OAuth flow did not retain an access token")
+                        write_access_token(token_output, storage.tokens.access_token)
+                        print(f"TOKEN_FILE={token_output}", flush=True)
     finally:
         server.close()
         await server.wait_closed()
@@ -191,8 +252,9 @@ def main() -> None:
     )
     parser.add_argument("--device-id", default="autocad-lab-01")
     parser.add_argument("--timeout", type=float, default=120)
+    parser.add_argument("--token-output", type=Path)
     args = parser.parse_args()
-    asyncio.run(run(args.endpoint, args.device_id, args.timeout))
+    asyncio.run(run(args.endpoint, args.device_id, args.timeout, args.token_output))
 
 
 if __name__ == "__main__":

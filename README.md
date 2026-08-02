@@ -157,12 +157,15 @@ Server là **resource server** (không tự host login). Cần OIDC provider (Au
 powershell -ExecutionPolicy Bypass -File .\scripts\run-phase4-oauth.ps1 `
   -PublicBaseUrl "https://cad.example.com" `
   -OAuthIssuer "https://issuer.example" `
-  -OAuthAudience "https://cad.example.com"
+  -OAuthAudience "https://cad.example.com" `
+  -OAuthScopes "autocad.read autocad.write autocad.device.manage"
 ```
 
 - Endpoint MCP: `https://cad.example.com/mcp`
 - Metadata: `https://cad.example.com/.well-known/oauth-protected-resource`
-- Scopes: `autocad.read`, `autocad.write`
+- Signed-in product scopes: `autocad.read`, `autocad.write`,
+  `autocad.device.manage`. These scopes do not bypass the CAD write approval
+  workflow.
 - `execute_lisp` **mặc định bị chặn** trên mọi remote profile; chỉ bật khi set
   `AUTOCAD_MCP_ALLOW_EXECUTE_LISP=1` (rủi ro cao — AutoLISP tùy ý trên máy host)
 
@@ -416,7 +419,7 @@ Nếu đổi `AUTOCAD_MCP_IPC_DIR`, cập nhật tương ứng biến `*mcp-ipc-
 | `AUTOCAD_MCP_MAX_IMAGE_BYTES` | `5242880` | Giới hạn ảnh remote (5 MB) |
 | `AUTOCAD_MCP_OAUTH_ISSUER` | — | OIDC issuer |
 | `AUTOCAD_MCP_OAUTH_AUDIENCE` | — | JWT `aud` |
-| `AUTOCAD_MCP_OAUTH_SCOPES` | `autocad.read autocad.write` | Scopes chấp nhận |
+| `AUTOCAD_MCP_OAUTH_SCOPES` | `autocad.read autocad.write` | Legacy default; signed-in product flow phải đặt thêm `autocad.device.manage` |
 
 ---
 

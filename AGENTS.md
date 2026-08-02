@@ -62,7 +62,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## 5. Always use the OpenAI developer documentation MCP server if you need to work with the OpenAI API, ChatGPT Apps SDK, Codex,… without me having to explicitly ask.
 
-## 6. Bản vẽ AutoCAD tên drawing33.dwg là bản vẽ nháp chuyên dùng cho mục đích kiểm thử, Agent có toàn quyền sử dụng bản vẽ này.
+## 6. Bản vẽ AutoCAD D:\AI\autocad-mcp\drawing33.dwg là bản vẽ nháp chuyên dùng cho mục đích kiểm thử, Agent có toàn quyền sử dụng bản vẽ này. Tài khoản và mật khẩu VM lưu trong .env ở root.
 
 ---
 

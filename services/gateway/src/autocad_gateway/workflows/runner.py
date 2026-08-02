@@ -11,9 +11,37 @@ class WorkflowPort(Protocol):
 class WorkflowReconciliationPort(Protocol):
     async def reconcile(self, action_kind: str, child_ref: dict[str, Any], *, idempotency_key: str) -> dict[str, Any] | None: ...
 
+class SceneWorkflowPort(WorkflowPort, Protocol):
+    async def source_digest(
+        self,
+        *,
+        owner_subject: str,
+        device_id: str,
+        source_snapshot_id: str,
+        document_revision: str,
+        analysis_profile: str,
+    ) -> str: ...
+
+    async def reconcile(self, action_kind: str, child_ref: dict[str, Any], *, idempotency_key: str) -> dict[str, Any] | None: ...
+
+
+_SCENE_ACTIONS = frozenset({"build_scene", "query_scene", "validate_scene"})
+
+
 class WorkflowRunner:
-    def __init__(self, repository: Any, port: WorkflowPort, *, worker_id: str) -> None:
+    def __init__(
+        self,
+        repository: Any,
+        port: WorkflowPort,
+        *,
+        worker_id: str,
+        scene_port: SceneWorkflowPort | None = None,
+    ) -> None:
         self.repository, self.port, self.worker_id = repository, port, worker_id
+        self.scene_port = scene_port
+
+    def set_scene_port(self, scene_port: SceneWorkflowPort) -> None:
+        self.scene_port = scene_port
 
     async def run_once(self, *, lease_seconds: int = 30) -> bool:
         action = await self.repository.claim_action(self.worker_id, lease_seconds=lease_seconds)
@@ -25,12 +53,26 @@ class WorkflowRunner:
             preflight = getattr(self.port, "preflight", None)
             if preflight is not None:
                 await preflight(action["action_kind"], action["payload"])
+            dispatch_port = (
+                self.scene_port
+                if action["action_kind"] in _SCENE_ACTIONS
+                else self.port
+            )
+            if dispatch_port is None:
+                raise ValueError("scene_workflow_port_missing")
+            scene_preflight = getattr(dispatch_port, "preflight", None)
+            if scene_preflight is not None and dispatch_port is not self.port:
+                await scene_preflight(action["action_kind"], action["payload"])
             # This durable boundary is intentionally before the port call.  A
             # process death after it cannot turn an inconclusive write into a
             # fresh dispatch.
             action = await self.repository.mark_dispatch_started(action["action_id"], self.worker_id)
             dispatch_started = True
-            result = await self.port.dispatch(action["action_kind"], action["payload"], idempotency_key=action["idempotency_key"])
+            result = await dispatch_port.dispatch(
+                action["action_kind"],
+                action["payload"],
+                idempotency_key=action["idempotency_key"],
+            )
             child_ref = {
                 key: result[key]
                 for key in (
@@ -42,6 +84,11 @@ class WorkflowRunner:
                     "job_id",
                     "receipt_id",
                     "recovery_id",
+                    "scene_id",
+                    "scene_digest",
+                    "source_digest",
+                    "source_snapshot_id",
+                    "document_revision",
                 )
                 if result.get(key) is not None
             }
@@ -70,12 +117,17 @@ class WorkflowRunner:
     async def reconcile_restart(self) -> int:
         """Reconcile started child identities; writes are never redispatched here."""
         reclaimed = await self.repository.reclaim_expired_actions()
-        lookup = getattr(self.port, "reconcile", None)
-        if lookup is None:
-            return reclaimed
         for action in await self.repository.list_actions_for_reconcile():
             child_ref = action.get("child_ref")
             if child_ref is None:
+                continue
+            port = (
+                self.scene_port
+                if action["action_kind"] in _SCENE_ACTIONS
+                else self.port
+            )
+            lookup = getattr(port, "reconcile", None)
+            if lookup is None:
                 continue
             try:
                 outcome = await lookup(

@@ -579,7 +579,7 @@ Một scene root tối thiểu gồm:
   "document_revision": "...",
   "space": "model",
   "projection_version": "cad.entity-projection/2",
-  "engine_version": "scene-engine/1.0.0",
+  "engine_version": "scene-engine/1.0.1",
   "profile_id": "mechanical-2d/1",
   "tolerance_profile": {...},
   "source_digest": "sha256:...",
@@ -1182,6 +1182,8 @@ Dự kiến migration additive:
 
 ```text
 0012_phase10_scenes.sql
+0013_phase10_scene_request_bindings.sql
+0014_phase10_scene_expiry_lifecycle.sql
 ```
 
 Tên cuối phụ thuộc migration hiện hành.
@@ -1649,8 +1651,12 @@ Fixtures:
 
 - tools/resources only under Phase 10 flag/profile;
 - read-only annotations;
-- OAuth `autocad.read` sufficient;
-- write scope not required for scene build/query;
+- the signed-in Phase 10 product flow requests
+  `autocad.read autocad.write autocad.device.manage` in one consent;
+- scene build/query still authorize on `autocad.read`; the broader token only
+  exposes the existing Phase 5 device lifecycle and Phase 6–9 write workflow;
+- possession of `autocad.write` never bypasses preview, trusted approval,
+  exact execution binding, commit, validation or recovery/rollback;
 - bounded structured output;
 - resource links valid;
 - old tool schema snapshots unchanged;
@@ -2055,3 +2061,178 @@ Final Codex report phải state:
 Phase 10 hoàn tất khi hệ thống có thể lấy một immutable owner-scoped drawing snapshot, tạo một deterministic bounded scene pinned vào exact document revision, cung cấp normalized nodes, exact/derived relations, contours/components, evidence-backed mechanical features và read-only anomaly reports qua một public surface nhỏ với paginated resources; scene/workflow state sống qua Gateway restart, không leak cross-owner data, không bị prompt injection từ drawing text, không tạo CAD effect, và bất kỳ hành động sửa bản vẽ nào vẫn phải quay về exact Phase 6–9 CAD Program, preview, trusted approval, commit, validation, recovery và rollback authority.
 
 Phase 10 **không hoàn tất** chỉ vì demo nhận ra vài hình tròn là lỗ. Nó chỉ đạt Engineering GO khi contracts, determinism, budgets, security, durability, cross-runtime honesty và live R25 no-write evidence cùng được chứng minh.
+
+---
+
+## 32. Implementation evidence — 2026-07-30
+
+Implementation branch:
+`codex/phase-10-scene-graph-drawing-intelligence`, baseline
+`d1e84711841b4b262fc5563cb768904b8eefd811`, deployed live runtime commit
+`165de0452af2b665deb67401b7c73420eefae226`, retained evidence commit
+`cdf591d05c9d89692b4cb8f283cd36cceeaf6b32`, and full hosted-CI validation
+head `0268fd4e7cb73214e5ad1cfce8281af922359f47`.
+
+Delivered:
+
+- strict `cad.scene/1` contracts, canonical IDs/digests and golden vectors;
+- exact bounded Tier A LINE/CIRCLE/LWPOLYLINE/ARC projection across R25,
+  Desktop Agent and ezdxf, with LT capability honesty;
+- deterministic pure scene engine with grid candidate generation, relations,
+  contours/components, evidence-backed mechanical features, read-only issues
+  and fail-closed budgets;
+- owner-scoped immutable SQLite migrations `0012_phase10_scenes.sql`,
+  `0013_phase10_scene_request_bindings.sql` and
+  `0014_phase10_scene_expiry_lifecycle.sql`, signed cursors and restart-safe
+  scene/query service;
+- exactly two read-only scene tools and seven bounded resources, all default
+  off;
+- durable Phase 9 build/query/validate scene steps, read-only cleanup audit
+  `1.1.0`, and scene-gated auto-dimension `1.1.0` that still returns to the
+  existing prepare/preview/approval/commit path;
+- read-only Portal scene list/detail views, CI gates, threat/security review
+  and rollback guide.
+
+Final local automated results:
+
+- Phase 10 63; `cad_core` 22; Gateway 360; root 420 with 1 skip;
+- contracts 144; Desktop Agent 160; Managed Host 75;
+- Portal unit 42, production build passed, E2E 11, npm audit 0
+  vulnerabilities;
+- Phase 9 regression 94; Phase 8 Python 39 plus Host contracts 23;
+- selected migration/checksum negatives 2 passed with 23 deselected; direct LT
+  default-off regression 3 passed.
+
+The final signed bounded R25 lab matrix used three independently hashed fixtures
+through the public Gateway and unchanged standalone Desktop Agent:
+
+- Drawing A retained six exact entities, one part/outer contour, five hole
+  features and one four-hole repeated pattern; the non-pattern circle was
+  excluded.
+- Drawing B retained eight exact entities, one bounded slot and one concentric
+  group; the near-slot and near-concentric negative controls were excluded.
+- Drawing C retained eight exact entities and reported
+  `degenerate_geometry`, `duplicate_geometry`, `open_contour` and
+  `self_intersection`; exact valid geometry was not flagged for cleanup.
+- `drawing.cleanup-audit/1.1.0` reused Drawing C scene
+  `scn_63aa70dee79e44b580a19612c0fd9e2e`, returned the same four issues with
+  `write_authority=false`, and completed without a write request.
+
+Every drawing retained the same document revision, entity count and DWG hash
+before/after. The actual Gateway restart changed PID `173016` to `174089`;
+Desktop Agent PID `69500` stayed unchanged and reconnected from session
+`session-5125c353-5868-4a2e-8d54-da497c6e3d66` to
+`session-1ea445bf-a60a-4ee2-86f0-3b324043db82`. The same Drawing C scene and
+sections were retrieved publicly after restart. The scoped durable DB
+comparison found zero write events and retained identical pre/post canonical
+write snapshots:
+`sha256:ed0564b367c5cda86d340f5baf5bf1da5be328342467529649c2adee7194d2f6`.
+
+Retained artifacts:
+
+- `evidence/phase10-live-r25-drawing-a-20260730.json`;
+- `evidence/phase10-live-r25-drawing-b-20260730.json`;
+- `evidence/phase10-live-r25-drawing-c-20260730.json`;
+- `evidence/phase10-live-cleanup-workflow-20260730.json`;
+- `evidence/phase10-live-gateway-restart-20260730.json`;
+- `evidence/phase10-live-no-effect-db-20260730.json`.
+
+PR review hardening:
+
+- tolerance buckets are candidate indexes only; endpoint, duplicate geometry
+  and radius groups now require explicit tolerance comparison;
+- contour-only `part` inference is a bounded heuristic with confidence and
+  limitations, and cannot gate a write preview;
+- immutable canonical scenes may bind multiple durable idempotency keys while
+  conflicting key reuse still fails closed;
+- every advertised scene section is persisted and included in the scene
+  digest;
+- relation evidence identity binds relation, directionality, metrics,
+  tolerance and algorithm version without last-write-wins overwrite.
+- exact `hole` evidence can cover selected hole entities for auto-dimension;
+  all part evidence, heuristic hole and generic source-geometry evidence still
+  fail closed;
+- active replay/canonical reuse renews the server-bounded scene retention
+  deadline, expired scenes are hidden and rebuilt, and maintenance sweeps
+  expired records without making scene content mutable;
+- scene workflow child keys bind the full deterministic identity through a
+  bounded SHA-256 key that satisfies the 128-character child contract.
+
+Security review found no open critical/high code blocker in the implemented
+default-off profile: owner isolation, cursor tamper rejection, prompt-text
+redaction, bounded payloads/deadlines, read-only annotations and the existing
+Phase 6–9 write authority are covered by tests.
+
+Retained failure/retest evidence includes the fail-closed tiny-circle payload
+rejection and zero-length LINE replacement, privacy-safe valid-geometry gate,
+Gateway-owned `scene.core/1` workflow capability correction, exact deployed
+venv synchronization, Cloudflare tunnel restart after the verified Gateway
+restart, and corrected DB owner/timestamp arguments. The isolated `cad_core`
+and contracts first attempts used the wrong Python environments; corrected
+repo/Gateway environments passed and these were environment failures, not code
+failures. Drawing C retains the explicit limitation that the rejected `1e-7`
+tiny circle is not claimed; the exact zero-length LINE is the live degenerate
+case.
+
+`python scripts/validate-phase10-live-evidence.py` passes all manifest hashes,
+artifact schemas, commit/scene/digest bindings, cleanup, restart and no-effect
+gates locally and in hosted Phase 10 run `30525245847`. At
+`0268fd4e7cb73214e5ad1cfce8281af922359f47`, all reported jobs in all 11
+pull-request workflows passed: Test `30525250930`, Phase 1.1
+`30525245940`, Phase 2 `30525245834`, Phase 3.1 `30525245919`, Phase 4
+`30525245777`, Phase 5 Managed Host `30525245807`, Phase 5 Portal
+`30525250923`, FastMCP Phase 0 `30525245885`, Phase 8 `30525251005`,
+Phase 9 `30525245796`, and Phase 10 `30525245847`.
+
+**Engineering decision: GO for the default-off bounded Phase 10 lab profile.
+Customer Pilot: NO-GO pending Phase 11 production hardening and pilot gates.**
+
+## 33. PR #14 recertification evidence — 2026-08-02
+
+PR #14 review comments exposed real producer/validator defects rather than
+cosmetic evidence drift. The fixes now share one DB gate contract, bracket the
+closed audit window before the actual Gateway restart, and model provisional
+capture plus post-restart finalization in the end-to-end fixture. The live
+implementation and test head is
+`2df995f24580d44933472e0c41591ab3be36a84b`. The final CI-only correction
+fetches full Git history in the six jobs that execute provenance-aware root or
+Phase 10 checks; shallow PR checkouts did not contain `origin/main` and could
+not derive the evidence baseline. The producer remains fail-closed instead of
+falling back to an inaccurate baseline.
+
+Fresh same-head public OAuth evidence was captured with
+`autocad.read autocad.write autocad.device.manage`. Write scope does not bypass
+the Phase 6–9 `prepare -> preview -> trusted approval -> commit -> validate ->
+recovery/rollback` authority boundary. Phase 10 scene, query and cleanup
+operations remained read-only throughout this recertification.
+
+The three R25 fixtures passed every producer gate with unchanged document
+revision, entity count and DWG SHA-256:
+
+- Drawing A: document `doc-e90891bd9416e989b3cd7e56`, revision
+  `1658707502661421`, scene `scn_8a7a2b9b38d7494098caf0de4cde6b32`;
+- Drawing B: document `doc-4c9e80cc2d0101584c4d4d19`, revision
+  `6805084151967804`, scene `scn_1a3f8569f90544259f62efb9debcfdf5`;
+- Drawing C: document `doc-7fdc0ac9a316d93a5f068aa1`, revision
+  `8194682508785554`, scene `scn_fafb081e255e40248030690e0a2f13a6`.
+
+The actual Gateway restart changed PID `237530` to `238635`. Standalone
+Desktop Agent PID `16328` stayed alive and reconnected from session
+`session-b5a5ec26-f94a-413a-a72b-55a09035f387` to
+`session-db8fb53e-0a02-4654-b537-66a07daa6800`, retaining Drawing C, its
+revision and scene. The closed-window DB comparison covered exactly six anchor
+jobs and three scenes, found no write event, and retained byte-identical write
+tables with pre/post digest
+`sha256:b96e295cbe6ac5d1ed4d326aa4e6e8c7e7e598df6ddc2e50e42eae5d76cdd342`.
+Cleanup completed with `write_requested=false` and
+`cad_effect_attempted=false`.
+
+`python scripts/validate-phase10-live-evidence.py --root .` passed against the
+six freshly generated retained artifacts. The same local head passed the full
+root suite with **582 passed, 1 skipped**. The temporary OAuth token was deleted
+after cleanup. Final publication remains subject to all latest-head hosted PR
+checks passing.
+
+**PR #14 Engineering decision: GO for the default-off bounded Phase 10 lab
+profile. Customer Pilot: NO-GO pending Phase 11 production hardening and pilot
+gates.**

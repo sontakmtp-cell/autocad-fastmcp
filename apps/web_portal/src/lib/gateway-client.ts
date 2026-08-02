@@ -32,6 +32,14 @@ import {
   workflowRunSchema,
   type WorkflowDetail,
   type WorkflowRun,
+  parseSceneId,
+  sceneListSchema,
+  scenePageSchema,
+  sceneQueryInputSchema,
+  sceneSummarySchema,
+  type ScenePage,
+  type SceneSection,
+  type SceneSummary,
 } from "./contracts";
 import { portalEnv } from "./env";
 import type { PortalSession } from "./session";
@@ -143,6 +151,66 @@ export class GatewayClient {
 
   async getWorkflow(runId: string): Promise<WorkflowDetail> {
     return this.request(`/api/portal/v1/workflows/${encodeURIComponent(parseOpaqueId(runId))}`, workflowDetailSchema);
+  }
+
+  async listScenes(): Promise<SceneSummary[]> {
+    return this.request("/api/portal/v1/scenes", sceneListSchema)
+      .then((value) => value.scenes);
+  }
+
+  async getScene(sceneId: string): Promise<SceneSummary> {
+    return this.request(
+      `/api/portal/v1/scenes/${encodeURIComponent(parseSceneId(sceneId))}`,
+      sceneSummarySchema,
+    );
+  }
+
+  async queryScene(
+    sceneId: string,
+    query: {
+      section: SceneSection;
+      entityTypes?: string[];
+      relationTypes?: string[];
+      featureTypes?: string[];
+      issueCodes?: string[];
+      sourceEntityIds?: string[];
+      confidenceMin?: number;
+      cursor?: string;
+      limit?: number;
+    },
+  ): Promise<ScenePage> {
+    const validated = sceneQueryInputSchema.parse({
+      scene_id: sceneId,
+      section: query.section,
+      entity_types: query.entityTypes ?? [],
+      relation_types: query.relationTypes ?? [],
+      feature_types: query.featureTypes ?? [],
+      issue_codes: query.issueCodes ?? [],
+      source_entity_ids: query.sourceEntityIds ?? [],
+      confidence_min: query.confidenceMin,
+      cursor: query.cursor,
+      limit: query.limit ?? 100,
+    });
+    const parameters = new URLSearchParams();
+    const appendMany = (name: string, values: string[] | undefined) => {
+      for (const value of values ?? []) parameters.append(name, value);
+    };
+    appendMany("entity_type", validated.entity_types);
+    appendMany("relation_type", validated.relation_types);
+    appendMany("feature_type", validated.feature_types);
+    appendMany("issue_code", validated.issue_codes);
+    appendMany("source_entity_id", validated.source_entity_ids);
+    if (validated.confidence_min !== undefined) {
+      parameters.set("confidence_min", String(validated.confidence_min));
+    }
+    if (validated.cursor) parameters.set("cursor", validated.cursor);
+    parameters.set("limit", String(validated.limit));
+    const suffix = parameters.size ? `?${parameters.toString()}` : "";
+    return this.request(
+      `/api/portal/v1/scenes/${encodeURIComponent(validated.scene_id)}`
+      + `/${validated.section}${suffix}`,
+      scenePageSchema,
+    );
   }
 
   async getIntent(intentId: string): Promise<ExecutionIntent> {

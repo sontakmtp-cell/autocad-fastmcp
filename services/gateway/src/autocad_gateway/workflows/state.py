@@ -4,6 +4,8 @@ This module deliberately has no FastMCP or AutoCAD dependencies.
 """
 from __future__ import annotations
 
+import hashlib
+import re
 from typing import Literal
 
 RunState = Literal[
@@ -58,9 +60,39 @@ def validate_step_transition(current: str, target: str) -> None:
     if target not in _STEP_TRANSITIONS[current]:
         raise InvalidWorkflowTransition(f"invalid workflow step transition: {current} -> {target}")
 
-def child_idempotency_key(run_id: str, step_id: str, attempt: int, action: str) -> str:
-    if not run_id or not step_id or attempt < 1 or action not in {"observe", "query", "plan", "prepare", "preview", "commit", "validate", "rollback"}:
+_ACTIONS = {
+    "observe",
+    "query",
+    "plan",
+    "prepare",
+    "preview",
+    "commit",
+    "validate",
+    "rollback",
+}
+_SCENE_ACTIONS = {"build_scene", "query_scene", "validate_scene"}
+_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+
+def child_idempotency_key(
+    run_id: str,
+    step_id: str,
+    attempt: int,
+    action: str,
+    *,
+    source_digest: str | None = None,
+) -> str:
+    if not run_id or not step_id or attempt < 1 or action not in _ACTIONS | _SCENE_ACTIONS:
         raise ValueError("invalid deterministic child key components")
+    if action in _SCENE_ACTIONS:
+        if not isinstance(source_digest, str) or not _DIGEST.fullmatch(source_digest):
+            raise ValueError("scene child key requires source_digest")
+        material = "\0".join(
+            (run_id, step_id, str(attempt), action, source_digest)
+        ).encode()
+        return "wf:scene:" + hashlib.sha256(material).hexdigest()
+    if source_digest is not None:
+        raise ValueError("source_digest is only valid for scene child keys")
     return f"wf:{run_id}:{step_id}:{attempt}:{action}"
 
 def validate_safe_retry(*, retry_class: str, child_state: str | None = None, effect_class: str = "read") -> None:

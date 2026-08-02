@@ -29,6 +29,12 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse
 from starlette.routing import Mount, Route, WebSocketRoute
+from autocad_contracts import (
+    CadBuildSceneInput,
+    CadBuildSceneOutput,
+    CadQuerySceneInput,
+    CadQuerySceneOutput,
+)
 
 from .contracts import (
     CadListDevicesInput,
@@ -199,6 +205,15 @@ class GatewayConfig:
     phase9_write_workflows_enabled: bool = False
     phase9_skill_allowlist: tuple[str, ...] = ()
     phase9_policy_epoch: int = 0
+    phase10_scene_engine_enabled: bool = False
+    phase10_public_scene_tools_enabled: bool = False
+    phase10_scene_resources_enabled: bool = False
+    phase10_mechanical_features_enabled: bool = False
+    phase10_annotation_links_enabled: bool = False
+    phase10_workflow_scene_steps_enabled: bool = False
+    phase10_portal_scene_views_enabled: bool = False
+    phase10_cursor_signing_secret: str | None = None
+    phase10_scene_retention_hours: int = 24
 
     @classmethod
     def from_env(cls) -> "GatewayConfig":
@@ -487,6 +502,15 @@ class GatewayConfig:
             phase9_write_workflows_enabled=os.environ.get("AUTOCAD_MCP_PHASE9_WRITE_WORKFLOWS_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
             phase9_skill_allowlist=tuple(item.strip() for item in os.environ.get("AUTOCAD_MCP_PHASE9_SKILL_ALLOWLIST", "").split(",") if item.strip()),
             phase9_policy_epoch=int(os.environ.get("AUTOCAD_MCP_PHASE9_POLICY_EPOCH", "0")),
+            phase10_scene_engine_enabled=os.environ.get("AUTOCAD_MCP_PHASE10_SCENE_ENGINE_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase10_public_scene_tools_enabled=os.environ.get("AUTOCAD_MCP_PHASE10_PUBLIC_SCENE_TOOLS_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase10_scene_resources_enabled=os.environ.get("AUTOCAD_MCP_PHASE10_SCENE_RESOURCES_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase10_mechanical_features_enabled=os.environ.get("AUTOCAD_MCP_PHASE10_MECHANICAL_FEATURES_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase10_annotation_links_enabled=os.environ.get("AUTOCAD_MCP_PHASE10_ANNOTATION_LINKS_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase10_workflow_scene_steps_enabled=os.environ.get("AUTOCAD_MCP_PHASE10_WORKFLOW_SCENE_STEPS_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase10_portal_scene_views_enabled=os.environ.get("AUTOCAD_MCP_PHASE10_PORTAL_SCENE_VIEWS_ENABLED", "0").strip().lower() in {"1", "true", "yes", "on"},
+            phase10_cursor_signing_secret=os.environ.get("AUTOCAD_MCP_PHASE10_CURSOR_SIGNING_SECRET", "").strip() or None,
+            phase10_scene_retention_hours=int(os.environ.get("AUTOCAD_MCP_PHASE10_SCENE_RETENTION_HOURS", "24")),
         )
         return config.validate()
 
@@ -755,6 +779,40 @@ class GatewayConfig:
             raise ValueError("Phase 9 write workflows require existing managed approval gates")
         if self.phase9_policy_epoch < 0:
             raise ValueError("Phase 9 policy epoch is invalid")
+        if any(
+            (
+                self.phase10_public_scene_tools_enabled,
+                self.phase10_scene_resources_enabled,
+                self.phase10_mechanical_features_enabled,
+                self.phase10_annotation_links_enabled,
+                self.phase10_workflow_scene_steps_enabled,
+                self.phase10_portal_scene_views_enabled,
+            )
+        ) and not self.phase10_scene_engine_enabled:
+            raise ValueError("Phase 10 features require the scene engine")
+        if (
+            self.phase10_scene_engine_enabled
+            and self.profile != "phase9_workflow"
+        ):
+            raise ValueError("Phase 10 requires the explicit Phase 9 lab profile")
+        if (
+            self.phase10_public_scene_tools_enabled
+            or self.phase10_scene_resources_enabled
+        ) and (
+            self.phase10_cursor_signing_secret is None
+            or len(self.phase10_cursor_signing_secret.encode("utf-8")) < 32
+        ):
+            raise ValueError("Phase 10 public scene access requires a 32-byte cursor secret")
+        if self.phase10_workflow_scene_steps_enabled and not (
+            self.phase9_workflow_engine_enabled and self.profile == "phase9_workflow"
+        ):
+            raise ValueError("Phase 10 workflow steps require the Phase 9 workflow engine")
+        if self.phase10_portal_scene_views_enabled and not (
+            self.profile == "phase9_workflow"
+        ):
+            raise ValueError("Phase 10 Portal views require the Phase 9 profile")
+        if not 1 <= self.phase10_scene_retention_hours <= 168:
+            raise ValueError("Phase 10 scene retention must be between 1 and 168 hours")
         return self
 
     @property
@@ -1043,6 +1101,8 @@ def _safe_error(error: GatewayError, correlation_id: str) -> ToolError:
         "response_too_large": "response exceeds the configured size limit",
         "observation_too_large": "the CAD observation exceeds configured limits",
         "observation_budget_exceeded": "the CAD observation exceeded its execution budget",
+        "scene_budget_exceeded": "the drawing scene exceeded configured limits",
+        "scene_conflict": "the scene conflicts with an existing immutable artifact",
         "preview_unavailable": "a valid PNG preview is unavailable",
         "device_offline": "the selected CAD device is offline",
         "capability_missing": "the selected device lacks the requested capability",
@@ -1147,9 +1207,21 @@ def build_mcp_server(
         getattr(workflow_service, "catalog_enabled", False)
     )
     phase9 = phase9_catalog and bool(getattr(workflow_service, "enabled", False))
+    scene_service = getattr(services, "scene_service", None)
+    phase10_tools = bool(
+        scene_service is not None
+        and getattr(services, "phase10_public_scene_tools_enabled", False)
+    )
+    phase10_resources = bool(
+        scene_service is not None
+        and getattr(services, "phase10_scene_resources_enabled", False)
+    )
     write_auth_check = require_scopes("autocad.write") if auth is not None else None
     mcp = FastMCP(
         name=(
+            "AutoCAD Gateway public v1.6"
+            if phase10_tools
+            else
             "AutoCAD Gateway public v1.4"
             if phase7
             else "AutoCAD Gateway public v1.3"
@@ -1161,6 +1233,9 @@ def build_mcp_server(
             else "AutoCAD Gateway public v1"
         ),
         version=(
+            "0.10.0"
+            if phase10_tools
+            else
             "0.7.0"
             if phase7
             else "0.6.0"
@@ -1324,6 +1399,111 @@ def build_mcp_server(
                 idempotency_key=idempotency_key, payload=payload,
                 scopes=principal.scopes,
             )), correlation_id)
+
+    if phase10_tools:
+        @mcp.tool(
+            name="cad_build_scene",
+            title="Build drawing scene",
+            description=(
+                "Build or reuse one bounded, immutable, read-only scene from "
+                "an existing owner-scoped snapshot."
+            ),
+            output_schema=CadBuildSceneOutput.model_json_schema(),
+            annotations=_tool_annotations(idempotent=True),
+            auth=auth_check,
+        )
+        async def cad_build_scene(
+            source_snapshot_id: str,
+            idempotency_key: str,
+            analysis_profile: Literal["mechanical-2d/1"] = "mechanical-2d/1",
+            space: Literal["model"] = "model",
+            include_sections: list[
+                Literal[
+                    "nodes",
+                    "relations",
+                    "contours",
+                    "features",
+                    "issues",
+                    "evidence",
+                ]
+            ] | None = None,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
+            del ctx
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            request_values: dict[str, Any] = {
+                "source_snapshot_id": source_snapshot_id,
+                "idempotency_key": idempotency_key,
+                "analysis_profile": analysis_profile,
+                "space": space,
+            }
+            if include_sections is not None:
+                request_values["include_sections"] = include_sections
+            request = CadBuildSceneInput.model_validate(request_values)
+            result = await _run(
+                lambda: scene_service.build(
+                    principal.subject, request, correlation_id
+                ),
+                correlation_id,
+            )
+            return result.model_dump(mode="json")
+
+        @mcp.tool(
+            name="cad_query_scene",
+            title="Query drawing scene",
+            description=(
+                "Read one bounded typed scene section. Arbitrary expressions, "
+                "regex, code, paths and URLs are not accepted."
+            ),
+            output_schema=CadQuerySceneOutput.model_json_schema(),
+            annotations=_tool_annotations(idempotent=True),
+            auth=auth_check,
+        )
+        async def cad_query_scene(
+            scene_id: str,
+            section: Literal[
+                "nodes",
+                "relations",
+                "contours",
+                "features",
+                "issues",
+                "evidence",
+            ],
+            entity_types: list[str] | None = None,
+            relation_types: list[str] | None = None,
+            feature_types: list[str] | None = None,
+            issue_codes: list[str] | None = None,
+            source_entity_ids: list[str] | None = None,
+            confidence_min: float | None = None,
+            cursor: str | None = None,
+            limit: int = 100,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
+            del ctx
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            request = CadQuerySceneInput(
+                scene_id=scene_id,
+                section=section,
+                entity_types=entity_types or [],
+                relation_types=relation_types or [],
+                feature_types=feature_types or [],
+                issue_codes=issue_codes or [],
+                source_entity_ids=source_entity_ids or [],
+                confidence_min=confidence_min,
+                cursor=cursor,
+                limit=limit,
+            )
+            result = await _run(
+                lambda: scene_service.query(
+                    principal.subject, request, correlation_id
+                ),
+                correlation_id,
+            )
+            return result.model_dump(mode="json")
 
     async def _call_cad_observe(
         request: CadObserveInput | CadObserveInputDurable,
@@ -2229,6 +2409,62 @@ def build_mcp_server(
                 mime_type="application/json",
             )])
 
+    if phase10_resources:
+        @mcp.resource(
+            "cad://scenes/{scene_id}/summary",
+            name="Drawing scene summary",
+            description="Read one bounded owner-scoped immutable scene summary.",
+            mime_type="application/json",
+            auth=auth_check,
+        )
+        async def scene_summary_resource(scene_id: str) -> ResourceResult:
+            correlation_id = current_correlation_id(make_correlation_id)
+            principal = _principal(auth, services, correlation_id)
+            value = await _run(
+                lambda: scene_service.summary(principal.subject, scene_id),
+                correlation_id,
+            )
+            return ResourceResult([ResourceContent(
+                content=json.dumps(value, sort_keys=True),
+                mime_type="application/json",
+            )])
+
+        def register_scene_section_resource(section: str) -> None:
+            async def read_section(scene_id: str) -> ResourceResult:
+                correlation_id = current_correlation_id(make_correlation_id)
+                principal = _principal(auth, services, correlation_id)
+                request = CadQuerySceneInput(
+                    scene_id=scene_id, section=section, limit=100
+                )
+                value = await _run(
+                    lambda: scene_service.query(
+                        principal.subject, request, correlation_id
+                    ),
+                    correlation_id,
+                )
+                return ResourceResult([ResourceContent(
+                    content=value.model_dump_json(),
+                    mime_type="application/json",
+                )])
+
+            mcp.resource(
+                f"cad://scenes/{{scene_id}}/{section}",
+                name=f"Drawing scene {section}",
+                description=f"Read the first bounded {section} page and next cursor.",
+                mime_type="application/json",
+                auth=auth_check,
+            )(read_section)
+
+        for scene_section in (
+            "nodes",
+            "relations",
+            "contours",
+            "features",
+            "issues",
+            "evidence",
+        ):
+            register_scene_section_resource(scene_section)
+
     @mcp.prompt(
         name="plan_cad_change",
         title="Plan a CAD change",
@@ -2935,6 +3171,70 @@ def create_app(
             return JSONResponse({"error": "not_found"}, status_code=404)
         return phase6_portal_response(value)
 
+    async def portal_phase10_scenes(request: Request) -> JSONResponse:
+        context = await phase7_portal_context(request, required_scope="autocad.read")
+        if isinstance(context, JSONResponse):
+            return context
+        owner, _, _, _ = context
+        try:
+            limit = min(max(int(request.query_params.get("limit", "100")), 1), 100)
+            value = await services.scene_service.list(owner, limit=limit)
+        except (ValueError, GatewayError) as error:
+            return (
+                phase7_http_error(error)
+                if isinstance(error, GatewayError)
+                else JSONResponse({"error": "invalid_request"}, status_code=400)
+            )
+        return phase6_portal_response(value)
+
+    async def portal_phase10_scene(request: Request) -> JSONResponse:
+        context = await phase7_portal_context(request, required_scope="autocad.read")
+        if isinstance(context, JSONResponse):
+            return context
+        owner, _, _, _ = context
+        try:
+            value = await services.scene_service.summary(
+                owner, request.path_params["scene_id"]
+            )
+        except GatewayError as error:
+            return phase7_http_error(error)
+        return phase6_portal_response(value)
+
+    async def portal_phase10_scene_section(request: Request) -> JSONResponse:
+        context = await phase7_portal_context(request, required_scope="autocad.read")
+        if isinstance(context, JSONResponse):
+            return context
+        owner, _, _, _ = context
+        query = request.query_params
+        try:
+            value = await services.scene_service.query(
+                owner,
+                CadQuerySceneInput(
+                    scene_id=request.path_params["scene_id"],
+                    section=request.path_params["section"],
+                    entity_types=_split_query_values(query.get("entity_type")),
+                    relation_types=_split_query_values(query.get("relation_type")),
+                    feature_types=_split_query_values(query.get("feature_type")),
+                    issue_codes=_split_query_values(query.get("issue_code")),
+                    source_entity_ids=_split_query_values(
+                        query.get("source_entity_id")
+                    ),
+                    confidence_min=(
+                        float(query["confidence_min"])
+                        if "confidence_min" in query
+                        else None
+                    ),
+                    cursor=query.get("cursor"),
+                    limit=int(query.get("limit", "100")),
+                ),
+                current_correlation_id(),
+            )
+        except ValidationError:
+            return JSONResponse({"error": "invalid_request"}, status_code=400)
+        except GatewayError as error:
+            return phase7_http_error(error)
+        return phase6_portal_response(value.model_dump(mode="json"))
+
     @asynccontextmanager
     async def lifespan(app: Starlette):
         await services.initialize()
@@ -3085,6 +3385,24 @@ def create_app(
         routes.extend([
             Route("/api/portal/v1/workflows", portal_phase9_workflows, methods=["GET"]),
             Route("/api/portal/v1/workflows/{run_id:str}", portal_phase9_workflow, methods=["GET"]),
+        ])
+    if (
+        config.profile == "phase9_workflow"
+        and config.phase10_portal_scene_views_enabled
+        and getattr(services, "scene_service", None) is not None
+    ):
+        routes.extend([
+            Route("/api/portal/v1/scenes", portal_phase10_scenes, methods=["GET"]),
+            Route(
+                "/api/portal/v1/scenes/{scene_id:str}",
+                portal_phase10_scene,
+                methods=["GET"],
+            ),
+            Route(
+                "/api/portal/v1/scenes/{scene_id:str}/{section:str}",
+                portal_phase10_scene_section,
+                methods=["GET"],
+            ),
         ])
     routes.append(Mount("/", app=mcp_app))
     outer_app: Any = Starlette(

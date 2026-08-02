@@ -14,6 +14,7 @@ from autocad_contracts import (
     canonical_package_manifest_hash,
     parse_agent_message,
 )
+from cad_core.scene import project_entity
 
 from autocad_gateway.app import GatewayConfig, create_app
 from autocad_gateway.composition import build_human_auth, build_services
@@ -48,6 +49,192 @@ def test_phase4_safe_agent_errors_remain_typed(code):
     public_code, summary = DurableJobService._safe_agent_error(code)
     assert public_code == code
     assert summary
+
+
+@pytest.mark.parametrize(
+    ("entity_type", "geometry"),
+    [
+        (
+            "LINE",
+            {
+                "start": [0.0, 0.0],
+                "end": [10.0, 0.0],
+                "start_elevation": 0.0,
+                "end_elevation": 0.0,
+            },
+        ),
+        (
+            "CIRCLE",
+            {
+                "center": [5.0, 5.0],
+                "radius": 2.0,
+                "elevation": 0.0,
+                "normal": [0.0, 0.0, 1.0],
+            },
+        ),
+        (
+            "LWPOLYLINE",
+            {
+                "points": [[0.0, 0.0], [10.0, 0.0], [10.0, 5.0]],
+                "bulges": [0.0, 1.0, 0.0],
+                "closed": True,
+                "elevation": 0.0,
+                "normal": [0.0, 0.0, 1.0],
+            },
+        ),
+        (
+            "ARC",
+            {
+                "center": [5.0, 5.0],
+                "radius": 2.0,
+                "start_angle_radians": 0.0,
+                "end_angle_radians": 3.141592653589793,
+                "elevation": 0.0,
+                "normal": [0.0, 0.0, 1.0],
+            },
+        ),
+    ],
+)
+def test_c1_detail_accepts_exact_managed_host_geometry(entity_type, geometry):
+    capability = {
+        "LINE": "entity.geometry.line/1",
+        "CIRCLE": "entity.geometry.circle/1",
+        "LWPOLYLINE": "entity.geometry.polyline/1",
+        "ARC": "entity.geometry.arc/1",
+    }[entity_type]
+    entity = {
+        "entity_id": "1A",
+        "entity_type": entity_type,
+        "layer": "0",
+        "space": "model",
+        "bounds": {"min": [0.0, 0.0, 0.0], "max": [10.0, 10.0, 0.0]},
+        "geometry": geometry,
+        "geometry_status": "exact",
+        "geometry_reason": None,
+        "geometry_truncated": False,
+        "fingerprint": f"sha256:{'b' * 64}",
+        "source_runtime": "managed_dotnet",
+        "source_capabilities": [capability],
+    }
+
+    assert DurableJobService._valid_c1_detail_entity(entity)
+
+
+@pytest.mark.parametrize(
+    "geometry",
+    [
+        {
+            "points": [[0.0, 0.0], [1.0, 0.0]],
+            "bulges": [0.0],
+            "closed": False,
+            "elevation": 0.0,
+            "normal": [0.0, 0.0, 1.0],
+        },
+        {
+            "center": [0.0, 0.0],
+            "radius": float("nan"),
+            "elevation": 0.0,
+            "normal": [0.0, 0.0, 1.0],
+        },
+        {
+            "center": [0.0, 0.0],
+            "radius": 1.0,
+            "elevation": 0.0,
+            "normal": [0.0, 0.0, 1.0],
+            "unexpected": True,
+        },
+    ],
+)
+def test_c1_detail_rejects_malformed_managed_host_geometry(geometry):
+    entity_type = "LWPOLYLINE" if "points" in geometry else "CIRCLE"
+    capability = (
+        "entity.geometry.polyline/1"
+        if entity_type == "LWPOLYLINE"
+        else "entity.geometry.circle/1"
+    )
+    entity = {
+        "entity_id": "1A",
+        "entity_type": entity_type,
+        "layer": "0",
+        "space": "model",
+        "bounds": None,
+        "geometry": geometry,
+        "geometry_status": "exact",
+        "geometry_reason": None,
+        "geometry_truncated": False,
+        "fingerprint": f"sha256:{'b' * 64}",
+        "source_runtime": "managed_dotnet",
+        "source_capabilities": [capability],
+    }
+
+    assert not DurableJobService._valid_c1_detail_entity(entity)
+
+
+def test_c1_detail_rejects_spoofed_managed_geometry_provenance():
+    entity = {
+        "entity_id": "1A",
+        "entity_type": "CIRCLE",
+        "layer": "0",
+        "space": "model",
+        "bounds": None,
+        "geometry": {
+            "center": [0.0, 0.0],
+            "radius": 1.0,
+            "elevation": 0.0,
+            "normal": [0.0, 0.0, 1.0],
+        },
+        "geometry_status": "exact",
+        "geometry_reason": None,
+        "geometry_truncated": False,
+        "fingerprint": f"sha256:{'b' * 64}",
+        "source_runtime": "managed_dotnet",
+        "source_capabilities": ["entity.geometry.arc/1"],
+    }
+
+    assert not DurableJobService._valid_c1_detail_entity(entity)
+
+
+def test_new_gateway_downgrades_legacy_agent_detail_geometry():
+    entity = {
+        "entity_id": "1A",
+        "entity_type": "CIRCLE",
+        "layer": "0",
+        "space": "model",
+        "bounds": None,
+        "geometry": {
+            "center": [0.0, 0.0],
+            "radius": 1.0,
+            "elevation": 0.0,
+            "normal": [0.0, 0.0, 1.0],
+        },
+        "geometry_truncated": False,
+        "fingerprint": f"sha256:{'b' * 64}",
+    }
+    snapshot = {"observation_level": "detail", "entities": [entity]}
+
+    assert DurableJobService._valid_c1_detail_entity(entity)
+    normalized = DurableJobService._normalize_c1_snapshot(snapshot)
+    assert normalized["entities"][0] == {
+        **entity,
+        "geometry_status": "bounded_projection",
+        "geometry_reason": "legacy_agent_provenance_unavailable",
+        "source_runtime": "managed_dotnet_legacy",
+        "source_capabilities": [],
+    }
+    assert "geometry_status" not in snapshot["entities"][0]
+    node = project_entity(normalized["entities"][0])
+    assert node.geometry_status == "bounded_projection"
+    assert node.source_runtime == "managed_dotnet_legacy"
+    assert node.source_capabilities == ()
+
+
+def test_new_gateway_leaves_legacy_summary_snapshot_unchanged():
+    snapshot = {
+        "observation_level": "summary",
+        "entities": [{"entity_id": "1A", "entity_type": "CIRCLE"}],
+    }
+
+    assert DurableJobService._normalize_c1_snapshot(snapshot) is snapshot
 
 
 class Socket:
@@ -303,8 +490,12 @@ async def test_phase4_summary_evidence_and_query_fail_closed(tmp_path):
             "space": "model",
             "bounds": {"min": [0, 0, 0], "max": [1, 1, 0]},
             "geometry": {"start": [0, 0], "end": [1, 1]},
+            "geometry_status": "exact",
+            "geometry_reason": None,
             "geometry_truncated": False,
             "fingerprint": f"sha256:{'b' * 64}",
+            "source_runtime": "managed_dotnet",
+            "source_capabilities": ["entity.geometry.line/1"],
         }
     ]
     managed_detail["revision_evidence"] = {
@@ -321,6 +512,28 @@ async def test_phase4_summary_evidence_and_query_fail_closed(tmp_path):
         )
         is None
     )
+    legacy_detail = copy.deepcopy(managed_detail)
+    for key in (
+        "geometry_status",
+        "geometry_reason",
+        "source_runtime",
+        "source_capabilities",
+    ):
+        legacy_detail["entities"][0].pop(key)
+    legacy_result = copy.deepcopy(managed_result)
+    legacy_result["snapshot"] = legacy_detail
+    assert (
+        service.job_service._validate_c1_observation(
+            legacy_result,
+            legacy_detail,
+        )
+        is None
+    )
+    legacy_node = service.job_service._normalize_c1_snapshot(
+        legacy_detail
+    )["entities"][0]
+    assert legacy_node["geometry_status"] == "bounded_projection"
+    assert legacy_node["source_capabilities"] == []
     assert RevisionEvidence.model_validate(
         managed_detail["revision_evidence"]
     ).commit_safe
@@ -371,6 +584,76 @@ async def test_phase4_summary_evidence_and_query_fail_closed(tmp_path):
     with pytest.raises(GatewayError) as captured:
         await service.query(CadQueryInput(snapshot_id="snapshot-c1"), principal, "corr-query")
     assert captured.value.code == "capability_missing"
+    await service.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("capabilities", "expected_contract"),
+    [
+        (("observe",), None),
+        (
+            ("observe", "cad.observe.detail-provenance/1"),
+            "cad.observe-detail/2",
+        ),
+    ],
+)
+async def test_gateway_negotiates_detail_snapshot_contract(
+    tmp_path,
+    capabilities,
+    expected_contract,
+):
+    cfg = config(tmp_path).validate()
+    registry = ConnectionRegistry(stale_after_seconds=45)
+    service = DurableGatewayServices(
+        SqliteDatabase(cfg.db_path),
+        registry,
+        device_tokens=dict(cfg.fixture_tokens),
+        owner_subject=cfg.fixture_owner_subject,
+        profile="phase4_c1",
+        agent_authenticator=LabDeviceAuthenticator(dict(cfg.fixture_tokens)),
+        required_package=PACKAGE,
+        request_wait_timeout_seconds=2,
+    )
+    await service.initialize()
+    socket = Socket()
+    connection = AgentConnection(
+        device_id="device-lab",
+        session_id="session-mixed-version",
+        websocket=socket,
+        protocol_version="cad.agent/1",
+        capabilities=capabilities,
+        capability_hash=canonical_capability_hash(capabilities),
+        agent_version="0.1.0",
+        runtime_state="online_idle",
+        document_name="drawing33.dwg",
+        packages=(PACKAGE,),
+        package_manifest_hash=canonical_package_manifest_hash([PACKAGE]),
+    )
+    await registry.add(connection)
+    await service.on_agent_connected(connection)
+    task = asyncio.create_task(
+        service.observe(
+            CadObserveInputDurable(
+                device_id="device-lab",
+                observation_level="detail",
+                idempotency_key="mixed-version-detail",
+            ),
+            Principal(
+                subject=cfg.fixture_owner_subject,
+                scopes=("autocad.read",),
+            ),
+            "corr-mixed-version",
+        )
+    )
+    for _ in range(50):
+        if socket.messages:
+            break
+        await asyncio.sleep(0.01)
+
+    assert socket.messages[-1].detail_snapshot_contract == expected_contract
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
     await service.shutdown()
 
 

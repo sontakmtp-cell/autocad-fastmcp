@@ -70,6 +70,8 @@ from .phase7_recovery import Phase7RecoveryService
 from .infrastructure.sqlite.phase7_repository import Phase7Repository
 from .infrastructure.sqlite.phase8_repository import Phase8Repository
 from .infrastructure.sqlite.phase9_repository import Phase9Repository
+from .scenes.repository import SceneRepository
+from .scenes.service import SceneApplicationService
 from .skills.catalog import SkillCatalog
 from .skills.catalog_repository import SkillCatalogRepository
 from .workflows.service import WorkflowApplicationService
@@ -227,6 +229,15 @@ class DurableGatewayServices:
         phase9_catalog_root: str | None = None,
         phase9_skill_allowlist: tuple[str, ...] = (),
         phase9_enabled_skills: tuple[str, ...] = (),
+        phase10_scene_engine_enabled: bool = False,
+        phase10_public_scene_tools_enabled: bool = False,
+        phase10_scene_resources_enabled: bool = False,
+        phase10_mechanical_features_enabled: bool = False,
+        phase10_annotation_links_enabled: bool = False,
+        phase10_workflow_scene_steps_enabled: bool = False,
+        phase10_portal_scene_views_enabled: bool = False,
+        phase10_cursor_signing_secret: bytes | None = None,
+        phase10_scene_retention_hours: int = 24,
     ) -> None:
         self.database = database
         self.registry = registry
@@ -244,6 +255,30 @@ class DurableGatewayServices:
         self.phase7_repository = Phase7Repository(database) if self.is_phase7 else None
         self.phase8_repository = Phase8Repository(database) if self.is_phase6 else None
         self.phase9_repository = Phase9Repository(database) if self.is_phase9 else None
+        self.phase10_scene_engine_enabled = phase10_scene_engine_enabled
+        self.phase10_public_scene_tools_enabled = phase10_public_scene_tools_enabled
+        self.phase10_scene_resources_enabled = phase10_scene_resources_enabled
+        self.phase10_mechanical_features_enabled = phase10_mechanical_features_enabled
+        self.phase10_annotation_links_enabled = phase10_annotation_links_enabled
+        self.phase10_workflow_scene_steps_enabled = phase10_workflow_scene_steps_enabled
+        self.phase10_portal_scene_views_enabled = phase10_portal_scene_views_enabled
+        self.phase10_cursor_signing_secret = phase10_cursor_signing_secret
+        self.phase10_scene_retention_hours = phase10_scene_retention_hours
+        self.scene_repository = (
+            SceneRepository(database) if phase10_scene_engine_enabled else None
+        )
+        self.scene_service = (
+            SceneApplicationService(
+                self.scene_repository,
+                self.repository,
+                cursor_secret=phase10_cursor_signing_secret,
+                retention_hours=phase10_scene_retention_hours,
+                mechanical_features_enabled=phase10_mechanical_features_enabled,
+                annotation_links_enabled=phase10_annotation_links_enabled,
+            )
+            if self.scene_repository is not None
+            else None
+        )
         self.phase8_gateway = (
             Phase8GatewayService(
                 self.phase8_repository,
@@ -385,6 +420,11 @@ class DurableGatewayServices:
                 commit_request_executor=self._phase9_commit_request,
                 action_runner=phase9_runner,
                 commit_status_resolver=self._phase9_commit_status,
+                scene_port=(
+                    self.scene_service
+                    if phase10_workflow_scene_steps_enabled
+                    else None
+                ),
             )
 
     async def _phase7_rollback_preview_provider(
@@ -1658,6 +1698,8 @@ class DurableGatewayServices:
         await self.job_service.sweep_deadlines()
         if self.workflow_service is not None:
             await self.workflow_service.maintenance_once()
+        if self.scene_repository is not None:
+            await self.scene_repository.delete_expired()
 
     def _maintenance_done(self, task: asyncio.Task[None]) -> None:
         if task.cancelled():

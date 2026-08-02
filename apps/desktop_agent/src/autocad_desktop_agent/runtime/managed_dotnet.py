@@ -29,6 +29,7 @@ from .contracts import RuntimeProbe
 
 PROTOCOL = "cad.host/1"
 MAX_FRAME_BYTES = 1_048_576
+MAX_PHASE10_SNAPSHOT_ENTITIES = 5_000
 
 
 @dataclass(frozen=True)
@@ -341,6 +342,12 @@ class ManagedDotNetCadReadPort:
         limit: int = 512,
         expected_revision: int | None = None,
     ) -> CadPortResult:
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= MAX_PHASE10_SNAPSHOT_ENTITIES
+        ):
+            return CadPortResult(False, error_code="capability_missing")
         try:
             handshake = await self._ensure_handshake()
             entities: list[dict[str, Any]] = []
@@ -353,7 +360,7 @@ class ManagedDotNetCadReadPort:
                     "limit": min(200, limit - len(entities)),
                     "max_scan": 20_000,
                     "space": "model",
-                    "types": ["LINE", "CIRCLE", "LWPOLYLINE"],
+                    "types": ["LINE", "CIRCLE", "LWPOLYLINE", "ARC"],
                 }
                 pinned_revision = (
                     revision["revision"]
@@ -419,6 +426,10 @@ class ManagedDotNetCadReadPort:
         allowed = {
             "observe.summary",
             "entity.snapshot.v2",
+            "entity.geometry.arc/1",
+            "entity.geometry.circle/1",
+            "entity.geometry.line/1",
+            "entity.geometry.polyline/1",
             "cad.program.preview",
             "cad.program.commit",
             "cad.program.validate",

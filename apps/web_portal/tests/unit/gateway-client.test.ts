@@ -126,4 +126,53 @@ describe("GatewayClient owner boundary", () => {
     expect(init.headers).toMatchObject({ authorization: "Bearer owner-a-token" });
     expect(url).not.toContain("owner-a");
   });
+
+  it("queries Phase 10 evidence by GET without owner or request body", async () => {
+    const sceneId = "scn_aaaaaaaaaaaaaaaa";
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      contract_version: "cad.mcp/1.6",
+      correlation_id: "correlation-a-0001",
+      scene_id: sceneId,
+      scene_digest: `sha256:${"a".repeat(64)}`,
+      section: "features",
+      items: [],
+      total: 0,
+      next_cursor: null,
+      resource_uri: `cad://scenes/${sceneId}/features`,
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await new GatewayClient(session).queryScene(sceneId, {
+      section: "features",
+      featureTypes: ["hole"],
+      confidenceMin: 0.8,
+      limit: 100,
+    });
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "http://127.0.0.1:4321/api/portal/v1/scenes/scn_aaaaaaaaaaaaaaaa/features"
+      + "?feature_type=hole&confidence_min=0.8&limit=100",
+    );
+    expect(url).not.toContain("owner-a");
+    expect(init.method).toBe("GET");
+    expect(init.body).toBeUndefined();
+    expect(init.headers).toMatchObject({ authorization: "Bearer owner-a-token" });
+  });
+
+  it("normalizes a cross-owner scene lookup to not found", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 403 })));
+    await expect(new GatewayClient(session).getScene("scn_bbbbbbbbbbbbbbbb"))
+      .rejects.toMatchObject({ status: 404 });
+  });
+
+  it("rejects malformed or cross-section scene filters before a Gateway call", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(new GatewayClient(session).queryScene("scn_aaaaaaaaaaaaaaaa", {
+      section: "features",
+      entityTypes: ["LINE"],
+    })).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });

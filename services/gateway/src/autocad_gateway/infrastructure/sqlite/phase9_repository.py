@@ -527,11 +527,18 @@ class Phase9Repository:
 
     async def insert_action(self, *, owner_subject: str, run_id: str, step_id: str, attempt: int,
                             action_kind: str, payload: dict[str, Any], retry_class: str,
-                            effect_class: str = "read") -> tuple[dict[str, Any], bool]:
+                            effect_class: str = "read",
+                            source_digest: str | None = None) -> tuple[dict[str, Any], bool]:
         if retry_class not in {"pure","read","metadata","not_started"} or effect_class not in {"read","write"}:
             raise RepositoryConflict("workflow_action_invalid")
         action_id = f"wfa:{run_id}:{step_id}:{attempt}:{action_kind}"
-        key=child_idempotency_key(run_id,step_id,attempt,action_kind)
+        key=child_idempotency_key(
+            run_id,
+            step_id,
+            attempt,
+            action_kind,
+            source_digest=source_digest,
+        )
         payload_json=_json(payload); now=utc_now()
         with self.database.transaction() as conn:
             run=conn.execute("SELECT 1 FROM workflow_runs WHERE owner_subject=? AND run_id=?",(owner_subject,run_id)).fetchone()
@@ -725,6 +732,11 @@ class Phase9Repository:
                     "job_id",
                     "receipt_id",
                     "recovery_id",
+                    "scene_id",
+                    "scene_digest",
+                    "source_digest",
+                    "source_snapshot_id",
+                    "document_revision",
                 ):
                     if result.get(key) is not None:
                         child_ref[key] = result[key]

@@ -263,6 +263,15 @@ class DurableJobService:
                         job_state=updated["state"] if updated else raw["state"],
                     )
             else:
+                if (
+                    raw["kind"] == "observe"
+                    and raw["payload"].get("observation_level") == "detail"
+                    and "cad.observe.detail-provenance/1"
+                    in connection.capabilities
+                ):
+                    command_values["detail_snapshot_contract"] = (
+                        "cad.observe-detail/2"
+                    )
                 command = CommandMessage(**command_values)
             try:
                 await connection.send(command.model_dump(mode="json", exclude_none=True))
@@ -967,7 +976,9 @@ class DurableJobService:
                     error_code = validation_error
                     error_summary = "Agent returned invalid C1 observation evidence"
                 else:
-                    snapshot = candidate
+                    snapshot = self._normalize_c1_snapshot(candidate)
+                    if snapshot is not candidate:
+                        result = {**result, "snapshot": snapshot}
         elif target == "failed":
             result = None
             error_code, error_summary = self._safe_agent_error(message.error_code)
@@ -1508,6 +1519,14 @@ class DurableJobService:
                 "truncated": truncated,
             }
             or any(not cls._valid_c1_detail_entity(entity) for entity in entities)
+            or len(
+                {
+                    "geometry_status" in entity
+                    for entity in entities
+                    if isinstance(entity, dict)
+                }
+            )
+            > 1
         ):
             return "backend_error"
         document_revision = snapshot.get("document_revision")
@@ -1558,7 +1577,7 @@ class DurableJobService:
 
     @classmethod
     def _valid_c1_detail_entity(cls, entity: Any) -> bool:
-        if not isinstance(entity, dict) or set(entity) != {
+        base_keys = {
             "entity_id",
             "entity_type",
             "layer",
@@ -1567,14 +1586,24 @@ class DurableJobService:
             "geometry",
             "geometry_truncated",
             "fingerprint",
-        }:
+        }
+        provenance_keys = {
+            "geometry_status",
+            "geometry_reason",
+            "source_runtime",
+            "source_capabilities",
+        }
+        if (
+            not isinstance(entity, dict)
+            or set(entity) not in (base_keys, base_keys | provenance_keys)
+        ):
             return False
         entity_type = entity.get("entity_type")
         geometry = entity.get("geometry")
         if (
             not isinstance(entity.get("entity_id"), str)
             or re.fullmatch(r"[0-9A-Fa-f]{1,32}", entity["entity_id"]) is None
-            or entity_type not in {"LINE", "CIRCLE", "LWPOLYLINE"}
+            or entity_type not in {"LINE", "CIRCLE", "LWPOLYLINE", "ARC"}
             or not isinstance(entity.get("layer"), str)
             or len(entity["layer"]) > 255
             or entity.get("space") != "model"
@@ -1584,31 +1613,151 @@ class DurableJobService:
             or not cls._valid_c1_bounds(entity.get("bounds"))
         ):
             return False
+        if provenance_keys <= set(entity):
+            status = entity.get("geometry_status")
+            reason = entity.get("geometry_reason")
+            source_capabilities = entity.get("source_capabilities")
+            expected_capability = {
+                "LINE": "entity.geometry.line/1",
+                "CIRCLE": "entity.geometry.circle/1",
+                "LWPOLYLINE": "entity.geometry.polyline/1",
+                "ARC": "entity.geometry.arc/1",
+            }[entity_type]
+            expected_source_capabilities = (
+                [expected_capability]
+                if status in {"exact", "truncated"}
+                else []
+            )
+            if (
+                entity.get("source_runtime") != "managed_dotnet"
+                or status
+                not in {
+                    "exact",
+                    "truncated",
+                    "unsupported",
+                    "unavailable",
+                    "invalid",
+                }
+                or (
+                    reason is not None
+                    and (
+                        not isinstance(reason, str)
+                        or not 1 <= len(reason) <= 128
+                    )
+                )
+                or not isinstance(source_capabilities, list)
+                or source_capabilities != expected_source_capabilities
+                or entity["geometry_truncated"] is not (status == "truncated")
+                or (
+                    status == "exact"
+                    and (geometry is None or reason is not None)
+                )
+                or (
+                    status != "exact"
+                    and (geometry is not None or reason is None)
+                )
+            ):
+                return False
         if geometry is None:
             return True
         if not isinstance(geometry, dict):
             return False
         if entity_type == "LINE":
-            return set(geometry) == {"start", "end"} and all(
-                cls._valid_c1_point(geometry.get(key), 2)
-                for key in ("start", "end")
-            )
-        if entity_type == "CIRCLE":
-            radius = geometry.get("radius")
+            keys = set(geometry)
             return (
-                set(geometry) == {"center", "radius"}
+                keys == {"start", "end"}
+                or (
+                    keys
+                    == {"start", "end", "start_elevation", "end_elevation"}
+                    and cls._valid_c1_number(geometry.get("start_elevation"))
+                    and cls._valid_c1_number(geometry.get("end_elevation"))
+                )
+            ) and all(
+                cls._valid_c1_point(geometry.get(key), 2) for key in ("start", "end")
+            )
+        if entity_type in {"CIRCLE", "ARC"}:
+            radius = geometry.get("radius")
+            keys = {"center", "radius"}
+            if entity_type == "ARC":
+                keys |= {"start_angle_radians", "end_angle_radians"}
+            canonical_keys = keys | {"elevation", "normal"}
+            return (
+                set(geometry)
+                in (
+                    (keys, canonical_keys)
+                    if entity_type == "CIRCLE"
+                    else (canonical_keys,)
+                )
                 and cls._valid_c1_point(geometry.get("center"), 2)
                 and cls._valid_c1_number(radius)
                 and radius > 0
+                and (
+                    set(geometry) == keys
+                    or (
+                        cls._valid_c1_number(geometry.get("elevation"))
+                        and cls._valid_c1_point(geometry.get("normal"), 3)
+                    )
+                )
+                and (
+                    entity_type == "CIRCLE"
+                    or (
+                        cls._valid_c1_number(geometry.get("start_angle_radians"))
+                        and cls._valid_c1_number(geometry.get("end_angle_radians"))
+                    )
+                )
             )
         points = geometry.get("points")
+        keys = set(geometry)
+        bulges = geometry.get("bulges")
         return (
-            set(geometry) == {"points", "closed"}
+            (
+                keys == {"points", "closed"}
+                or (
+                    keys == {"points", "bulges", "closed", "elevation", "normal"}
+                    and isinstance(bulges, list)
+                    and isinstance(points, list)
+                    and len(bulges) == len(points)
+                    and all(cls._valid_c1_number(value) for value in bulges)
+                    and cls._valid_c1_number(geometry.get("elevation"))
+                    and cls._valid_c1_point(geometry.get("normal"), 3)
+                )
+            )
             and isinstance(points, list)
             and len(points) <= 4096
             and all(cls._valid_c1_point(point, 2) for point in points)
             and isinstance(geometry.get("closed"), bool)
         )
+
+    @staticmethod
+    def _normalize_c1_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
+        if snapshot.get("observation_level") != "detail":
+            return snapshot
+        entities = snapshot["entities"]
+        if not entities or all("geometry_status" in entity for entity in entities):
+            return snapshot
+        normalized = []
+        for entity in entities:
+            if "geometry_status" in entity:
+                normalized.append(entity)
+                continue
+            geometry = entity.get("geometry")
+            status = (
+                "truncated"
+                if entity["geometry_truncated"]
+                else "bounded_projection"
+                if geometry is not None
+                else "unavailable"
+            )
+            normalized.append(
+                {
+                    **entity,
+                    "geometry_status": status,
+                    "geometry_reason": "legacy_agent_provenance_unavailable",
+                    "source_runtime": "managed_dotnet_legacy",
+                    "source_capabilities": [],
+                }
+            )
+        return {**snapshot, "entities": normalized}
 
     @classmethod
     def _valid_c1_bounds(cls, bounds: Any) -> bool:
