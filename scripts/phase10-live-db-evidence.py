@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -37,6 +38,7 @@ SCENE_IDS = (
     "scn_83d07dede78e4b73b2411c4bd31f77ae",
 )
 SCENE_SECTIONS = {"nodes", "relations", "contours", "features", "issues", "evidence"}
+COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 
 NO_WRITE_SQL = """
 WITH events(bucket, id, event, event_at) AS (
@@ -194,9 +196,12 @@ def collect_evidence(
     device: str,
     window_start: str,
     window_end: str,
+    implementation_commit: str,
     anchor_job_ids: tuple[str, ...] = ANCHOR_JOB_IDS,
     scene_ids: tuple[str, ...] = SCENE_IDS,
 ) -> dict[str, Any]:
+    if not COMMIT_RE.fullmatch(implementation_commit):
+        raise ValueError("implementation_commit must be a 40-character lowercase SHA")
     connection = sqlite3.connect(
         f"{database.resolve().as_uri()}?mode=ro", uri=True, isolation_level=None
     )
@@ -307,6 +312,7 @@ def collect_evidence(
     }
     return {
         "schema_version": "cad.phase10-live-db-evidence/1",
+        "implementation_commit": implementation_commit,
         "captured_at": datetime.now(timezone.utc).isoformat(),
         "database": str(database),
         "scope": {
@@ -348,6 +354,7 @@ def main() -> int:
         "--window-start", default="2026-07-30T06:15:00+00:00"
     )
     parser.add_argument("--window-end", default="2026-07-30T06:43:00+00:00")
+    parser.add_argument("--implementation-commit", required=True)
     parser.add_argument("--anchor-job-id", action="append")
     parser.add_argument("--scene-id", action="append")
     args = parser.parse_args()
@@ -357,6 +364,7 @@ def main() -> int:
         device=args.device_id,
         window_start=args.window_start,
         window_end=args.window_end,
+        implementation_commit=args.implementation_commit,
         anchor_job_ids=tuple(args.anchor_job_id or ANCHOR_JOB_IDS),
         scene_ids=tuple(args.scene_id or SCENE_IDS),
     )

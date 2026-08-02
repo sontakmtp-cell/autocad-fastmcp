@@ -140,6 +140,7 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
         device="device-live",
         window_start="2026-07-30T06:15:00+00:00",
         window_end="2026-07-30T06:43:00+00:00",
+        implementation_commit="a" * 40,
     )
     completed = subprocess.run(
         [
@@ -151,6 +152,8 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
             "owner-live",
             "--device-id",
             "device-live",
+            "--implementation-commit",
+            "a" * 40,
         ],
         check=True,
         capture_output=True,
@@ -159,6 +162,7 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
     cli_evidence = json.loads(completed.stdout)
 
     assert first["status"] == "PASS"
+    assert first["implementation_commit"] == "a" * 40
     assert first["retrospective_no_write_events"] == []
     assert first["active_agent_session_id"] == "session-live"
     assert (
