@@ -1,7 +1,7 @@
 {
   "baseline_commit": "d1e84711841b4b262fc5563cb768904b8eefd811",
-  "capture_command": "python scripts/phase10-live-public-evidence.py capture --endpoint https://cad.kythuatvang.com/mcp --device-id device-0e4df1b2-fbf2-42ca-a151-a487c5437052 --token-file <redacted> --output docs\\architecture\\evidence\\phase10-live-r25-drawing-c-20260730.json --operator haing.nguyen --fixture c --drawing fixtures\\phase10\\live\\phase10-drawing-c.dwg --process-identity tmp\\phase10-live\\process-identity-c-final.json",
-  "captured_at": "2026-07-30T07:23:50.248935+00:00",
+  "capture_command": "python scripts/phase10-live-public-evidence.py capture-public --output tmp\\phase10-live-c8206de\\drawing-c-provisional.json --operator haing.nguyen --endpoint https://cad.kythuatvang.com/mcp --device-id device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476 --token-file <redacted> --fixture c --drawing fixtures\\phase10\\live\\phase10-drawing-c.dwg --process-identity tmp\\phase10-live-c8206de\\runtime-c.json",
+  "captured_at": "2026-08-02T12:52:30.789111+00:00",
   "failures_retests": [
     {
       "failure": "The original 1e-7 tiny-circle fixture was rejected by the signed payload boundary with payload_mismatch.",
@@ -12,6 +12,10 @@
       "resolution": "Changed the gate to exact valid geometry identity; the final capture passed without weakening privacy."
     }
   ],
+  "finalization": {
+    "finalized_at": "2026-08-02T12:55:43.816456+00:00",
+    "implementation_commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c"
+  },
   "fixture": {
     "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
     "document_name": "phase10-drawing-c.dwg",
@@ -21,6 +25,7 @@
     "fixture_id": "phase10-drawing-c-r25/1"
   },
   "gate_results": {
+    "anchor_jobs_read_only": true,
     "degenerate_geometry": true,
     "document_revision_unchanged": true,
     "duplicate_geometry": true,
@@ -29,14 +34,20 @@
     "invalid_or_self_intersecting_contour": true,
     "managed_dotnet_runtime": true,
     "no_cad_effect_attempted": true,
+    "no_write_events_in_window": true,
     "no_write_requested": true,
     "open_contour": true,
+    "runtime_identity_bound": true,
+    "scene_sections_complete": true,
     "source_capabilities_present": true,
     "source_runtime_managed": true,
+    "source_scene_binding": true,
     "stable_scene_reuse": true,
-    "valid_geometry_not_flagged_for_cleanup": true
+    "summary_resource_bound": true,
+    "valid_geometry_not_flagged_for_cleanup": true,
+    "write_snapshot_unchanged": true
   },
-  "implementation_commit": "165de0452af2b665deb67401b7c73420eefae226",
+  "implementation_commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c",
   "limitations": [
     "tiny_circle_omitted: R25 rejected the 1e-7 projection at the signed payload boundary; zero-length LINE supplies the mandatory live degenerate case"
   ],
@@ -47,17 +58,98 @@
     "entity_count_unchanged": true,
     "write_requested": false
   },
+  "no_effect_db_binding": {
+    "active_agent_session_id": "session-566cc918-856a-4a3c-aa63-9b938e4eeb65",
+    "agent_sessions": [
+      {
+        "connected_at": "2026-08-02T12:53:15.664696+00:00",
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+        "disconnected_at": null,
+        "session_id": "session-566cc918-856a-4a3c-aa63-9b938e4eeb65"
+      },
+      {
+        "connected_at": "2026-08-02T12:33:22.749769+00:00",
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+        "disconnected_at": "2026-08-02T12:53:07.137254+00:00",
+        "session_id": "session-dc0d2879-2172-4e7b-b594-0c78d77bbd9d"
+      }
+    ],
+    "anchor_jobs": [
+      {
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+        "effect_class": "read",
+        "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
+        "state": "succeeded"
+      },
+      {
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+        "effect_class": "read",
+        "job_id": "job-2810d48d-13bf-4885-9fb4-45306be17493",
+        "state": "succeeded"
+      },
+      {
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+        "effect_class": "read",
+        "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+        "state": "succeeded"
+      },
+      {
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+        "effect_class": "read",
+        "job_id": "job-4d766a02-fa07-40b6-b592-8ca1c34395bf",
+        "state": "succeeded"
+      },
+      {
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+        "effect_class": "read",
+        "job_id": "job-5ba9d2c3-2474-444c-bf43-ae25018a2a6d",
+        "state": "succeeded"
+      },
+      {
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+        "effect_class": "read",
+        "job_id": "job-6a1b2042-a980-48cb-bafd-2be6c482a14b",
+        "state": "succeeded"
+      }
+    ],
+    "artifact": "tmp\\phase10-live-c8206de\\db-post.json",
+    "artifact_sha256": "sha256:b736529551bdb667f8d5843d21f159a38541cba359b2727f9a64503d42609750",
+    "post_restart_write_snapshot_sha256": "sha256:b96e295cbe6ac5d1ed4d326aa4e6e8c7e7e598df6ddc2e50e42eae5d76cdd342",
+    "pre_restart_write_snapshot_sha256": "sha256:b96e295cbe6ac5d1ed4d326aa4e6e8c7e7e598df6ddc2e50e42eae5d76cdd342",
+    "retrospective_no_write_events": [],
+    "schema_version": "cad.phase10-live-db-evidence/1",
+    "scope": {
+      "anchor_job_ids": [
+        "job-5ba9d2c3-2474-444c-bf43-ae25018a2a6d",
+        "job-2810d48d-13bf-4885-9fb4-45306be17493",
+        "job-4d766a02-fa07-40b6-b592-8ca1c34395bf",
+        "job-6a1b2042-a980-48cb-bafd-2be6c482a14b",
+        "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+        "job-01c86915-da44-4c53-80d5-701d77c1e8be"
+      ],
+      "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+      "owner_subject": "user-3b507baea6adb49989a040871b1903918eb60701b91be8e3a6c6166fce6a9bea",
+      "scene_ids": [
+        "scn_c54796dfd14646d28a61fe7aead24f90",
+        "scn_7a2ef2709a9046efb4b6077a04d804b1",
+        "scn_fc67788588cf431abdc0276303da01fc"
+      ],
+      "window_end": "2026-08-02T19:52:35+07:00",
+      "window_start": "2026-08-02T19:47:00+07:00"
+    }
+  },
   "operator": "haing.nguyen",
   "public_path": {
-    "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+    "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
     "devices": {
       "contract_version": "cad.mcp/1.2",
-      "correlation_id": "64cc6caf-33e4-435d-89bb-df77e893531a",
-      "default_device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+      "correlation_id": "4bb1e850-11c5-466f-8b80-5b93dca5f207",
+      "default_device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
       "devices": [
         {
           "agent_version": "0.1.0",
           "capabilities": [
+            "cad.observe.detail-provenance/1",
             "checkpoint_lookup",
             "observe",
             "program_commit",
@@ -68,10 +160,10 @@
             "rollback_preview",
             "rollback_validate"
           ],
-          "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
-          "display_name": "Phase 9 Portal Live Acceptance",
+          "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+          "display_name": "Device A - m\u00e1y th\u1eadt",
           "document_name": "phase10-drawing-c.dwg",
-          "last_seen_at": "2026-07-30T07:23:31.709428+00:00",
+          "last_seen_at": "2026-08-02T12:51:43.259729+00:00",
           "package_summary": [
             {
               "package_id": "autocad.lisp.drawing_info",
@@ -80,7 +172,7 @@
             },
             {
               "package_id": "autocad.managed_host.r25",
-              "sha256": "ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+              "sha256": "8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
               "version": "0.8.0"
             }
           ],
@@ -96,51 +188,2036 @@
       "cad_observe",
       "cad_get_job",
       "cad_build_scene",
-      "cad_query_scene"
+      "cad_build_scene",
+      "cad_query_scene",
+      "cad_query_scene",
+      "cad_query_scene",
+      "cad_query_scene",
+      "cad_query_scene",
+      "cad_query_scene",
+      "read_resource",
+      "cad_observe",
+      "cad_get_job"
     ],
     "standalone_desktop_agent": true,
+    "tool_invocations": [
+      {
+        "arguments": {
+          "online_only": true
+        },
+        "completed_at": "2026-08-02T12:52:22.818925+00:00",
+        "job_id": null,
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:22.275381+00:00",
+        "tool": "cad_list_devices"
+      },
+      {
+        "arguments": {
+          "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+          "idempotency_key": "phase10-drawing-c-before-20260802125221",
+          "include_preview_image": false,
+          "observation_level": "detail"
+        },
+        "completed_at": "2026-08-02T12:52:24.490738+00:00",
+        "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:22.818937+00:00",
+        "tool": "cad_observe"
+      },
+      {
+        "arguments": {
+          "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236"
+        },
+        "completed_at": "2026-08-02T12:52:24.873127+00:00",
+        "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+        "job_result": {
+          "agent_version": "0.1.0",
+          "command_id": "command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+          "contract_version": "cad.mcp/1.2",
+          "correlation_id": "cbdca57c-ff6d-468d-8bd0-579746ec14c2",
+          "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+          "error_code": null,
+          "error_summary": null,
+          "events": [
+            {
+              "created_at": "2026-08-02T12:51:47.844484+00:00",
+              "error_code": null,
+              "event_type": "state",
+              "progress": null,
+              "result": null,
+              "sequence": 1,
+              "state": "queued"
+            },
+            {
+              "created_at": "2026-08-02T12:51:47.851435+00:00",
+              "error_code": null,
+              "event_type": "state",
+              "progress": null,
+              "result": null,
+              "sequence": 2,
+              "state": "dispatched"
+            },
+            {
+              "created_at": "2026-08-02T12:51:47.931603+00:00",
+              "error_code": null,
+              "event_type": "state",
+              "progress": null,
+              "result": null,
+              "sequence": 3,
+              "state": "acknowledged"
+            },
+            {
+              "created_at": "2026-08-02T12:51:49.300137+00:00",
+              "error_code": null,
+              "event_type": "state",
+              "progress": null,
+              "result": {
+                "execution_evidence": {
+                  "agent_version": "0.1.0",
+                  "degradation_reason": null,
+                  "degraded": false,
+                  "package": {
+                    "package_id": "autocad.lisp.drawing_info",
+                    "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+                    "version": "3.3-c1"
+                  },
+                  "runtime": {
+                    "framework": ".NET 8",
+                    "host_family": "R25",
+                    "host_version": "0.8.0",
+                    "id": "managed_dotnet",
+                    "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
+                    "package_id": "autocad.managed_host.r25",
+                    "package_version": "0.8.0",
+                    "role": "primary"
+                  },
+                  "runtime_state": "online_idle"
+                },
+                "snapshot": {
+                  "document_revision": "7146832559659708",
+                  "drawing": {
+                    "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
+                    "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
+                    "document_name": "phase10-drawing-c.dwg",
+                    "entity_count": 8,
+                    "layer_count": 9,
+                    "layers": [
+                      "0",
+                      "ANOMALIES",
+                      "Defpoints",
+                      "FEATURES",
+                      "HOLES",
+                      "PART",
+                      "REFERENCE",
+                      "SLOTS",
+                      "VALID"
+                    ],
+                    "truncated": false
+                  },
+                  "entities": [
+                    {
+                      "bounds": {
+                        "max": [
+                          10,
+                          0,
+                          0
+                        ],
+                        "min": [
+                          0,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "91",
+                      "entity_type": "LINE",
+                      "fingerprint": "sha256:9fdacd156bee839c6199da9036b75d2e83d1d77399bd8dd79d30a64a32c6dc47",
+                      "geometry": {
+                        "end": [
+                          10,
+                          0
+                        ],
+                        "end_elevation": 0,
+                        "start": [
+                          0,
+                          0
+                        ],
+                        "start_elevation": 0
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "ANOMALIES",
+                      "source_capabilities": [
+                        "entity.geometry.line/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          10,
+                          0,
+                          0
+                        ],
+                        "min": [
+                          0,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "92",
+                      "entity_type": "LINE",
+                      "fingerprint": "sha256:c1b998bb5e3cd2ba209b13ed1563659a067fc929454acc53a3bb14ea30a4090b",
+                      "geometry": {
+                        "end": [
+                          0,
+                          0
+                        ],
+                        "end_elevation": 0,
+                        "start": [
+                          10,
+                          0
+                        ],
+                        "start_elevation": 0
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "ANOMALIES",
+                      "source_capabilities": [
+                        "entity.geometry.line/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          20,
+                          0,
+                          0
+                        ],
+                        "min": [
+                          20,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "93",
+                      "entity_type": "LINE",
+                      "fingerprint": "sha256:7c20d0da29bc45cef0516b7729f887b44298e2d12c0a27d7527d02b4fe4f1b45",
+                      "geometry": {
+                        "end": [
+                          20,
+                          0
+                        ],
+                        "end_elevation": 0,
+                        "start": [
+                          20,
+                          0
+                        ],
+                        "start_elevation": 0
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "ANOMALIES",
+                      "source_capabilities": [
+                        "entity.geometry.line/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          40,
+                          0,
+                          0
+                        ],
+                        "min": [
+                          30,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "94",
+                      "entity_type": "LINE",
+                      "fingerprint": "sha256:eca4fc2827f49ae7d7b8060ad8f4efa7c4032e8685f76767e2071e149de45055",
+                      "geometry": {
+                        "end": [
+                          40,
+                          0
+                        ],
+                        "end_elevation": 0,
+                        "start": [
+                          30,
+                          0
+                        ],
+                        "start_elevation": 0
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "ANOMALIES",
+                      "source_capabilities": [
+                        "entity.geometry.line/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          45,
+                          5,
+                          0
+                        ],
+                        "min": [
+                          40,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "95",
+                      "entity_type": "LINE",
+                      "fingerprint": "sha256:47c823d2b6d143a18e8cf1e1cdc6d27901439b9ba48073d2603e717c7681989e",
+                      "geometry": {
+                        "end": [
+                          45,
+                          5
+                        ],
+                        "end_elevation": 0,
+                        "start": [
+                          40,
+                          0
+                        ],
+                        "start_elevation": 0
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "ANOMALIES",
+                      "source_capabilities": [
+                        "entity.geometry.line/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          65,
+                          10,
+                          0
+                        ],
+                        "min": [
+                          55,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "96",
+                      "entity_type": "LWPOLYLINE",
+                      "fingerprint": "sha256:c9e479b24247e14c02cb0551427dbc3ae296bb759b7f4ba7a8392c4599742845",
+                      "geometry": {
+                        "bulges": [
+                          0,
+                          0,
+                          0,
+                          0
+                        ],
+                        "closed": true,
+                        "elevation": 0,
+                        "normal": [
+                          0,
+                          0,
+                          1
+                        ],
+                        "points": [
+                          [
+                            55,
+                            0
+                          ],
+                          [
+                            65,
+                            10
+                          ],
+                          [
+                            55,
+                            10
+                          ],
+                          [
+                            65,
+                            0
+                          ]
+                        ]
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "ANOMALIES",
+                      "source_capabilities": [
+                        "entity.geometry.polyline/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          105,
+                          10,
+                          0
+                        ],
+                        "min": [
+                          85,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "97",
+                      "entity_type": "LWPOLYLINE",
+                      "fingerprint": "sha256:9d92184d3a2c575dbf8e1a639f18f4caf49623c8b03cb296f3aabe250b7a6176",
+                      "geometry": {
+                        "bulges": [
+                          0,
+                          0,
+                          0,
+                          0
+                        ],
+                        "closed": true,
+                        "elevation": 0,
+                        "normal": [
+                          0,
+                          0,
+                          1
+                        ],
+                        "points": [
+                          [
+                            85,
+                            0
+                          ],
+                          [
+                            105,
+                            0
+                          ],
+                          [
+                            105,
+                            10
+                          ],
+                          [
+                            85,
+                            10
+                          ]
+                        ]
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "VALID",
+                      "source_capabilities": [
+                        "entity.geometry.polyline/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          97,
+                          7,
+                          0
+                        ],
+                        "min": [
+                          93,
+                          3,
+                          0
+                        ]
+                      },
+                      "entity_id": "98",
+                      "entity_type": "CIRCLE",
+                      "fingerprint": "sha256:c04f1dfdd83ed9d89d4e55035d3d5004cf0cd942887ab8928b6528b04d48cb7c",
+                      "geometry": {
+                        "center": [
+                          95,
+                          5
+                        ],
+                        "elevation": 0,
+                        "normal": [
+                          0,
+                          0,
+                          1
+                        ],
+                        "radius": 2
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "VALID",
+                      "source_capabilities": [
+                        "entity.geometry.circle/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    }
+                  ],
+                  "entity_summary": {
+                    "detail_available": true,
+                    "entity_count": 8,
+                    "truncated": false
+                  },
+                  "observation_level": "detail",
+                  "revision_evidence": {
+                    "commit_safe": true,
+                    "revision_schema": "cad.revision/1",
+                    "revision_strength": "database_object_fingerprint"
+                  },
+                  "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80"
+                }
+              },
+              "sequence": 4,
+              "state": "succeeded"
+            }
+          ],
+          "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+          "kind": "observe",
+          "next_event_cursor": null,
+          "package": {
+            "package_id": "autocad.lisp.drawing_info",
+            "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+            "version": "3.3-c1"
+          },
+          "progress": null,
+          "result": {
+            "execution_evidence": {
+              "agent_version": "0.1.0",
+              "degradation_reason": null,
+              "degraded": false,
+              "package": {
+                "package_id": "autocad.lisp.drawing_info",
+                "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+                "version": "3.3-c1"
+              },
+              "runtime": {
+                "framework": ".NET 8",
+                "host_family": "R25",
+                "host_version": "0.8.0",
+                "id": "managed_dotnet",
+                "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
+                "package_id": "autocad.managed_host.r25",
+                "package_version": "0.8.0",
+                "role": "primary"
+              },
+              "runtime_state": "online_idle"
+            },
+            "snapshot": {
+              "document_revision": "7146832559659708",
+              "drawing": {
+                "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
+                "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
+                "document_name": "phase10-drawing-c.dwg",
+                "entity_count": 8,
+                "layer_count": 9,
+                "layers": [
+                  "0",
+                  "ANOMALIES",
+                  "Defpoints",
+                  "FEATURES",
+                  "HOLES",
+                  "PART",
+                  "REFERENCE",
+                  "SLOTS",
+                  "VALID"
+                ],
+                "truncated": false
+              },
+              "entities": [
+                {
+                  "bounds": {
+                    "max": [
+                      10,
+                      0,
+                      0
+                    ],
+                    "min": [
+                      0,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "91",
+                  "entity_type": "LINE",
+                  "fingerprint": "sha256:9fdacd156bee839c6199da9036b75d2e83d1d77399bd8dd79d30a64a32c6dc47",
+                  "geometry": {
+                    "end": [
+                      10,
+                      0
+                    ],
+                    "end_elevation": 0,
+                    "start": [
+                      0,
+                      0
+                    ],
+                    "start_elevation": 0
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "ANOMALIES",
+                  "source_capabilities": [
+                    "entity.geometry.line/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      10,
+                      0,
+                      0
+                    ],
+                    "min": [
+                      0,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "92",
+                  "entity_type": "LINE",
+                  "fingerprint": "sha256:c1b998bb5e3cd2ba209b13ed1563659a067fc929454acc53a3bb14ea30a4090b",
+                  "geometry": {
+                    "end": [
+                      0,
+                      0
+                    ],
+                    "end_elevation": 0,
+                    "start": [
+                      10,
+                      0
+                    ],
+                    "start_elevation": 0
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "ANOMALIES",
+                  "source_capabilities": [
+                    "entity.geometry.line/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      20,
+                      0,
+                      0
+                    ],
+                    "min": [
+                      20,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "93",
+                  "entity_type": "LINE",
+                  "fingerprint": "sha256:7c20d0da29bc45cef0516b7729f887b44298e2d12c0a27d7527d02b4fe4f1b45",
+                  "geometry": {
+                    "end": [
+                      20,
+                      0
+                    ],
+                    "end_elevation": 0,
+                    "start": [
+                      20,
+                      0
+                    ],
+                    "start_elevation": 0
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "ANOMALIES",
+                  "source_capabilities": [
+                    "entity.geometry.line/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      40,
+                      0,
+                      0
+                    ],
+                    "min": [
+                      30,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "94",
+                  "entity_type": "LINE",
+                  "fingerprint": "sha256:eca4fc2827f49ae7d7b8060ad8f4efa7c4032e8685f76767e2071e149de45055",
+                  "geometry": {
+                    "end": [
+                      40,
+                      0
+                    ],
+                    "end_elevation": 0,
+                    "start": [
+                      30,
+                      0
+                    ],
+                    "start_elevation": 0
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "ANOMALIES",
+                  "source_capabilities": [
+                    "entity.geometry.line/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      45,
+                      5,
+                      0
+                    ],
+                    "min": [
+                      40,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "95",
+                  "entity_type": "LINE",
+                  "fingerprint": "sha256:47c823d2b6d143a18e8cf1e1cdc6d27901439b9ba48073d2603e717c7681989e",
+                  "geometry": {
+                    "end": [
+                      45,
+                      5
+                    ],
+                    "end_elevation": 0,
+                    "start": [
+                      40,
+                      0
+                    ],
+                    "start_elevation": 0
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "ANOMALIES",
+                  "source_capabilities": [
+                    "entity.geometry.line/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      65,
+                      10,
+                      0
+                    ],
+                    "min": [
+                      55,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "96",
+                  "entity_type": "LWPOLYLINE",
+                  "fingerprint": "sha256:c9e479b24247e14c02cb0551427dbc3ae296bb759b7f4ba7a8392c4599742845",
+                  "geometry": {
+                    "bulges": [
+                      0,
+                      0,
+                      0,
+                      0
+                    ],
+                    "closed": true,
+                    "elevation": 0,
+                    "normal": [
+                      0,
+                      0,
+                      1
+                    ],
+                    "points": [
+                      [
+                        55,
+                        0
+                      ],
+                      [
+                        65,
+                        10
+                      ],
+                      [
+                        55,
+                        10
+                      ],
+                      [
+                        65,
+                        0
+                      ]
+                    ]
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "ANOMALIES",
+                  "source_capabilities": [
+                    "entity.geometry.polyline/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      105,
+                      10,
+                      0
+                    ],
+                    "min": [
+                      85,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "97",
+                  "entity_type": "LWPOLYLINE",
+                  "fingerprint": "sha256:9d92184d3a2c575dbf8e1a639f18f4caf49623c8b03cb296f3aabe250b7a6176",
+                  "geometry": {
+                    "bulges": [
+                      0,
+                      0,
+                      0,
+                      0
+                    ],
+                    "closed": true,
+                    "elevation": 0,
+                    "normal": [
+                      0,
+                      0,
+                      1
+                    ],
+                    "points": [
+                      [
+                        85,
+                        0
+                      ],
+                      [
+                        105,
+                        0
+                      ],
+                      [
+                        105,
+                        10
+                      ],
+                      [
+                        85,
+                        10
+                      ]
+                    ]
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "VALID",
+                  "source_capabilities": [
+                    "entity.geometry.polyline/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      97,
+                      7,
+                      0
+                    ],
+                    "min": [
+                      93,
+                      3,
+                      0
+                    ]
+                  },
+                  "entity_id": "98",
+                  "entity_type": "CIRCLE",
+                  "fingerprint": "sha256:c04f1dfdd83ed9d89d4e55035d3d5004cf0cd942887ab8928b6528b04d48cb7c",
+                  "geometry": {
+                    "center": [
+                      95,
+                      5
+                    ],
+                    "elevation": 0,
+                    "normal": [
+                      0,
+                      0,
+                      1
+                    ],
+                    "radius": 2
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "VALID",
+                  "source_capabilities": [
+                    "entity.geometry.circle/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                }
+              ],
+              "entity_summary": {
+                "detail_available": true,
+                "entity_count": 8,
+                "truncated": false
+              },
+              "observation_level": "detail",
+              "revision_evidence": {
+                "commit_safe": true,
+                "revision_schema": "cad.revision/1",
+                "revision_strength": "database_object_fingerprint"
+              },
+              "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80"
+            }
+          },
+          "runtime_evidence": {
+            "agent_version": "0.1.0",
+            "degradation_reason": null,
+            "degraded": false,
+            "package": {
+              "package_id": "autocad.lisp.drawing_info",
+              "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+              "version": "3.3-c1"
+            },
+            "runtime": {
+              "framework": ".NET 8",
+              "host_family": "R25",
+              "host_version": "0.8.0",
+              "id": "managed_dotnet",
+              "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
+              "package_id": "autocad.managed_host.r25",
+              "package_version": "0.8.0",
+              "role": "primary"
+            },
+            "runtime_state": "online_idle"
+          },
+          "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+          "state": "succeeded"
+        },
+        "job_state": "succeeded",
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:24.490749+00:00",
+        "tool": "cad_get_job"
+      },
+      {
+        "arguments": {
+          "analysis_profile": "mechanical-2d/1",
+          "idempotency_key": "phase10-drawing-c-scene-20260802125221",
+          "include_sections": [
+            "nodes",
+            "relations",
+            "contours",
+            "features",
+            "issues",
+            "evidence"
+          ],
+          "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+          "space": "model"
+        },
+        "completed_at": "2026-08-02T12:52:25.200872+00:00",
+        "job_id": null,
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:24.873140+00:00",
+        "tool": "cad_build_scene"
+      },
+      {
+        "arguments": {
+          "analysis_profile": "mechanical-2d/1",
+          "idempotency_key": "phase10-drawing-c-scene-repeat-20260802125221",
+          "include_sections": [
+            "nodes",
+            "relations",
+            "contours",
+            "features",
+            "issues",
+            "evidence"
+          ],
+          "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+          "space": "model"
+        },
+        "completed_at": "2026-08-02T12:52:25.522476+00:00",
+        "job_id": null,
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:25.200881+00:00",
+        "tool": "cad_build_scene"
+      },
+      {
+        "arguments": {
+          "limit": 200,
+          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "section": "nodes"
+        },
+        "completed_at": "2026-08-02T12:52:25.855231+00:00",
+        "job_id": null,
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:25.522486+00:00",
+        "tool": "cad_query_scene"
+      },
+      {
+        "arguments": {
+          "limit": 200,
+          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "section": "relations"
+        },
+        "completed_at": "2026-08-02T12:52:26.306827+00:00",
+        "job_id": null,
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:25.855240+00:00",
+        "tool": "cad_query_scene"
+      },
+      {
+        "arguments": {
+          "limit": 200,
+          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "section": "contours"
+        },
+        "completed_at": "2026-08-02T12:52:26.918285+00:00",
+        "job_id": null,
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:26.306835+00:00",
+        "tool": "cad_query_scene"
+      },
+      {
+        "arguments": {
+          "limit": 200,
+          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "section": "features"
+        },
+        "completed_at": "2026-08-02T12:52:27.262636+00:00",
+        "job_id": null,
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:26.918294+00:00",
+        "tool": "cad_query_scene"
+      },
+      {
+        "arguments": {
+          "limit": 200,
+          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "section": "issues"
+        },
+        "completed_at": "2026-08-02T12:52:27.654067+00:00",
+        "job_id": null,
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:27.262646+00:00",
+        "tool": "cad_query_scene"
+      },
+      {
+        "arguments": {
+          "limit": 200,
+          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "section": "evidence"
+        },
+        "completed_at": "2026-08-02T12:52:28.620219+00:00",
+        "job_id": null,
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:27.654076+00:00",
+        "tool": "cad_query_scene"
+      },
+      {
+        "arguments": {
+          "uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
+        },
+        "completed_at": "2026-08-02T12:52:29.055726+00:00",
+        "job_id": null,
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:28.620230+00:00",
+        "tool": "read_resource"
+      },
+      {
+        "arguments": {
+          "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+          "idempotency_key": "phase10-drawing-c-after-20260802125221",
+          "include_preview_image": false,
+          "observation_level": "detail"
+        },
+        "completed_at": "2026-08-02T12:52:30.456547+00:00",
+        "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:29.055736+00:00",
+        "tool": "cad_observe"
+      },
+      {
+        "arguments": {
+          "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be"
+        },
+        "completed_at": "2026-08-02T12:52:30.765276+00:00",
+        "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
+        "job_result": {
+          "agent_version": "0.1.0",
+          "command_id": "command-7ab0b81a-0169-4388-8b43-ab2f21566740",
+          "contract_version": "cad.mcp/1.2",
+          "correlation_id": "9ece81d7-2a9c-4c18-97c4-093716d29b97",
+          "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+          "error_code": null,
+          "error_summary": null,
+          "events": [
+            {
+              "created_at": "2026-08-02T12:51:54.107003+00:00",
+              "error_code": null,
+              "event_type": "state",
+              "progress": null,
+              "result": null,
+              "sequence": 1,
+              "state": "queued"
+            },
+            {
+              "created_at": "2026-08-02T12:51:54.116083+00:00",
+              "error_code": null,
+              "event_type": "state",
+              "progress": null,
+              "result": null,
+              "sequence": 2,
+              "state": "dispatched"
+            },
+            {
+              "created_at": "2026-08-02T12:51:54.198188+00:00",
+              "error_code": null,
+              "event_type": "state",
+              "progress": null,
+              "result": null,
+              "sequence": 3,
+              "state": "acknowledged"
+            },
+            {
+              "created_at": "2026-08-02T12:51:55.276077+00:00",
+              "error_code": null,
+              "event_type": "state",
+              "progress": null,
+              "result": {
+                "execution_evidence": {
+                  "agent_version": "0.1.0",
+                  "degradation_reason": null,
+                  "degraded": false,
+                  "package": {
+                    "package_id": "autocad.lisp.drawing_info",
+                    "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+                    "version": "3.3-c1"
+                  },
+                  "runtime": {
+                    "framework": ".NET 8",
+                    "host_family": "R25",
+                    "host_version": "0.8.0",
+                    "id": "managed_dotnet",
+                    "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
+                    "package_id": "autocad.managed_host.r25",
+                    "package_version": "0.8.0",
+                    "role": "primary"
+                  },
+                  "runtime_state": "online_idle"
+                },
+                "snapshot": {
+                  "document_revision": "7146832559659708",
+                  "drawing": {
+                    "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
+                    "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
+                    "document_name": "phase10-drawing-c.dwg",
+                    "entity_count": 8,
+                    "layer_count": 9,
+                    "layers": [
+                      "0",
+                      "ANOMALIES",
+                      "Defpoints",
+                      "FEATURES",
+                      "HOLES",
+                      "PART",
+                      "REFERENCE",
+                      "SLOTS",
+                      "VALID"
+                    ],
+                    "truncated": false
+                  },
+                  "entities": [
+                    {
+                      "bounds": {
+                        "max": [
+                          10,
+                          0,
+                          0
+                        ],
+                        "min": [
+                          0,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "91",
+                      "entity_type": "LINE",
+                      "fingerprint": "sha256:9fdacd156bee839c6199da9036b75d2e83d1d77399bd8dd79d30a64a32c6dc47",
+                      "geometry": {
+                        "end": [
+                          10,
+                          0
+                        ],
+                        "end_elevation": 0,
+                        "start": [
+                          0,
+                          0
+                        ],
+                        "start_elevation": 0
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "ANOMALIES",
+                      "source_capabilities": [
+                        "entity.geometry.line/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          10,
+                          0,
+                          0
+                        ],
+                        "min": [
+                          0,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "92",
+                      "entity_type": "LINE",
+                      "fingerprint": "sha256:c1b998bb5e3cd2ba209b13ed1563659a067fc929454acc53a3bb14ea30a4090b",
+                      "geometry": {
+                        "end": [
+                          0,
+                          0
+                        ],
+                        "end_elevation": 0,
+                        "start": [
+                          10,
+                          0
+                        ],
+                        "start_elevation": 0
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "ANOMALIES",
+                      "source_capabilities": [
+                        "entity.geometry.line/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          20,
+                          0,
+                          0
+                        ],
+                        "min": [
+                          20,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "93",
+                      "entity_type": "LINE",
+                      "fingerprint": "sha256:7c20d0da29bc45cef0516b7729f887b44298e2d12c0a27d7527d02b4fe4f1b45",
+                      "geometry": {
+                        "end": [
+                          20,
+                          0
+                        ],
+                        "end_elevation": 0,
+                        "start": [
+                          20,
+                          0
+                        ],
+                        "start_elevation": 0
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "ANOMALIES",
+                      "source_capabilities": [
+                        "entity.geometry.line/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          40,
+                          0,
+                          0
+                        ],
+                        "min": [
+                          30,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "94",
+                      "entity_type": "LINE",
+                      "fingerprint": "sha256:eca4fc2827f49ae7d7b8060ad8f4efa7c4032e8685f76767e2071e149de45055",
+                      "geometry": {
+                        "end": [
+                          40,
+                          0
+                        ],
+                        "end_elevation": 0,
+                        "start": [
+                          30,
+                          0
+                        ],
+                        "start_elevation": 0
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "ANOMALIES",
+                      "source_capabilities": [
+                        "entity.geometry.line/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          45,
+                          5,
+                          0
+                        ],
+                        "min": [
+                          40,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "95",
+                      "entity_type": "LINE",
+                      "fingerprint": "sha256:47c823d2b6d143a18e8cf1e1cdc6d27901439b9ba48073d2603e717c7681989e",
+                      "geometry": {
+                        "end": [
+                          45,
+                          5
+                        ],
+                        "end_elevation": 0,
+                        "start": [
+                          40,
+                          0
+                        ],
+                        "start_elevation": 0
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "ANOMALIES",
+                      "source_capabilities": [
+                        "entity.geometry.line/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          65,
+                          10,
+                          0
+                        ],
+                        "min": [
+                          55,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "96",
+                      "entity_type": "LWPOLYLINE",
+                      "fingerprint": "sha256:c9e479b24247e14c02cb0551427dbc3ae296bb759b7f4ba7a8392c4599742845",
+                      "geometry": {
+                        "bulges": [
+                          0,
+                          0,
+                          0,
+                          0
+                        ],
+                        "closed": true,
+                        "elevation": 0,
+                        "normal": [
+                          0,
+                          0,
+                          1
+                        ],
+                        "points": [
+                          [
+                            55,
+                            0
+                          ],
+                          [
+                            65,
+                            10
+                          ],
+                          [
+                            55,
+                            10
+                          ],
+                          [
+                            65,
+                            0
+                          ]
+                        ]
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "ANOMALIES",
+                      "source_capabilities": [
+                        "entity.geometry.polyline/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          105,
+                          10,
+                          0
+                        ],
+                        "min": [
+                          85,
+                          0,
+                          0
+                        ]
+                      },
+                      "entity_id": "97",
+                      "entity_type": "LWPOLYLINE",
+                      "fingerprint": "sha256:9d92184d3a2c575dbf8e1a639f18f4caf49623c8b03cb296f3aabe250b7a6176",
+                      "geometry": {
+                        "bulges": [
+                          0,
+                          0,
+                          0,
+                          0
+                        ],
+                        "closed": true,
+                        "elevation": 0,
+                        "normal": [
+                          0,
+                          0,
+                          1
+                        ],
+                        "points": [
+                          [
+                            85,
+                            0
+                          ],
+                          [
+                            105,
+                            0
+                          ],
+                          [
+                            105,
+                            10
+                          ],
+                          [
+                            85,
+                            10
+                          ]
+                        ]
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "VALID",
+                      "source_capabilities": [
+                        "entity.geometry.polyline/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    },
+                    {
+                      "bounds": {
+                        "max": [
+                          97,
+                          7,
+                          0
+                        ],
+                        "min": [
+                          93,
+                          3,
+                          0
+                        ]
+                      },
+                      "entity_id": "98",
+                      "entity_type": "CIRCLE",
+                      "fingerprint": "sha256:c04f1dfdd83ed9d89d4e55035d3d5004cf0cd942887ab8928b6528b04d48cb7c",
+                      "geometry": {
+                        "center": [
+                          95,
+                          5
+                        ],
+                        "elevation": 0,
+                        "normal": [
+                          0,
+                          0,
+                          1
+                        ],
+                        "radius": 2
+                      },
+                      "geometry_reason": null,
+                      "geometry_status": "exact",
+                      "geometry_truncated": false,
+                      "layer": "VALID",
+                      "source_capabilities": [
+                        "entity.geometry.circle/1"
+                      ],
+                      "source_runtime": "managed_dotnet",
+                      "space": "model"
+                    }
+                  ],
+                  "entity_summary": {
+                    "detail_available": true,
+                    "entity_count": 8,
+                    "truncated": false
+                  },
+                  "observation_level": "detail",
+                  "revision_evidence": {
+                    "commit_safe": true,
+                    "revision_schema": "cad.revision/1",
+                    "revision_strength": "database_object_fingerprint"
+                  },
+                  "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740"
+                }
+              },
+              "sequence": 4,
+              "state": "succeeded"
+            }
+          ],
+          "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
+          "kind": "observe",
+          "next_event_cursor": null,
+          "package": {
+            "package_id": "autocad.lisp.drawing_info",
+            "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+            "version": "3.3-c1"
+          },
+          "progress": null,
+          "result": {
+            "execution_evidence": {
+              "agent_version": "0.1.0",
+              "degradation_reason": null,
+              "degraded": false,
+              "package": {
+                "package_id": "autocad.lisp.drawing_info",
+                "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+                "version": "3.3-c1"
+              },
+              "runtime": {
+                "framework": ".NET 8",
+                "host_family": "R25",
+                "host_version": "0.8.0",
+                "id": "managed_dotnet",
+                "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
+                "package_id": "autocad.managed_host.r25",
+                "package_version": "0.8.0",
+                "role": "primary"
+              },
+              "runtime_state": "online_idle"
+            },
+            "snapshot": {
+              "document_revision": "7146832559659708",
+              "drawing": {
+                "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
+                "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
+                "document_name": "phase10-drawing-c.dwg",
+                "entity_count": 8,
+                "layer_count": 9,
+                "layers": [
+                  "0",
+                  "ANOMALIES",
+                  "Defpoints",
+                  "FEATURES",
+                  "HOLES",
+                  "PART",
+                  "REFERENCE",
+                  "SLOTS",
+                  "VALID"
+                ],
+                "truncated": false
+              },
+              "entities": [
+                {
+                  "bounds": {
+                    "max": [
+                      10,
+                      0,
+                      0
+                    ],
+                    "min": [
+                      0,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "91",
+                  "entity_type": "LINE",
+                  "fingerprint": "sha256:9fdacd156bee839c6199da9036b75d2e83d1d77399bd8dd79d30a64a32c6dc47",
+                  "geometry": {
+                    "end": [
+                      10,
+                      0
+                    ],
+                    "end_elevation": 0,
+                    "start": [
+                      0,
+                      0
+                    ],
+                    "start_elevation": 0
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "ANOMALIES",
+                  "source_capabilities": [
+                    "entity.geometry.line/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      10,
+                      0,
+                      0
+                    ],
+                    "min": [
+                      0,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "92",
+                  "entity_type": "LINE",
+                  "fingerprint": "sha256:c1b998bb5e3cd2ba209b13ed1563659a067fc929454acc53a3bb14ea30a4090b",
+                  "geometry": {
+                    "end": [
+                      0,
+                      0
+                    ],
+                    "end_elevation": 0,
+                    "start": [
+                      10,
+                      0
+                    ],
+                    "start_elevation": 0
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "ANOMALIES",
+                  "source_capabilities": [
+                    "entity.geometry.line/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      20,
+                      0,
+                      0
+                    ],
+                    "min": [
+                      20,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "93",
+                  "entity_type": "LINE",
+                  "fingerprint": "sha256:7c20d0da29bc45cef0516b7729f887b44298e2d12c0a27d7527d02b4fe4f1b45",
+                  "geometry": {
+                    "end": [
+                      20,
+                      0
+                    ],
+                    "end_elevation": 0,
+                    "start": [
+                      20,
+                      0
+                    ],
+                    "start_elevation": 0
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "ANOMALIES",
+                  "source_capabilities": [
+                    "entity.geometry.line/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      40,
+                      0,
+                      0
+                    ],
+                    "min": [
+                      30,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "94",
+                  "entity_type": "LINE",
+                  "fingerprint": "sha256:eca4fc2827f49ae7d7b8060ad8f4efa7c4032e8685f76767e2071e149de45055",
+                  "geometry": {
+                    "end": [
+                      40,
+                      0
+                    ],
+                    "end_elevation": 0,
+                    "start": [
+                      30,
+                      0
+                    ],
+                    "start_elevation": 0
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "ANOMALIES",
+                  "source_capabilities": [
+                    "entity.geometry.line/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      45,
+                      5,
+                      0
+                    ],
+                    "min": [
+                      40,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "95",
+                  "entity_type": "LINE",
+                  "fingerprint": "sha256:47c823d2b6d143a18e8cf1e1cdc6d27901439b9ba48073d2603e717c7681989e",
+                  "geometry": {
+                    "end": [
+                      45,
+                      5
+                    ],
+                    "end_elevation": 0,
+                    "start": [
+                      40,
+                      0
+                    ],
+                    "start_elevation": 0
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "ANOMALIES",
+                  "source_capabilities": [
+                    "entity.geometry.line/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      65,
+                      10,
+                      0
+                    ],
+                    "min": [
+                      55,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "96",
+                  "entity_type": "LWPOLYLINE",
+                  "fingerprint": "sha256:c9e479b24247e14c02cb0551427dbc3ae296bb759b7f4ba7a8392c4599742845",
+                  "geometry": {
+                    "bulges": [
+                      0,
+                      0,
+                      0,
+                      0
+                    ],
+                    "closed": true,
+                    "elevation": 0,
+                    "normal": [
+                      0,
+                      0,
+                      1
+                    ],
+                    "points": [
+                      [
+                        55,
+                        0
+                      ],
+                      [
+                        65,
+                        10
+                      ],
+                      [
+                        55,
+                        10
+                      ],
+                      [
+                        65,
+                        0
+                      ]
+                    ]
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "ANOMALIES",
+                  "source_capabilities": [
+                    "entity.geometry.polyline/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      105,
+                      10,
+                      0
+                    ],
+                    "min": [
+                      85,
+                      0,
+                      0
+                    ]
+                  },
+                  "entity_id": "97",
+                  "entity_type": "LWPOLYLINE",
+                  "fingerprint": "sha256:9d92184d3a2c575dbf8e1a639f18f4caf49623c8b03cb296f3aabe250b7a6176",
+                  "geometry": {
+                    "bulges": [
+                      0,
+                      0,
+                      0,
+                      0
+                    ],
+                    "closed": true,
+                    "elevation": 0,
+                    "normal": [
+                      0,
+                      0,
+                      1
+                    ],
+                    "points": [
+                      [
+                        85,
+                        0
+                      ],
+                      [
+                        105,
+                        0
+                      ],
+                      [
+                        105,
+                        10
+                      ],
+                      [
+                        85,
+                        10
+                      ]
+                    ]
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "VALID",
+                  "source_capabilities": [
+                    "entity.geometry.polyline/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                },
+                {
+                  "bounds": {
+                    "max": [
+                      97,
+                      7,
+                      0
+                    ],
+                    "min": [
+                      93,
+                      3,
+                      0
+                    ]
+                  },
+                  "entity_id": "98",
+                  "entity_type": "CIRCLE",
+                  "fingerprint": "sha256:c04f1dfdd83ed9d89d4e55035d3d5004cf0cd942887ab8928b6528b04d48cb7c",
+                  "geometry": {
+                    "center": [
+                      95,
+                      5
+                    ],
+                    "elevation": 0,
+                    "normal": [
+                      0,
+                      0,
+                      1
+                    ],
+                    "radius": 2
+                  },
+                  "geometry_reason": null,
+                  "geometry_status": "exact",
+                  "geometry_truncated": false,
+                  "layer": "VALID",
+                  "source_capabilities": [
+                    "entity.geometry.circle/1"
+                  ],
+                  "source_runtime": "managed_dotnet",
+                  "space": "model"
+                }
+              ],
+              "entity_summary": {
+                "detail_available": true,
+                "entity_count": 8,
+                "truncated": false
+              },
+              "observation_level": "detail",
+              "revision_evidence": {
+                "commit_safe": true,
+                "revision_schema": "cad.revision/1",
+                "revision_strength": "database_object_fingerprint"
+              },
+              "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740"
+            }
+          },
+          "runtime_evidence": {
+            "agent_version": "0.1.0",
+            "degradation_reason": null,
+            "degraded": false,
+            "package": {
+              "package_id": "autocad.lisp.drawing_info",
+              "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
+              "version": "3.3-c1"
+            },
+            "runtime": {
+              "framework": ".NET 8",
+              "host_family": "R25",
+              "host_version": "0.8.0",
+              "id": "managed_dotnet",
+              "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
+              "package_id": "autocad.managed_host.r25",
+              "package_version": "0.8.0",
+              "role": "primary"
+            },
+            "runtime_state": "online_idle"
+          },
+          "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740",
+          "state": "succeeded"
+        },
+        "job_state": "succeeded",
+        "outcome": "succeeded",
+        "started_at": "2026-08-02T12:52:30.456558+00:00",
+        "tool": "cad_get_job"
+      }
+    ],
     "write_tools_invoked": []
   },
   "runtime_identity": {
     "agent_session": {
+      "active_document_id": "doc-7fdc0ac9a316d93a5f068aa1",
+      "active_document_revision": "7146832559659708",
       "agent_version": "0.1.0",
-      "connected_at": "2026-07-30T07:22:30.080903+00:00",
-      "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+      "connected_at": "2026-08-02T12:33:22.749769+00:00",
+      "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+      "disconnected_at": null,
       "managed_host": {
+        "executable": "C:\\Users\\haing\\AppData\\Roaming\\Autodesk\\ApplicationPlugins\\AutocadMcp.ManagedHost.R25.bundle\\Contents\\R25\\AutocadMcp.Host.R25.dll",
+        "executable_sha256": "sha256:4477230f1a10655906e28e500ff61546965f69481032f03368bda186c453f8d0",
         "framework": ".NET 8",
-        "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+        "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
         "package_id": "autocad.managed_host.r25",
         "package_version": "0.8.0",
-        "runtime_id": "managed_dotnet"
+        "process_id": 12276,
+        "runtime_id": "managed_dotnet",
+        "started_at": "2026-08-02T12:51:34.4107290+00:00"
       },
       "protocol_version": "cad.agent/2",
-      "session_id": "session-784f5e7f-ed83-4014-bc05-7f86d920a626"
+      "session_id": "session-dc0d2879-2172-4e7b-b594-0c78d77bbd9d"
     },
     "autocad_process": {
       "edition": "Mechanical 2025",
       "executable": "C:\\Program Files\\Autodesk\\AutoCAD 2025\\acad.exe",
-      "file_version": "R25.0.58.0.0",
+      "executable_sha256": "sha256:e62b7e89fc8fe79dc9976bf7e597424117b996001559ce0aa1fdc5b96137028f",
+      "file_version": "31.0.58.0",
       "host_family": "R25",
-      "process_id": 24376,
+      "process_id": 12276,
       "product": "AutoCAD",
       "release_year": 2025,
-      "series": "R25.0"
+      "series": "R25.0",
+      "started_at": "2026-08-02T12:51:17.102000+00:00"
     },
+    "captured_at": "2026-08-02T12:52:20.574062+00:00",
     "desktop_agent_process": {
-      "executable": "D:\\AI\\autocad-mcp\\dist\\phase10-agent-final\\app\\KythuatvangAutoCADAgent.exe",
-      "executable_sha256": "sha256:8904dd87e1990997f8c566928a79ac15ff94e6fd98e819a8862568f16cceebb5",
-      "process_id": 2892,
+      "executable": "D:\\AI\\autocad-mcp\\dist\\phase10-agent-4faecc8\\app\\KythuatvangAutoCADAgent.exe",
+      "executable_sha256": "sha256:8ff40bb428eb2a6c77091fc5333060e45671c8e77cc4925bbb86a7213684ffa4",
+      "process_id": 16328,
       "standalone": true,
-      "started_at": "2026-07-30T07:10:57.5556448Z"
+      "started_at": "2026-08-02T08:59:35.772000+00:00"
     },
     "gateway_process": {
       "executable": "/usr/bin/python3.12",
       "executable_sha256": "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
-      "process_id": 173016,
-      "release_commit": "165de0452af2b665deb67401b7c73420eefae226",
+      "process_id": 234947,
+      "release_commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c",
       "service": "autocad-mcp-phase4.service",
-      "working_directory": "/opt/autocad-mcp/releases/20260730T1500-phase10-go-165de04/services/gateway"
-    }
+      "working_directory": "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway"
+    },
+    "operator": "haing.nguyen",
+    "schema_version": "cad.phase10-live-runtime-identity/1"
   },
   "scene": {
     "capabilities": [
@@ -163,9 +2240,9 @@
       "omitted": 0,
       "relations": 44
     },
-    "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+    "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
     "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-    "document_revision": "6342267835475121",
+    "document_revision": "7146832559659708",
     "engine_version": "scene-engine/1.0.1",
     "evidence_strengths": [
       "bounded_heuristic",
@@ -197,7 +2274,7 @@
     ],
     "repeat_build": {
       "contract_version": "cad.mcp/1.6",
-      "correlation_id": "4e41b733-4771-4395-90fe-09c7c430c758",
+      "correlation_id": "a3b9c339-2b97-4477-9882-ab6b200f01a5",
       "reused": true,
       "scene": {
         "capabilities": [
@@ -220,27 +2297,27 @@
           "omitted": 0,
           "relations": 44
         },
-        "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-        "document_revision": "6342267835475121",
+        "document_revision": "7146832559659708",
         "engine_version": "scene-engine/1.0.1",
         "profile_id": "mechanical-2d/1",
         "projection_version": "cad.entity-projection/2",
         "resource_uris": {
-          "contours": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/contours",
-          "evidence": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/evidence",
-          "features": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/features",
-          "issues": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/issues",
-          "nodes": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/nodes",
-          "relations": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/relations",
-          "summary": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/summary"
+          "contours": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
+          "evidence": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
+          "features": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
+          "issues": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
+          "nodes": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
+          "relations": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
+          "summary": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
         },
-        "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
-        "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
+        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
         "schema_version": "cad.scene/1",
-        "source_digest": "sha256:c77fce46395b666190e5a73edda774b3f06de7ecfb1b9830ded381da14f98869",
+        "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
         "source_snapshot_available": true,
-        "source_snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+        "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
         "space": "model",
         "tolerance_profile": {
           "absolute_floor": 1e-06,
@@ -258,21 +2335,21 @@
       }
     },
     "resource_uris": {
-      "contours": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/contours",
-      "evidence": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/evidence",
-      "features": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/features",
-      "issues": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/issues",
-      "nodes": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/nodes",
-      "relations": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/relations",
-      "summary": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/summary"
+      "contours": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
+      "evidence": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
+      "features": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
+      "issues": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
+      "nodes": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
+      "relations": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
+      "summary": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
     },
-    "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
-    "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+    "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
+    "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
     "schema_version": "cad.scene/1",
     "sections": {
       "contours": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "8b5253f9-da1e-405b-869b-7c58806cde1d",
+        "correlation_id": "3be36b01-192a-47de-8a66-b8b938589041",
         "items": [
           {
             "algorithm_version": "scene-contours/2",
@@ -324,15 +2401,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/contours",
-        "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
-        "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
+        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
+        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
         "section": "contours",
         "total": 2
       },
       "evidence": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "4cc466d1-4936-46c2-ba43-f134e0c6a161",
+        "correlation_id": "04cb90a7-6dd7-4419-90db-18ecd858afe5",
         "items": [
           {
             "algorithm_version": "cad.entity-projection/2",
@@ -1458,15 +3535,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/evidence",
-        "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
-        "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
+        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
+        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
         "section": "evidence",
         "total": 62
       },
       "features": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "8ee531c3-f28a-4b42-9243-e4e4b8647c3f",
+        "correlation_id": "29abdd66-c704-4d66-87cc-f01a36f3499f",
         "items": [
           {
             "algorithm_version": "scene-features/2",
@@ -1522,15 +3599,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/features",
-        "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
-        "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
+        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
+        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
         "section": "features",
         "total": 3
       },
       "issues": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "716d1ea8-cc01-410b-8ad4-7aee5e81bf2f",
+        "correlation_id": "67d53666-367b-4f2d-80f8-aa99e26c974d",
         "items": [
           {
             "code": "open_contour",
@@ -1624,15 +3701,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/issues",
-        "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
-        "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
+        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
+        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
         "section": "issues",
         "total": 5
       },
       "nodes": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "8d8275c3-4611-4080-9d00-159eee1626c0",
+        "correlation_id": "d3fe0b79-c071-4e70-9459-1ef4e8ee5624",
         "items": [
           {
             "bounds": {
@@ -1949,15 +4026,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/nodes",
-        "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
-        "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
+        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
+        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
         "section": "nodes",
         "total": 8
       },
       "relations": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "563b4290-8c80-46f8-9c51-22109049c280",
+        "correlation_id": "f65e6914-4b5e-471a-bc1a-d6f709783e78",
         "items": [
           {
             "algorithm_version": "scene-relations/2",
@@ -2827,9 +4904,9 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/relations",
-        "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
-        "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
+        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
+        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
         "section": "relations",
         "total": 44
       }
@@ -2839,9 +4916,9 @@
       "entity.geometry.line/1",
       "entity.geometry.polyline/1"
     ],
-    "source_digest": "sha256:c77fce46395b666190e5a73edda774b3f06de7ecfb1b9830ded381da14f98869",
+    "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
     "source_snapshot_available": true,
-    "source_snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+    "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
     "space": "model",
     "summary_resource": {
       "capabilities": [
@@ -2864,27 +4941,27 @@
         "omitted": 0,
         "relations": 44
       },
-      "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+      "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
       "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-      "document_revision": "6342267835475121",
+      "document_revision": "7146832559659708",
       "engine_version": "scene-engine/1.0.1",
       "profile_id": "mechanical-2d/1",
       "projection_version": "cad.entity-projection/2",
       "resource_uris": {
-        "contours": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/contours",
-        "evidence": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/evidence",
-        "features": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/features",
-        "issues": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/issues",
-        "nodes": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/nodes",
-        "relations": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/relations",
-        "summary": "cad://scenes/scn_63aa70dee79e44b580a19612c0fd9e2e/summary"
+        "contours": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
+        "evidence": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
+        "features": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
+        "issues": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
+        "nodes": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
+        "relations": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
+        "summary": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
       },
-      "scene_digest": "sha256:d3d6f42a262807a5e69b3f201f948dfea5796889412ed3d83decb13fba9f7553",
-      "scene_id": "scn_63aa70dee79e44b580a19612c0fd9e2e",
+      "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
+      "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
       "schema_version": "cad.scene/1",
-      "source_digest": "sha256:c77fce46395b666190e5a73edda774b3f06de7ecfb1b9830ded381da14f98869",
+      "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
       "source_snapshot_available": true,
-      "source_snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+      "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
       "space": "model",
       "tolerance_profile": {
         "absolute_floor": 1e-06,
@@ -2915,23 +4992,35 @@
     "warnings": []
   },
   "schema_version": "cad.phase10-live-public-fixture/1",
+  "session_binding": {
+    "captured_at": "2026-08-02T12:52:30.765276+00:00",
+    "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+    "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
+    "document_revision": "7146832559659708",
+    "observation_job_ids": [
+      "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+      "job-01c86915-da44-4c53-80d5-701d77c1e8be"
+    ],
+    "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+    "session_id": "session-dc0d2879-2172-4e7b-b594-0c78d77bbd9d"
+  },
   "source": {
-    "document_revision_after": "6342267835475121",
-    "document_revision_before": "6342267835475121",
+    "document_revision_after": "7146832559659708",
+    "document_revision_before": "7146832559659708",
     "entity_count_after": 8,
     "entity_count_before": 8,
     "observation_after": {
       "job": {
         "agent_version": "0.1.0",
-        "command_id": "command-a67c0810-5aaf-4233-8136-50f4e7bdf943",
+        "command_id": "command-7ab0b81a-0169-4388-8b43-ab2f21566740",
         "contract_version": "cad.mcp/1.2",
-        "correlation_id": "e1c19900-c609-4248-a2fd-13051b5919a1",
-        "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+        "correlation_id": "9ece81d7-2a9c-4c18-97c4-093716d29b97",
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "error_code": null,
         "error_summary": null,
         "events": [
           {
-            "created_at": "2026-07-30T07:23:41.179928+00:00",
+            "created_at": "2026-08-02T12:51:54.107003+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -2940,7 +5029,7 @@
             "state": "queued"
           },
           {
-            "created_at": "2026-07-30T07:23:41.200550+00:00",
+            "created_at": "2026-08-02T12:51:54.116083+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -2949,7 +5038,7 @@
             "state": "dispatched"
           },
           {
-            "created_at": "2026-07-30T07:23:41.327661+00:00",
+            "created_at": "2026-08-02T12:51:54.198188+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -2958,7 +5047,7 @@
             "state": "acknowledged"
           },
           {
-            "created_at": "2026-07-30T07:23:42.727511+00:00",
+            "created_at": "2026-08-02T12:51:55.276077+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -2977,7 +5066,7 @@
                   "host_family": "R25",
                   "host_version": "0.8.0",
                   "id": "managed_dotnet",
-                  "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+                  "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
                   "package_id": "autocad.managed_host.r25",
                   "package_version": "0.8.0",
                   "role": "primary"
@@ -2985,7 +5074,7 @@
                 "runtime_state": "online_idle"
               },
               "snapshot": {
-                "document_revision": "6342267835475121",
+                "document_revision": "7146832559659708",
                 "drawing": {
                   "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
                   "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -3365,14 +5454,14 @@
                   "revision_schema": "cad.revision/1",
                   "revision_strength": "database_object_fingerprint"
                 },
-                "snapshot_id": "snapshot-command-a67c0810-5aaf-4233-8136-50f4e7bdf943"
+                "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740"
               }
             },
             "sequence": 4,
             "state": "succeeded"
           }
         ],
-        "job_id": "job-0df7c10c-7f4f-4700-bb8b-1384934b28ab",
+        "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
         "kind": "observe",
         "next_event_cursor": null,
         "package": {
@@ -3396,7 +5485,7 @@
               "host_family": "R25",
               "host_version": "0.8.0",
               "id": "managed_dotnet",
-              "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+              "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
               "package_id": "autocad.managed_host.r25",
               "package_version": "0.8.0",
               "role": "primary"
@@ -3404,7 +5493,7 @@
             "runtime_state": "online_idle"
           },
           "snapshot": {
-            "document_revision": "6342267835475121",
+            "document_revision": "7146832559659708",
             "drawing": {
               "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
               "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -3784,7 +5873,7 @@
               "revision_schema": "cad.revision/1",
               "revision_strength": "database_object_fingerprint"
             },
-            "snapshot_id": "snapshot-command-a67c0810-5aaf-4233-8136-50f4e7bdf943"
+            "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740"
           }
         },
         "runtime_evidence": {
@@ -3801,27 +5890,27 @@
             "host_family": "R25",
             "host_version": "0.8.0",
             "id": "managed_dotnet",
-            "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+            "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
             "package_id": "autocad.managed_host.r25",
             "package_version": "0.8.0",
             "role": "primary"
           },
           "runtime_state": "online_idle"
         },
-        "snapshot_id": "snapshot-command-a67c0810-5aaf-4233-8136-50f4e7bdf943",
+        "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740",
         "state": "succeeded"
       },
       "request": {
         "artifact_refs": [],
         "contract_version": "cad.mcp/1.2",
-        "correlation_id": "e14e573f-ce4a-4691-af9e-54961ff3a6b3",
-        "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
-        "document_revision": "6342267835475121",
-        "entities_uri": "cad://snapshots/snapshot-command-a67c0810-5aaf-4233-8136-50f4e7bdf943/entities",
+        "correlation_id": "d8c96d35-90e2-475e-babc-9d16eba675c9",
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+        "document_revision": "7146832559659708",
+        "entities_uri": "cad://snapshots/snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740/entities",
         "entity_count": 8,
         "execution_evidence": {
           "agent_version": "0.1.0",
-          "command_id": "command-a67c0810-5aaf-4233-8136-50f4e7bdf943",
+          "command_id": "command-7ab0b81a-0169-4388-8b43-ab2f21566740",
           "package": {
             "package_id": "autocad.lisp.drawing_info",
             "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
@@ -3829,29 +5918,29 @@
           },
           "runtime_state": "online_idle"
         },
-        "job_id": "job-0df7c10c-7f4f-4700-bb8b-1384934b28ab",
+        "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
         "observation_level": "detail",
         "revision_evidence": {
           "commit_safe": true,
           "revision_schema": "cad.revision/1",
           "revision_strength": "database_object_fingerprint"
         },
-        "snapshot_id": "snapshot-command-a67c0810-5aaf-4233-8136-50f4e7bdf943",
-        "summary_uri": "cad://snapshots/snapshot-command-a67c0810-5aaf-4233-8136-50f4e7bdf943/summary"
+        "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740",
+        "summary_uri": "cad://snapshots/snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740/summary"
       }
     },
     "observation_before": {
       "job": {
         "agent_version": "0.1.0",
-        "command_id": "command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+        "command_id": "command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
         "contract_version": "cad.mcp/1.2",
-        "correlation_id": "e047c9ba-5c08-4dee-88e2-e2b354190044",
-        "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
+        "correlation_id": "cbdca57c-ff6d-468d-8bd0-579746ec14c2",
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "error_code": null,
         "error_summary": null,
         "events": [
           {
-            "created_at": "2026-07-30T07:23:35.347069+00:00",
+            "created_at": "2026-08-02T12:51:47.844484+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -3860,7 +5949,7 @@
             "state": "queued"
           },
           {
-            "created_at": "2026-07-30T07:23:35.355902+00:00",
+            "created_at": "2026-08-02T12:51:47.851435+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -3869,7 +5958,7 @@
             "state": "dispatched"
           },
           {
-            "created_at": "2026-07-30T07:23:35.487293+00:00",
+            "created_at": "2026-08-02T12:51:47.931603+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -3878,7 +5967,7 @@
             "state": "acknowledged"
           },
           {
-            "created_at": "2026-07-30T07:23:36.738248+00:00",
+            "created_at": "2026-08-02T12:51:49.300137+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -3897,7 +5986,7 @@
                   "host_family": "R25",
                   "host_version": "0.8.0",
                   "id": "managed_dotnet",
-                  "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+                  "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
                   "package_id": "autocad.managed_host.r25",
                   "package_version": "0.8.0",
                   "role": "primary"
@@ -3905,7 +5994,7 @@
                 "runtime_state": "online_idle"
               },
               "snapshot": {
-                "document_revision": "6342267835475121",
+                "document_revision": "7146832559659708",
                 "drawing": {
                   "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
                   "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -4285,14 +6374,14 @@
                   "revision_schema": "cad.revision/1",
                   "revision_strength": "database_object_fingerprint"
                 },
-                "snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d"
+                "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80"
               }
             },
             "sequence": 4,
             "state": "succeeded"
           }
         ],
-        "job_id": "job-c7534ac2-02b0-4b73-9423-3f43bc98c65f",
+        "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
         "kind": "observe",
         "next_event_cursor": null,
         "package": {
@@ -4316,7 +6405,7 @@
               "host_family": "R25",
               "host_version": "0.8.0",
               "id": "managed_dotnet",
-              "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+              "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
               "package_id": "autocad.managed_host.r25",
               "package_version": "0.8.0",
               "role": "primary"
@@ -4324,7 +6413,7 @@
             "runtime_state": "online_idle"
           },
           "snapshot": {
-            "document_revision": "6342267835475121",
+            "document_revision": "7146832559659708",
             "drawing": {
               "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
               "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -4704,7 +6793,7 @@
               "revision_schema": "cad.revision/1",
               "revision_strength": "database_object_fingerprint"
             },
-            "snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d"
+            "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80"
           }
         },
         "runtime_evidence": {
@@ -4721,27 +6810,27 @@
             "host_family": "R25",
             "host_version": "0.8.0",
             "id": "managed_dotnet",
-            "package_hash": "sha256:ff9d3de9e831f8aa9305b6700734bd59537dc7d7a09646ced5a499ef07897778",
+            "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
             "package_id": "autocad.managed_host.r25",
             "package_version": "0.8.0",
             "role": "primary"
           },
           "runtime_state": "online_idle"
         },
-        "snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+        "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
         "state": "succeeded"
       },
       "request": {
         "artifact_refs": [],
         "contract_version": "cad.mcp/1.2",
-        "correlation_id": "8328204b-cb0e-484a-ad75-db0741594112",
-        "device_id": "device-0e4df1b2-fbf2-42ca-a151-a487c5437052",
-        "document_revision": "6342267835475121",
-        "entities_uri": "cad://snapshots/snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d/entities",
+        "correlation_id": "dd3a8096-6d46-4486-ba9d-2fb6d5ce2248",
+        "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
+        "document_revision": "7146832559659708",
+        "entities_uri": "cad://snapshots/snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80/entities",
         "entity_count": 8,
         "execution_evidence": {
           "agent_version": "0.1.0",
-          "command_id": "command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
+          "command_id": "command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
           "package": {
             "package_id": "autocad.lisp.drawing_info",
             "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
@@ -4749,18 +6838,18 @@
           },
           "runtime_state": "online_idle"
         },
-        "job_id": "job-c7534ac2-02b0-4b73-9423-3f43bc98c65f",
+        "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
         "observation_level": "detail",
         "revision_evidence": {
           "commit_safe": true,
           "revision_schema": "cad.revision/1",
           "revision_strength": "database_object_fingerprint"
         },
-        "snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d",
-        "summary_uri": "cad://snapshots/snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d/summary"
+        "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+        "summary_uri": "cad://snapshots/snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80/summary"
       }
     },
-    "snapshot_id": "snapshot-command-5831ecc9-d0f6-4900-ae45-bdf852a1605d"
+    "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80"
   },
   "status": "PASS"
 }

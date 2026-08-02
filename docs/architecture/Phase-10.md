@@ -2186,3 +2186,49 @@ Phase 9 `30525245796`, and Phase 10 `30525245847`.
 
 **Engineering decision: GO for the default-off bounded Phase 10 lab profile.
 Customer Pilot: NO-GO pending Phase 11 production hardening and pilot gates.**
+
+## 33. PR #14 recertification evidence — 2026-08-02
+
+PR #14 review comments exposed real producer/validator defects rather than
+cosmetic evidence drift. The fixes now share one DB gate contract, bracket the
+closed audit window before the actual Gateway restart, and model provisional
+capture plus post-restart finalization in the end-to-end fixture. The live
+implementation and test head is
+`c8206de5e1d7f23f862985bf6f55eb6adb16f16c`.
+
+Fresh same-head public OAuth evidence was captured with
+`autocad.read autocad.write autocad.device.manage`. Write scope does not bypass
+the Phase 6–9 `prepare -> preview -> trusted approval -> commit -> validate ->
+recovery/rollback` authority boundary. Phase 10 scene, query and cleanup
+operations remained read-only throughout this recertification.
+
+The three R25 fixtures passed every producer gate with unchanged document
+revision, entity count and DWG SHA-256:
+
+- Drawing A: document `doc-e90891bd9416e989b3cd7e56`, revision
+  `1658707502661421`, scene `scn_c54796dfd14646d28a61fe7aead24f90`;
+- Drawing B: document `doc-4c9e80cc2d0101584c4d4d19`, revision
+  `6558752205920282`, scene `scn_7a2ef2709a9046efb4b6077a04d804b1`;
+- Drawing C: document `doc-7fdc0ac9a316d93a5f068aa1`, revision
+  `7146832559659708`, scene `scn_fc67788588cf431abdc0276303da01fc`.
+
+The actual Gateway restart changed PID `234947` to `236159`. Standalone
+Desktop Agent PID `16328` stayed alive and reconnected from session
+`session-dc0d2879-2172-4e7b-b594-0c78d77bbd9d` to
+`session-566cc918-856a-4a3c-aa63-9b938e4eeb65`, retaining Drawing C, its
+revision and scene. The closed-window DB comparison covered exactly six anchor
+jobs and three scenes, found no write event, and retained byte-identical write
+tables with pre/post digest
+`sha256:b96e295cbe6ac5d1ed4d326aa4e6e8c7e7e598df6ddc2e50e42eae5d76cdd342`.
+Cleanup completed with `write_requested=false` and
+`cad_effect_attempted=false`.
+
+`python scripts/validate-phase10-live-evidence.py --root .` passed against the
+six freshly generated retained artifacts. The same local head passed the full
+root suite with **582 passed, 1 skipped**. The temporary OAuth token was deleted
+after cleanup. Final publication remains subject to all latest-head hosted PR
+checks passing.
+
+**PR #14 Engineering decision: GO for the default-off bounded Phase 10 lab
+profile. Customer Pilot: NO-GO pending Phase 11 production hardening and pilot
+gates.**
