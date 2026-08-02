@@ -2194,7 +2194,11 @@ cosmetic evidence drift. The fixes now share one DB gate contract, bracket the
 closed audit window before the actual Gateway restart, and model provisional
 capture plus post-restart finalization in the end-to-end fixture. The live
 implementation and test head is
-`c8206de5e1d7f23f862985bf6f55eb6adb16f16c`.
+`2df995f24580d44933472e0c41591ab3be36a84b`. The final CI-only correction
+fetches full Git history in the six jobs that execute provenance-aware root or
+Phase 10 checks; shallow PR checkouts did not contain `origin/main` and could
+not derive the evidence baseline. The producer remains fail-closed instead of
+falling back to an inaccurate baseline.
 
 Fresh same-head public OAuth evidence was captured with
 `autocad.read autocad.write autocad.device.manage`. Write scope does not bypass
@@ -2206,16 +2210,16 @@ The three R25 fixtures passed every producer gate with unchanged document
 revision, entity count and DWG SHA-256:
 
 - Drawing A: document `doc-e90891bd9416e989b3cd7e56`, revision
-  `1658707502661421`, scene `scn_c54796dfd14646d28a61fe7aead24f90`;
+  `1658707502661421`, scene `scn_8a7a2b9b38d7494098caf0de4cde6b32`;
 - Drawing B: document `doc-4c9e80cc2d0101584c4d4d19`, revision
-  `6558752205920282`, scene `scn_7a2ef2709a9046efb4b6077a04d804b1`;
+  `6805084151967804`, scene `scn_1a3f8569f90544259f62efb9debcfdf5`;
 - Drawing C: document `doc-7fdc0ac9a316d93a5f068aa1`, revision
-  `7146832559659708`, scene `scn_fc67788588cf431abdc0276303da01fc`.
+  `8194682508785554`, scene `scn_fafb081e255e40248030690e0a2f13a6`.
 
-The actual Gateway restart changed PID `234947` to `236159`. Standalone
+The actual Gateway restart changed PID `237530` to `238635`. Standalone
 Desktop Agent PID `16328` stayed alive and reconnected from session
-`session-dc0d2879-2172-4e7b-b594-0c78d77bbd9d` to
-`session-566cc918-856a-4a3c-aa63-9b938e4eeb65`, retaining Drawing C, its
+`session-b5a5ec26-f94a-413a-a72b-55a09035f387` to
+`session-db8fb53e-0a02-4654-b537-66a07daa6800`, retaining Drawing C, its
 revision and scene. The closed-window DB comparison covered exactly six anchor
 jobs and three scenes, found no write event, and retained byte-identical write
 tables with pre/post digest

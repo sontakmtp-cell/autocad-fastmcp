@@ -1,7 +1,7 @@
 {
   "baseline_commit": "d1e84711841b4b262fc5563cb768904b8eefd811",
-  "capture_command": "python scripts/phase10-live-public-evidence.py capture-public --output tmp\\phase10-live-c8206de\\drawing-c-provisional.json --operator haing.nguyen --endpoint https://cad.kythuatvang.com/mcp --device-id device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476 --token-file <redacted> --fixture c --drawing fixtures\\phase10\\live\\phase10-drawing-c.dwg --process-identity tmp\\phase10-live-c8206de\\runtime-c.json",
-  "captured_at": "2026-08-02T12:52:30.789111+00:00",
+  "capture_command": "python scripts/phase10-live-public-evidence.py capture-public --output tmp\\phase10-live-2df995f\\drawing-c-provisional.json --operator haing.nguyen --endpoint https://cad.kythuatvang.com/mcp --device-id device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476 --token-file <redacted> --fixture c --drawing fixtures\\phase10\\live\\phase10-drawing-c.dwg --process-identity tmp\\phase10-live-2df995f\\runtime-c.json",
+  "captured_at": "2026-08-02T13:14:46.804263+00:00",
   "failures_retests": [
     {
       "failure": "The original 1e-7 tiny-circle fixture was rejected by the signed payload boundary with payload_mismatch.",
@@ -13,8 +13,8 @@
     }
   ],
   "finalization": {
-    "finalized_at": "2026-08-02T12:55:43.816456+00:00",
-    "implementation_commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c"
+    "finalized_at": "2026-08-02T13:18:07.899497+00:00",
+    "implementation_commit": "2df995f24580d44933472e0c41591ab3be36a84b"
   },
   "fixture": {
     "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -47,7 +47,7 @@
     "valid_geometry_not_flagged_for_cleanup": true,
     "write_snapshot_unchanged": true
   },
-  "implementation_commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c",
+  "implementation_commit": "2df995f24580d44933472e0c41591ab3be36a84b",
   "limitations": [
     "tiny_circle_omitted: R25 rejected the 1e-7 projection at the signed payload boundary; zero-length LINE supplies the mandatory live degenerate case"
   ],
@@ -59,83 +59,83 @@
     "write_requested": false
   },
   "no_effect_db_binding": {
-    "active_agent_session_id": "session-566cc918-856a-4a3c-aa63-9b938e4eeb65",
+    "active_agent_session_id": "session-db8fb53e-0a02-4654-b537-66a07daa6800",
     "agent_sessions": [
       {
-        "connected_at": "2026-08-02T12:53:15.664696+00:00",
+        "connected_at": "2026-08-02T13:15:39.480965+00:00",
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "disconnected_at": null,
-        "session_id": "session-566cc918-856a-4a3c-aa63-9b938e4eeb65"
+        "session_id": "session-db8fb53e-0a02-4654-b537-66a07daa6800"
       },
       {
-        "connected_at": "2026-08-02T12:33:22.749769+00:00",
+        "connected_at": "2026-08-02T13:08:15.551961+00:00",
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
-        "disconnected_at": "2026-08-02T12:53:07.137254+00:00",
-        "session_id": "session-dc0d2879-2172-4e7b-b594-0c78d77bbd9d"
+        "disconnected_at": "2026-08-02T13:15:30.974531+00:00",
+        "session_id": "session-b5a5ec26-f94a-413a-a72b-55a09035f387"
       }
     ],
     "anchor_jobs": [
       {
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "effect_class": "read",
-        "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
+        "job_id": "job-2b533e47-e10d-4840-ac95-ee47587118d6",
         "state": "succeeded"
       },
       {
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "effect_class": "read",
-        "job_id": "job-2810d48d-13bf-4885-9fb4-45306be17493",
+        "job_id": "job-68ad4c7d-e321-49ce-8c1a-11f262335c6c",
         "state": "succeeded"
       },
       {
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "effect_class": "read",
-        "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+        "job_id": "job-9c0a45cf-2b53-4fb9-a9f6-a32fd28b2d81",
         "state": "succeeded"
       },
       {
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "effect_class": "read",
-        "job_id": "job-4d766a02-fa07-40b6-b592-8ca1c34395bf",
+        "job_id": "job-b8234668-1c57-4765-b1ad-4051893cacb5",
         "state": "succeeded"
       },
       {
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "effect_class": "read",
-        "job_id": "job-5ba9d2c3-2474-444c-bf43-ae25018a2a6d",
+        "job_id": "job-dbd40a37-0b9e-43ab-9a1e-ad8bff133db7",
         "state": "succeeded"
       },
       {
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "effect_class": "read",
-        "job_id": "job-6a1b2042-a980-48cb-bafd-2be6c482a14b",
+        "job_id": "job-ea1fefa6-28ee-40ef-b94b-fde72aca90e1",
         "state": "succeeded"
       }
     ],
-    "artifact": "tmp\\phase10-live-c8206de\\db-post.json",
-    "artifact_sha256": "sha256:b736529551bdb667f8d5843d21f159a38541cba359b2727f9a64503d42609750",
+    "artifact": "tmp\\phase10-live-2df995f\\db-post.json",
+    "artifact_sha256": "sha256:9387aa485b558d08a19fdc040f8ca551e224c5b0fce1ff6a44a102a8ed303213",
     "post_restart_write_snapshot_sha256": "sha256:b96e295cbe6ac5d1ed4d326aa4e6e8c7e7e598df6ddc2e50e42eae5d76cdd342",
     "pre_restart_write_snapshot_sha256": "sha256:b96e295cbe6ac5d1ed4d326aa4e6e8c7e7e598df6ddc2e50e42eae5d76cdd342",
     "retrospective_no_write_events": [],
     "schema_version": "cad.phase10-live-db-evidence/1",
     "scope": {
       "anchor_job_ids": [
-        "job-5ba9d2c3-2474-444c-bf43-ae25018a2a6d",
-        "job-2810d48d-13bf-4885-9fb4-45306be17493",
-        "job-4d766a02-fa07-40b6-b592-8ca1c34395bf",
-        "job-6a1b2042-a980-48cb-bafd-2be6c482a14b",
-        "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
-        "job-01c86915-da44-4c53-80d5-701d77c1e8be"
+        "job-b8234668-1c57-4765-b1ad-4051893cacb5",
+        "job-ea1fefa6-28ee-40ef-b94b-fde72aca90e1",
+        "job-dbd40a37-0b9e-43ab-9a1e-ad8bff133db7",
+        "job-68ad4c7d-e321-49ce-8c1a-11f262335c6c",
+        "job-2b533e47-e10d-4840-ac95-ee47587118d6",
+        "job-9c0a45cf-2b53-4fb9-a9f6-a32fd28b2d81"
       ],
       "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
       "owner_subject": "user-3b507baea6adb49989a040871b1903918eb60701b91be8e3a6c6166fce6a9bea",
       "scene_ids": [
-        "scn_c54796dfd14646d28a61fe7aead24f90",
-        "scn_7a2ef2709a9046efb4b6077a04d804b1",
-        "scn_fc67788588cf431abdc0276303da01fc"
+        "scn_8a7a2b9b38d7494098caf0de4cde6b32",
+        "scn_1a3f8569f90544259f62efb9debcfdf5",
+        "scn_fafb081e255e40248030690e0a2f13a6"
       ],
-      "window_end": "2026-08-02T19:52:35+07:00",
-      "window_start": "2026-08-02T19:47:00+07:00"
+      "window_end": "2026-08-02T20:14:50+07:00",
+      "window_start": "2026-08-02T20:09:00+07:00"
     }
   },
   "operator": "haing.nguyen",
@@ -143,7 +143,7 @@
     "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
     "devices": {
       "contract_version": "cad.mcp/1.2",
-      "correlation_id": "4bb1e850-11c5-466f-8b80-5b93dca5f207",
+      "correlation_id": "e350eb09-e643-4ecc-9ab4-7857bfff8288",
       "default_device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
       "devices": [
         {
@@ -163,7 +163,7 @@
           "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
           "display_name": "Device A - m\u00e1y th\u1eadt",
           "document_name": "phase10-drawing-c.dwg",
-          "last_seen_at": "2026-08-02T12:51:43.259729+00:00",
+          "last_seen_at": "2026-08-02T13:13:55.606237+00:00",
           "package_summary": [
             {
               "package_id": "autocad.lisp.drawing_info",
@@ -205,42 +205,42 @@
         "arguments": {
           "online_only": true
         },
-        "completed_at": "2026-08-02T12:52:22.818925+00:00",
+        "completed_at": "2026-08-02T13:14:39.080136+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:22.275381+00:00",
+        "started_at": "2026-08-02T13:14:38.751870+00:00",
         "tool": "cad_list_devices"
       },
       {
         "arguments": {
           "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
-          "idempotency_key": "phase10-drawing-c-before-20260802125221",
+          "idempotency_key": "phase10-drawing-c-before-20260802131437",
           "include_preview_image": false,
           "observation_level": "detail"
         },
-        "completed_at": "2026-08-02T12:52:24.490738+00:00",
-        "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+        "completed_at": "2026-08-02T13:14:40.942307+00:00",
+        "job_id": "job-2b533e47-e10d-4840-ac95-ee47587118d6",
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:22.818937+00:00",
+        "started_at": "2026-08-02T13:14:39.080146+00:00",
         "tool": "cad_observe"
       },
       {
         "arguments": {
-          "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236"
+          "job_id": "job-2b533e47-e10d-4840-ac95-ee47587118d6"
         },
-        "completed_at": "2026-08-02T12:52:24.873127+00:00",
-        "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+        "completed_at": "2026-08-02T13:14:41.323723+00:00",
+        "job_id": "job-2b533e47-e10d-4840-ac95-ee47587118d6",
         "job_result": {
           "agent_version": "0.1.0",
-          "command_id": "command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+          "command_id": "command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
           "contract_version": "cad.mcp/1.2",
-          "correlation_id": "cbdca57c-ff6d-468d-8bd0-579746ec14c2",
+          "correlation_id": "55ae89e5-1b3b-4ff4-9a0a-3ae233c39dcf",
           "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
           "error_code": null,
           "error_summary": null,
           "events": [
             {
-              "created_at": "2026-08-02T12:51:47.844484+00:00",
+              "created_at": "2026-08-02T13:14:03.978590+00:00",
               "error_code": null,
               "event_type": "state",
               "progress": null,
@@ -249,7 +249,7 @@
               "state": "queued"
             },
             {
-              "created_at": "2026-08-02T12:51:47.851435+00:00",
+              "created_at": "2026-08-02T13:14:03.985958+00:00",
               "error_code": null,
               "event_type": "state",
               "progress": null,
@@ -258,7 +258,7 @@
               "state": "dispatched"
             },
             {
-              "created_at": "2026-08-02T12:51:47.931603+00:00",
+              "created_at": "2026-08-02T13:14:04.081816+00:00",
               "error_code": null,
               "event_type": "state",
               "progress": null,
@@ -267,7 +267,7 @@
               "state": "acknowledged"
             },
             {
-              "created_at": "2026-08-02T12:51:49.300137+00:00",
+              "created_at": "2026-08-02T13:14:05.600779+00:00",
               "error_code": null,
               "event_type": "state",
               "progress": null,
@@ -294,7 +294,7 @@
                   "runtime_state": "online_idle"
                 },
                 "snapshot": {
-                  "document_revision": "7146832559659708",
+                  "document_revision": "8194682508785554",
                   "drawing": {
                     "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
                     "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -674,14 +674,14 @@
                     "revision_schema": "cad.revision/1",
                     "revision_strength": "database_object_fingerprint"
                   },
-                  "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80"
+                  "snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c"
                 }
               },
               "sequence": 4,
               "state": "succeeded"
             }
           ],
-          "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+          "job_id": "job-2b533e47-e10d-4840-ac95-ee47587118d6",
           "kind": "observe",
           "next_event_cursor": null,
           "package": {
@@ -713,7 +713,7 @@
               "runtime_state": "online_idle"
             },
             "snapshot": {
-              "document_revision": "7146832559659708",
+              "document_revision": "8194682508785554",
               "drawing": {
                 "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
                 "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -1093,7 +1093,7 @@
                 "revision_schema": "cad.revision/1",
                 "revision_strength": "database_object_fingerprint"
               },
-              "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80"
+              "snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c"
             }
           },
           "runtime_evidence": {
@@ -1117,18 +1117,18 @@
             },
             "runtime_state": "online_idle"
           },
-          "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+          "snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
           "state": "succeeded"
         },
         "job_state": "succeeded",
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:24.490749+00:00",
+        "started_at": "2026-08-02T13:14:40.942318+00:00",
         "tool": "cad_get_job"
       },
       {
         "arguments": {
           "analysis_profile": "mechanical-2d/1",
-          "idempotency_key": "phase10-drawing-c-scene-20260802125221",
+          "idempotency_key": "phase10-drawing-c-scene-20260802131437",
           "include_sections": [
             "nodes",
             "relations",
@@ -1137,19 +1137,19 @@
             "issues",
             "evidence"
           ],
-          "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+          "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
           "space": "model"
         },
-        "completed_at": "2026-08-02T12:52:25.200872+00:00",
+        "completed_at": "2026-08-02T13:14:41.680273+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:24.873140+00:00",
+        "started_at": "2026-08-02T13:14:41.323735+00:00",
         "tool": "cad_build_scene"
       },
       {
         "arguments": {
           "analysis_profile": "mechanical-2d/1",
-          "idempotency_key": "phase10-drawing-c-scene-repeat-20260802125221",
+          "idempotency_key": "phase10-drawing-c-scene-repeat-20260802131437",
           "include_sections": [
             "nodes",
             "relations",
@@ -1158,127 +1158,127 @@
             "issues",
             "evidence"
           ],
-          "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+          "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
           "space": "model"
         },
-        "completed_at": "2026-08-02T12:52:25.522476+00:00",
+        "completed_at": "2026-08-02T13:14:42.024518+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:25.200881+00:00",
+        "started_at": "2026-08-02T13:14:41.680282+00:00",
         "tool": "cad_build_scene"
       },
       {
         "arguments": {
           "limit": 200,
-          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
           "section": "nodes"
         },
-        "completed_at": "2026-08-02T12:52:25.855231+00:00",
+        "completed_at": "2026-08-02T13:14:42.433302+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:25.522486+00:00",
+        "started_at": "2026-08-02T13:14:42.024528+00:00",
         "tool": "cad_query_scene"
       },
       {
         "arguments": {
           "limit": 200,
-          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
           "section": "relations"
         },
-        "completed_at": "2026-08-02T12:52:26.306827+00:00",
+        "completed_at": "2026-08-02T13:14:42.923007+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:25.855240+00:00",
+        "started_at": "2026-08-02T13:14:42.433311+00:00",
         "tool": "cad_query_scene"
       },
       {
         "arguments": {
           "limit": 200,
-          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
           "section": "contours"
         },
-        "completed_at": "2026-08-02T12:52:26.918285+00:00",
+        "completed_at": "2026-08-02T13:14:43.310311+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:26.306835+00:00",
+        "started_at": "2026-08-02T13:14:42.923017+00:00",
         "tool": "cad_query_scene"
       },
       {
         "arguments": {
           "limit": 200,
-          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
           "section": "features"
         },
-        "completed_at": "2026-08-02T12:52:27.262636+00:00",
+        "completed_at": "2026-08-02T13:14:43.683612+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:26.918294+00:00",
+        "started_at": "2026-08-02T13:14:43.310320+00:00",
         "tool": "cad_query_scene"
       },
       {
         "arguments": {
           "limit": 200,
-          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
           "section": "issues"
         },
-        "completed_at": "2026-08-02T12:52:27.654067+00:00",
+        "completed_at": "2026-08-02T13:14:44.063485+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:27.262646+00:00",
+        "started_at": "2026-08-02T13:14:43.683621+00:00",
         "tool": "cad_query_scene"
       },
       {
         "arguments": {
           "limit": 200,
-          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
           "section": "evidence"
         },
-        "completed_at": "2026-08-02T12:52:28.620219+00:00",
+        "completed_at": "2026-08-02T13:14:44.601940+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:27.654076+00:00",
+        "started_at": "2026-08-02T13:14:44.063494+00:00",
         "tool": "cad_query_scene"
       },
       {
         "arguments": {
-          "uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
+          "uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/summary"
         },
-        "completed_at": "2026-08-02T12:52:29.055726+00:00",
+        "completed_at": "2026-08-02T13:14:44.806798+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:28.620230+00:00",
+        "started_at": "2026-08-02T13:14:44.601950+00:00",
         "tool": "read_resource"
       },
       {
         "arguments": {
           "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
-          "idempotency_key": "phase10-drawing-c-after-20260802125221",
+          "idempotency_key": "phase10-drawing-c-after-20260802131437",
           "include_preview_image": false,
           "observation_level": "detail"
         },
-        "completed_at": "2026-08-02T12:52:30.456547+00:00",
-        "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
+        "completed_at": "2026-08-02T13:14:46.451161+00:00",
+        "job_id": "job-9c0a45cf-2b53-4fb9-a9f6-a32fd28b2d81",
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:29.055736+00:00",
+        "started_at": "2026-08-02T13:14:44.806808+00:00",
         "tool": "cad_observe"
       },
       {
         "arguments": {
-          "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be"
+          "job_id": "job-9c0a45cf-2b53-4fb9-a9f6-a32fd28b2d81"
         },
-        "completed_at": "2026-08-02T12:52:30.765276+00:00",
-        "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
+        "completed_at": "2026-08-02T13:14:46.779578+00:00",
+        "job_id": "job-9c0a45cf-2b53-4fb9-a9f6-a32fd28b2d81",
         "job_result": {
           "agent_version": "0.1.0",
-          "command_id": "command-7ab0b81a-0169-4388-8b43-ab2f21566740",
+          "command_id": "command-4baa5917-2912-4fb6-bbf0-958eab8c12f7",
           "contract_version": "cad.mcp/1.2",
-          "correlation_id": "9ece81d7-2a9c-4c18-97c4-093716d29b97",
+          "correlation_id": "bf29468b-c740-4249-9fe0-3914378bf578",
           "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
           "error_code": null,
           "error_summary": null,
           "events": [
             {
-              "created_at": "2026-08-02T12:51:54.107003+00:00",
+              "created_at": "2026-08-02T13:14:09.709863+00:00",
               "error_code": null,
               "event_type": "state",
               "progress": null,
@@ -1287,7 +1287,7 @@
               "state": "queued"
             },
             {
-              "created_at": "2026-08-02T12:51:54.116083+00:00",
+              "created_at": "2026-08-02T13:14:09.716230+00:00",
               "error_code": null,
               "event_type": "state",
               "progress": null,
@@ -1296,7 +1296,7 @@
               "state": "dispatched"
             },
             {
-              "created_at": "2026-08-02T12:51:54.198188+00:00",
+              "created_at": "2026-08-02T13:14:09.820912+00:00",
               "error_code": null,
               "event_type": "state",
               "progress": null,
@@ -1305,7 +1305,7 @@
               "state": "acknowledged"
             },
             {
-              "created_at": "2026-08-02T12:51:55.276077+00:00",
+              "created_at": "2026-08-02T13:14:11.105217+00:00",
               "error_code": null,
               "event_type": "state",
               "progress": null,
@@ -1332,7 +1332,7 @@
                   "runtime_state": "online_idle"
                 },
                 "snapshot": {
-                  "document_revision": "7146832559659708",
+                  "document_revision": "8194682508785554",
                   "drawing": {
                     "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
                     "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -1712,14 +1712,14 @@
                     "revision_schema": "cad.revision/1",
                     "revision_strength": "database_object_fingerprint"
                   },
-                  "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740"
+                  "snapshot_id": "snapshot-command-4baa5917-2912-4fb6-bbf0-958eab8c12f7"
                 }
               },
               "sequence": 4,
               "state": "succeeded"
             }
           ],
-          "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
+          "job_id": "job-9c0a45cf-2b53-4fb9-a9f6-a32fd28b2d81",
           "kind": "observe",
           "next_event_cursor": null,
           "package": {
@@ -1751,7 +1751,7 @@
               "runtime_state": "online_idle"
             },
             "snapshot": {
-              "document_revision": "7146832559659708",
+              "document_revision": "8194682508785554",
               "drawing": {
                 "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
                 "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -2131,7 +2131,7 @@
                 "revision_schema": "cad.revision/1",
                 "revision_strength": "database_object_fingerprint"
               },
-              "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740"
+              "snapshot_id": "snapshot-command-4baa5917-2912-4fb6-bbf0-958eab8c12f7"
             }
           },
           "runtime_evidence": {
@@ -2155,12 +2155,12 @@
             },
             "runtime_state": "online_idle"
           },
-          "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740",
+          "snapshot_id": "snapshot-command-4baa5917-2912-4fb6-bbf0-958eab8c12f7",
           "state": "succeeded"
         },
         "job_state": "succeeded",
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:52:30.456558+00:00",
+        "started_at": "2026-08-02T13:14:46.451173+00:00",
         "tool": "cad_get_job"
       }
     ],
@@ -2169,9 +2169,9 @@
   "runtime_identity": {
     "agent_session": {
       "active_document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-      "active_document_revision": "7146832559659708",
+      "active_document_revision": "8194682508785554",
       "agent_version": "0.1.0",
-      "connected_at": "2026-08-02T12:33:22.749769+00:00",
+      "connected_at": "2026-08-02T13:08:15.551961+00:00",
       "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
       "disconnected_at": null,
       "managed_host": {
@@ -2181,12 +2181,12 @@
         "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
         "package_id": "autocad.managed_host.r25",
         "package_version": "0.8.0",
-        "process_id": 12276,
+        "process_id": 19636,
         "runtime_id": "managed_dotnet",
-        "started_at": "2026-08-02T12:51:34.4107290+00:00"
+        "started_at": "2026-08-02T13:13:53.1185666+00:00"
       },
       "protocol_version": "cad.agent/2",
-      "session_id": "session-dc0d2879-2172-4e7b-b594-0c78d77bbd9d"
+      "session_id": "session-b5a5ec26-f94a-413a-a72b-55a09035f387"
     },
     "autocad_process": {
       "edition": "Mechanical 2025",
@@ -2194,13 +2194,13 @@
       "executable_sha256": "sha256:e62b7e89fc8fe79dc9976bf7e597424117b996001559ce0aa1fdc5b96137028f",
       "file_version": "31.0.58.0",
       "host_family": "R25",
-      "process_id": 12276,
+      "process_id": 19636,
       "product": "AutoCAD",
       "release_year": 2025,
       "series": "R25.0",
-      "started_at": "2026-08-02T12:51:17.102000+00:00"
+      "started_at": "2026-08-02T13:13:35.464000+00:00"
     },
-    "captured_at": "2026-08-02T12:52:20.574062+00:00",
+    "captured_at": "2026-08-02T13:14:36.697502+00:00",
     "desktop_agent_process": {
       "executable": "D:\\AI\\autocad-mcp\\dist\\phase10-agent-4faecc8\\app\\KythuatvangAutoCADAgent.exe",
       "executable_sha256": "sha256:8ff40bb428eb2a6c77091fc5333060e45671c8e77cc4925bbb86a7213684ffa4",
@@ -2211,10 +2211,10 @@
     "gateway_process": {
       "executable": "/usr/bin/python3.12",
       "executable_sha256": "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
-      "process_id": 234947,
-      "release_commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c",
+      "process_id": 237530,
+      "release_commit": "2df995f24580d44933472e0c41591ab3be36a84b",
       "service": "autocad-mcp-phase4.service",
-      "working_directory": "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway"
+      "working_directory": "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway"
     },
     "operator": "haing.nguyen",
     "schema_version": "cad.phase10-live-runtime-identity/1"
@@ -2242,7 +2242,7 @@
     },
     "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
     "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-    "document_revision": "7146832559659708",
+    "document_revision": "8194682508785554",
     "engine_version": "scene-engine/1.0.1",
     "evidence_strengths": [
       "bounded_heuristic",
@@ -2274,7 +2274,7 @@
     ],
     "repeat_build": {
       "contract_version": "cad.mcp/1.6",
-      "correlation_id": "a3b9c339-2b97-4477-9882-ab6b200f01a5",
+      "correlation_id": "70bbe01c-a8c8-4079-b4c0-717c2b477680",
       "reused": true,
       "scene": {
         "capabilities": [
@@ -2299,25 +2299,25 @@
         },
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-        "document_revision": "7146832559659708",
+        "document_revision": "8194682508785554",
         "engine_version": "scene-engine/1.0.1",
         "profile_id": "mechanical-2d/1",
         "projection_version": "cad.entity-projection/2",
         "resource_uris": {
-          "contours": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
-          "evidence": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
-          "features": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
-          "issues": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
-          "nodes": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
-          "relations": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
-          "summary": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
+          "contours": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/contours",
+          "evidence": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/evidence",
+          "features": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/features",
+          "issues": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/issues",
+          "nodes": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/nodes",
+          "relations": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/relations",
+          "summary": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/summary"
         },
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "schema_version": "cad.scene/1",
-        "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
+        "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
         "source_snapshot_available": true,
-        "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+        "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
         "space": "model",
         "tolerance_profile": {
           "absolute_floor": 1e-06,
@@ -2335,21 +2335,21 @@
       }
     },
     "resource_uris": {
-      "contours": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
-      "evidence": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
-      "features": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
-      "issues": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
-      "nodes": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
-      "relations": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
-      "summary": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
+      "contours": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/contours",
+      "evidence": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/evidence",
+      "features": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/features",
+      "issues": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/issues",
+      "nodes": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/nodes",
+      "relations": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/relations",
+      "summary": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/summary"
     },
-    "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-    "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+    "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+    "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
     "schema_version": "cad.scene/1",
     "sections": {
       "contours": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "3be36b01-192a-47de-8a66-b8b938589041",
+        "correlation_id": "38687f29-d278-4e8e-9e74-85c28d8e7c8a",
         "items": [
           {
             "algorithm_version": "scene-contours/2",
@@ -2401,15 +2401,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/contours",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "section": "contours",
         "total": 2
       },
       "evidence": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "04cb90a7-6dd7-4419-90db-18ecd858afe5",
+        "correlation_id": "14678be5-cc6a-4d48-98b3-ffafa795e08d",
         "items": [
           {
             "algorithm_version": "cad.entity-projection/2",
@@ -3535,15 +3535,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/evidence",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "section": "evidence",
         "total": 62
       },
       "features": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "29abdd66-c704-4d66-87cc-f01a36f3499f",
+        "correlation_id": "723e710a-039b-4bb4-a04b-f5b5976fd004",
         "items": [
           {
             "algorithm_version": "scene-features/2",
@@ -3599,15 +3599,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/features",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "section": "features",
         "total": 3
       },
       "issues": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "67d53666-367b-4f2d-80f8-aa99e26c974d",
+        "correlation_id": "a003005e-6c8a-4a5a-bd73-58062c90aa89",
         "items": [
           {
             "code": "open_contour",
@@ -3701,15 +3701,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/issues",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "section": "issues",
         "total": 5
       },
       "nodes": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "d3fe0b79-c071-4e70-9459-1ef4e8ee5624",
+        "correlation_id": "6dbf8e6d-23dc-4199-9b0d-e906794f3285",
         "items": [
           {
             "bounds": {
@@ -4026,15 +4026,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/nodes",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "section": "nodes",
         "total": 8
       },
       "relations": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "f65e6914-4b5e-471a-bc1a-d6f709783e78",
+        "correlation_id": "07ad09bf-4a9a-4216-9db1-141ef3f8cde0",
         "items": [
           {
             "algorithm_version": "scene-relations/2",
@@ -4904,9 +4904,9 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/relations",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "section": "relations",
         "total": 44
       }
@@ -4916,9 +4916,9 @@
       "entity.geometry.line/1",
       "entity.geometry.polyline/1"
     ],
-    "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
+    "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
     "source_snapshot_available": true,
-    "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+    "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
     "space": "model",
     "summary_resource": {
       "capabilities": [
@@ -4943,25 +4943,25 @@
       },
       "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
       "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-      "document_revision": "7146832559659708",
+      "document_revision": "8194682508785554",
       "engine_version": "scene-engine/1.0.1",
       "profile_id": "mechanical-2d/1",
       "projection_version": "cad.entity-projection/2",
       "resource_uris": {
-        "contours": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
-        "evidence": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
-        "features": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
-        "issues": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
-        "nodes": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
-        "relations": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
-        "summary": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
+        "contours": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/contours",
+        "evidence": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/evidence",
+        "features": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/features",
+        "issues": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/issues",
+        "nodes": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/nodes",
+        "relations": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/relations",
+        "summary": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/summary"
       },
-      "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-      "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+      "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+      "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
       "schema_version": "cad.scene/1",
-      "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
+      "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
       "source_snapshot_available": true,
-      "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+      "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
       "space": "model",
       "tolerance_profile": {
         "absolute_floor": 1e-06,
@@ -4993,34 +4993,34 @@
   },
   "schema_version": "cad.phase10-live-public-fixture/1",
   "session_binding": {
-    "captured_at": "2026-08-02T12:52:30.765276+00:00",
+    "captured_at": "2026-08-02T13:14:46.779578+00:00",
     "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
     "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-    "document_revision": "7146832559659708",
+    "document_revision": "8194682508785554",
     "observation_job_ids": [
-      "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
-      "job-01c86915-da44-4c53-80d5-701d77c1e8be"
+      "job-2b533e47-e10d-4840-ac95-ee47587118d6",
+      "job-9c0a45cf-2b53-4fb9-a9f6-a32fd28b2d81"
     ],
-    "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
-    "session_id": "session-dc0d2879-2172-4e7b-b594-0c78d77bbd9d"
+    "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
+    "session_id": "session-b5a5ec26-f94a-413a-a72b-55a09035f387"
   },
   "source": {
-    "document_revision_after": "7146832559659708",
-    "document_revision_before": "7146832559659708",
+    "document_revision_after": "8194682508785554",
+    "document_revision_before": "8194682508785554",
     "entity_count_after": 8,
     "entity_count_before": 8,
     "observation_after": {
       "job": {
         "agent_version": "0.1.0",
-        "command_id": "command-7ab0b81a-0169-4388-8b43-ab2f21566740",
+        "command_id": "command-4baa5917-2912-4fb6-bbf0-958eab8c12f7",
         "contract_version": "cad.mcp/1.2",
-        "correlation_id": "9ece81d7-2a9c-4c18-97c4-093716d29b97",
+        "correlation_id": "bf29468b-c740-4249-9fe0-3914378bf578",
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "error_code": null,
         "error_summary": null,
         "events": [
           {
-            "created_at": "2026-08-02T12:51:54.107003+00:00",
+            "created_at": "2026-08-02T13:14:09.709863+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -5029,7 +5029,7 @@
             "state": "queued"
           },
           {
-            "created_at": "2026-08-02T12:51:54.116083+00:00",
+            "created_at": "2026-08-02T13:14:09.716230+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -5038,7 +5038,7 @@
             "state": "dispatched"
           },
           {
-            "created_at": "2026-08-02T12:51:54.198188+00:00",
+            "created_at": "2026-08-02T13:14:09.820912+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -5047,7 +5047,7 @@
             "state": "acknowledged"
           },
           {
-            "created_at": "2026-08-02T12:51:55.276077+00:00",
+            "created_at": "2026-08-02T13:14:11.105217+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -5074,7 +5074,7 @@
                 "runtime_state": "online_idle"
               },
               "snapshot": {
-                "document_revision": "7146832559659708",
+                "document_revision": "8194682508785554",
                 "drawing": {
                   "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
                   "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -5454,14 +5454,14 @@
                   "revision_schema": "cad.revision/1",
                   "revision_strength": "database_object_fingerprint"
                 },
-                "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740"
+                "snapshot_id": "snapshot-command-4baa5917-2912-4fb6-bbf0-958eab8c12f7"
               }
             },
             "sequence": 4,
             "state": "succeeded"
           }
         ],
-        "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
+        "job_id": "job-9c0a45cf-2b53-4fb9-a9f6-a32fd28b2d81",
         "kind": "observe",
         "next_event_cursor": null,
         "package": {
@@ -5493,7 +5493,7 @@
             "runtime_state": "online_idle"
           },
           "snapshot": {
-            "document_revision": "7146832559659708",
+            "document_revision": "8194682508785554",
             "drawing": {
               "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
               "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -5873,7 +5873,7 @@
               "revision_schema": "cad.revision/1",
               "revision_strength": "database_object_fingerprint"
             },
-            "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740"
+            "snapshot_id": "snapshot-command-4baa5917-2912-4fb6-bbf0-958eab8c12f7"
           }
         },
         "runtime_evidence": {
@@ -5897,20 +5897,20 @@
           },
           "runtime_state": "online_idle"
         },
-        "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740",
+        "snapshot_id": "snapshot-command-4baa5917-2912-4fb6-bbf0-958eab8c12f7",
         "state": "succeeded"
       },
       "request": {
         "artifact_refs": [],
         "contract_version": "cad.mcp/1.2",
-        "correlation_id": "d8c96d35-90e2-475e-babc-9d16eba675c9",
+        "correlation_id": "b8073f61-f581-4997-80aa-090565768ea2",
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
-        "document_revision": "7146832559659708",
-        "entities_uri": "cad://snapshots/snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740/entities",
+        "document_revision": "8194682508785554",
+        "entities_uri": "cad://snapshots/snapshot-command-4baa5917-2912-4fb6-bbf0-958eab8c12f7/entities",
         "entity_count": 8,
         "execution_evidence": {
           "agent_version": "0.1.0",
-          "command_id": "command-7ab0b81a-0169-4388-8b43-ab2f21566740",
+          "command_id": "command-4baa5917-2912-4fb6-bbf0-958eab8c12f7",
           "package": {
             "package_id": "autocad.lisp.drawing_info",
             "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
@@ -5918,29 +5918,29 @@
           },
           "runtime_state": "online_idle"
         },
-        "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
+        "job_id": "job-9c0a45cf-2b53-4fb9-a9f6-a32fd28b2d81",
         "observation_level": "detail",
         "revision_evidence": {
           "commit_safe": true,
           "revision_schema": "cad.revision/1",
           "revision_strength": "database_object_fingerprint"
         },
-        "snapshot_id": "snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740",
-        "summary_uri": "cad://snapshots/snapshot-command-7ab0b81a-0169-4388-8b43-ab2f21566740/summary"
+        "snapshot_id": "snapshot-command-4baa5917-2912-4fb6-bbf0-958eab8c12f7",
+        "summary_uri": "cad://snapshots/snapshot-command-4baa5917-2912-4fb6-bbf0-958eab8c12f7/summary"
       }
     },
     "observation_before": {
       "job": {
         "agent_version": "0.1.0",
-        "command_id": "command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+        "command_id": "command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
         "contract_version": "cad.mcp/1.2",
-        "correlation_id": "cbdca57c-ff6d-468d-8bd0-579746ec14c2",
+        "correlation_id": "55ae89e5-1b3b-4ff4-9a0a-3ae233c39dcf",
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "error_code": null,
         "error_summary": null,
         "events": [
           {
-            "created_at": "2026-08-02T12:51:47.844484+00:00",
+            "created_at": "2026-08-02T13:14:03.978590+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -5949,7 +5949,7 @@
             "state": "queued"
           },
           {
-            "created_at": "2026-08-02T12:51:47.851435+00:00",
+            "created_at": "2026-08-02T13:14:03.985958+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -5958,7 +5958,7 @@
             "state": "dispatched"
           },
           {
-            "created_at": "2026-08-02T12:51:47.931603+00:00",
+            "created_at": "2026-08-02T13:14:04.081816+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -5967,7 +5967,7 @@
             "state": "acknowledged"
           },
           {
-            "created_at": "2026-08-02T12:51:49.300137+00:00",
+            "created_at": "2026-08-02T13:14:05.600779+00:00",
             "error_code": null,
             "event_type": "state",
             "progress": null,
@@ -5994,7 +5994,7 @@
                 "runtime_state": "online_idle"
               },
               "snapshot": {
-                "document_revision": "7146832559659708",
+                "document_revision": "8194682508785554",
                 "drawing": {
                   "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
                   "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -6374,14 +6374,14 @@
                   "revision_schema": "cad.revision/1",
                   "revision_strength": "database_object_fingerprint"
                 },
-                "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80"
+                "snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c"
               }
             },
             "sequence": 4,
             "state": "succeeded"
           }
         ],
-        "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+        "job_id": "job-2b533e47-e10d-4840-ac95-ee47587118d6",
         "kind": "observe",
         "next_event_cursor": null,
         "package": {
@@ -6413,7 +6413,7 @@
             "runtime_state": "online_idle"
           },
           "snapshot": {
-            "document_revision": "7146832559659708",
+            "document_revision": "8194682508785554",
             "drawing": {
               "database_fingerprint": "{A93DC69F-DD4A-498C-ABAE-76F4ADC9F7D5}",
               "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
@@ -6793,7 +6793,7 @@
               "revision_schema": "cad.revision/1",
               "revision_strength": "database_object_fingerprint"
             },
-            "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80"
+            "snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c"
           }
         },
         "runtime_evidence": {
@@ -6817,20 +6817,20 @@
           },
           "runtime_state": "online_idle"
         },
-        "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+        "snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
         "state": "succeeded"
       },
       "request": {
         "artifact_refs": [],
         "contract_version": "cad.mcp/1.2",
-        "correlation_id": "dd3a8096-6d46-4486-ba9d-2fb6d5ce2248",
+        "correlation_id": "b6f20f61-f0c4-42c8-9eef-936f6462e340",
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
-        "document_revision": "7146832559659708",
-        "entities_uri": "cad://snapshots/snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80/entities",
+        "document_revision": "8194682508785554",
+        "entities_uri": "cad://snapshots/snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c/entities",
         "entity_count": 8,
         "execution_evidence": {
           "agent_version": "0.1.0",
-          "command_id": "command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+          "command_id": "command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
           "package": {
             "package_id": "autocad.lisp.drawing_info",
             "sha256": "bd2faa770fca50148f8091bb66e194e4f35f5cb7f45def121cc70b5ba4944606",
@@ -6838,18 +6838,18 @@
           },
           "runtime_state": "online_idle"
         },
-        "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+        "job_id": "job-2b533e47-e10d-4840-ac95-ee47587118d6",
         "observation_level": "detail",
         "revision_evidence": {
           "commit_safe": true,
           "revision_schema": "cad.revision/1",
           "revision_strength": "database_object_fingerprint"
         },
-        "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
-        "summary_uri": "cad://snapshots/snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80/summary"
+        "snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
+        "summary_uri": "cad://snapshots/snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c/summary"
       }
     },
-    "snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80"
+    "snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c"
   },
   "status": "PASS"
 }

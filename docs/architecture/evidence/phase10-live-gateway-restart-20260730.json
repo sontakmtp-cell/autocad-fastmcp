@@ -4,16 +4,16 @@
   "authoritative_gateway_service": true,
   "baseline_commit": "d1e84711841b4b262fc5563cb768904b8eefd811",
   "cad_effect_attempted": false,
-  "capture_command": "python scripts/phase10-live-public-evidence.py restart-query --output tmp\\phase10-live-c8206de\\gateway-restart-provisional.json --operator haing.nguyen --endpoint https://cad.kythuatvang.com/mcp --device-id device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476 --token-file <redacted> --before tmp\\phase10-live-c8206de\\drawing-c-provisional.json --runtime-identity-after tmp\\phase10-live-c8206de\\runtime-after.json --identity-before tmp\\phase10-live-c8206de\\gateway-identity-before.json --identity-after tmp\\phase10-live-c8206de\\gateway-identity-after.json",
-  "captured_at": "2026-08-02T12:54:45.602025+00:00",
+  "capture_command": "python scripts/phase10-live-public-evidence.py restart-query --output tmp\\phase10-live-2df995f\\gateway-restart-provisional.json --operator haing.nguyen --endpoint https://cad.kythuatvang.com/mcp --device-id device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476 --token-file <redacted> --before tmp\\phase10-live-2df995f\\drawing-c-provisional.json --runtime-identity-after tmp\\phase10-live-2df995f\\runtime-after.json --identity-before tmp\\phase10-live-2df995f\\gateway-identity-before.json --identity-after tmp\\phase10-live-2df995f\\gateway-identity-after.json",
+  "captured_at": "2026-08-02T13:17:07.643470+00:00",
   "db_evidence_provenance": true,
   "db_scope_bound": true,
   "document_revision_unchanged": true,
   "dwg_file_hash_unchanged": true,
   "failures_retests": [],
   "finalization": {
-    "finalized_at": "2026-08-02T12:55:43.989237+00:00",
-    "implementation_commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c"
+    "finalized_at": "2026-08-02T13:18:08.057913+00:00",
+    "implementation_commit": "2df995f24580d44933472e0c41591ab3be36a84b"
   },
   "fixture_id": "phase10-drawing-c-r25/1",
   "gate_results": {
@@ -39,42 +39,42 @@
   },
   "gateway_process_after": {
     "active_document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-    "active_document_revision": "7146832559659708",
-    "agent_session_id": "session-566cc918-856a-4a3c-aa63-9b938e4eeb65",
-    "autocad_pid": 12276,
-    "captured_at": "2026-08-02T12:54:29.653375+00:00",
+    "active_document_revision": "8194682508785554",
+    "agent_session_id": "session-db8fb53e-0a02-4654-b537-66a07daa6800",
+    "autocad_pid": 19636,
+    "captured_at": "2026-08-02T13:16:41.678401+00:00",
     "desktop_agent_executable": "D:\\AI\\autocad-mcp\\dist\\phase10-agent-4faecc8\\app\\KythuatvangAutoCADAgent.exe",
     "desktop_agent_pid": 16328,
     "desktop_agent_sha256": "sha256:8ff40bb428eb2a6c77091fc5333060e45671c8e77cc4925bbb86a7213684ffa4",
     "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
     "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-    "document_revision": "7146832559659708",
+    "document_revision": "8194682508785554",
     "fixture_id": "phase10-drawing-c-r25/1",
-    "gateway_pid": 236159,
+    "gateway_pid": 238635,
     "gateway_service_record": {
       "process": {
         "executable": "/usr/bin/python3.12",
         "executable_sha256": "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
-        "launcher_argv": "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python -m autocad_gateway",
-        "launcher_path": "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python",
+        "launcher_argv": "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python -m autocad_gateway",
+        "launcher_path": "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python",
         "launcher_resolved_executable": "/usr/bin/python3.12",
-        "pid": 236159,
+        "pid": 238635,
         "source": "procfs",
-        "start_identity": "94751739"
+        "start_identity": "94886076"
       },
       "properties": {
         "ActiveState": "active",
-        "ExecMainStartTimestampMonotonic": "947517397151",
-        "ExecStart": "{ path=/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python ; argv[]=/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python -m autocad_gateway ; ignore_errors=no ; start_time=[Sun 2026-08-02 19:53:07 +07] ; stop_time=[n/a] ; pid=236159 ; code=(null) ; status=0/0 }",
+        "ExecMainStartTimestampMonotonic": "948860768194",
+        "ExecStart": "{ path=/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python ; argv[]=/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python -m autocad_gateway ; ignore_errors=no ; start_time=[Sun 2026-08-02 20:15:31 +07] ; stop_time=[n/a] ; pid=238635 ; code=(null) ; status=0/0 }",
         "Id": "autocad-mcp-phase4.service",
-        "MainPID": 236159,
+        "MainPID": 238635,
         "SubState": "running",
-        "WorkingDirectory": "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway"
+        "WorkingDirectory": "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway"
       },
       "release": {
-        "commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c",
+        "commit": "2df995f24580d44933472e0c41591ab3be36a84b",
         "source": "git_rev_parse",
-        "working_directory": "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway"
+        "working_directory": "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway"
       },
       "source": "systemctl_show"
     },
@@ -83,71 +83,71 @@
         "test",
         "!",
         "-e",
-        "/proc/234947/stat"
+        "/proc/237530/stat"
       ],
-      "pid": 234947,
+      "pid": 237530,
       "probe_exit_code": 0,
       "proc_stat_after": null,
       "source": "procfs",
-      "start_identity": "94632437"
+      "start_identity": "94841734"
     },
-    "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-    "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
-    "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e"
+    "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+    "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
+    "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9"
   },
   "gateway_process_before": {
     "active_document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-    "active_document_revision": "7146832559659708",
-    "agent_session_id": "session-dc0d2879-2172-4e7b-b594-0c78d77bbd9d",
-    "autocad_pid": 12276,
-    "captured_at": "2026-08-02T12:52:20.574062+00:00",
+    "active_document_revision": "8194682508785554",
+    "agent_session_id": "session-b5a5ec26-f94a-413a-a72b-55a09035f387",
+    "autocad_pid": 19636,
+    "captured_at": "2026-08-02T13:14:36.697502+00:00",
     "desktop_agent_executable": "D:\\AI\\autocad-mcp\\dist\\phase10-agent-4faecc8\\app\\KythuatvangAutoCADAgent.exe",
     "desktop_agent_pid": 16328,
     "desktop_agent_sha256": "sha256:8ff40bb428eb2a6c77091fc5333060e45671c8e77cc4925bbb86a7213684ffa4",
     "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
     "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-    "document_revision": "7146832559659708",
+    "document_revision": "8194682508785554",
     "fixture_id": "phase10-drawing-c-r25/1",
-    "gateway_pid": 234947,
+    "gateway_pid": 237530,
     "gateway_service_record": {
       "process": {
         "executable": "/usr/bin/python3.12",
         "executable_sha256": "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
-        "launcher_argv": "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python -m autocad_gateway",
-        "launcher_path": "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python",
+        "launcher_argv": "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python -m autocad_gateway",
+        "launcher_path": "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python",
         "launcher_resolved_executable": "/usr/bin/python3.12",
-        "pid": 234947,
+        "pid": 237530,
         "source": "procfs",
-        "start_identity": "94632437"
+        "start_identity": "94841734"
       },
       "properties": {
         "ActiveState": "active",
-        "ExecMainStartTimestampMonotonic": "946324380108",
-        "ExecStart": "{ path=/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python ; argv[]=/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python -m autocad_gateway ; ignore_errors=no ; start_time=[Sun 2026-08-02 19:33:14 +07] ; stop_time=[n/a] ; pid=234947 ; code=(null) ; status=0/0 }",
+        "ExecMainStartTimestampMonotonic": "948417347129",
+        "ExecStart": "{ path=/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python ; argv[]=/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python -m autocad_gateway ; ignore_errors=no ; start_time=[Sun 2026-08-02 20:08:07 +07] ; stop_time=[n/a] ; pid=237530 ; code=(null) ; status=0/0 }",
         "Id": "autocad-mcp-phase4.service",
-        "MainPID": 234947,
+        "MainPID": 237530,
         "SubState": "running",
-        "WorkingDirectory": "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway"
+        "WorkingDirectory": "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway"
       },
       "release": {
-        "commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c",
+        "commit": "2df995f24580d44933472e0c41591ab3be36a84b",
         "source": "git_rev_parse",
-        "working_directory": "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway"
+        "working_directory": "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway"
       },
       "source": "systemctl_show"
     },
-    "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-    "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
-    "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e"
+    "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+    "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
+    "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9"
   },
   "gateway_public_reconnect": true,
   "gateway_runtime_identity": true,
   "identity_capture_after": {
-    "capture_command": "python scripts/phase10-live-public-evidence.py capture-identity --output /tmp/phase10-c8206de-gateway-after.json --operator haing.nguyen --service autocad-mcp-phase4.service --old-pid 234947",
-    "captured_at": "2026-08-02T12:53:14.319053+00:00",
+    "capture_command": "python scripts/phase10-live-public-evidence.py capture-identity --output /tmp/phase10-2df995f-gateway-after.json --operator haing.nguyen --service autocad-mcp-phase4.service --old-pid 237530",
+    "captured_at": "2026-08-02T13:15:37.772844+00:00",
     "commands": [
       {
-        "captured_at": "2026-08-02T12:53:14.271802+00:00",
+        "captured_at": "2026-08-02T13:15:37.723789+00:00",
         "command": [
           "systemctl",
           "show",
@@ -157,32 +157,32 @@
         ],
         "exit_code": 0,
         "stderr": "",
-        "stdout": "MainPID=236159\nExecMainStartTimestampMonotonic=947517397151\nExecStart={ path=/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python ; argv[]=/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python -m autocad_gateway ; ignore_errors=no ; start_time=[Sun 2026-08-02 19:53:07 +07] ; stop_time=[n/a] ; pid=236159 ; code=(null) ; status=0/0 }\nWorkingDirectory=/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway\nId=autocad-mcp-phase4.service\nActiveState=active\nSubState=running\n"
+        "stdout": "MainPID=238635\nExecMainStartTimestampMonotonic=948860768194\nExecStart={ path=/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python ; argv[]=/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python -m autocad_gateway ; ignore_errors=no ; start_time=[Sun 2026-08-02 20:15:31 +07] ; stop_time=[n/a] ; pid=238635 ; code=(null) ; status=0/0 }\nWorkingDirectory=/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway\nId=autocad-mcp-phase4.service\nActiveState=active\nSubState=running\n"
       },
       {
-        "captured_at": "2026-08-02T12:53:14.275090+00:00",
+        "captured_at": "2026-08-02T13:15:37.726329+00:00",
         "command": [
           "readlink",
           "-f",
-          "/proc/236159/exe"
+          "/proc/238635/exe"
         ],
         "exit_code": 0,
         "stderr": "",
         "stdout": "/usr/bin/python3.12\n"
       },
       {
-        "captured_at": "2026-08-02T12:53:14.277754+00:00",
+        "captured_at": "2026-08-02T13:15:37.728937+00:00",
         "command": [
           "readlink",
           "-f",
-          "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python"
+          "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python"
         ],
         "exit_code": 0,
         "stderr": "",
         "stdout": "/usr/bin/python3.12\n"
       },
       {
-        "captured_at": "2026-08-02T12:53:14.307338+00:00",
+        "captured_at": "2026-08-02T13:15:37.761421+00:00",
         "command": [
           "sha256sum",
           "/usr/bin/python3.12"
@@ -192,36 +192,36 @@
         "stdout": "1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118  /usr/bin/python3.12\n"
       },
       {
-        "captured_at": "2026-08-02T12:53:14.311465+00:00",
+        "captured_at": "2026-08-02T13:15:37.765621+00:00",
         "command": [
           "git",
           "-C",
-          "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway",
+          "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway",
           "rev-parse",
           "HEAD"
         ],
         "exit_code": 0,
         "stderr": "",
-        "stdout": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c\n"
+        "stdout": "2df995f24580d44933472e0c41591ab3be36a84b\n"
       },
       {
-        "captured_at": "2026-08-02T12:53:14.316244+00:00",
+        "captured_at": "2026-08-02T13:15:37.770038+00:00",
         "command": [
           "awk",
           "{print $22}",
-          "/proc/236159/stat"
+          "/proc/238635/stat"
         ],
         "exit_code": 0,
         "stderr": "",
-        "stdout": "94751739\n"
+        "stdout": "94886076\n"
       },
       {
-        "captured_at": "2026-08-02T12:53:14.319020+00:00",
+        "captured_at": "2026-08-02T13:15:37.772813+00:00",
         "command": [
           "test",
           "!",
           "-e",
-          "/proc/234947/stat"
+          "/proc/237530/stat"
         ],
         "exit_code": 0,
         "stderr": "",
@@ -233,11 +233,11 @@
     "service": "autocad-mcp-phase4.service"
   },
   "identity_capture_before": {
-    "capture_command": "python scripts/phase10-live-public-evidence.py capture-identity --output /tmp/phase10-c8206de-gateway-before.json --operator haing.nguyen --service autocad-mcp-phase4.service",
-    "captured_at": "2026-08-02T12:53:06.525420+00:00",
+    "capture_command": "python scripts/phase10-live-public-evidence.py capture-identity --output /tmp/phase10-2df995f-gateway-before.json --operator haing.nguyen --service autocad-mcp-phase4.service",
+    "captured_at": "2026-08-02T13:15:29.921255+00:00",
     "commands": [
       {
-        "captured_at": "2026-08-02T12:53:06.479029+00:00",
+        "captured_at": "2026-08-02T13:15:29.871905+00:00",
         "command": [
           "systemctl",
           "show",
@@ -247,32 +247,32 @@
         ],
         "exit_code": 0,
         "stderr": "",
-        "stdout": "MainPID=234947\nExecMainStartTimestampMonotonic=946324380108\nExecStart={ path=/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python ; argv[]=/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python -m autocad_gateway ; ignore_errors=no ; start_time=[Sun 2026-08-02 19:33:14 +07] ; stop_time=[n/a] ; pid=234947 ; code=(null) ; status=0/0 }\nWorkingDirectory=/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway\nId=autocad-mcp-phase4.service\nActiveState=active\nSubState=running\n"
+        "stdout": "MainPID=237530\nExecMainStartTimestampMonotonic=948417347129\nExecStart={ path=/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python ; argv[]=/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python -m autocad_gateway ; ignore_errors=no ; start_time=[Sun 2026-08-02 20:08:07 +07] ; stop_time=[n/a] ; pid=237530 ; code=(null) ; status=0/0 }\nWorkingDirectory=/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway\nId=autocad-mcp-phase4.service\nActiveState=active\nSubState=running\n"
       },
       {
-        "captured_at": "2026-08-02T12:53:06.482540+00:00",
+        "captured_at": "2026-08-02T13:15:29.876410+00:00",
         "command": [
           "readlink",
           "-f",
-          "/proc/234947/exe"
+          "/proc/237530/exe"
         ],
         "exit_code": 0,
         "stderr": "",
         "stdout": "/usr/bin/python3.12\n"
       },
       {
-        "captured_at": "2026-08-02T12:53:06.484319+00:00",
+        "captured_at": "2026-08-02T13:15:29.878369+00:00",
         "command": [
           "readlink",
           "-f",
-          "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway/.venv/bin/python"
+          "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway/.venv/bin/python"
         ],
         "exit_code": 0,
         "stderr": "",
         "stdout": "/usr/bin/python3.12\n"
       },
       {
-        "captured_at": "2026-08-02T12:53:06.515707+00:00",
+        "captured_at": "2026-08-02T13:15:29.912018+00:00",
         "command": [
           "sha256sum",
           "/usr/bin/python3.12"
@@ -282,115 +282,115 @@
         "stdout": "1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118  /usr/bin/python3.12\n"
       },
       {
-        "captured_at": "2026-08-02T12:53:06.520352+00:00",
+        "captured_at": "2026-08-02T13:15:29.916286+00:00",
         "command": [
           "git",
           "-C",
-          "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway",
+          "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway",
           "rev-parse",
           "HEAD"
         ],
         "exit_code": 0,
         "stderr": "",
-        "stdout": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c\n"
+        "stdout": "2df995f24580d44933472e0c41591ab3be36a84b\n"
       },
       {
-        "captured_at": "2026-08-02T12:53:06.525385+00:00",
+        "captured_at": "2026-08-02T13:15:29.921212+00:00",
         "command": [
           "awk",
           "{print $22}",
-          "/proc/234947/stat"
+          "/proc/237530/stat"
         ],
         "exit_code": 0,
         "stderr": "",
-        "stdout": "94632437\n"
+        "stdout": "94841734\n"
       }
     ],
     "operator": "haing.nguyen",
     "schema_version": "cad.phase10-live-identity/1",
     "service": "autocad-mcp-phase4.service"
   },
-  "implementation_commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c",
+  "implementation_commit": "2df995f24580d44933472e0c41591ab3be36a84b",
   "limitations": [],
   "no_cad_effect_attempted": true,
   "no_effect_db_binding": {
-    "active_agent_session_id": "session-566cc918-856a-4a3c-aa63-9b938e4eeb65",
+    "active_agent_session_id": "session-db8fb53e-0a02-4654-b537-66a07daa6800",
     "agent_sessions": [
       {
-        "connected_at": "2026-08-02T12:53:15.664696+00:00",
+        "connected_at": "2026-08-02T13:15:39.480965+00:00",
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "disconnected_at": null,
-        "session_id": "session-566cc918-856a-4a3c-aa63-9b938e4eeb65"
+        "session_id": "session-db8fb53e-0a02-4654-b537-66a07daa6800"
       },
       {
-        "connected_at": "2026-08-02T12:33:22.749769+00:00",
+        "connected_at": "2026-08-02T13:08:15.551961+00:00",
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
-        "disconnected_at": "2026-08-02T12:53:07.137254+00:00",
-        "session_id": "session-dc0d2879-2172-4e7b-b594-0c78d77bbd9d"
+        "disconnected_at": "2026-08-02T13:15:30.974531+00:00",
+        "session_id": "session-b5a5ec26-f94a-413a-a72b-55a09035f387"
       }
     ],
     "anchor_jobs": [
       {
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "effect_class": "read",
-        "job_id": "job-01c86915-da44-4c53-80d5-701d77c1e8be",
+        "job_id": "job-2b533e47-e10d-4840-ac95-ee47587118d6",
         "state": "succeeded"
       },
       {
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "effect_class": "read",
-        "job_id": "job-2810d48d-13bf-4885-9fb4-45306be17493",
+        "job_id": "job-68ad4c7d-e321-49ce-8c1a-11f262335c6c",
         "state": "succeeded"
       },
       {
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "effect_class": "read",
-        "job_id": "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
+        "job_id": "job-9c0a45cf-2b53-4fb9-a9f6-a32fd28b2d81",
         "state": "succeeded"
       },
       {
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "effect_class": "read",
-        "job_id": "job-4d766a02-fa07-40b6-b592-8ca1c34395bf",
+        "job_id": "job-b8234668-1c57-4765-b1ad-4051893cacb5",
         "state": "succeeded"
       },
       {
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "effect_class": "read",
-        "job_id": "job-5ba9d2c3-2474-444c-bf43-ae25018a2a6d",
+        "job_id": "job-dbd40a37-0b9e-43ab-9a1e-ad8bff133db7",
         "state": "succeeded"
       },
       {
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "effect_class": "read",
-        "job_id": "job-6a1b2042-a980-48cb-bafd-2be6c482a14b",
+        "job_id": "job-ea1fefa6-28ee-40ef-b94b-fde72aca90e1",
         "state": "succeeded"
       }
     ],
-    "artifact": "tmp\\phase10-live-c8206de\\db-post.json",
-    "artifact_sha256": "sha256:b736529551bdb667f8d5843d21f159a38541cba359b2727f9a64503d42609750",
+    "artifact": "tmp\\phase10-live-2df995f\\db-post.json",
+    "artifact_sha256": "sha256:9387aa485b558d08a19fdc040f8ca551e224c5b0fce1ff6a44a102a8ed303213",
     "post_restart_write_snapshot_sha256": "sha256:b96e295cbe6ac5d1ed4d326aa4e6e8c7e7e598df6ddc2e50e42eae5d76cdd342",
     "pre_restart_write_snapshot_sha256": "sha256:b96e295cbe6ac5d1ed4d326aa4e6e8c7e7e598df6ddc2e50e42eae5d76cdd342",
     "retrospective_no_write_events": [],
     "schema_version": "cad.phase10-live-db-evidence/1",
     "scope": {
       "anchor_job_ids": [
-        "job-5ba9d2c3-2474-444c-bf43-ae25018a2a6d",
-        "job-2810d48d-13bf-4885-9fb4-45306be17493",
-        "job-4d766a02-fa07-40b6-b592-8ca1c34395bf",
-        "job-6a1b2042-a980-48cb-bafd-2be6c482a14b",
-        "job-3bd52aee-752e-40f0-8f37-0b5dd0817236",
-        "job-01c86915-da44-4c53-80d5-701d77c1e8be"
+        "job-b8234668-1c57-4765-b1ad-4051893cacb5",
+        "job-ea1fefa6-28ee-40ef-b94b-fde72aca90e1",
+        "job-dbd40a37-0b9e-43ab-9a1e-ad8bff133db7",
+        "job-68ad4c7d-e321-49ce-8c1a-11f262335c6c",
+        "job-2b533e47-e10d-4840-ac95-ee47587118d6",
+        "job-9c0a45cf-2b53-4fb9-a9f6-a32fd28b2d81"
       ],
       "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
       "owner_subject": "user-3b507baea6adb49989a040871b1903918eb60701b91be8e3a6c6166fce6a9bea",
       "scene_ids": [
-        "scn_c54796dfd14646d28a61fe7aead24f90",
-        "scn_7a2ef2709a9046efb4b6077a04d804b1",
-        "scn_fc67788588cf431abdc0276303da01fc"
+        "scn_8a7a2b9b38d7494098caf0de4cde6b32",
+        "scn_1a3f8569f90544259f62efb9debcfdf5",
+        "scn_fafb081e255e40248030690e0a2f13a6"
       ],
-      "window_end": "2026-08-02T19:52:35+07:00",
-      "window_start": "2026-08-02T19:47:00+07:00"
+      "window_end": "2026-08-02T20:14:50+07:00",
+      "window_start": "2026-08-02T20:09:00+07:00"
     }
   },
   "no_write_events_in_window": true,
@@ -399,7 +399,7 @@
   "operator": "haing.nguyen",
   "post_restart_devices": {
     "contract_version": "cad.mcp/1.2",
-    "correlation_id": "b52ec1f3-c746-474a-ba93-ba7dddf85629",
+    "correlation_id": "31ab08e3-ce15-48a6-ad55-786927983e37",
     "default_device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
     "devices": [
       {
@@ -419,7 +419,7 @@
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "display_name": "Device A - m\u00e1y th\u1eadt",
         "document_name": "phase10-drawing-c.dwg",
-        "last_seen_at": "2026-08-02T12:53:56.785798+00:00",
+        "last_seen_at": "2026-08-02T13:16:21.151477+00:00",
         "package_summary": [
           {
             "package_id": "autocad.lisp.drawing_info",
@@ -454,92 +454,92 @@
         "arguments": {
           "online_only": true
         },
-        "completed_at": "2026-08-02T12:54:42.614405+00:00",
+        "completed_at": "2026-08-02T13:17:04.718926+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:54:41.641333+00:00",
+        "started_at": "2026-08-02T13:17:03.768090+00:00",
         "tool": "cad_list_devices"
       },
       {
         "arguments": {
           "limit": 200,
-          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
           "section": "nodes"
         },
-        "completed_at": "2026-08-02T12:54:43.071197+00:00",
+        "completed_at": "2026-08-02T13:17:05.126890+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:54:42.614416+00:00",
+        "started_at": "2026-08-02T13:17:04.718938+00:00",
         "tool": "cad_query_scene"
       },
       {
         "arguments": {
           "limit": 200,
-          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
           "section": "relations"
         },
-        "completed_at": "2026-08-02T12:54:43.571885+00:00",
+        "completed_at": "2026-08-02T13:17:05.568399+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:54:43.071207+00:00",
+        "started_at": "2026-08-02T13:17:05.126899+00:00",
         "tool": "cad_query_scene"
       },
       {
         "arguments": {
           "limit": 200,
-          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
           "section": "contours"
         },
-        "completed_at": "2026-08-02T12:54:43.958575+00:00",
+        "completed_at": "2026-08-02T13:17:05.972690+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:54:43.571894+00:00",
+        "started_at": "2026-08-02T13:17:05.568408+00:00",
         "tool": "cad_query_scene"
       },
       {
         "arguments": {
           "limit": 200,
-          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
           "section": "features"
         },
-        "completed_at": "2026-08-02T12:54:44.347516+00:00",
+        "completed_at": "2026-08-02T13:17:06.424967+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:54:43.958584+00:00",
+        "started_at": "2026-08-02T13:17:05.972702+00:00",
         "tool": "cad_query_scene"
       },
       {
         "arguments": {
           "limit": 200,
-          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
           "section": "issues"
         },
-        "completed_at": "2026-08-02T12:54:44.756961+00:00",
+        "completed_at": "2026-08-02T13:17:06.811494+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:54:44.347528+00:00",
+        "started_at": "2026-08-02T13:17:06.424976+00:00",
         "tool": "cad_query_scene"
       },
       {
         "arguments": {
           "limit": 200,
-          "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+          "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
           "section": "evidence"
         },
-        "completed_at": "2026-08-02T12:54:45.390667+00:00",
+        "completed_at": "2026-08-02T13:17:07.433070+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:54:44.756972+00:00",
+        "started_at": "2026-08-02T13:17:06.811504+00:00",
         "tool": "cad_query_scene"
       },
       {
         "arguments": {
-          "uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
+          "uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/summary"
         },
-        "completed_at": "2026-08-02T12:54:45.601434+00:00",
+        "completed_at": "2026-08-02T13:17:07.643016+00:00",
         "job_id": null,
         "outcome": "succeeded",
-        "started_at": "2026-08-02T12:54:45.390681+00:00",
+        "started_at": "2026-08-02T13:17:07.433081+00:00",
         "tool": "read_resource"
       }
     ],
@@ -548,7 +548,7 @@
   "post_restart_sections": {
     "contours": {
       "contract_version": "cad.mcp/1.6",
-      "correlation_id": "feab4068-96fb-4d99-bea5-96f3489646a5",
+      "correlation_id": "c8913fc8-77f4-4b16-a2b7-0c9bb4e5cf49",
       "items": [
         {
           "algorithm_version": "scene-contours/2",
@@ -600,15 +600,15 @@
         }
       ],
       "next_cursor": null,
-      "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
-      "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-      "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+      "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/contours",
+      "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+      "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
       "section": "contours",
       "total": 2
     },
     "evidence": {
       "contract_version": "cad.mcp/1.6",
-      "correlation_id": "942c9ee2-e790-478c-94e3-9e9303eec365",
+      "correlation_id": "2ffd4b49-61fb-48ea-90f5-1b1df88bb3fb",
       "items": [
         {
           "algorithm_version": "cad.entity-projection/2",
@@ -1734,15 +1734,15 @@
         }
       ],
       "next_cursor": null,
-      "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
-      "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-      "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+      "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/evidence",
+      "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+      "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
       "section": "evidence",
       "total": 62
     },
     "features": {
       "contract_version": "cad.mcp/1.6",
-      "correlation_id": "19bfc33c-085d-42b0-8ea0-25386af71d0d",
+      "correlation_id": "8d3c53cc-84e5-4740-9ee2-45571e7bfe7b",
       "items": [
         {
           "algorithm_version": "scene-features/2",
@@ -1798,15 +1798,15 @@
         }
       ],
       "next_cursor": null,
-      "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
-      "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-      "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+      "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/features",
+      "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+      "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
       "section": "features",
       "total": 3
     },
     "issues": {
       "contract_version": "cad.mcp/1.6",
-      "correlation_id": "028c2b70-0c61-4ffe-a452-4326a171f234",
+      "correlation_id": "5b7d1ad3-cdda-40dc-916b-65e4abae5058",
       "items": [
         {
           "code": "open_contour",
@@ -1900,15 +1900,15 @@
         }
       ],
       "next_cursor": null,
-      "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
-      "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-      "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+      "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/issues",
+      "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+      "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
       "section": "issues",
       "total": 5
     },
     "nodes": {
       "contract_version": "cad.mcp/1.6",
-      "correlation_id": "70256d3f-70ab-423c-8635-d283bb2bf44e",
+      "correlation_id": "10d3da20-07a9-40a1-afc2-cfe2da8a2915",
       "items": [
         {
           "bounds": {
@@ -2225,15 +2225,15 @@
         }
       ],
       "next_cursor": null,
-      "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
-      "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-      "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+      "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/nodes",
+      "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+      "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
       "section": "nodes",
       "total": 8
     },
     "relations": {
       "contract_version": "cad.mcp/1.6",
-      "correlation_id": "5e625794-f873-44c5-89cf-c67136ad9c8e",
+      "correlation_id": "2e7ba428-e573-473e-bf71-405f82b33aff",
       "items": [
         {
           "algorithm_version": "scene-relations/2",
@@ -3103,9 +3103,9 @@
         }
       ],
       "next_cursor": null,
-      "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
-      "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-      "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+      "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/relations",
+      "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+      "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
       "section": "relations",
       "total": 44
     }
@@ -3133,25 +3133,25 @@
     },
     "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
     "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-    "document_revision": "7146832559659708",
+    "document_revision": "8194682508785554",
     "engine_version": "scene-engine/1.0.1",
     "profile_id": "mechanical-2d/1",
     "projection_version": "cad.entity-projection/2",
     "resource_uris": {
-      "contours": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
-      "evidence": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
-      "features": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
-      "issues": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
-      "nodes": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
-      "relations": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
-      "summary": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
+      "contours": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/contours",
+      "evidence": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/evidence",
+      "features": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/features",
+      "issues": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/issues",
+      "nodes": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/nodes",
+      "relations": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/relations",
+      "summary": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/summary"
     },
-    "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-    "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+    "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+    "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
     "schema_version": "cad.scene/1",
-    "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
+    "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
     "source_snapshot_available": true,
-    "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+    "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
     "space": "model",
     "tolerance_profile": {
       "absolute_floor": 1e-06,
@@ -3173,9 +3173,9 @@
   "runtime_identity_after": {
     "agent_session": {
       "active_document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-      "active_document_revision": "7146832559659708",
+      "active_document_revision": "8194682508785554",
       "agent_version": "0.1.0",
-      "connected_at": "2026-08-02T12:53:15.664696+00:00",
+      "connected_at": "2026-08-02T13:15:39.480965+00:00",
       "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
       "disconnected_at": null,
       "managed_host": {
@@ -3185,12 +3185,12 @@
         "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
         "package_id": "autocad.managed_host.r25",
         "package_version": "0.8.0",
-        "process_id": 12276,
+        "process_id": 19636,
         "runtime_id": "managed_dotnet",
-        "started_at": "2026-08-02T12:51:34.4107290+00:00"
+        "started_at": "2026-08-02T13:13:53.1185666+00:00"
       },
       "protocol_version": "cad.agent/2",
-      "session_id": "session-566cc918-856a-4a3c-aa63-9b938e4eeb65"
+      "session_id": "session-db8fb53e-0a02-4654-b537-66a07daa6800"
     },
     "autocad_process": {
       "edition": "Mechanical 2025",
@@ -3198,13 +3198,13 @@
       "executable_sha256": "sha256:e62b7e89fc8fe79dc9976bf7e597424117b996001559ce0aa1fdc5b96137028f",
       "file_version": "31.0.58.0",
       "host_family": "R25",
-      "process_id": 12276,
+      "process_id": 19636,
       "product": "AutoCAD",
       "release_year": 2025,
       "series": "R25.0",
-      "started_at": "2026-08-02T12:51:17.102000+00:00"
+      "started_at": "2026-08-02T13:13:35.464000+00:00"
     },
-    "captured_at": "2026-08-02T12:54:29.653375+00:00",
+    "captured_at": "2026-08-02T13:16:41.678401+00:00",
     "desktop_agent_process": {
       "executable": "D:\\AI\\autocad-mcp\\dist\\phase10-agent-4faecc8\\app\\KythuatvangAutoCADAgent.exe",
       "executable_sha256": "sha256:8ff40bb428eb2a6c77091fc5333060e45671c8e77cc4925bbb86a7213684ffa4",
@@ -3215,10 +3215,10 @@
     "gateway_process": {
       "executable": "/usr/bin/python3.12",
       "executable_sha256": "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
-      "process_id": 236159,
-      "release_commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c",
+      "process_id": 238635,
+      "release_commit": "2df995f24580d44933472e0c41591ab3be36a84b",
       "service": "autocad-mcp-phase4.service",
-      "working_directory": "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway"
+      "working_directory": "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway"
     },
     "operator": "haing.nguyen",
     "schema_version": "cad.phase10-live-runtime-identity/1"
@@ -3226,9 +3226,9 @@
   "runtime_identity_before": {
     "agent_session": {
       "active_document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-      "active_document_revision": "7146832559659708",
+      "active_document_revision": "8194682508785554",
       "agent_version": "0.1.0",
-      "connected_at": "2026-08-02T12:33:22.749769+00:00",
+      "connected_at": "2026-08-02T13:08:15.551961+00:00",
       "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
       "disconnected_at": null,
       "managed_host": {
@@ -3238,12 +3238,12 @@
         "package_hash": "sha256:8b52bd23bc4e3c67ac3cd8ebdf7a16e50d048278ebd9eed8d936fb44aaea9e4b",
         "package_id": "autocad.managed_host.r25",
         "package_version": "0.8.0",
-        "process_id": 12276,
+        "process_id": 19636,
         "runtime_id": "managed_dotnet",
-        "started_at": "2026-08-02T12:51:34.4107290+00:00"
+        "started_at": "2026-08-02T13:13:53.1185666+00:00"
       },
       "protocol_version": "cad.agent/2",
-      "session_id": "session-dc0d2879-2172-4e7b-b594-0c78d77bbd9d"
+      "session_id": "session-b5a5ec26-f94a-413a-a72b-55a09035f387"
     },
     "autocad_process": {
       "edition": "Mechanical 2025",
@@ -3251,13 +3251,13 @@
       "executable_sha256": "sha256:e62b7e89fc8fe79dc9976bf7e597424117b996001559ce0aa1fdc5b96137028f",
       "file_version": "31.0.58.0",
       "host_family": "R25",
-      "process_id": 12276,
+      "process_id": 19636,
       "product": "AutoCAD",
       "release_year": 2025,
       "series": "R25.0",
-      "started_at": "2026-08-02T12:51:17.102000+00:00"
+      "started_at": "2026-08-02T13:13:35.464000+00:00"
     },
-    "captured_at": "2026-08-02T12:52:20.574062+00:00",
+    "captured_at": "2026-08-02T13:14:36.697502+00:00",
     "desktop_agent_process": {
       "executable": "D:\\AI\\autocad-mcp\\dist\\phase10-agent-4faecc8\\app\\KythuatvangAutoCADAgent.exe",
       "executable_sha256": "sha256:8ff40bb428eb2a6c77091fc5333060e45671c8e77cc4925bbb86a7213684ffa4",
@@ -3268,10 +3268,10 @@
     "gateway_process": {
       "executable": "/usr/bin/python3.12",
       "executable_sha256": "sha256:1643dacd9feaedc58f3cc581e4d22577dfe25c09b10282936186ccf0f2e61118",
-      "process_id": 234947,
-      "release_commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c",
+      "process_id": 237530,
+      "release_commit": "2df995f24580d44933472e0c41591ab3be36a84b",
       "service": "autocad-mcp-phase4.service",
-      "working_directory": "/opt/autocad-mcp/releases/20260802T1932-phase10-pr14-c8206de/services/gateway"
+      "working_directory": "/opt/autocad-mcp/releases/20260802T2010-phase10-pr14-2df995f/services/gateway"
     },
     "operator": "haing.nguyen",
     "schema_version": "cad.phase10-live-runtime-identity/1"
@@ -3300,7 +3300,7 @@
     },
     "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
     "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-    "document_revision": "7146832559659708",
+    "document_revision": "8194682508785554",
     "engine_version": "scene-engine/1.0.1",
     "evidence_strengths": [
       "bounded_heuristic",
@@ -3332,7 +3332,7 @@
     ],
     "repeat_build": {
       "contract_version": "cad.mcp/1.6",
-      "correlation_id": "a3b9c339-2b97-4477-9882-ab6b200f01a5",
+      "correlation_id": "70bbe01c-a8c8-4079-b4c0-717c2b477680",
       "reused": true,
       "scene": {
         "capabilities": [
@@ -3357,25 +3357,25 @@
         },
         "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
         "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-        "document_revision": "7146832559659708",
+        "document_revision": "8194682508785554",
         "engine_version": "scene-engine/1.0.1",
         "profile_id": "mechanical-2d/1",
         "projection_version": "cad.entity-projection/2",
         "resource_uris": {
-          "contours": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
-          "evidence": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
-          "features": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
-          "issues": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
-          "nodes": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
-          "relations": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
-          "summary": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
+          "contours": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/contours",
+          "evidence": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/evidence",
+          "features": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/features",
+          "issues": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/issues",
+          "nodes": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/nodes",
+          "relations": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/relations",
+          "summary": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/summary"
         },
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "schema_version": "cad.scene/1",
-        "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
+        "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
         "source_snapshot_available": true,
-        "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+        "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
         "space": "model",
         "tolerance_profile": {
           "absolute_floor": 1e-06,
@@ -3393,21 +3393,21 @@
       }
     },
     "resource_uris": {
-      "contours": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
-      "evidence": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
-      "features": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
-      "issues": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
-      "nodes": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
-      "relations": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
-      "summary": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
+      "contours": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/contours",
+      "evidence": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/evidence",
+      "features": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/features",
+      "issues": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/issues",
+      "nodes": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/nodes",
+      "relations": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/relations",
+      "summary": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/summary"
     },
-    "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-    "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+    "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+    "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
     "schema_version": "cad.scene/1",
     "sections": {
       "contours": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "3be36b01-192a-47de-8a66-b8b938589041",
+        "correlation_id": "38687f29-d278-4e8e-9e74-85c28d8e7c8a",
         "items": [
           {
             "algorithm_version": "scene-contours/2",
@@ -3459,15 +3459,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/contours",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "section": "contours",
         "total": 2
       },
       "evidence": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "04cb90a7-6dd7-4419-90db-18ecd858afe5",
+        "correlation_id": "14678be5-cc6a-4d48-98b3-ffafa795e08d",
         "items": [
           {
             "algorithm_version": "cad.entity-projection/2",
@@ -4593,15 +4593,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/evidence",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "section": "evidence",
         "total": 62
       },
       "features": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "29abdd66-c704-4d66-87cc-f01a36f3499f",
+        "correlation_id": "723e710a-039b-4bb4-a04b-f5b5976fd004",
         "items": [
           {
             "algorithm_version": "scene-features/2",
@@ -4657,15 +4657,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/features",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "section": "features",
         "total": 3
       },
       "issues": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "67d53666-367b-4f2d-80f8-aa99e26c974d",
+        "correlation_id": "a003005e-6c8a-4a5a-bd73-58062c90aa89",
         "items": [
           {
             "code": "open_contour",
@@ -4759,15 +4759,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/issues",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "section": "issues",
         "total": 5
       },
       "nodes": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "d3fe0b79-c071-4e70-9459-1ef4e8ee5624",
+        "correlation_id": "6dbf8e6d-23dc-4199-9b0d-e906794f3285",
         "items": [
           {
             "bounds": {
@@ -5084,15 +5084,15 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/nodes",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "section": "nodes",
         "total": 8
       },
       "relations": {
         "contract_version": "cad.mcp/1.6",
-        "correlation_id": "f65e6914-4b5e-471a-bc1a-d6f709783e78",
+        "correlation_id": "07ad09bf-4a9a-4216-9db1-141ef3f8cde0",
         "items": [
           {
             "algorithm_version": "scene-relations/2",
@@ -5962,9 +5962,9 @@
           }
         ],
         "next_cursor": null,
-        "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
-        "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-        "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+        "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/relations",
+        "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+        "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
         "section": "relations",
         "total": 44
       }
@@ -5974,9 +5974,9 @@
       "entity.geometry.line/1",
       "entity.geometry.polyline/1"
     ],
-    "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
+    "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
     "source_snapshot_available": true,
-    "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+    "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
     "space": "model",
     "summary_resource": {
       "capabilities": [
@@ -6001,25 +6001,25 @@
       },
       "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
       "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-      "document_revision": "7146832559659708",
+      "document_revision": "8194682508785554",
       "engine_version": "scene-engine/1.0.1",
       "profile_id": "mechanical-2d/1",
       "projection_version": "cad.entity-projection/2",
       "resource_uris": {
-        "contours": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
-        "evidence": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
-        "features": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
-        "issues": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
-        "nodes": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
-        "relations": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
-        "summary": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
+        "contours": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/contours",
+        "evidence": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/evidence",
+        "features": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/features",
+        "issues": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/issues",
+        "nodes": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/nodes",
+        "relations": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/relations",
+        "summary": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/summary"
       },
-      "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-      "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+      "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+      "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
       "schema_version": "cad.scene/1",
-      "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
+      "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
       "source_snapshot_available": true,
-      "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+      "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
       "space": "model",
       "tolerance_profile": {
         "absolute_floor": 1e-06,
@@ -6049,10 +6049,10 @@
     "truncation_reasons": [],
     "warnings": []
   },
-  "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-  "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+  "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+  "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
   "schema_version": "cad.phase10-live-gateway-restart/1",
-  "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
+  "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
   "standalone_desktop_agent": true,
   "status": "PASS",
   "write_requested": false,

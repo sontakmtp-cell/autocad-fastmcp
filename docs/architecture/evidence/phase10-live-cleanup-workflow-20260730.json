@@ -1,8 +1,8 @@
 {
   "baseline_commit": "d1e84711841b4b262fc5563cb768904b8eefd811",
   "cad_effect_attempted": false,
-  "capture_command": "python scripts/phase10-live-cleanup-evidence.py --endpoint https://cad.kythuatvang.com/mcp --device-id device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476 --token-file <redacted> --fixture-evidence tmp\\phase10-live-c8206de\\drawing-c-final.json --output tmp\\phase10-live-c8206de\\cleanup-final.json --operator haing.nguyen",
-  "captured_at": "2026-08-02T12:55:55.964937+00:00",
+  "capture_command": "python scripts/phase10-live-cleanup-evidence.py --endpoint https://cad.kythuatvang.com/mcp --device-id device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476 --token-file <redacted> --fixture-evidence tmp\\phase10-live-2df995f\\drawing-c-final.json --output tmp\\phase10-live-2df995f\\cleanup-final.json --operator haing.nguyen",
+  "captured_at": "2026-08-02T13:18:11.431379+00:00",
   "completed": {
     "current_step_id": null,
     "pins": {
@@ -24,14 +24,14 @@
     },
     "replayed": false,
     "required_next_action": null,
-    "resource_uri": "cad://workflows/wfr:1869db2970a64d7e9045e5e17ae316ce",
-    "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+    "resource_uri": "cad://workflows/wfr:07866efa1296455bbf3d4b8390fcaee3",
+    "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
     "state": "succeeded",
     "state_version": 4
   },
   "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
   "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-  "document_revision": "7146832559659708",
+  "document_revision": "8194682508785554",
   "failures_retests": [
     {
       "failure": "The first live start was rejected with capability_missing because Gateway analysis capability scene.core/1 was evaluated as an Agent capability (correlation_id=d5700151-3865-40f6-9abd-bd6921d5b1fc).",
@@ -46,553 +46,553 @@
     "current_wait": null,
     "events": [
       {
-        "created_at": "2026-08-02T12:55:19.181463+00:00",
-        "event_id": "wfe-3bd30aad-17cb-4aa4-8baf-af7f02e25811",
+        "created_at": "2026-08-02T13:17:34.567893+00:00",
+        "event_id": "wfe-ad52bb4b-2ee0-4f89-8302-88b617852a78",
         "event_type": "created",
         "payload": {
           "state": "created"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 1
       },
       {
-        "created_at": "2026-08-02T12:55:19.181720+00:00",
-        "event_id": "wfe-e93d9410-019c-49f3-8717-d4674ff881e3",
+        "created_at": "2026-08-02T13:17:34.568302+00:00",
+        "event_id": "wfe-b8b85fe9-25ba-4ff4-a44e-91ab88cfabd0",
         "event_type": "step_created",
         "payload": {
           "attempt": 1,
           "step_id": "build_scene"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 2
       },
       {
-        "created_at": "2026-08-02T12:55:19.181837+00:00",
-        "event_id": "wfe-d48529fb-acd9-4589-97ab-dc97a1d18221",
+        "created_at": "2026-08-02T13:17:34.568448+00:00",
+        "event_id": "wfe-12721e33-a5b8-457a-8c6a-d7c8f3c2e1d0",
         "event_type": "step_created",
         "payload": {
           "attempt": 1,
           "step_id": "query_scene"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 3
       },
       {
-        "created_at": "2026-08-02T12:55:19.181963+00:00",
-        "event_id": "wfe-2384351a-e7c1-4a6e-a490-07e37b9ccbc2",
+        "created_at": "2026-08-02T13:17:34.568610+00:00",
+        "event_id": "wfe-112e2126-9559-4355-bc58-7a50b61c31b1",
         "event_type": "step_created",
         "payload": {
           "attempt": 1,
           "step_id": "validate_scene"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 4
       },
       {
-        "created_at": "2026-08-02T12:55:19.182066+00:00",
-        "event_id": "wfe-770cd2ee-4a19-41ef-a9f3-71d47221eeff",
+        "created_at": "2026-08-02T13:17:34.568733+00:00",
+        "event_id": "wfe-29dd387e-4325-47f5-8aa5-2e2a26e7e516",
         "event_type": "step_created",
         "payload": {
           "attempt": 1,
           "step_id": "report"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 5
       },
       {
-        "created_at": "2026-08-02T12:55:19.182178+00:00",
-        "event_id": "wfe-0143cd3a-bd92-41e5-853f-31551b9e5a67",
+        "created_at": "2026-08-02T13:17:34.568848+00:00",
+        "event_id": "wfe-92b0e56f-6806-42f0-b863-74a6b7d6547a",
         "event_type": "step_created",
         "payload": {
           "attempt": 1,
           "step_id": "review"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 6
       },
       {
-        "created_at": "2026-08-02T12:55:19.182302+00:00",
-        "event_id": "wfe-1f0f1385-b1d1-4f7a-bfde-4c582927f0eb",
+        "created_at": "2026-08-02T13:17:34.568989+00:00",
+        "event_id": "wfe-4a27f337-9064-4d7e-af3b-aa1019fce872",
         "event_type": "step_created",
         "payload": {
           "attempt": 1,
           "step_id": "finish"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 7
       },
       {
-        "created_at": "2026-08-02T12:55:19.182473+00:00",
-        "event_id": "wfe-6a012418-9222-4c7c-b284-038d9db970bc",
+        "created_at": "2026-08-02T13:17:34.569239+00:00",
+        "event_id": "wfe-3b72fc00-7f59-4ebf-88da-3bfeed3dbe6e",
         "event_type": "step_state",
         "payload": {
           "from": "pending",
           "step_id": "build_scene",
           "to": "ready"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 8
       },
       {
-        "created_at": "2026-08-02T12:55:19.183006+00:00",
-        "event_id": "wfe-43579529-acce-4c11-9eb6-157f1c815465",
+        "created_at": "2026-08-02T13:17:34.569686+00:00",
+        "event_id": "wfe-5a8a6acf-4e61-4f33-9dbb-8ce5507f9985",
         "event_type": "started",
         "payload": {
           "from": "created",
           "state_version": 1,
           "to": "running"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 9
       },
       {
-        "created_at": "2026-08-02T12:55:19.220713+00:00",
-        "event_id": "wfe-b8cfcb76-ac49-45d9-b553-57c83c344848",
+        "created_at": "2026-08-02T13:17:34.606709+00:00",
+        "event_id": "wfe-8d85c43b-09a6-48c8-a239-aa05b446dccb",
         "event_type": "action_inserted",
         "payload": {
-          "action_id": "wfa:wfr:1869db2970a64d7e9045e5e17ae316ce:build_scene:1:build_scene",
+          "action_id": "wfa:wfr:07866efa1296455bbf3d4b8390fcaee3:build_scene:1:build_scene",
           "step_id": "build_scene"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 10
       },
       {
-        "created_at": "2026-08-02T12:55:19.227202+00:00",
-        "event_id": "wfe-1ae78a2f-3a0e-4b4f-92df-204dc925350d",
+        "created_at": "2026-08-02T13:17:34.616518+00:00",
+        "event_id": "wfe-5fd4e15d-b7e6-4521-afc5-4f2072e81f4d",
         "event_type": "action_claimed",
         "payload": {
-          "action_id": "wfa:wfr:1869db2970a64d7e9045e5e17ae316ce:build_scene:1:build_scene"
+          "action_id": "wfa:wfr:07866efa1296455bbf3d4b8390fcaee3:build_scene:1:build_scene"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 11
       },
       {
-        "created_at": "2026-08-02T12:55:19.233551+00:00",
-        "event_id": "wfe-84e17aac-9f01-4a7c-87f5-d4b68d788a4a",
+        "created_at": "2026-08-02T13:17:34.623229+00:00",
+        "event_id": "wfe-6a102043-cb4c-400d-8c62-78e03f99f514",
         "event_type": "action_dispatch_started",
         "payload": {
-          "action_id": "wfa:wfr:1869db2970a64d7e9045e5e17ae316ce:build_scene:1:build_scene"
+          "action_id": "wfa:wfr:07866efa1296455bbf3d4b8390fcaee3:build_scene:1:build_scene"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 12
       },
       {
-        "created_at": "2026-08-02T12:55:19.295546+00:00",
-        "event_id": "wfe-c1ac2a15-4a78-4d1c-9678-8e4dcf70bc60",
+        "created_at": "2026-08-02T13:17:34.686335+00:00",
+        "event_id": "wfe-33c6adef-a55d-41de-bc03-9df9145b6f22",
         "event_type": "action_completed",
         "payload": {
-          "action_id": "wfa:wfr:1869db2970a64d7e9045e5e17ae316ce:build_scene:1:build_scene",
+          "action_id": "wfa:wfr:07866efa1296455bbf3d4b8390fcaee3:build_scene:1:build_scene",
           "error_code": null
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 13
       },
       {
-        "created_at": "2026-08-02T12:55:19.303464+00:00",
-        "event_id": "wfe-8e501d14-869b-4e4f-956d-52ff87680886",
+        "created_at": "2026-08-02T13:17:34.694596+00:00",
+        "event_id": "wfe-f99072e5-691d-40a3-87e0-61d53cf8e3a7",
         "event_type": "step_state",
         "payload": {
           "from": "ready",
           "step_id": "build_scene",
           "to": "running"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 14
       },
       {
-        "created_at": "2026-08-02T12:55:19.309370+00:00",
-        "event_id": "wfe-0963c694-08d9-4643-979f-d25d157ed000",
+        "created_at": "2026-08-02T13:17:34.701466+00:00",
+        "event_id": "wfe-1fb0cca1-8efa-4f55-8340-e53ba05a1ef7",
         "event_type": "step_state",
         "payload": {
           "from": "running",
           "step_id": "build_scene",
           "to": "succeeded"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 15
       },
       {
-        "created_at": "2026-08-02T12:55:19.316186+00:00",
-        "event_id": "wfe-ab5a5fd3-1ccf-43d2-9931-db7f83c4df95",
+        "created_at": "2026-08-02T13:17:34.708466+00:00",
+        "event_id": "wfe-ca802733-6f44-4fd8-9fa4-69eba577789e",
         "event_type": "action_inserted",
         "payload": {
-          "action_id": "wfa:wfr:1869db2970a64d7e9045e5e17ae316ce:query_scene:1:query_scene",
+          "action_id": "wfa:wfr:07866efa1296455bbf3d4b8390fcaee3:query_scene:1:query_scene",
           "step_id": "query_scene"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 16
       },
       {
-        "created_at": "2026-08-02T12:55:19.332222+00:00",
-        "event_id": "wfe-7fe19989-4622-4ec2-862f-cab02921dd54",
+        "created_at": "2026-08-02T13:17:34.715932+00:00",
+        "event_id": "wfe-48a1d5e0-397b-4451-8579-2b2a1e4659e2",
         "event_type": "action_claimed",
         "payload": {
-          "action_id": "wfa:wfr:1869db2970a64d7e9045e5e17ae316ce:query_scene:1:query_scene"
+          "action_id": "wfa:wfr:07866efa1296455bbf3d4b8390fcaee3:query_scene:1:query_scene"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 17
       },
       {
-        "created_at": "2026-08-02T12:55:19.343041+00:00",
-        "event_id": "wfe-415bef7f-a65e-43da-b723-9b29f10ab084",
+        "created_at": "2026-08-02T13:17:34.722456+00:00",
+        "event_id": "wfe-8eddaa4c-fbc2-47db-a145-c9cf3090873f",
         "event_type": "action_dispatch_started",
         "payload": {
-          "action_id": "wfa:wfr:1869db2970a64d7e9045e5e17ae316ce:query_scene:1:query_scene"
+          "action_id": "wfa:wfr:07866efa1296455bbf3d4b8390fcaee3:query_scene:1:query_scene"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 18
       },
       {
-        "created_at": "2026-08-02T12:55:19.353612+00:00",
-        "event_id": "wfe-b5e0ab57-61bc-41c5-b34e-26e0003e9f51",
+        "created_at": "2026-08-02T13:17:34.730972+00:00",
+        "event_id": "wfe-1012cebb-7e30-462b-9c29-85d338fbdd63",
         "event_type": "action_completed",
         "payload": {
-          "action_id": "wfa:wfr:1869db2970a64d7e9045e5e17ae316ce:query_scene:1:query_scene",
+          "action_id": "wfa:wfr:07866efa1296455bbf3d4b8390fcaee3:query_scene:1:query_scene",
           "error_code": null
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 19
       },
       {
-        "created_at": "2026-08-02T12:55:19.362586+00:00",
-        "event_id": "wfe-3dd0afd6-4dd7-438d-80ea-7f4281b5ed38",
+        "created_at": "2026-08-02T13:17:34.738815+00:00",
+        "event_id": "wfe-1193c483-1de9-4023-8ff8-7eec795d2f70",
         "event_type": "step_state",
         "payload": {
           "from": "pending",
           "step_id": "query_scene",
           "to": "ready"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 20
       },
       {
-        "created_at": "2026-08-02T12:55:19.368962+00:00",
-        "event_id": "wfe-382edc71-2522-4c27-b5c0-63e2e9f589de",
+        "created_at": "2026-08-02T13:17:34.745590+00:00",
+        "event_id": "wfe-e89b3deb-c650-4d08-9e72-d7b25c007e96",
         "event_type": "step_state",
         "payload": {
           "from": "ready",
           "step_id": "query_scene",
           "to": "running"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 21
       },
       {
-        "created_at": "2026-08-02T12:55:19.375207+00:00",
-        "event_id": "wfe-1ac8595f-cb0f-4d23-a054-c14cfa641ddb",
+        "created_at": "2026-08-02T13:17:34.760911+00:00",
+        "event_id": "wfe-f01850da-8aa0-4424-bd7e-94c1d25bc501",
         "event_type": "step_state",
         "payload": {
           "from": "running",
           "step_id": "query_scene",
           "to": "succeeded"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 22
       },
       {
-        "created_at": "2026-08-02T12:55:19.381630+00:00",
-        "event_id": "wfe-c8def7bb-d0f5-4764-a46b-37a255b35ead",
+        "created_at": "2026-08-02T13:17:34.768708+00:00",
+        "event_id": "wfe-2bc26e86-9275-4f49-8ed4-e54f9d30bc1f",
         "event_type": "action_inserted",
         "payload": {
-          "action_id": "wfa:wfr:1869db2970a64d7e9045e5e17ae316ce:validate_scene:1:validate_scene",
+          "action_id": "wfa:wfr:07866efa1296455bbf3d4b8390fcaee3:validate_scene:1:validate_scene",
           "step_id": "validate_scene"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 23
       },
       {
-        "created_at": "2026-08-02T12:55:19.388174+00:00",
-        "event_id": "wfe-9e48241b-1652-4951-9a59-43ed1b354d0f",
+        "created_at": "2026-08-02T13:17:34.775780+00:00",
+        "event_id": "wfe-a71e7c3e-0234-4181-a72e-c1ba141789fc",
         "event_type": "action_claimed",
         "payload": {
-          "action_id": "wfa:wfr:1869db2970a64d7e9045e5e17ae316ce:validate_scene:1:validate_scene"
+          "action_id": "wfa:wfr:07866efa1296455bbf3d4b8390fcaee3:validate_scene:1:validate_scene"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 24
       },
       {
-        "created_at": "2026-08-02T12:55:19.395435+00:00",
-        "event_id": "wfe-ac8b1760-17f7-41e7-84fa-7edb2a6e1e45",
+        "created_at": "2026-08-02T13:17:34.782550+00:00",
+        "event_id": "wfe-f2b2edea-ce13-4b4f-96d4-9074f0eba089",
         "event_type": "action_dispatch_started",
         "payload": {
-          "action_id": "wfa:wfr:1869db2970a64d7e9045e5e17ae316ce:validate_scene:1:validate_scene"
+          "action_id": "wfa:wfr:07866efa1296455bbf3d4b8390fcaee3:validate_scene:1:validate_scene"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 25
       },
       {
-        "created_at": "2026-08-02T12:55:19.402291+00:00",
-        "event_id": "wfe-67e9b564-fb1a-4cd6-a7a2-6edde7de7a44",
+        "created_at": "2026-08-02T13:17:34.789005+00:00",
+        "event_id": "wfe-3563a693-fbc3-4e4b-a0d3-b071b95095e4",
         "event_type": "action_completed",
         "payload": {
-          "action_id": "wfa:wfr:1869db2970a64d7e9045e5e17ae316ce:validate_scene:1:validate_scene",
+          "action_id": "wfa:wfr:07866efa1296455bbf3d4b8390fcaee3:validate_scene:1:validate_scene",
           "error_code": null
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 26
       },
       {
-        "created_at": "2026-08-02T12:55:19.409603+00:00",
-        "event_id": "wfe-667db3d8-b8e6-4e21-8255-22e8f8f365cd",
+        "created_at": "2026-08-02T13:17:34.796963+00:00",
+        "event_id": "wfe-2095bb8b-cd89-4349-9568-c2048b00fa3b",
         "event_type": "step_state",
         "payload": {
           "from": "pending",
           "step_id": "validate_scene",
           "to": "ready"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 27
       },
       {
-        "created_at": "2026-08-02T12:55:19.415675+00:00",
-        "event_id": "wfe-e2aaf4d4-2e37-418f-aff1-1d635a891352",
+        "created_at": "2026-08-02T13:17:34.802752+00:00",
+        "event_id": "wfe-5aef9883-1189-4283-a759-69d290695802",
         "event_type": "step_state",
         "payload": {
           "from": "ready",
           "step_id": "validate_scene",
           "to": "running"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 28
       },
       {
-        "created_at": "2026-08-02T12:55:19.421518+00:00",
-        "event_id": "wfe-4a914ceb-1f6d-4a6d-a0f3-b84c2ea43f58",
+        "created_at": "2026-08-02T13:17:34.808474+00:00",
+        "event_id": "wfe-a6b25815-2e29-4de4-8da7-734dc4ec5fd0",
         "event_type": "step_state",
         "payload": {
           "from": "running",
           "step_id": "validate_scene",
           "to": "succeeded"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 29
       },
       {
-        "created_at": "2026-08-02T12:55:19.429064+00:00",
-        "event_id": "wfe-ea348ca5-195b-486e-9748-3004609af6b9",
+        "created_at": "2026-08-02T13:17:34.814915+00:00",
+        "event_id": "wfe-67e72c4a-e0c8-4a5b-812b-e5a2e96cf819",
         "event_type": "step_state",
         "payload": {
           "from": "pending",
           "step_id": "report",
           "to": "ready"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 30
       },
       {
-        "created_at": "2026-08-02T12:55:19.434071+00:00",
-        "event_id": "wfe-bb75923d-f296-4912-9209-970d6a0b57a4",
+        "created_at": "2026-08-02T13:17:34.821238+00:00",
+        "event_id": "wfe-7d18c1a6-299e-4884-a2b9-e1524f3b8e00",
         "event_type": "step_state",
         "payload": {
           "from": "ready",
           "step_id": "report",
           "to": "running"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 31
       },
       {
-        "created_at": "2026-08-02T12:55:19.439068+00:00",
-        "event_id": "wfe-8167d170-594d-4a29-a002-1e6985a2a6d0",
+        "created_at": "2026-08-02T13:17:34.827548+00:00",
+        "event_id": "wfe-f81c9ab3-442c-4126-8c8f-e926d4a9a131",
         "event_type": "step_state",
         "payload": {
           "from": "running",
           "step_id": "report",
           "to": "succeeded"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 32
       },
       {
-        "created_at": "2026-08-02T12:55:19.445966+00:00",
-        "event_id": "wfe-1c213c66-d5f6-429c-8904-69f7089ee3dd",
+        "created_at": "2026-08-02T13:17:34.834922+00:00",
+        "event_id": "wfe-63fbdb2e-09f7-4edf-8cb2-9f65db8bfb31",
         "event_type": "step_state",
         "payload": {
           "from": "pending",
           "step_id": "review",
           "to": "ready"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 33
       },
       {
-        "created_at": "2026-08-02T12:55:19.451228+00:00",
-        "event_id": "wfe-45d5adb6-89c0-4bfc-b90a-b37f36ff6319",
+        "created_at": "2026-08-02T13:17:34.840891+00:00",
+        "event_id": "wfe-a58dc81c-35f2-477d-a212-1657d87ddbe2",
         "event_type": "step_state",
         "payload": {
           "from": "ready",
           "step_id": "review",
           "to": "running"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 34
       },
       {
-        "created_at": "2026-08-02T12:55:19.456602+00:00",
-        "event_id": "wfe-c4a4e75f-60f0-4964-bbc0-0b8dcf2e5f07",
+        "created_at": "2026-08-02T13:17:34.847735+00:00",
+        "event_id": "wfe-d25314fb-fcd0-4142-aaed-5dc00782e5e2",
         "event_type": "step_state",
         "payload": {
           "from": "running",
           "step_id": "review",
           "to": "waiting"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 35
       },
       {
-        "created_at": "2026-08-02T12:55:19.462417+00:00",
-        "event_id": "wfe-4bf81baa-c056-4fd8-9b03-350a0cdd22f0",
+        "created_at": "2026-08-02T13:17:34.854818+00:00",
+        "event_id": "wfe-ddf46c05-d52a-4926-84d9-e3290a6f7d68",
         "event_type": "scene_cleanup_report_ready",
         "payload": {
           "from": "running",
           "state_version": 2,
           "to": "waiting_for_user"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 36
       },
       {
-        "created_at": "2026-08-02T12:55:19.468977+00:00",
-        "event_id": "wfe-84fe7077-3a7f-4796-8b9d-cc596d75145a",
+        "created_at": "2026-08-02T13:17:34.862258+00:00",
+        "event_id": "wfe-4f52d306-7c42-4893-a7c4-ab5450c726f5",
         "event_type": "wait_created",
         "payload": {
           "expected_state_version": 2,
-          "wait_id": "wfw-f4fb751c-77dc-4d19-a73f-60a389277872"
+          "wait_id": "wfw-c6ace28b-6773-4a07-b48d-6ae851246d11"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 37
       },
       {
-        "created_at": "2026-08-02T12:55:20.396008+00:00",
-        "event_id": "wfe-57507481-3c94-4ff9-b42d-df910c6b063b",
+        "created_at": "2026-08-02T13:17:35.708785+00:00",
+        "event_id": "wfe-1667217f-93a1-4b42-86be-02a599cb4e67",
         "event_type": "control_started",
         "payload": {
           "action": "submit_input",
-          "idempotency_key": "phase10-cleanup-finish-20260802125553"
+          "idempotency_key": "phase10-cleanup-finish-20260802131808"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 38
       },
       {
-        "created_at": "2026-08-02T12:55:20.405634+00:00",
-        "event_id": "wfe-c219a0de-4c81-4685-9007-47741b91c61b",
+        "created_at": "2026-08-02T13:17:35.715977+00:00",
+        "event_id": "wfe-a27c791b-7924-41ee-8cd4-aca2e1f2c719",
         "event_type": "wait_resolved",
         "payload": {
           "state_version": 2,
-          "wait_id": "wfw-f4fb751c-77dc-4d19-a73f-60a389277872"
+          "wait_id": "wfw-c6ace28b-6773-4a07-b48d-6ae851246d11"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 39
       },
       {
-        "created_at": "2026-08-02T12:55:20.411958+00:00",
-        "event_id": "wfe-db8a2e00-7b01-4e1d-af81-8309f9a66610",
+        "created_at": "2026-08-02T13:17:35.722720+00:00",
+        "event_id": "wfe-dffe2ab2-fee2-4e1e-8427-dbb9df8b1fb3",
         "event_type": "step_state",
         "payload": {
           "from": "waiting",
           "step_id": "review",
           "to": "succeeded"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 40
       },
       {
-        "created_at": "2026-08-02T12:55:20.417448+00:00",
-        "event_id": "wfe-02f1a285-fa51-4d8f-b2a8-402a95b7296a",
+        "created_at": "2026-08-02T13:17:35.728938+00:00",
+        "event_id": "wfe-d74ace61-0e1c-4d4d-b483-72b50ef8820b",
         "event_type": "submit_input",
         "payload": {
           "from": "waiting_for_user",
           "state_version": 3,
           "to": "running"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 41
       },
       {
-        "created_at": "2026-08-02T12:55:20.423732+00:00",
-        "event_id": "wfe-9d9b2483-6f5c-41d6-bc86-4b1e77a8cc07",
+        "created_at": "2026-08-02T13:17:35.735567+00:00",
+        "event_id": "wfe-166d577d-6542-4c58-9574-f23d1f725407",
         "event_type": "step_state",
         "payload": {
           "from": "pending",
           "step_id": "finish",
           "to": "ready"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 42
       },
       {
-        "created_at": "2026-08-02T12:55:20.429165+00:00",
-        "event_id": "wfe-f4c1d7cc-d1c4-4641-8729-0408d2c0c80f",
+        "created_at": "2026-08-02T13:17:35.743705+00:00",
+        "event_id": "wfe-981ca99c-b99b-4205-9ecf-08e636288509",
         "event_type": "step_state",
         "payload": {
           "from": "ready",
           "step_id": "finish",
           "to": "running"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 43
       },
       {
-        "created_at": "2026-08-02T12:55:20.434602+00:00",
-        "event_id": "wfe-4a6f9afe-5246-47d5-8ba1-6932a297eebc",
+        "created_at": "2026-08-02T13:17:35.749868+00:00",
+        "event_id": "wfe-03afcc65-6d8a-4e5a-807c-a8b1b1e9157f",
         "event_type": "step_state",
         "payload": {
           "from": "running",
           "step_id": "finish",
           "to": "succeeded"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 44
       },
       {
-        "created_at": "2026-08-02T12:55:20.442427+00:00",
-        "event_id": "wfe-31f0412b-3d86-442c-9252-ee9e445c7b8c",
+        "created_at": "2026-08-02T13:17:35.756939+00:00",
+        "event_id": "wfe-0aef0fb3-f406-43c4-80b5-e34a7f3fbff6",
         "event_type": "completed",
         "payload": {
           "from": "running",
           "state_version": 4,
           "to": "succeeded"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 45
       },
       {
-        "created_at": "2026-08-02T12:55:20.448450+00:00",
-        "event_id": "wfe-aca9735c-6af5-440a-8e92-9a2f3236faa5",
+        "created_at": "2026-08-02T13:17:35.764216+00:00",
+        "event_id": "wfe-30364e33-a04e-4463-a518-689809922a23",
         "event_type": "control_completed",
         "payload": {
           "action": "submit_input",
-          "idempotency_key": "phase10-cleanup-finish-20260802125553"
+          "idempotency_key": "phase10-cleanup-finish-20260802131808"
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "sequence": 46
       }
     ],
     "required_next_action": null,
-    "resource_uri": "cad://workflows/wfr:1869db2970a64d7e9045e5e17ae316ce",
+    "resource_uri": "cad://workflows/wfr:07866efa1296455bbf3d4b8390fcaee3",
     "run": {
       "actor_issuer": "opaque-owner-key/1",
       "actor_subject": "user-3b507baea6adb49989a040871b1903918eb60701b91be8e3a6c6166fce6a9bea",
       "catalog_epoch": 1,
-      "created_at": "2026-08-02T12:55:19.180807+00:00",
+      "created_at": "2026-08-02T13:17:34.567073+00:00",
       "current_step_id": null,
       "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
       "device_identity_generation": 1,
       "error": null,
       "error_json": null,
       "expires_at": null,
-      "idempotency_key": "phase10-cleanup-start-20260802125553",
+      "idempotency_key": "phase10-cleanup-start-20260802131808",
       "initial_document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-      "initial_document_revision": "7146832559659708",
-      "initial_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+      "initial_document_revision": "8194682508785554",
+      "initial_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
       "inputs": {
-        "document_revision": "7146832559659708",
+        "document_revision": "8194682508785554",
         "layer": "0",
         "max_candidates": 128,
         "page_size": 200,
-        "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80"
+        "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c"
       },
-      "inputs_digest": "sha256:1dc89024a8bc092a5014fe0d8f528a6c0e8992c985e64318cd85e3bbd9e90149",
+      "inputs_digest": "sha256:9f999f8415df711560df4ab20ab7cc33dbc4ef7ecaa096cbd183b93c261c6848",
       "owner_subject": "user-3b507baea6adb49989a040871b1903918eb60701b91be8e3a6c6166fce6a9bea",
       "pins": {
         "actor_scopes": [
@@ -615,17 +615,17 @@
       "planner_registry_hash": "sha256:e067bdbd50454b8327cc2b9fbdd2c23da32377f47f10146131dac23b6d2c507e",
       "planner_registry_version": "phase9-first-party/1",
       "policy_epoch": 1,
-      "request_hash": "sha256:c5956291ac7e72df15ce665b35a19921a08c82b6d5035782696716bead393a4c",
+      "request_hash": "sha256:285b9cdef2c583d95c1fe0b5f06cb0b66c74d1ed67de86e58d840b3044d43850",
       "result": null,
       "result_digest": null,
       "result_json": null,
-      "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+      "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
       "skill_digest": "sha256:6d77b908e0d018542dd290466cfedc32b89dcdf78c51d493f8914f36eea4b74a",
       "skill_id": "drawing.cleanup-audit",
       "skill_version": "1.1.0",
       "state": "succeeded",
       "state_version": 4,
-      "updated_at": "2026-08-02T12:55:20.442105+00:00",
+      "updated_at": "2026-08-02T13:17:35.756650+00:00",
       "workflow_digest": "sha256:450d9260d33cc1bf2334b68e3ff65dd81c80f8b882d644d51ed6f440537b3859",
       "workflow_id": "drawing.cleanup-audit",
       "workflow_version": "1.1.0"
@@ -640,7 +640,7 @@
         "child_program_revision": null,
         "child_receipt_id": null,
         "child_recovery_id": null,
-        "created_at": "2026-08-02T12:55:19.181550+00:00",
+        "created_at": "2026-08-02T13:17:34.568037+00:00",
         "error_code": null,
         "input_ref": {
           "source_snapshot_id": {
@@ -675,25 +675,25 @@
             },
             "device_id": "device-9bafc0c5-d0ac-48f8-bcf1-9f8fa94e7476",
             "document_id": "doc-7fdc0ac9a316d93a5f068aa1",
-            "document_revision": "7146832559659708",
+            "document_revision": "8194682508785554",
             "engine_version": "scene-engine/1.0.1",
             "profile_id": "mechanical-2d/1",
             "projection_version": "cad.entity-projection/2",
             "resource_uris": {
-              "contours": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/contours",
-              "evidence": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/evidence",
-              "features": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/features",
-              "issues": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
-              "nodes": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/nodes",
-              "relations": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/relations",
-              "summary": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/summary"
+              "contours": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/contours",
+              "evidence": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/evidence",
+              "features": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/features",
+              "issues": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/issues",
+              "nodes": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/nodes",
+              "relations": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/relations",
+              "summary": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/summary"
             },
-            "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-            "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+            "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+            "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
             "schema_version": "cad.scene/1",
-            "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
+            "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
             "source_snapshot_available": true,
-            "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+            "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
             "space": "model",
             "tolerance_profile": {
               "absolute_floor": 1e-06,
@@ -710,11 +710,11 @@
             "warnings": []
           }
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "state": "succeeded",
         "state_version": 3,
         "step_id": "build_scene",
-        "updated_at": "2026-08-02T12:55:19.309049+00:00"
+        "updated_at": "2026-08-02T13:17:34.701112+00:00"
       },
       {
         "attempt": 1,
@@ -725,7 +725,7 @@
         "child_program_revision": null,
         "child_receipt_id": null,
         "child_recovery_id": null,
-        "created_at": "2026-08-02T12:55:19.181746+00:00",
+        "created_at": "2026-08-02T13:17:34.568338+00:00",
         "error_code": null,
         "input_ref": {
           "scene": {
@@ -740,8 +740,8 @@
         "output_ref": {
           "result": {
             "contract_version": "cad.mcp/1.6",
-            "correlation_id": "wf_cc64e378cc04904fbca9dcbb",
-            "document_revision": "7146832559659708",
+            "correlation_id": "wf_8e4745fcaf3cabe12e0c716b",
+            "document_revision": "8194682508785554",
             "items": [
               {
                 "code": "open_contour",
@@ -835,20 +835,20 @@
               }
             ],
             "next_cursor": null,
-            "resource_uri": "cad://scenes/scn_fc67788588cf431abdc0276303da01fc/issues",
-            "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-            "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+            "resource_uri": "cad://scenes/scn_fafb081e255e40248030690e0a2f13a6/issues",
+            "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+            "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
             "section": "issues",
-            "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
-            "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+            "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
+            "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
             "total": 5
           }
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "state": "succeeded",
         "state_version": 3,
         "step_id": "query_scene",
-        "updated_at": "2026-08-02T12:55:19.374739+00:00"
+        "updated_at": "2026-08-02T13:17:34.760522+00:00"
       },
       {
         "attempt": 1,
@@ -859,7 +859,7 @@
         "child_program_revision": null,
         "child_receipt_id": null,
         "child_recovery_id": null,
-        "created_at": "2026-08-02T12:55:19.181862+00:00",
+        "created_at": "2026-08-02T13:17:34.568506+00:00",
         "error_code": null,
         "input_ref": {
           "scene": {
@@ -873,19 +873,19 @@
         "lease_owner": null,
         "output_ref": {
           "result": {
-            "document_revision": "7146832559659708",
-            "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-            "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
-            "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
-            "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+            "document_revision": "8194682508785554",
+            "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+            "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
+            "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
+            "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
             "valid": true
           }
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "state": "succeeded",
         "state_version": 3,
         "step_id": "validate_scene",
-        "updated_at": "2026-08-02T12:55:19.421276+00:00"
+        "updated_at": "2026-08-02T13:17:34.808226+00:00"
       },
       {
         "attempt": 1,
@@ -896,7 +896,7 @@
         "child_program_revision": null,
         "child_receipt_id": null,
         "child_recovery_id": null,
-        "created_at": "2026-08-02T12:55:19.181988+00:00",
+        "created_at": "2026-08-02T13:17:34.568634+00:00",
         "error_code": null,
         "input_ref": {
           "issues": {
@@ -915,7 +915,7 @@
         "lease_owner": null,
         "output_ref": {
           "result": {
-            "document_revision": "7146832559659708",
+            "document_revision": "8194682508785554",
             "issue_codes": [
               "degenerate_geometry",
               "duplicate_geometry",
@@ -923,20 +923,20 @@
               "self_intersection"
             ],
             "issue_count": 5,
-            "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-            "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
-            "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
-            "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+            "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+            "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
+            "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
+            "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
             "status": "issues_found",
             "validation_ok": true,
             "write_authority": false
           }
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "state": "succeeded",
         "state_version": 3,
         "step_id": "report",
-        "updated_at": "2026-08-02T12:55:19.438869+00:00"
+        "updated_at": "2026-08-02T13:17:34.827306+00:00"
       },
       {
         "attempt": 1,
@@ -947,7 +947,7 @@
         "child_program_revision": null,
         "child_receipt_id": null,
         "child_recovery_id": null,
-        "created_at": "2026-08-02T12:55:19.182092+00:00",
+        "created_at": "2026-08-02T13:17:34.568757+00:00",
         "error_code": null,
         "input_ref": {
           "report": {
@@ -961,7 +961,7 @@
         "lease_owner": null,
         "output_ref": {
           "result": {
-            "document_revision": "7146832559659708",
+            "document_revision": "8194682508785554",
             "issue_codes": [
               "degenerate_geometry",
               "duplicate_geometry",
@@ -969,20 +969,20 @@
               "self_intersection"
             ],
             "issue_count": 5,
-            "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-            "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
-            "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
-            "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+            "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+            "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
+            "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
+            "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
             "status": "issues_found",
             "validation_ok": true,
             "write_authority": false
           }
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "state": "succeeded",
         "state_version": 4,
         "step_id": "review",
-        "updated_at": "2026-08-02T12:55:20.411757+00:00"
+        "updated_at": "2026-08-02T13:17:35.722469+00:00"
       },
       {
         "attempt": 1,
@@ -993,7 +993,7 @@
         "child_program_revision": null,
         "child_receipt_id": null,
         "child_recovery_id": null,
-        "created_at": "2026-08-02T12:55:19.182229+00:00",
+        "created_at": "2026-08-02T13:17:34.568902+00:00",
         "error_code": null,
         "input_ref": {},
         "kind": "finish",
@@ -1004,11 +1004,11 @@
             "status": "ok"
           }
         },
-        "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+        "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
         "state": "succeeded",
         "state_version": 3,
         "step_id": "finish",
-        "updated_at": "2026-08-02T12:55:20.434431+00:00"
+        "updated_at": "2026-08-02T13:17:35.749638+00:00"
       }
     ]
   },
@@ -1025,7 +1025,7 @@
     "same_snapshot_and_revision": true,
     "workflow_completed": true
   },
-  "implementation_commit": "c8206de5e1d7f23f862985bf6f55eb6adb16f16c",
+  "implementation_commit": "2df995f24580d44933472e0c41591ab3be36a84b",
   "invoked_tools": [
     "cad_start_workflow",
     "cad_get_workflow",
@@ -1034,7 +1034,7 @@
   "limitations": [],
   "operator": "haing.nguyen",
   "report": {
-    "document_revision": "7146832559659708",
+    "document_revision": "8194682508785554",
     "issue_codes": [
       "degenerate_geometry",
       "duplicate_geometry",
@@ -1042,19 +1042,19 @@
       "self_intersection"
     ],
     "issue_count": 5,
-    "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-    "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
-    "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
-    "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+    "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+    "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
+    "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
+    "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
     "status": "issues_found",
     "validation_ok": true,
     "write_authority": false
   },
-  "scene_digest": "sha256:c769d1fe909b69c85f8bb0af8eb2e4b47d25b738d5dcf0e74b9a36ba8f8842db",
-  "scene_id": "scn_fc67788588cf431abdc0276303da01fc",
+  "scene_digest": "sha256:1659d2fdaf18d097688e1b2efd46155a616ca8cfc8687f7bf8826f794d44ff14",
+  "scene_id": "scn_fafb081e255e40248030690e0a2f13a6",
   "schema_version": "cad.phase10-live-cleanup-workflow/1",
-  "source_digest": "sha256:b9967ce0bfdfb8159e7dca59ecf660c580d975b4ca5492134cf08ce0d9f3054e",
-  "source_snapshot_id": "snapshot-command-59ec1d5a-ab6a-4d51-8878-0d859f79fe80",
+  "source_digest": "sha256:9852dd4e139ea0d90f84b8c4e00c88b85d5572551a26306b95c44960d9a581c9",
+  "source_snapshot_id": "snapshot-command-71920a74-1e55-49c7-9e16-a1f856e8b63c",
   "started": {
     "current_step_id": "review",
     "pins": {
@@ -1076,8 +1076,8 @@
     },
     "replayed": false,
     "required_next_action": "submit_input",
-    "resource_uri": "cad://workflows/wfr:1869db2970a64d7e9045e5e17ae316ce",
-    "run_id": "wfr:1869db2970a64d7e9045e5e17ae316ce",
+    "resource_uri": "cad://workflows/wfr:07866efa1296455bbf3d4b8390fcaee3",
+    "run_id": "wfr:07866efa1296455bbf3d4b8390fcaee3",
     "state": "waiting_for_user",
     "state_version": 2
   },
