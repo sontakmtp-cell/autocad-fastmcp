@@ -1609,24 +1609,23 @@ def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
     )
     root = _repo(tmp_path / "e2e")
     fixture_path, fixture_value = _fixture(root, "a")
+    db_path, db_value = _evidence(
+        root, "phase10-live-no-effect-db-20260730.json"
+    )
+    pre_restart_at = VALIDATOR._time(
+        db_value["restart_comparison"]["pre_restart_captured_at"],
+        "pre-restart DB captured_at",
+    )
+    clock = [pre_restart_at - timedelta(seconds=30)]
+
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = clock[0]
+            return value if tz is not None else value.replace(tzinfo=None)
+
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "datetime", FrozenDateTime)
     capture_args = _capture_public_args(tmp_path, fixture_value)
-    process_identity = json.loads(
-        capture_args.process_identity.read_text(encoding="utf-8")
-    )
-    _, restart_evidence = _evidence(
-        root, "phase10-live-gateway-restart-20260730.json"
-    )
-    post_session = restart_evidence["runtime_identity_after"]["agent_session"]
-    process_identity["agent_session"].update(
-        {
-            "session_id": post_session["session_id"],
-            "connected_at": post_session["connected_at"],
-            "disconnected_at": None,
-        }
-    )
-    capture_args.process_identity.write_text(
-        json.dumps(process_identity), encoding="utf-8"
-    )
     retained = fixture_value
     provisional = asyncio.run(
         VALIDATOR.CAPTURE._capture_public(
@@ -1639,9 +1638,6 @@ def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
     )
     provisional_path = tmp_path / "provisional-a.json"
     provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
-    db_path, db_value = _evidence(
-        root, "phase10-live-no-effect-db-20260730.json"
-    )
     invocations = provisional["public_path"]["tool_invocations"]
     first = VALIDATOR._time(
         invocations[0]["started_at"], "first invocation started_at"
@@ -1649,21 +1645,6 @@ def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
     last = VALIDATOR._time(
         invocations[-1]["completed_at"], "last invocation completed_at"
     )
-    window_start = min(
-        VALIDATOR._time(
-            db_value["scope"]["window_start"], "DB window start"
-        ),
-        first - timedelta(seconds=60),
-    )
-    collection_at = datetime.now(timezone.utc)
-    window_end = collection_at
-    db_value["scope"]["window_start"] = window_start.isoformat()
-    db_value["scope"]["window_end"] = window_end.isoformat()
-    db_value["captured_at"] = collection_at.isoformat()
-    session_id = process_identity["agent_session"]["session_id"]
-    for record in db_value["agent_sessions"]:
-        if record.get("session_id") == session_id:
-            record["disconnected_at"] = None
     for index, job in enumerate(db_value["anchor_jobs"]):
         job["created_at"] = (first - timedelta(seconds=30 + index)).isoformat()
         job["updated_at"] = (last - timedelta(seconds=5 + index)).isoformat()
@@ -1675,6 +1656,10 @@ def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
         no_effect_db=db_path,
         device_id=provisional["public_path"]["device_id"],
     )
+    finalized_at = VALIDATOR._time(
+        db_value["captured_at"], "DB captured_at"
+    ) + timedelta(seconds=1)
+    clock[0] = finalized_at
     final = asyncio.run(VALIDATOR.CAPTURE._finalize_fixture(args, "token"))
     assert final["finalization"]["implementation_commit"] == FIXED_COMMIT
     _save(fixture_path, final)
@@ -1685,15 +1670,14 @@ def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
             root, f"phase10-live-r25-drawing-{name}-20260730.json"
         )
         other_value["finalization"]["finalized_at"] = (
-            collection_at + timedelta(seconds=1)
+            finalized_at + timedelta(seconds=1)
         ).isoformat()
         _save(other_path, other_value)
     restart_path, restart_value = _evidence(
         root, "phase10-live-gateway-restart-20260730.json"
     )
     restart_value["finalization"]["finalized_at"] = (
-        VALIDATOR._time(db_value["captured_at"], "DB captured_at")
-        + timedelta(seconds=1)
+        finalized_at + timedelta(seconds=1)
     ).isoformat()
     _save(restart_path, restart_value)
     VALIDATOR.validate(root)
