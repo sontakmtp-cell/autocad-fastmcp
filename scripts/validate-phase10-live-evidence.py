@@ -8,7 +8,7 @@ import importlib.util
 import json
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 _CAPTURE_SCRIPT = Path(__file__).resolve().parent / "phase10-live-public-evidence.py"
@@ -22,14 +22,6 @@ _SPEC.loader.exec_module(CAPTURE)
 
 FIXTURES = ("a", "b", "c")
 SECTIONS = ("nodes", "relations", "contours", "features", "issues", "evidence")
-ITEM_IDS = {
-    "nodes": "node_id",
-    "relations": "relation_id",
-    "contours": "contour_id",
-    "features": "feature_id",
-    "issues": "issue_id",
-    "evidence": "evidence_id",
-}
 GATE_ALIASES = {
     "self_intersection": "invalid_or_self_intersecting_contour",
 }
@@ -84,6 +76,8 @@ NO_EFFECT_DB_GATES = {
     "write_snapshot_sha256_unchanged",
     "write_snapshot_tables_unchanged",
 }
+# Evidence is local to one lab clock; allow only a small, explicit skew.
+_VALIDATION_CLOCK_SKEW = timedelta(seconds=5)
 
 
 def _load(path: Path) -> dict:
@@ -155,107 +149,13 @@ def _expected_migrations(root: Path) -> list[dict[str, object]]:
     return result
 
 
-def _section_items(scene: dict, section: str, label: str) -> list[dict]:
-    sections = scene.get("sections")
-    _require(isinstance(sections, dict), f"{label}: raw sections are required")
-    value = sections.get(section)
-    _require(isinstance(value, dict), f"{label}: {section} section is required")
-    items = value.get("items")
-    _require(
-        isinstance(items, list) and all(isinstance(item, dict) for item in items),
-        f"{label}: {section} items are invalid",
-    )
-    _require(
-        value.get("scene_id") == scene.get("scene_id")
-        and value.get("scene_digest") == scene.get("scene_digest")
-        and value.get("section") == section
-        and value.get("total") == len(items)
-        and value.get("next_cursor") is None,
-        f"{label}: {section} metadata is not bound or complete",
-    )
-    ids = [item.get(ITEM_IDS[section]) for item in items]
-    _require(
-        all(isinstance(item_id, str) and item_id for item_id in ids)
-        and len(ids) == len(set(ids)),
-        f"{label}: {section} identities are missing or duplicated",
-    )
-    return items
-
-
 def _validate_scene_semantics(
     evidence: dict, expected: dict, *, name: str, label: str
 ) -> None:
-    scene = evidence.get("scene")
-    _require(isinstance(scene, dict), f"{label}: scene is required")
-    raw = {section: _section_items(scene, section, label) for section in SECTIONS}
-    ids = {
-        section: {item[ITEM_IDS[section]] for item in items}
-        for section, items in raw.items()
-    }
-    counts = {section: len(raw[section]) for section in SECTIONS}
-    counts["omitted"] = 0
-    _require(
-        scene.get("complete") is True
-        and scene.get("truncation_reasons") == []
-        and scene.get("counts") == counts,
-        f"{label}: scene completeness/counts do not match raw sections",
-    )
-
-    for section in ("relations", "contours", "features", "issues"):
-        for item in raw[section]:
-            _require(
-                set(item.get("source_node_ids", [])) <= ids["nodes"]
-                and set(item.get("evidence_ids", [])) <= ids["evidence"]
-                and set(item.get("source_relation_ids", [])) <= ids["relations"],
-                f"{label}: {section} contains dangling evidence references",
-            )
-    _require(
-        all(
-            item.get("geometry_status") == "exact"
-            and item.get("source_runtime") == "managed_dotnet"
-            and bool(item.get("source_capabilities"))
-            for item in raw["nodes"]
-        ),
-        f"{label}: node runtime/geometry evidence is incomplete",
-    )
-    _require(
-        scene.get("feature_types")
-        == sorted({item["feature_type"] for item in raw["features"]})
-        and scene.get("issue_codes")
-        == sorted({item["code"] for item in raw["issues"]})
-        and scene.get("relation_types")
-        == sorted({item["relation_type"] for item in raw["relations"]})
-        and scene.get("evidence_strengths")
-        == sorted({item["evidence_strength"] for item in raw["evidence"]})
-        and scene.get("source_capabilities")
-        == sorted(
-            {
-                capability
-                for item in raw["nodes"]
-                for capability in item["source_capabilities"]
-            }
-        ),
-        f"{label}: summarized semantics do not match raw sections",
-    )
-
-    repeat = scene.get("repeat_build")
-    repeated_scene = repeat.get("scene") if isinstance(repeat, dict) else None
-    identity_fields = (
-        "scene_id",
-        "scene_digest",
-        "source_digest",
-        "source_snapshot_id",
-        "document_id",
-        "document_revision",
-        "device_id",
-        "counts",
-    )
-    _require(
-        isinstance(repeated_scene, dict)
-        and repeat.get("reused") is True
-        and all(repeated_scene.get(key) == scene.get(key) for key in identity_fields),
-        f"{label}: repeat build did not reuse the exact scene",
-    )
+    try:
+        raw = CAPTURE._validate_scene_invariants(evidence)
+    except ValueError as error:
+        raise ValueError(f"{label}: {error}") from error
 
     feature_types = {item["feature_type"] for item in raw["features"]}
     issue_codes = {item["code"] for item in raw["issues"]}
@@ -659,6 +559,7 @@ def _validate_restart_raw_captures(
 
 
 def validate(root: Path) -> None:
+    validation_time = datetime.now(timezone.utc) + _VALIDATION_CLOCK_SKEW
     fixture_root = root / "fixtures" / "phase10" / "live"
     evidence_root = root / "docs" / "architecture" / "evidence"
     manifest = _load(fixture_root / "manifest.json")
@@ -784,15 +685,22 @@ def validate(root: Path) -> None:
         )
         captured_at = _time(evidence.get("captured_at"), label)
         finalization = evidence.get("finalization")
+        finalized_at = (
+            _time(finalization.get("finalized_at"), f"{label}: finalized_at")
+            if isinstance(finalization, dict)
+            else None
+        )
         _require(
             isinstance(finalization, dict)
             and finalization.get("implementation_commit")
             == evidence["implementation_commit"]
-            and _time(
-                finalization.get("finalized_at"), f"{label}: finalized_at"
-            )
-            >= captured_at,
+            and finalized_at is not None
+            and finalized_at >= captured_at,
             f"{label}: finalization provenance is invalid",
+        )
+        _require(
+            finalized_at <= validation_time,
+            f"{label}: finalization is dated in the future",
         )
         invocations = evidence.get("public_path", {}).get("tool_invocations")
         try:
@@ -1231,6 +1139,11 @@ def validate(root: Path) -> None:
         and isinstance(finalization.get("finalized_at"), str),
         "Gateway restart: finalization provenance is invalid",
     )
+    _require(
+        _time(finalization["finalized_at"], "Gateway restart: finalized_at")
+        <= validation_time,
+        "Gateway restart: finalization is dated in the future",
+    )
 
     _require(
         no_effect_db.get("schema_version") == "cad.phase10-live-db-evidence/1",
@@ -1254,6 +1167,11 @@ def validate(root: Path) -> None:
             )
         except ValueError as error:
             raise ValueError(f"Drawing {name.upper()}: {error}") from error
+    _require(
+        _time(no_effect_db.get("captured_at"), "No-effect DB: captured_at")
+        <= validation_time,
+        "No-effect DB: capture is dated in the future",
+    )
     try:
         CAPTURE._validate_restart_window(
             restart_invocations,

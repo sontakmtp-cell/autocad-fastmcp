@@ -176,7 +176,7 @@ def _upgrade_fixture_runtime_identity(path: Path, value: dict) -> None:
         }
         if tool == "cad_get_job":
             item["job_state"] = "succeeded"
-            item["job_result"] = {"state": "succeeded"}
+            item["job_result"] = {"job_id": job_id, "state": "succeeded"}
         invocations.append(item)
 
     scene_id = value["scene"]["scene_id"]
@@ -1105,9 +1105,14 @@ class _FakeMCPClient:
                     "source_capabilities",
                 }
             }
-            if "-scene-repeat-" in arguments["idempotency_key"]:
-                return {"scene": scene, "reused": True}
-            return {"scene": scene}
+            return {
+                "contract_version": "cad.mcp/1.6",
+                "correlation_id": self._retained["scene"]["repeat_build"][
+                    "correlation_id"
+                ],
+                "scene": scene,
+                "reused": "-scene-repeat-" in arguments["idempotency_key"],
+            }
         if name == "cad_query_scene":
             return self._retained["scene"]["sections"][arguments["section"]]
         raise AssertionError(f"unexpected tool {name}")
@@ -1265,6 +1270,125 @@ def test_finalize_fixture_recomputes_provisional_gates(
                 "token",
             )
         )
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    (
+        "section_total",
+        "duplicate_identity",
+        "dangling_reference",
+        "scene_counts",
+        "semantic_summary",
+        "repeat_identity",
+    ),
+)
+def test_finalize_fixture_rejects_internally_inconsistent_scene(
+    tmp_path: Path, monkeypatch, tamper: str
+) -> None:
+    import argparse
+    import asyncio
+
+    monkeypatch.setattr(VALIDATOR.CAPTURE, "_git_head", lambda: FIXED_COMMIT)
+    root = _repo(tmp_path / tamper)
+    _, fixture = _fixture(root, "a")
+    provisional = _provisional_capture(tmp_path, fixture)
+    scene = provisional["scene"]
+    sections = scene["sections"]
+    if tamper == "section_total":
+        sections["nodes"]["total"] += 1
+    elif tamper == "duplicate_identity":
+        evidence = sections["evidence"]["items"]
+        evidence[1]["evidence_id"] = evidence[0]["evidence_id"]
+    elif tamper == "dangling_reference":
+        sections["relations"]["items"][0]["evidence_ids"][0] = "evd_" + "f" * 64
+    elif tamper == "scene_counts":
+        scene["counts"]["nodes"] += 1
+        scene["summary_resource"]["counts"]["nodes"] += 1
+        scene["repeat_build"]["scene"]["counts"]["nodes"] += 1
+    elif tamper == "semantic_summary":
+        scene["feature_types"] = []
+    else:
+        scene["repeat_build"]["scene"]["engine_version"] = "tampered/1"
+    provisional_path = tmp_path / "provisional.json"
+    provisional_path.write_text(json.dumps(provisional), encoding="utf-8")
+    db_path, _ = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    with pytest.raises(RuntimeError, match="scene"):
+        asyncio.run(
+            VALIDATOR.CAPTURE._finalize_fixture(
+                argparse.Namespace(
+                    fixture_evidence=provisional_path,
+                    no_effect_db=db_path,
+                    device_id=fixture["public_path"]["device_id"],
+                ),
+                "token",
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "states",
+    (("failed", "succeeded"), ("succeeded", "running")),
+)
+def test_validator_rejects_poll_after_terminal_state(
+    tmp_path: Path, states: tuple[str, str]
+) -> None:
+    root = _repo(tmp_path / "-".join(states))
+    fixture_path, fixture = _fixture(root, "a")
+    invocations = fixture["public_path"]["tool_invocations"]
+    poll_index = next(
+        index for index, item in enumerate(invocations) if item["tool"] == "cad_get_job"
+    )
+    first = invocations[poll_index]
+    second = copy.deepcopy(first)
+    first["completed_at"] = first["started_at"]
+    for item, state in zip((first, second), states):
+        item["job_state"] = state
+        item["job_result"] = {"job_id": item["job_id"], "state": state}
+    invocations.insert(poll_index + 1, second)
+    fixture["public_path"]["invoked_tools"] = [
+        item["tool"] for item in invocations
+    ]
+    _save(fixture_path, fixture)
+    with pytest.raises(ValueError, match="final cad_get_job poll"):
+        VALIDATOR.validate(root)
+
+
+def test_validator_rejects_job_result_bound_to_another_job(tmp_path: Path) -> None:
+    root = _repo(tmp_path / "job-result-id")
+    fixture_path, fixture = _fixture(root, "a")
+    poll = next(
+        item
+        for item in fixture["public_path"]["tool_invocations"]
+        if item["tool"] == "cad_get_job"
+    )
+    poll["job_result"]["job_id"] = "job-other"
+    _save(fixture_path, fixture)
+    with pytest.raises(ValueError, match="cad_get_job invocation arguments"):
+        VALIDATOR.validate(root)
+
+
+def test_validator_rejects_future_dated_evidence_bundle(tmp_path: Path) -> None:
+    root = _repo(tmp_path / "future-bundle")
+    future = datetime.now(timezone.utc) + timedelta(days=1)
+    db_path, db = _evidence(root, "phase10-live-no-effect-db-20260730.json")
+    db["captured_at"] = future.isoformat()
+    _save(db_path, db)
+    for name in VALIDATOR.FIXTURES:
+        fixture_path, fixture = _fixture(root, name)
+        fixture["finalization"]["finalized_at"] = (
+            future + timedelta(seconds=1)
+        ).isoformat()
+        _save(fixture_path, fixture)
+    restart_path, restart = _evidence(
+        root, "phase10-live-gateway-restart-20260730.json"
+    )
+    restart["finalization"]["finalized_at"] = (
+        future + timedelta(seconds=1)
+    ).isoformat()
+    _save(restart_path, restart)
+    with pytest.raises(ValueError, match="future"):
+        VALIDATOR.validate(root)
 
 
 def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):

@@ -19,6 +19,52 @@ if os.name == "nt":
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SECTIONS = ("nodes", "relations", "contours", "features", "issues", "evidence")
+SECTION_ID_FIELDS = {
+    "nodes": "node_id",
+    "relations": "relation_id",
+    "contours": "contour_id",
+    "features": "feature_id",
+    "issues": "issue_id",
+    "evidence": "evidence_id",
+}
+SECTION_SCHEMA_VERSIONS = {
+    "nodes": "cad.scene-node/1",
+    "relations": "cad.scene-relation/1",
+    "contours": "cad.scene-contour/1",
+    "features": "cad.scene-feature/1",
+    "issues": "cad.scene-issue/1",
+    "evidence": "cad.scene-evidence/1",
+}
+_SCENE_CAPTURE_FIELDS = {
+    "evidence_strengths",
+    "feature_types",
+    "issue_codes",
+    "relation_types",
+    "repeat_build",
+    "sections",
+    "source_capabilities",
+    "summary_resource",
+}
+_JOB_STATES = {
+    "queued",
+    "dispatched",
+    "acknowledged",
+    "running",
+    "succeeded",
+    "failed",
+    "reconnect_pending",
+    "cancel_requested",
+    "cancelled",
+    "outcome_unknown",
+    "needs_attention",
+}
+_TERMINAL_JOB_STATES = {
+    "succeeded",
+    "failed",
+    "cancelled",
+    "outcome_unknown",
+    "needs_attention",
+}
 SERVICE_UNIT = "autocad-mcp-phase4.service"
 WRITE_TOOLS = {
     "cad_commit",
@@ -910,6 +956,144 @@ def _node_map(sections: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {item["node_id"]: item for item in sections["nodes"]["items"]}
 
 
+def _validate_scene_invariants(evidence: dict[str, Any]) -> dict[str, list[dict]]:
+    def _sorted_strings(items: list[dict], field: str) -> list[str]:
+        values = [item.get(field) for item in items]
+        if not all(isinstance(value, str) and value for value in values):
+            raise ValueError(f"scene semantic field {field} is invalid")
+        return sorted(set(values))
+
+    scene = evidence.get("scene")
+    if not isinstance(scene, dict):
+        raise ValueError("scene is missing")
+    sections = scene.get("sections")
+    if not isinstance(sections, dict) or set(sections) != set(SECTIONS):
+        raise ValueError("scene sections are incomplete")
+    resource_uris = scene.get("resource_uris")
+    if not isinstance(resource_uris, dict):
+        raise ValueError("scene resource URIs are missing")
+
+    raw: dict[str, list[dict]] = {}
+    ids: dict[str, set[str]] = {}
+    for name in SECTIONS:
+        page = sections[name]
+        items = page.get("items") if isinstance(page, dict) else None
+        if not isinstance(items, list) or not all(
+            isinstance(item, dict) for item in items
+        ):
+            raise ValueError(f"scene {name} items are invalid")
+        if not (
+            page.get("scene_id") == scene.get("scene_id")
+            and page.get("scene_digest") == scene.get("scene_digest")
+            and page.get("section") == name
+            and page.get("total") == len(items)
+            and page.get("next_cursor") is None
+            and page.get("resource_uri") == resource_uris.get(name)
+        ):
+            raise ValueError(f"scene {name} metadata is inconsistent")
+        id_field = SECTION_ID_FIELDS[name]
+        item_ids = [item.get(id_field) for item in items]
+        if not (
+            all(isinstance(item_id, str) and item_id for item_id in item_ids)
+            and len(item_ids) == len(set(item_ids))
+            and all(
+                item.get("schema_version") == SECTION_SCHEMA_VERSIONS[name]
+                for item in items
+            )
+        ):
+            raise ValueError(f"scene {name} identities are invalid or duplicated")
+        raw[name] = items
+        ids[name] = set(item_ids)
+
+    counts = {name: len(raw[name]) for name in SECTIONS}
+    counts["omitted"] = 0
+    if not (
+        scene.get("complete") is True
+        and scene.get("truncation_reasons") == []
+        and scene.get("counts") == counts
+    ):
+        raise ValueError("scene completeness/counts do not match raw sections")
+
+    source_entity_values = [item.get("source_entity_id") for item in raw["nodes"]]
+    if not all(
+        isinstance(item_id, str) and item_id for item_id in source_entity_values
+    ):
+        raise ValueError("scene node source identities are invalid")
+    source_entity_ids = set(source_entity_values)
+    for name, items in raw.items():
+        for item in items:
+            references = (
+                ("source_node_ids", ids["nodes"]),
+                ("source_relation_ids", ids["relations"]),
+                ("evidence_ids", ids["evidence"]),
+            )
+            for field, valid_ids in references:
+                values = item.get(field, [])
+                if not (
+                    isinstance(values, list)
+                    and all(isinstance(value, str) and value for value in values)
+                    and set(values) <= valid_ids
+                ):
+                    raise ValueError(f"scene {name} contains dangling {field}")
+            entity_references = item.get("source_entity_ids", [])
+            if not (
+                isinstance(entity_references, list)
+                and all(
+                    isinstance(value, str) and value for value in entity_references
+                )
+                and set(entity_references) <= source_entity_ids
+            ):
+                raise ValueError(
+                    f"scene {name} contains dangling source_entity_ids"
+                )
+
+    if not all(
+        item.get("geometry_status") == "exact"
+        and item.get("source_runtime") == "managed_dotnet"
+        and isinstance(item.get("source_capabilities"), list)
+        and bool(item["source_capabilities"])
+        and all(
+            isinstance(capability, str) and capability
+            for capability in item["source_capabilities"]
+        )
+        for item in raw["nodes"]
+    ):
+        raise ValueError("scene node runtime/geometry evidence is incomplete")
+    if not (
+        scene.get("feature_types") == _sorted_strings(raw["features"], "feature_type")
+        and scene.get("issue_codes") == _sorted_strings(raw["issues"], "code")
+        and scene.get("relation_types")
+        == _sorted_strings(raw["relations"], "relation_type")
+        and scene.get("evidence_strengths")
+        == _sorted_strings(raw["evidence"], "evidence_strength")
+        and scene.get("source_capabilities")
+        == sorted(
+            {
+                capability
+                for item in raw["nodes"]
+                for capability in item["source_capabilities"]
+            }
+        )
+    ):
+        raise ValueError("scene summarized semantics do not match raw sections")
+
+    public_root = {
+        key: value for key, value in scene.items() if key not in _SCENE_CAPTURE_FIELDS
+    }
+    repeat = scene.get("repeat_build")
+    if not (
+        scene.get("summary_resource") == public_root
+        and isinstance(repeat, dict)
+        and repeat.get("contract_version") == "cad.mcp/1.6"
+        and isinstance(repeat.get("correlation_id"), str)
+        and bool(repeat["correlation_id"])
+        and repeat.get("reused") is True
+        and repeat.get("scene") == public_root
+    ):
+        raise ValueError("scene summary/repeat identity is inconsistent")
+    return raw
+
+
 def _fixture_gates(fixture: str, sections: dict[str, Any]) -> dict[str, bool]:
     nodes = _node_map(sections)
     features = sections["features"]["items"]
@@ -1349,7 +1533,7 @@ def _validate_invocation_graph(
     phase_index = 0
     visited: set[int] = set()
     observed_jobs: list[str] = []
-    terminal_job_states: dict[str, str] = {}
+    job_state_history: dict[str, list[str]] = {}
     queried_sections: set[str] = set()
     key_values: list[str] = []
     key_stamps: list[str] = []
@@ -1403,11 +1587,12 @@ def _validate_invocation_graph(
                 or job_id not in observation_job_ids
                 or not isinstance(item.get("job_state"), str)
                 or not isinstance(item.get("job_result"), dict)
+                or item["job_state"] not in _JOB_STATES
+                or item["job_result"].get("job_id") != job_id
                 or item["job_result"].get("state") != item["job_state"]
             ):
                 raise ValueError("cad_get_job invocation arguments are invalid")
-            if item["job_state"] in {"succeeded", "failed", "cancelled", "needs_attention"}:
-                terminal_job_states[job_id] = item["job_state"]
+            job_state_history.setdefault(job_id, []).append(item["job_state"])
         elif tool == "cad_build_scene":
             expected_phase = phases[phase_index][2]
             key = arguments.get("idempotency_key")
@@ -1454,8 +1639,15 @@ def _validate_invocation_graph(
         raise ValueError(
             "cad_observe invocations are not bound to the observation job IDs"
         )
-    if terminal_job_states != {job_id: "succeeded" for job_id in observation_job_ids}:
-        raise ValueError("cad_get_job trace lacks terminal succeeded results")
+    if set(job_state_history) != set(observation_job_ids) or any(
+        not states
+        or states[-1] != "succeeded"
+        or any(state in _TERMINAL_JOB_STATES for state in states[:-1])
+        for states in job_state_history.values()
+    ):
+        raise ValueError(
+            "final cad_get_job poll must be the first terminal state and succeeded"
+        )
     if queried_sections != set(SECTIONS):
         raise ValueError(
             "expected exactly one cad_query_scene per retained section"
@@ -1718,6 +1910,10 @@ async def _finalize_fixture(args: argparse.Namespace, token: str) -> dict[str, A
     finalization_boundary = datetime.now(timezone.utc).isoformat()
     no_effect_db = json.loads(args.no_effect_db.read_text(encoding="utf-8"))
     invocations = provisional["public_path"]["tool_invocations"]
+    try:
+        _validate_scene_invariants(provisional)
+    except ValueError as error:
+        raise RuntimeError(f"fixture gates failed: {error}") from error
     _validate_invocation_graph(
         invocations,
         observation_job_ids=provisional["session_binding"]["observation_job_ids"],
