@@ -77,7 +77,7 @@ Full Gateway pytest từng treo ở khoảng 124 giây và 244 giây sau thay đ
 
 1. Commit/push toàn bộ code, test và tài liệu; deploy Gateway/Portal đúng implementation commit đó. Từ đây không thay code runtime cho tới khi evidence hoàn tất.
 2. Chạy OAuth public read E2E với `--token-output tmp/phase10-live/token.json`. File token chỉ tồn tại trong lúc capture, không commit và phải xóa ngay sau đó.
-3. Trên VM chạy `capture-identity`; collect DB evidence PASS hiện tại cho đúng owner/device/session; tại Windows chạy `capture-runtime-identity` để cross-bind Gateway release, DB session, standalone Agent PID, AutoCAD PID, bootstrap và hash Managed Host. Dùng output này làm `--process-identity` cho mọi fixture.
+3. Trên VM chạy `capture-identity` và `phase10-live-db-evidence.py --session-only` cho đúng owner/device/session; tại Windows chạy `capture-runtime-identity` để cross-bind Gateway release, DB session, standalone Agent PID, AutoCAD PID, bootstrap và hash Managed Host. Session proof có schema riêng để không tạo vòng phụ thuộc với scene chưa được capture. Dùng output này làm `--process-identity` cho mọi fixture.
 4. Với từng Drawing A/B/C, người vận hành mở đúng DWG trong AutoCAD rồi chạy `capture-public` để tạo provisional artifact. Không sửa JSON và không dùng artifact cũ.
 5. Từ job/scene ID của ba provisional artifact, collect DB evidence **trước restart** với audit window bao trùm toàn bộ capture. Artifact phải `PASS`.
 6. Chạy `capture-identity` trước restart; chạy `restart-query`; restart systemd Gateway thật; đợi cùng standalone Agent reconnect; chạy `capture-identity --old-pid ...` sau restart.

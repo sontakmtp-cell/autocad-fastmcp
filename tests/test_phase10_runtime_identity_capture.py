@@ -27,11 +27,24 @@ def _inputs(tmp_path: Path) -> argparse.Namespace:
     database.write_text(
         json.dumps(
             {
-                "schema_version": "cad.phase10-live-db-evidence/1",
+                "schema_version": "cad.phase10-live-session-evidence/1",
                 "implementation_commit": COMMIT,
                 "status": "PASS",
-                "gate_results": {"active_session_ok": True},
+                "gate_results": {
+                    "integrity_ok": True,
+                    "foreign_keys_ok": True,
+                    "migrations_ok": True,
+                    "active_cad_agent_session_ok": True,
+                },
                 "scope": {"owner_subject": "owner-a", "device_id": DEVICE},
+                "database_checks": {
+                    "integrity_check": ["ok"],
+                    "foreign_key_check": [],
+                    "schema_migrations": [
+                        {**item, "applied_at": "2026-08-02T07:00:00+00:00"}
+                        for item in CAPTURE._expected_db_migrations()
+                    ],
+                },
                 "active_agent_session_id": "session-a",
                 "agent_sessions": [
                     {
@@ -162,7 +175,7 @@ def test_capture_runtime_identity_rejects_inactive_session(
     args.db_evidence.write_text(json.dumps(value), encoding="utf-8")
     _patch_authoritative_sources(monkeypatch)
 
-    with pytest.raises(ValueError, match="not active"):
+    with pytest.raises(ValueError, match="does not contain one active"):
         asyncio.run(CAPTURE._capture_runtime_identity(args, None))
 
 
@@ -176,6 +189,39 @@ def test_capture_runtime_identity_rejects_failed_db_evidence(
     _patch_authoritative_sources(monkeypatch)
 
     with pytest.raises(ValueError, match="does not match"):
+        asyncio.run(CAPTURE._capture_runtime_identity(args, None))
+
+
+@pytest.mark.parametrize(
+    ("mutate", "expected"),
+    [
+        (
+            lambda value: value["database_checks"].update(
+                {"integrity_check": ["corrupt"]}
+            ),
+            "does not match",
+        ),
+        (
+            lambda value: value["database_checks"]["schema_migrations"][0].update(
+                {"checksum": "0" * 64}
+            ),
+            "does not match",
+        ),
+    ],
+)
+def test_capture_runtime_identity_rejects_tampered_session_evidence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mutate,
+    expected: str,
+) -> None:
+    args = _inputs(tmp_path)
+    value = json.loads(args.db_evidence.read_text(encoding="utf-8"))
+    mutate(value)
+    args.db_evidence.write_text(json.dumps(value), encoding="utf-8")
+    _patch_authoritative_sources(monkeypatch)
+
+    with pytest.raises(ValueError, match=expected):
         asyncio.run(CAPTURE._capture_runtime_identity(args, None))
 
 

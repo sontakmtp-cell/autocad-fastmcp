@@ -260,6 +260,79 @@ def _load_pre_restart_evidence(
     return evidence
 
 
+def collect_session_evidence(
+    database: Path,
+    *,
+    owner: str,
+    device: str,
+    implementation_commit: str,
+) -> dict[str, Any]:
+    if not COMMIT_RE.fullmatch(implementation_commit):
+        raise ValueError("implementation_commit must be a 40-character lowercase SHA")
+    connection = sqlite3.connect(
+        f"{database.resolve().as_uri()}?mode=ro", uri=True, isolation_level=None
+    )
+    connection.row_factory = sqlite3.Row
+    try:
+        connection.execute("PRAGMA query_only=ON")
+        connection.execute("BEGIN")
+        integrity = [row[0] for row in connection.execute("PRAGMA integrity_check")]
+        foreign_keys = _rows(connection.execute("PRAGMA foreign_key_check"))
+        migrations = _rows(
+            connection.execute(
+                "SELECT version,checksum,applied_at FROM schema_migrations ORDER BY version"
+            )
+        )
+        sessions = _rows(
+            connection.execute(
+                "SELECT s.*,d.status AS device_status,d.owner_subject "
+                "FROM agent_sessions s JOIN devices d USING(device_id) "
+                "WHERE s.device_id=? AND d.owner_subject=? "
+                "ORDER BY s.connected_at DESC,s.session_id DESC",
+                (device, owner),
+            )
+        )
+        connection.execute("COMMIT")
+    finally:
+        connection.close()
+
+    migration_identity = [
+        {"version": row["version"], "checksum": row["checksum"]}
+        for row in migrations
+    ]
+    active_sessions = [
+        row
+        for row in sessions
+        if row["disconnected_at"] is None
+        and row["device_status"] == "online"
+        and row["protocol_version"] == "cad.agent/2"
+    ]
+    gates = {
+        "integrity_ok": integrity == ["ok"],
+        "foreign_keys_ok": not foreign_keys,
+        "migrations_ok": migration_identity == _expected_migrations(),
+        "active_cad_agent_session_ok": len(active_sessions) == 1,
+    }
+    return {
+        "schema_version": "cad.phase10-live-session-evidence/1",
+        "implementation_commit": implementation_commit,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "database": str(database),
+        "scope": {"owner_subject": owner, "device_id": device},
+        "database_checks": {
+            "integrity_check": integrity,
+            "foreign_key_check": foreign_keys,
+            "schema_migrations": migrations,
+        },
+        "agent_sessions": sessions,
+        "active_agent_session_id": (
+            active_sessions[0]["session_id"] if len(active_sessions) == 1 else None
+        ),
+        "gate_results": gates,
+        "status": "PASS" if all(gates.values()) else "FAIL",
+    }
+
+
 def collect_evidence(
     database: Path,
     *,
@@ -460,18 +533,29 @@ def main() -> int:
     parser.add_argument("--anchor-job-id", action="append")
     parser.add_argument("--scene-id", action="append")
     parser.add_argument("--pre-restart-evidence", type=Path)
+    parser.add_argument("--session-only", action="store_true")
     args = parser.parse_args()
-    evidence = collect_evidence(
-        args.database,
-        owner=args.owner_subject,
-        device=args.device_id,
-        window_start=args.window_start,
-        window_end=args.window_end,
-        implementation_commit=args.implementation_commit,
-        anchor_job_ids=tuple(args.anchor_job_id or ANCHOR_JOB_IDS),
-        scene_ids=tuple(args.scene_id or SCENE_IDS),
-        pre_restart_evidence=args.pre_restart_evidence,
-    )
+    if args.session_only:
+        if args.pre_restart_evidence is not None:
+            parser.error("--pre-restart-evidence cannot be used with --session-only")
+        evidence = collect_session_evidence(
+            args.database,
+            owner=args.owner_subject,
+            device=args.device_id,
+            implementation_commit=args.implementation_commit,
+        )
+    else:
+        evidence = collect_evidence(
+            args.database,
+            owner=args.owner_subject,
+            device=args.device_id,
+            window_start=args.window_start,
+            window_end=args.window_end,
+            implementation_commit=args.implementation_commit,
+            anchor_job_ids=tuple(args.anchor_job_id or ANCHOR_JOB_IDS),
+            scene_ids=tuple(args.scene_id or SCENE_IDS),
+            pre_restart_evidence=args.pre_restart_evidence,
+        )
     json.dump(evidence, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0 if evidence["status"] == "PASS" else 1

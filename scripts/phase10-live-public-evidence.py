@@ -202,6 +202,28 @@ def _git_baseline() -> str:
     ).stdout.strip()
 
 
+def _expected_db_migrations() -> list[dict[str, Any]]:
+    migration_dir = (
+        REPO_ROOT
+        / "services"
+        / "gateway"
+        / "src"
+        / "autocad_gateway"
+        / "infrastructure"
+        / "sqlite"
+        / "migrations"
+    )
+    return [
+        {
+            "version": int(path.stem.split("_", 1)[0]),
+            "checksum": hashlib.sha256(
+                path.read_text(encoding="utf-8").encode()
+            ).hexdigest(),
+        }
+        for path in sorted(migration_dir.glob("*.sql"))
+    ]
+
+
 def _snapshot_digest(snapshot: dict[str, Any]) -> str:
     canonical = json.dumps(
         snapshot, ensure_ascii=False, sort_keys=True, separators=(",", ":")
@@ -2536,35 +2558,53 @@ async def _capture_runtime_identity(
     database = json.loads(args.db_evidence.read_text(encoding="utf-8"))
     scope = database.get("scope", {})
     gates = database.get("gate_results", {})
+    checks = database.get("database_checks", {})
+    migrations = checks.get("schema_migrations") if isinstance(checks, dict) else None
+    migration_identity = [
+        {"version": item.get("version"), "checksum": item.get("checksum")}
+        for item in migrations
+        if isinstance(item, dict)
+    ] if isinstance(migrations, list) else None
+    expected_gates = {
+        "integrity_ok",
+        "foreign_keys_ok",
+        "migrations_ok",
+        "active_cad_agent_session_ok",
+    }
     if (
-        database.get("schema_version") != "cad.phase10-live-db-evidence/1"
+        database.get("schema_version") != "cad.phase10-live-session-evidence/1"
         or database.get("implementation_commit") != implementation_commit
         or database.get("status") != "PASS"
         or not isinstance(gates, dict)
-        or not gates
+        or set(gates) != expected_gates
         or not all(value is True for value in gates.values())
+        or not isinstance(checks, dict)
+        or checks.get("integrity_check") != ["ok"]
+        or checks.get("foreign_key_check") != []
+        or migration_identity != _expected_db_migrations()
         or not isinstance(scope.get("owner_subject"), str)
         or not scope["owner_subject"]
         or scope.get("device_id") != args.device_id
     ):
         raise ValueError("DB evidence does not match runtime identity capture")
     session_id = database.get("active_agent_session_id")
-    sessions = [
+    active_sessions = [
         item
         for item in database.get("agent_sessions", [])
-        if isinstance(item, dict) and item.get("session_id") == session_id
+        if isinstance(item, dict)
+        and item.get("device_id") == args.device_id
+        and item.get("owner_subject") == scope["owner_subject"]
+        and item.get("device_status") == "online"
+        and item.get("disconnected_at") is None
+        and item.get("protocol_version") == "cad.agent/2"
     ]
-    if not isinstance(session_id, str) or len(sessions) != 1:
-        raise ValueError("DB evidence does not contain one active Agent session")
-    session = sessions[0]
     if (
-        session.get("device_id") != args.device_id
-        or session.get("owner_subject") != scope["owner_subject"]
-        or session.get("device_status") != "online"
-        or session.get("disconnected_at") is not None
-        or session.get("protocol_version") != "cad.agent/2"
+        not isinstance(session_id, str)
+        or len(active_sessions) != 1
+        or active_sessions[0].get("session_id") != session_id
     ):
-        raise ValueError("DB evidence Agent session is not active and compatible")
+        raise ValueError("DB evidence does not contain one active Agent session")
+    session = active_sessions[0]
 
     desktop = _windows_process(args.desktop_agent_pid)
     if PureWindowsPath(desktop["executable"]).name != "KythuatvangAutoCADAgent.exe":

@@ -36,7 +36,7 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
             device_id TEXT PRIMARY KEY, owner_subject TEXT, status TEXT
         );
         CREATE TABLE agent_sessions(
-            session_id TEXT PRIMARY KEY, device_id TEXT, connected_at TEXT,
+            session_id TEXT PRIMARY KEY, device_id TEXT, protocol_version TEXT, connected_at TEXT,
             last_heartbeat_at TEXT, disconnected_at TEXT
         );
         CREATE TABLE jobs(
@@ -100,7 +100,7 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
     )
     connection.execute(
         "INSERT INTO agent_sessions VALUES("
-        "'session-live','device-live','2026-07-30T06:00:00+00:00',"
+        "'session-live','device-live','cad.agent/2','2026-07-30T06:00:00+00:00',"
         "'2026-07-30T06:42:30+00:00',NULL)"
     )
     connection.executemany(
@@ -172,6 +172,16 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
         == cli_evidence["write_snapshot"]["sha256"]
     )
 
+    session_only = module.collect_session_evidence(
+        database,
+        owner="owner-live",
+        device="device-live",
+        implementation_commit="a" * 40,
+    )
+    assert session_only["schema_version"] == "cad.phase10-live-session-evidence/1"
+    assert session_only["status"] == "PASS"
+    assert session_only["active_agent_session_id"] == "session-live"
+
     pre_path = tmp_path / "pre-restart.json"
     pre_path.write_text(json.dumps(first), encoding="utf-8")
     connection = sqlite3.connect(database)
@@ -180,10 +190,11 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
         ("2026-07-30T06:43:30+00:00",),
     )
     connection.execute(
-        "INSERT INTO agent_sessions VALUES(?,?,?,?,?)",
+        "INSERT INTO agent_sessions VALUES(?,?,?,?,?,?)",
         (
             "session-after",
             "device-live",
+            "cad.agent/2",
             "2026-07-30T06:43:31+00:00",
             "2026-07-30T06:44:00+00:00",
             None,
@@ -265,3 +276,19 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
             implementation_commit="a" * 40,
             pre_restart_evidence=wrong_commit_path,
         )
+
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "UPDATE agent_sessions SET protocol_version='cad.agent/1' "
+        "WHERE session_id='session-after'"
+    )
+    connection.commit()
+    connection.close()
+    failed_session_only = module.collect_session_evidence(
+        database,
+        owner="owner-live",
+        device="device-live",
+        implementation_commit="a" * 40,
+    )
+    assert failed_session_only["status"] == "FAIL"
+    assert failed_session_only["active_agent_session_id"] is None
