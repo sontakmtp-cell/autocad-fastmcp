@@ -906,6 +906,13 @@ def validate(root: Path) -> None:
         fixture_id="phase10-drawing-c-r25/1",
         label="Cleanup workflow",
     )
+    cleanup_captured_at = _time(
+        cleanup.get("captured_at"), "Cleanup workflow: captured_at"
+    )
+    _require(
+        cleanup_captured_at <= validation_time,
+        "Cleanup workflow: capture is dated in the future",
+    )
     _validate_true_gates(cleanup, CLEANUP_GATES, "Cleanup workflow")
     _require(
         cleanup["baseline_commit"] == baseline_commit
@@ -1143,6 +1150,16 @@ def validate(root: Path) -> None:
         _time(finalization["finalized_at"], "Gateway restart: finalized_at")
         <= validation_time,
         "Gateway restart: finalization is dated in the future",
+    )
+    _require(
+        _time(restart.get("captured_at"), "Gateway restart: captured_at")
+        <= validation_time,
+        "Gateway restart: capture is dated in the future",
+    )
+    _require(
+        _time(restart.get("captured_at"), "Gateway restart: captured_at")
+        <= _time(finalization["finalized_at"], "Gateway restart: finalized_at"),
+        "Gateway restart: capture occurred after finalization",
     )
 
     _require(

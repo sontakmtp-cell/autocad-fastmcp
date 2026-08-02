@@ -1628,6 +1628,36 @@ def test_validator_rejects_future_restart_db_capture(tmp_path: Path) -> None:
         VALIDATOR.validate(root)
 
 
+def test_validator_rejects_future_restart_capture(tmp_path: Path) -> None:
+    root = _repo(tmp_path / "future-restart-capture")
+    restart_path, restart = _evidence(
+        root, "phase10-live-gateway-restart-20260730.json"
+    )
+    restart["captured_at"] = (
+        datetime.now(timezone.utc) + timedelta(days=1)
+    ).isoformat()
+    _save(restart_path, restart)
+    with pytest.raises(
+        ValueError, match="Gateway restart: capture is dated in the future"
+    ):
+        VALIDATOR.validate(root)
+
+
+def test_validator_rejects_future_cleanup_capture(tmp_path: Path) -> None:
+    root = _repo(tmp_path / "future-cleanup-capture")
+    cleanup_path, cleanup = _evidence(
+        root, "phase10-live-cleanup-workflow-20260730.json"
+    )
+    cleanup["captured_at"] = (
+        datetime.now(timezone.utc) + timedelta(days=1)
+    ).isoformat()
+    _save(cleanup_path, cleanup)
+    with pytest.raises(
+        ValueError, match="Cleanup workflow: capture is dated in the future"
+    ):
+        VALIDATOR.validate(root)
+
+
 def test_finalize_restart_rejects_future_db_capture(
     tmp_path: Path, monkeypatch
 ) -> None:
