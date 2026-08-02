@@ -68,6 +68,7 @@ CLEANUP_GATES = {
 NO_EFFECT_DB_GATES = {
     "active_session_ok",
     "agent_session_reconnected",
+    "audit_window_closed",
     "anchor_jobs_ok",
     "foreign_keys_ok",
     "integrity_ok",

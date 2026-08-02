@@ -6,6 +6,7 @@ import json
 import sqlite3
 import subprocess
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -13,10 +14,21 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "phase10-live-db-evidence.py"
+VALIDATOR = ROOT / "scripts" / "validate-phase10-live-evidence.py"
 
 
 def _load_script():
     spec = importlib.util.spec_from_file_location("phase10_live_db_evidence", SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_validator():
+    spec = importlib.util.spec_from_file_location(
+        "validate_phase10_live_evidence", VALIDATOR
+    )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -80,7 +92,8 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
             created_at TEXT, updated_at TEXT
         );
         CREATE TABLE scene_records(
-            scene_id TEXT PRIMARY KEY, owner_subject TEXT, device_id TEXT, complete INTEGER
+            scene_id TEXT PRIMARY KEY, owner_subject TEXT, device_id TEXT,
+            complete INTEGER, created_at TEXT
         );
         CREATE TABLE scene_sections(
             scene_id TEXT, section TEXT
@@ -119,9 +132,9 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
         ],
     )
     connection.executemany(
-        "INSERT INTO scene_records VALUES(?,?,?,1)",
+        "INSERT INTO scene_records VALUES(?,?,?,1,?)",
         [
-            (scene_id, "owner-live", "device-live")
+            (scene_id, "owner-live", "device-live", "2026-07-30T06:20:00+00:00")
             for scene_id in module.SCENE_IDS
         ],
     )
@@ -167,10 +180,40 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
     assert first["implementation_commit"] == "a" * 40
     assert first["retrospective_no_write_events"] == []
     assert first["active_agent_session_id"] == "session-live"
+    assert cli_evidence["baseline_commit"]
+    assert cli_evidence["capture_command"].startswith(
+        "python scripts/phase10-live-db-evidence.py"
+    )
+    assert cli_evidence["operator"] == "local-operator"
+    assert cli_evidence["failures_retests"] == []
+    assert cli_evidence["limitations"] == []
     assert (
         first["write_snapshot"]["sha256"]
         == cli_evidence["write_snapshot"]["sha256"]
     )
+
+    future_window = module.collect_evidence(
+        database,
+        owner="owner-live",
+        device="device-live",
+        window_start="2026-07-30T06:15:00+00:00",
+        window_end="2100-01-01T00:00:00+00:00",
+        implementation_commit="a" * 40,
+    )
+    assert future_window["status"] == "FAIL"
+    assert future_window["gate_results"]["audit_window_closed"] is False
+
+    late_window = module.collect_evidence(
+        database,
+        owner="owner-live",
+        device="device-live",
+        window_start="2026-07-30T06:21:00+00:00",
+        window_end="2026-07-30T06:43:00+00:00",
+        implementation_commit="a" * 40,
+    )
+    assert late_window["status"] == "FAIL"
+    assert late_window["gate_results"]["anchor_jobs_ok"] is False
+    assert late_window["gate_results"]["scenes_ok"] is False
 
     session_only = module.collect_session_evidence(
         database,
@@ -184,10 +227,13 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
 
     pre_path = tmp_path / "pre-restart.json"
     pre_path.write_text(json.dumps(first), encoding="utf-8")
+    pre_capture = datetime.fromisoformat(first["captured_at"])
+    disconnected_at = (pre_capture + timedelta(microseconds=1)).isoformat()
+    reconnected_at = (pre_capture + timedelta(microseconds=2)).isoformat()
     connection = sqlite3.connect(database)
     connection.execute(
         "UPDATE agent_sessions SET disconnected_at=? WHERE session_id='session-live'",
-        ("2026-07-30T06:43:30+00:00",),
+        (disconnected_at,),
     )
     connection.execute(
         "INSERT INTO agent_sessions VALUES(?,?,?,?,?,?)",
@@ -195,8 +241,8 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
             "session-after",
             "device-live",
             "cad.agent/2",
-            "2026-07-30T06:43:31+00:00",
-            "2026-07-30T06:44:00+00:00",
+            reconnected_at,
+            reconnected_at,
             None,
         ),
     )
@@ -220,6 +266,25 @@ def test_collects_deterministic_read_only_phase10_db_evidence(tmp_path):
     assert comparison["post_restart_write_snapshot_sha256"] == post["write_snapshot"]["sha256"]
     assert comparison["sha256_unchanged"] is True
     assert comparison["tables_byte_identical"] is True
+    assert _load_validator().NO_EFFECT_DB_GATES <= set(post["gate_results"])
+    assert post["gate_results"]["agent_session_reconnected"] is True
+    assert post["gate_results"]["audit_window_closed"] is True
+    assert post["gate_results"]["write_snapshot_sha256_unchanged"] is True
+    assert post["gate_results"]["write_snapshot_tables_unchanged"] is True
+
+    same_session_path = tmp_path / "same-session-pre-restart.json"
+    same_session_path.write_text(json.dumps(post), encoding="utf-8")
+    same_session = module.collect_evidence(
+        database,
+        owner="owner-live",
+        device="device-live",
+        window_start="2026-07-30T06:15:00+00:00",
+        window_end="2026-07-30T06:43:00+00:00",
+        implementation_commit="a" * 40,
+        pre_restart_evidence=same_session_path,
+    )
+    assert same_session["status"] == "FAIL"
+    assert same_session["gate_results"]["agent_session_reconnected"] is False
 
     with pytest.raises(ValueError, match="pre-restart evidence is missing"):
         module.collect_evidence(

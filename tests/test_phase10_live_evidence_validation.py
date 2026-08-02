@@ -68,12 +68,19 @@ def _repo(path: Path) -> Path:
         / "migrations",
     )
     upgraded_fixtures: dict[str, dict] = {}
+    legacy_runtime_evidence = False
     for name in VALIDATOR.FIXTURES:
         fixture_path, fixture_value = _fixture(path, name)
-        _upgrade_fixture_runtime_identity(fixture_path, fixture_value)
+        if (
+            fixture_value.get("runtime_identity", {}).get("schema_version")
+            != "cad.phase10-live-runtime-identity/1"
+        ):
+            _upgrade_fixture_runtime_identity(fixture_path, fixture_value)
+            legacy_runtime_evidence = True
         upgraded_fixtures[name] = fixture_value
         _save(fixture_path, fixture_value)
-    _upgrade_restart_artifact(path)
+    if legacy_runtime_evidence:
+        _upgrade_restart_artifact(path)
     _, upgraded_fixtures["c"] = _fixture(path, "c")
     db_path, db_value = _evidence(
         path, "phase10-live-no-effect-db-20260730.json"
@@ -98,6 +105,15 @@ def _save(path: Path, value: dict) -> None:
 def _upgrade_db_artifact(
     path: Path, value: dict, fixtures: dict[str, dict]
 ) -> None:
+    value.setdefault("failures_retests", [])
+    value.setdefault("limitations", [])
+    value["scope"]["window_start"] = (
+        min(
+            VALIDATOR._time(item["created_at"], "anchor job created_at")
+            for item in value["anchor_jobs"]
+        )
+        - timedelta(seconds=1)
+    ).isoformat()
     pre = value["restart_comparison"]["pre_restart_write_snapshot"]
     post = value["write_snapshot"]
     digest = VALIDATOR._canonical_digest(post["tables"])
@@ -108,6 +124,22 @@ def _upgrade_db_artifact(
     value["restart_comparison"]["tables_byte_identical"] = True
     value["restart_comparison"]["pre_restart_active_agent_session_id"] = (
         fixtures["c"]["runtime_identity"]["agent_session"]["session_id"]
+    )
+    value["gate_results"].pop("pre_restart_write_snapshot_unchanged", None)
+    value["gate_results"].update(
+        {
+            "agent_session_reconnected": (
+                value["restart_comparison"][
+                    "pre_restart_active_agent_session_id"
+                ]
+                != value["restart_comparison"][
+                    "post_restart_active_agent_session_id"
+                ]
+            ),
+            "audit_window_closed": True,
+            "write_snapshot_sha256_unchanged": True,
+            "write_snapshot_tables_unchanged": True,
+        }
     )
     restart = json.loads(
         path.with_name("phase10-live-gateway-restart-20260730.json").read_text(
@@ -325,6 +357,7 @@ def _restamp_invocations(invocations: list[dict], captured_at: str) -> None:
 def _patch_evidence_commits(root: Path) -> None:
     for name in EVIDENCE_FILES:
         path, value = _evidence(root, name)
+        captured_short_commit = value["implementation_commit"][:7]
         value["implementation_commit"] = FIXED_COMMIT
         value["baseline_commit"] = FIXED_COMMIT
         for identity_key in (
@@ -340,7 +373,7 @@ def _patch_evidence_commits(root: Path) -> None:
                     working_directory = gateway.get("working_directory")
                     if isinstance(working_directory, str):
                         gateway["working_directory"] = working_directory.replace(
-                            "165de04", FIXED_COMMIT[:7]
+                            captured_short_commit, FIXED_COMMIT[:7]
                         )
         finalization = value.get("finalization")
         if isinstance(finalization, dict):
@@ -352,7 +385,7 @@ def _patch_evidence_commits(root: Path) -> None:
             working_directory = record.get("gateway_working_directory")
             if isinstance(working_directory, str):
                 record["gateway_working_directory"] = working_directory.replace(
-                    "165de04", FIXED_COMMIT[:7]
+                    captured_short_commit, FIXED_COMMIT[:7]
                 )
             service = record.get("gateway_service_record")
             if isinstance(service, dict):
@@ -365,7 +398,7 @@ def _patch_evidence_commits(root: Path) -> None:
                     if isinstance(release_working_directory, str):
                         release["working_directory"] = (
                             release_working_directory.replace(
-                                "165de04", FIXED_COMMIT[:7]
+                                captured_short_commit, FIXED_COMMIT[:7]
                             )
                         )
                 properties = service.get("properties")
@@ -374,7 +407,7 @@ def _patch_evidence_commits(root: Path) -> None:
                         property_value = properties.get(property_name)
                         if isinstance(property_value, str):
                             properties[property_name] = property_value.replace(
-                                "165de04", FIXED_COMMIT[:7]
+                                captured_short_commit, FIXED_COMMIT[:7]
                             )
                 process = service.get("process")
                 if isinstance(process, dict):
@@ -382,7 +415,7 @@ def _patch_evidence_commits(root: Path) -> None:
                         process_value = process.get(process_name)
                         if isinstance(process_value, str):
                             process[process_name] = process_value.replace(
-                                "165de04", FIXED_COMMIT[:7]
+                                captured_short_commit, FIXED_COMMIT[:7]
                             )
         for capture_key in ("identity_capture_before", "identity_capture_after"):
             capture = value.get(capture_key)
@@ -393,7 +426,7 @@ def _patch_evidence_commits(root: Path) -> None:
                     continue
                 if isinstance(record.get("command"), list):
                     record["command"] = [
-                        item.replace("165de04", FIXED_COMMIT[:7])
+                        item.replace(captured_short_commit, FIXED_COMMIT[:7])
                         if isinstance(item, str)
                         else item
                         for item in record["command"]
@@ -402,7 +435,7 @@ def _patch_evidence_commits(root: Path) -> None:
                     record["stdout"] = FIXED_COMMIT + "\n"
                 elif isinstance(record.get("stdout"), str):
                     record["stdout"] = record["stdout"].replace(
-                        "165de04", FIXED_COMMIT[:7]
+                        captured_short_commit, FIXED_COMMIT[:7]
                     )
         _save(path, value)
 
@@ -776,8 +809,11 @@ def _tamper(root: Path, case: str) -> None:
             identity["agent_session"]["connected_at"] = "2027-01-01T00:00:00Z"
         elif case == "identity_start_after_invocation":
             identity["desktop_agent_process"]["started_at"] = (
-                VALIDATOR._time(value["captured_at"], "captured_at")
-                - timedelta(seconds=10)
+                VALIDATOR._time(
+                    value["public_path"]["tool_invocations"][0]["started_at"],
+                    "first invocation started_at",
+                )
+                + timedelta(seconds=1)
             ).isoformat()
         elif case == "session_connected_mismatch":
             identity["agent_session"]["connected_at"] = (
@@ -1262,9 +1298,13 @@ def _capture_public_args(tmp_path: Path, fixture_value: dict):
     import argparse
 
     upgraded = copy.deepcopy(fixture_value)
-    _upgrade_fixture_runtime_identity(
-        tmp_path / "upgraded-copy.json", upgraded
-    )
+    if (
+        upgraded.get("runtime_identity", {}).get("schema_version")
+        != "cad.phase10-live-runtime-identity/1"
+    ):
+        _upgrade_fixture_runtime_identity(
+            tmp_path / "upgraded-copy.json", upgraded
+        )
     process_identity = upgraded["runtime_identity"]
     process_path = tmp_path / "process-identity.json"
     process_path.write_text(json.dumps(process_identity), encoding="utf-8")
@@ -1572,6 +1612,20 @@ def test_capture_public_to_finalize_to_validator(tmp_path: Path, monkeypatch):
     capture_args = _capture_public_args(tmp_path, fixture_value)
     process_identity = json.loads(
         capture_args.process_identity.read_text(encoding="utf-8")
+    )
+    _, restart_evidence = _evidence(
+        root, "phase10-live-gateway-restart-20260730.json"
+    )
+    post_session = restart_evidence["runtime_identity_after"]["agent_session"]
+    process_identity["agent_session"].update(
+        {
+            "session_id": post_session["session_id"],
+            "connected_at": post_session["connected_at"],
+            "disconnected_at": None,
+        }
+    )
+    capture_args.process_identity.write_text(
+        json.dumps(process_identity), encoding="utf-8"
     )
     retained = fixture_value
     provisional = asyncio.run(
@@ -2493,7 +2547,7 @@ def test_finalize_rejects_cross_commit_finalization(
         ("cleanup_binding", "not bound read-only"),
         ("restart_pid", "process/start identities"),
         ("restart_exit", "old process exit"),
-        ("restart_start", "process/start identities"),
+        ("restart_start", "does not match raw capture"),
         ("restart_public_trace", "invocation trace is incomplete"),
         ("restart_raw", "raw identity capture ordering"),
         ("restart_raw_service", "reports service"),
@@ -2541,7 +2595,7 @@ def test_finalize_rejects_cross_commit_finalization(
         ("db_window_end", "window does not cover the fixture capture"),
         ("db_sha", "durable no-write snapshot"),
         ("db_freshness", "before the audit window closed"),
-        ("db_row_freshness", "anchor job timestamp exceeds the DB capture time"),
+        ("db_row_freshness", "anchor job is not cross-bound"),
         ("db_anchor_owner", "anchor job is not cross-bound"),
         ("db_scene_binding", "scene record is not cross-bound"),
         ("db_scope_device", "scope device differs"),

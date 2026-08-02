@@ -7,6 +7,7 @@ import hashlib
 import json
 import re
 import sqlite3
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -178,6 +179,16 @@ def _rows(cursor: sqlite3.Cursor) -> list[dict[str, Any]]:
     return [dict(row) for row in cursor.fetchall()]
 
 
+def _git(*args: str) -> str:
+    return subprocess.run(
+        ["git", *args],
+        cwd=REPO_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
 def _expected_migrations() -> list[dict[str, Any]]:
     result = []
     for path in sorted(MIGRATIONS.glob("*.sql")):
@@ -307,6 +318,7 @@ def collect_session_evidence(
         and row["device_status"] == "online"
         and row["protocol_version"] == "cad.agent/2"
     ]
+    captured_at = datetime.now(timezone.utc).isoformat()
     gates = {
         "integrity_ok": integrity == ["ok"],
         "foreign_keys_ok": not foreign_keys,
@@ -316,7 +328,7 @@ def collect_session_evidence(
     return {
         "schema_version": "cad.phase10-live-session-evidence/1",
         "implementation_commit": implementation_commit,
-        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "captured_at": captured_at,
         "database": str(database),
         "scope": {"owner_subject": owner, "device_id": device},
         "database_checks": {
@@ -347,6 +359,10 @@ def collect_evidence(
 ) -> dict[str, Any]:
     if not COMMIT_RE.fullmatch(implementation_commit):
         raise ValueError("implementation_commit must be a 40-character lowercase SHA")
+    window_start_at = _parse_timestamp(window_start, "window_start")
+    window_end_at = _parse_timestamp(window_end, "window_end")
+    if window_start_at >= window_end_at:
+        raise ValueError("window_start must be before window_end")
     connection = sqlite3.connect(
         f"{database.resolve().as_uri()}?mode=ro", uri=True, isolation_level=None
     )
@@ -428,8 +444,12 @@ def collect_evidence(
         if row["disconnected_at"] is None
         and row["device_status"] == "online"
         and row["owner_subject"] == owner
+        and row["protocol_version"] == "cad.agent/2"
     ]
+    captured_at = datetime.now(timezone.utc).isoformat()
+    captured_at_value = _parse_timestamp(captured_at, "captured_at")
     gates = {
+        "audit_window_closed": window_end_at <= captured_at_value,
         "integrity_ok": integrity == ["ok"],
         "foreign_keys_ok": not foreign_keys,
         "migrations_ok": migration_identity == _expected_migrations(),
@@ -440,6 +460,12 @@ def collect_evidence(
             and row["device_id"] == device
             and row["effect_class"] == "read"
             and row["state"] == "succeeded"
+            and window_start_at
+            <= _parse_timestamp(row["created_at"], "anchor job created_at")
+            <= _parse_timestamp(row["updated_at"], "anchor job updated_at")
+            <= window_end_at
+            and _parse_timestamp(row["updated_at"], "anchor job updated_at")
+            <= captured_at_value
             for row in anchor_jobs
         ),
         "scenes_ok": {row["scene_id"] for row in scenes} == set(scene_ids)
@@ -447,12 +473,16 @@ def collect_evidence(
             row["owner_subject"] == owner
             and row["device_id"] == device
             and row["complete"] == 1
+            and window_start_at
+            <= _parse_timestamp(row["created_at"], "scene created_at")
+            <= window_end_at
+            and _parse_timestamp(row["created_at"], "scene created_at")
+            <= captured_at_value
             for row in scenes
         )
         and all(sections == SCENE_SECTIONS for sections in sections_by_scene.values()),
         "active_session_ok": len(active_sessions) == 1,
     }
-    captured_at = datetime.now(timezone.utc).isoformat()
     evidence = {
         "schema_version": "cad.phase10-live-db-evidence/1",
         "implementation_commit": implementation_commit,
@@ -493,9 +523,13 @@ def collect_evidence(
             device=device,
             implementation_commit=implementation_commit,
         )
-        if _parse_timestamp(
+        pre_captured_at = _parse_timestamp(
             pre["captured_at"], "pre-restart evidence captured_at"
-        ) >= _parse_timestamp(captured_at, "post-restart evidence captured_at"):
+        )
+        post_captured_at = _parse_timestamp(
+            captured_at, "post-restart evidence captured_at"
+        )
+        if pre_captured_at >= post_captured_at:
             raise ValueError("pre-restart evidence was not captured before post capture")
         pre_snapshot = pre["write_snapshot"]
         comparison = {
@@ -513,9 +547,48 @@ def collect_evidence(
             ),
         }
         evidence["restart_comparison"] = comparison
-        gates["pre_restart_write_snapshot_unchanged"] = comparison[
-            "tables_byte_identical"
-        ]
+        pre_session_id = comparison["pre_restart_active_agent_session_id"]
+        post_session_id = comparison["post_restart_active_agent_session_id"]
+        sessions_by_id = {row["session_id"]: row for row in sessions}
+        pre_session = sessions_by_id.get(pre_session_id)
+        post_session = sessions_by_id.get(post_session_id)
+        session_reconnected = (
+            isinstance(pre_session_id, str)
+            and isinstance(post_session_id, str)
+            and pre_session_id != post_session_id
+            and pre_session is not None
+            and post_session is not None
+            and all(
+                row["device_id"] == device
+                and row["owner_subject"] == owner
+                and row["protocol_version"] == "cad.agent/2"
+                for row in (pre_session, post_session)
+            )
+            and pre_session["disconnected_at"] is not None
+            and post_session["disconnected_at"] is None
+            and post_session["device_status"] == "online"
+            and _parse_timestamp(
+                pre_session["connected_at"], "pre-restart session connected_at"
+            )
+            <= pre_captured_at
+            <= _parse_timestamp(
+                pre_session["disconnected_at"],
+                "pre-restart session disconnected_at",
+            )
+            <= _parse_timestamp(
+                post_session["connected_at"], "post-restart session connected_at"
+            )
+            <= post_captured_at
+        )
+        gates.update(
+            {
+                "agent_session_reconnected": session_reconnected,
+                "write_snapshot_sha256_unchanged": comparison["sha256_unchanged"],
+                "write_snapshot_tables_unchanged": comparison[
+                    "tables_byte_identical"
+                ],
+            }
+        )
         evidence["status"] = "PASS" if all(gates.values()) else "FAIL"
     return evidence
 
@@ -534,6 +607,7 @@ def main() -> int:
     parser.add_argument("--scene-id", action="append")
     parser.add_argument("--pre-restart-evidence", type=Path)
     parser.add_argument("--session-only", action="store_true")
+    parser.add_argument("--operator", default="local-operator")
     args = parser.parse_args()
     if args.session_only:
         if args.pre_restart_evidence is not None:
@@ -556,6 +630,19 @@ def main() -> int:
             scene_ids=tuple(args.scene_id or SCENE_IDS),
             pre_restart_evidence=args.pre_restart_evidence,
         )
+    evidence.update(
+        {
+            "baseline_commit": _git("merge-base", "HEAD", "origin/main"),
+            "capture_command": "python scripts/phase10-live-db-evidence.py "
+            "--database <redacted> --owner-subject <redacted> "
+            f"--device-id {args.device_id} "
+            f"--implementation-commit {args.implementation_commit} "
+            + ("--session-only" if args.session_only else "<scoped window/job/scene arguments>"),
+            "operator": args.operator,
+            "failures_retests": [],
+            "limitations": [],
+        }
+    )
     json.dump(evidence, sys.stdout, ensure_ascii=False, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0 if evidence["status"] == "PASS" else 1
