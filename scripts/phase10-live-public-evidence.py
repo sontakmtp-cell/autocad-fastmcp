@@ -1217,15 +1217,24 @@ def _validate_restart_window(
     scope = no_effect_db.get("scope", {})
     window_start = _parse_timestamp(scope.get("window_start"), "DB window_start")
     window_end = _parse_timestamp(scope.get("window_end"), "DB window_end")
+    comparison = no_effect_db.get("restart_comparison", {})
+    pre_db_captured = _parse_timestamp(
+        comparison.get("pre_restart_captured_at"), "pre-restart DB captured_at"
+    )
+    post_db_captured = _parse_timestamp(
+        comparison.get("post_restart_captured_at"), "post-restart DB captured_at"
+    )
     db_captured = _parse_timestamp(no_effect_db.get("captured_at"), "DB captured_at")
     if not (
-        window_start <= first_started
-        and last_completed <= window_end
-        and window_end <= db_captured
+        window_start < window_end
+        and window_end <= pre_db_captured
+        and pre_db_captured <= restart_floor
+        and last_completed <= post_db_captured
+        and post_db_captured <= db_captured
         and db_captured <= finalized
     ):
         raise ValueError(
-            "Gateway restart: DB window does not cover the fixture capture or post-restart invocations"
+            "Gateway restart: DB window and pre/post captures do not bracket the restart"
         )
 
 

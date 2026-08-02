@@ -2008,10 +2008,21 @@ def test_restart_query_records_public_producer_path(
     ]
     assert result["post_restart_public_path"]["write_tools_invoked"] == []
     assert result["status"] == "PROVISIONAL"
-    collection_at = datetime.now(timezone.utc)
-    db_value["scope"]["window_start"] = invocations[0]["started_at"]
-    db_value["scope"]["window_end"] = collection_at.isoformat()
-    db_value["captured_at"] = collection_at.isoformat()
+    first_started = VALIDATOR._time(invocations[0]["started_at"], "first")
+    last_completed = VALIDATOR._time(invocations[-1]["completed_at"], "last")
+    pre_collection_at = first_started - timedelta(seconds=1)
+    post_collection_at = max(datetime.now(timezone.utc), last_completed)
+    db_value["scope"]["window_start"] = (
+        pre_collection_at - timedelta(seconds=1)
+    ).isoformat()
+    db_value["scope"]["window_end"] = pre_collection_at.isoformat()
+    db_value["restart_comparison"]["pre_restart_captured_at"] = (
+        pre_collection_at.isoformat()
+    )
+    db_value["restart_comparison"]["post_restart_captured_at"] = (
+        post_collection_at.isoformat()
+    )
+    db_value["captured_at"] = post_collection_at.isoformat()
     db_path = tmp_path / "restart-db.json"
     db_path.write_text(json.dumps(db_value), encoding="utf-8")
     provisional_path = tmp_path / "restart-provisional.json"
@@ -2030,7 +2041,37 @@ def test_restart_query_records_public_producer_path(
         )
     )
     assert final["status"] == "PASS"
-    assert VALIDATOR._time(invocations[-1]["completed_at"], "last") <= collection_at
+    assert last_completed <= post_collection_at
+
+
+def test_restart_window_accepts_closed_audit_window_before_restart() -> None:
+    first_started = datetime.now(timezone.utc)
+    last_completed = first_started + timedelta(seconds=1)
+    pre_captured = first_started - timedelta(seconds=1)
+    post_captured = last_completed + timedelta(seconds=1)
+    VALIDATOR.CAPTURE._validate_restart_window(
+        [
+            {
+                "started_at": first_started.isoformat(),
+                "completed_at": last_completed.isoformat(),
+            }
+        ],
+        {
+            "scope": {
+                "window_start": (pre_captured - timedelta(seconds=2)).isoformat(),
+                "window_end": (pre_captured - timedelta(seconds=1)).isoformat(),
+            },
+            "restart_comparison": {
+                "pre_restart_captured_at": pre_captured.isoformat(),
+                "post_restart_captured_at": post_captured.isoformat(),
+            },
+            "captured_at": post_captured.isoformat(),
+        },
+        gateway_after_at=first_started.isoformat(),
+        identity_after_at=first_started.isoformat(),
+        restart_captured_at=last_completed.isoformat(),
+        finalized_at=post_captured.isoformat(),
+    )
 
 
 @pytest.mark.parametrize(
