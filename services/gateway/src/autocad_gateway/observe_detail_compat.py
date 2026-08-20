@@ -183,7 +183,7 @@ def _valid_dimension_geometry(entity: dict[str, Any], geometry: Any) -> bool:
     if not isinstance(geometry, dict):
         return False
     keys = set(geometry)
-    if keys not in {_DIMENSION_KEYS, _DIMENSION_KEYS | {"detail_errors"}}:
+    if keys not in (_DIMENSION_KEYS, _DIMENSION_KEYS | {"detail_errors"}):
         return False
     if (
         not isinstance(geometry.get("ObjectName"), str)
