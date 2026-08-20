@@ -400,21 +400,12 @@ class ReadCommandExecutor:
                 ),
             },
         }
-        execution_package = (
-            {
-                "package_id": runtime.package_id,
-                "version": runtime.package_version,
-                "sha256": runtime.package_hash.removeprefix("sha256:"),
-            }
-            if managed_dotnet and getattr(runtime, "package_id", None)
-            else self.package
-        )
         return {
             "snapshot": snapshot,
             "execution_evidence": {
                 "agent_version": self.agent_version,
                 "runtime_state": "online_idle",
-                "package": execution_package,
+                "package": self.package,
                 **(
                     {
                         "runtime": runtime.model_dump(mode="json", exclude_none=True),
