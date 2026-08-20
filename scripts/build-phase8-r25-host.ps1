@@ -17,6 +17,19 @@ $bundleRoot = Join-Path $outputRoot "AutocadMcp.ManagedHost.R25.bundle"
 $r25Root = Join-Path $bundleRoot "Contents\R25"
 $sharedRoot = Join-Path $bundleRoot "Contents\Shared"
 
+function Write-Utf8NoBom {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$LiteralPath,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Value
+    )
+
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($LiteralPath, $Value, $encoding)
+}
+
 if (-not (Get-Command $DotNetPath -ErrorAction SilentlyContinue)) {
     throw "The required .NET SDK was not found: $DotNetPath"
 }
@@ -95,8 +108,9 @@ $packageContents = @'
   </Components>
 </ApplicationPackage>
 '@
-Set-Content -LiteralPath (Join-Path $bundleRoot "PackageContents.xml") `
-    -Value $packageContents -Encoding utf8NoBOM
+Write-Utf8NoBom `
+    -LiteralPath (Join-Path $bundleRoot "PackageContents.xml") `
+    -Value ($packageContents + [Environment]::NewLine)
 
 $artifactFiles = Get-ChildItem -LiteralPath $r25Root -File |
     Where-Object {
@@ -115,9 +129,14 @@ $aggregateText = (
     ForEach-Object { "$($_.Key):$($_.Value)" }
 ) -join "`n"
 $aggregateBytes = [System.Text.Encoding]::UTF8.GetBytes($aggregateText)
-$aggregateHash = [System.Convert]::ToHexString(
-    [System.Security.Cryptography.SHA256]::HashData($aggregateBytes)
-).ToLowerInvariant()
+$sha256 = [System.Security.Cryptography.SHA256]::Create()
+try {
+    $aggregateDigest = $sha256.ComputeHash($aggregateBytes)
+}
+finally {
+    $sha256.Dispose()
+}
+$aggregateHash = ([System.BitConverter]::ToString($aggregateDigest) -replace "-", "").ToLowerInvariant()
 $manifest = [ordered]@{
     schema_version = "cad.package-manifest/1"
     package_id = "autocad.managed_host.r25"
@@ -134,10 +153,10 @@ $manifest = [ordered]@{
     package_hash = "sha256:$aggregateHash"
     artifacts = $artifactHashes
 }
-$manifest | ConvertTo-Json -Depth 6 |
-    Set-Content -LiteralPath (
-        Join-Path $sharedRoot "package-manifest.json"
-    ) -Encoding utf8NoBOM
+$manifestJson = $manifest | ConvertTo-Json -Depth 6
+Write-Utf8NoBom `
+    -LiteralPath (Join-Path $sharedRoot "package-manifest.json") `
+    -Value ($manifestJson + [Environment]::NewLine)
 
 Write-Host "Tests passed and unsigned Phase 8 local R25 lab bundle built:"
 Write-Host $bundleRoot
