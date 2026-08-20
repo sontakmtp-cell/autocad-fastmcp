@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import inspect
 import logging
@@ -13,6 +14,9 @@ from typing import Any, Protocol
 from autocad_contracts import CommandMessage, canonical_json
 
 logger = logging.getLogger(__name__)
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+MAX_PREVIEW_IMAGE_BYTES = 250_000
+PREVIEW_BASE64_CHUNK_CHARS = 60_000
 
 
 class CadReadPort(Protocol):
@@ -61,6 +65,7 @@ SAFE_BACKEND_ERRORS = frozenset(
         "protocol_mismatch",
         "runtime_version_mismatch",
         "session_rejected",
+        "preview_unavailable",
     }
 )
 
@@ -126,7 +131,7 @@ class ReadCommandExecutor:
             raise AgentExecutionError("capability_missing")
         if command.payload.get("observation_level") not in {"summary", "detail"}:
             raise AgentExecutionError("capability_missing")
-        if command.payload.get("include_preview_image") is not False:
+        if not isinstance(command.payload.get("include_preview_image"), bool):
             raise AgentExecutionError("capability_missing")
         if command.payload.get("package") != self.package:
             raise AgentExecutionError("package_mismatch")
@@ -247,9 +252,14 @@ class ReadCommandExecutor:
             logger.warning("Failed to select read runtime: %s", error)
             raise AgentExecutionError(getattr(error, "code", "backend_error")) from error
         detail = command.payload["observation_level"] == "detail"
+        include_preview = command.payload["include_preview_image"]
         entity_snapshot = getattr(port, "entity_snapshot", None)
         if detail and not callable(entity_snapshot):
             logger.warning("Detail observation requested but port %s does not support entity_snapshot", port)
+            raise AgentExecutionError("capability_missing")
+        preview_image = getattr(port, "preview_image", None)
+        if include_preview and not callable(preview_image):
+            logger.warning("Preview requested but port %s does not support preview_image", port)
             raise AgentExecutionError("capability_missing")
         health = await port.health()
         if not health.ok:
@@ -265,21 +275,51 @@ class ReadCommandExecutor:
             result.payload,
             require_compatibility_package=not managed_dotnet,
         )
+        summary_doc_id = result.payload.get("document_id")
+        summary_revision = None
+        if managed_dotnet:
+            revision_value = result.payload.get("revision")
+            if (
+                not isinstance(revision_value, dict)
+                or isinstance(revision_value.get("revision"), bool)
+                or not isinstance(revision_value.get("revision"), int)
+                or revision_value["revision"] <= 0
+            ):
+                logger.warning("Invalid revision in summary payload: %s", revision_value)
+                raise AgentExecutionError("protocol_mismatch")
+            summary_revision = revision_value["revision"]
+
+        preview_payload: dict[str, Any] | None = None
+        if include_preview:
+            preview_kwargs: dict[str, Any] = {}
+            try:
+                sig = inspect.signature(preview_image)
+                if "document_id" in sig.parameters:
+                    preview_kwargs["document_id"] = summary_doc_id
+            except (ValueError, TypeError):
+                pass
+            preview_result = await preview_image(**preview_kwargs)
+            if not preview_result.ok or not isinstance(preview_result.payload, dict):
+                logger.warning("Preview capture failed: %s", preview_result.error_code)
+                raise AgentExecutionError(self._safe_code(preview_result.error_code))
+            preview_payload = self._validate_preview(preview_result.payload)
+            if (
+                managed_dotnet
+                and preview_result.payload.get("document_id") is not None
+                and preview_result.payload.get("document_id") != summary_doc_id
+            ):
+                raise AgentExecutionError("active_document_changed")
+            preview_revision = preview_result.payload.get("revision")
+            if (
+                managed_dotnet
+                and summary_revision is not None
+                and isinstance(preview_revision, dict)
+                and preview_revision.get("revision") != summary_revision
+            ):
+                raise AgentExecutionError("active_document_changed")
+
         detail_payload: dict[str, Any] | None = None
         if detail:
-            summary_revision = None
-            summary_doc_id = result.payload.get("document_id")
-            if managed_dotnet:
-                revision = result.payload.get("revision")
-                if (
-                    not isinstance(revision, dict)
-                    or isinstance(revision.get("revision"), bool)
-                    or not isinstance(revision.get("revision"), int)
-                    or revision["revision"] <= 0
-                ):
-                    logger.warning("Invalid revision in summary payload: %s", revision)
-                    raise AgentExecutionError("protocol_mismatch")
-                summary_revision = revision["revision"]
             snapshot_kwargs: dict[str, Any] = {}
             if summary_revision is not None:
                 snapshot_kwargs["expected_revision"] = summary_revision
@@ -302,11 +342,12 @@ class ReadCommandExecutor:
                 logger.warning("Active document revision changed between summary and detail")
                 raise AgentExecutionError("active_document_changed")
         logger.info(
-            "Read command %s executed successfully (level=%s, runtime=%s, entities=%d)",
+            "Read command %s executed successfully (level=%s, runtime=%s, entities=%d, preview=%s)",
             command.command_id,
             command.payload["observation_level"],
             getattr(runtime, "id", "legacy"),
             len(detail_payload.get("entities", [])) if detail_payload is not None else summary["entity_count"],
+            preview_payload is not None,
         )
         revision_source = {
             "document_name": summary["document_name"],
@@ -318,6 +359,8 @@ class ReadCommandExecutor:
         revision = (
             str(detail_payload["revision"]["revision"])
             if detail_payload is not None
+            else str(summary_revision)
+            if summary_revision is not None
             else hashlib.sha256(
                 canonical_json(revision_source).encode("utf-8")
             ).hexdigest()
@@ -371,7 +414,18 @@ class ReadCommandExecutor:
                         ],
                     }
                     if detail_payload is not None
-                    else {}
+                    else {
+                        **(
+                            {"document_id": summary_doc_id}
+                            if isinstance(summary_doc_id, str) and summary_doc_id
+                            else {}
+                        ),
+                        **(
+                            {"database_fingerprint": result.payload["database_fingerprint"]}
+                            if isinstance(result.payload.get("database_fingerprint"), str)
+                            else {}
+                        ),
+                    }
                 ),
             },
             "entity_summary": {
@@ -402,6 +456,7 @@ class ReadCommandExecutor:
         }
         return {
             "snapshot": snapshot,
+            **({"preview_image": preview_payload} if preview_payload is not None else {}),
             "execution_evidence": {
                 "agent_version": self.agent_version,
                 "runtime_state": "online_idle",
@@ -418,6 +473,47 @@ class ReadCommandExecutor:
                     else {}
                 ),
             },
+        }
+
+    def _validate_preview(self, value: dict[str, Any]) -> dict[str, Any]:
+        encoded = value.get("data_base64")
+        width = value.get("width")
+        height = value.get("height")
+        byte_count = value.get("byte_count")
+        if (
+            value.get("mime_type") != "image/png"
+            or not isinstance(encoded, str)
+            or not encoded
+            or isinstance(width, bool)
+            or not isinstance(width, int)
+            or width <= 0
+            or isinstance(height, bool)
+            or not isinstance(height, int)
+            or height <= 0
+            or isinstance(byte_count, bool)
+            or not isinstance(byte_count, int)
+            or not 0 < byte_count <= MAX_PREVIEW_IMAGE_BYTES
+        ):
+            raise AgentExecutionError("preview_unavailable")
+        try:
+            data = base64.b64decode(encoded, validate=True)
+        except ValueError:
+            raise AgentExecutionError("preview_unavailable") from None
+        if (
+            len(data) != byte_count
+            or not data.startswith(PNG_SIGNATURE)
+            or len(data) > MAX_PREVIEW_IMAGE_BYTES
+        ):
+            raise AgentExecutionError("preview_unavailable")
+        return {
+            "mime_type": "image/png",
+            "width": width,
+            "height": height,
+            "byte_count": byte_count,
+            "data_base64_chunks": [
+                encoded[offset : offset + PREVIEW_BASE64_CHUNK_CHARS]
+                for offset in range(0, len(encoded), PREVIEW_BASE64_CHUNK_CHARS)
+            ],
         }
 
     def _validate_summary(
