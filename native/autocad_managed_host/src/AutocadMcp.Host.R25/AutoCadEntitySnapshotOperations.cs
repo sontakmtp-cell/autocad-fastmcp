@@ -375,7 +375,7 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
             }
             catch (Exception error) when (!IsFatal(error))
             {
-                Trace.WriteLine($"DETAIL_OBSERVE_FINGERPRINT_FALLBACK handle={SafeHandle(entity, default, -1)} error={error}");
+                System.Diagnostics.Trace.WriteLine($"DETAIL_OBSERVE_FINGERPRINT_FALLBACK handle={SafeHandle(entity, default, -1)} error={error}");
             }
         }
         var value = JsonSerializer.SerializeToElement(
@@ -646,7 +646,7 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
         }
         catch (Exception error) when (!IsFatal(error))
         {
-            Trace.WriteLine($"DETAIL_OBSERVE_OBJECT_ID_FALLBACK object_id={objectId} error={error}");
+            System.Diagnostics.Trace.WriteLine($"DETAIL_OBSERVE_OBJECT_ID_FALLBACK object_id={objectId} error={error}");
         }
         try
         {
@@ -705,7 +705,7 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
         string property,
         Exception error)
     {
-        Trace.WriteLine(
+        System.Diagnostics.Trace.WriteLine(
             $"DETAIL_OBSERVE_ERROR index={index} handle={Bound(handle, 128)} " +
             $"object_name={Bound(objectName, 128)} dxf_type={Bound(type, 64)} " +
             $"property={Bound(property, 128)} error={error}");
@@ -726,7 +726,7 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
         }
         catch (Exception error) when (!IsFatal(error))
         {
-            Trace.WriteLine($"DETAIL_OBSERVE_HANDLE_FALLBACK index={index} error={error}");
+            System.Diagnostics.Trace.WriteLine($"DETAIL_OBSERVE_HANDLE_FALLBACK index={index} error={error}");
         }
         return $"UNAVAILABLE-{index}";
     }
