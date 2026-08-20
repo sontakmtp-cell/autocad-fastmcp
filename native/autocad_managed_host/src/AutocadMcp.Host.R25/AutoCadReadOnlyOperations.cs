@@ -114,6 +114,7 @@ internal sealed class AutoCadReadOnlyOperations(
             "entity.geometry.circle/1",
             "entity.geometry.line/1",
             "entity.geometry.polyline/1",
+            "entity.properties.dimension/1",
             "document.events.v1",
             "cad.program.v0.2",
             "cad.program.preview",
