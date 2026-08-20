@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -11,6 +12,7 @@ from autocad_desktop_agent.executor import AgentExecutionError, DrawingInfoExecu
 
 
 PACKAGE = {"package_id": "autocad.lisp.drawing_info", "version": "3.3-c1", "sha256": "a" * 64}
+PREVIEW_PNG = b"\x89PNG\r\n\x1a\n" + b"preview-test"
 
 
 @dataclass
@@ -43,6 +45,21 @@ class ReadPort:
                 "dispatcher_version": "3.3-c1",
                 "package_id": PACKAGE["package_id"],
                 "package_version": PACKAGE["version"],
+            },
+        )
+
+
+class PreviewReadPort(ReadPort):
+    async def preview_image(self):
+        encoded = base64.b64encode(PREVIEW_PNG).decode("ascii")
+        return Result(
+            True,
+            {
+                "mime_type": "image/png",
+                "width": 320,
+                "height": 200,
+                "byte_count": len(PREVIEW_PNG),
+                "data_base64": encoded,
             },
         )
 
@@ -147,6 +164,42 @@ async def test_executor_returns_summary_only_without_full_path():
     assert snapshot["entities"] == []
     assert snapshot["revision_evidence"]["commit_safe"] is False
     assert port.health_calls == port.drawing_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_executor_returns_chunked_png_preview_when_requested():
+    port = PreviewReadPort()
+    cmd = command(
+        payload={
+            "observation_level": "summary",
+            "include_preview_image": True,
+            "package": PACKAGE,
+        }
+    )
+    cmd = cmd.model_copy(update={"payload_hash": canonical_payload_hash(cmd.payload)})
+
+    result = await DrawingInfoExecutor(port, PACKAGE, "0.1.0").execute(cmd)
+
+    preview = result["preview_image"]
+    assert preview["mime_type"] == "image/png"
+    assert preview["byte_count"] == len(PREVIEW_PNG)
+    assert base64.b64decode("".join(preview["data_base64_chunks"])) == PREVIEW_PNG
+    assert all(len(chunk) <= 60_000 for chunk in preview["data_base64_chunks"])
+
+
+@pytest.mark.asyncio
+async def test_executor_requires_preview_capable_port_when_requested():
+    cmd = command(
+        payload={
+            "observation_level": "summary",
+            "include_preview_image": True,
+            "package": PACKAGE,
+        }
+    )
+    cmd = cmd.model_copy(update={"payload_hash": canonical_payload_hash(cmd.payload)})
+
+    with pytest.raises(AgentExecutionError, match="capability_missing"):
+        await DrawingInfoExecutor(ReadPort(), PACKAGE, "0.1.0").execute(cmd)
 
 
 @pytest.mark.asyncio
@@ -323,7 +376,6 @@ async def _result(value):
     [
         ({"kind": "write_fixture", "effect_class": "write"}, "capability_missing"),
         ({"payload": {"observation_level": "detail", "include_preview_image": False, "package": PACKAGE}}, "capability_missing"),
-        ({"payload": {"observation_level": "summary", "include_preview_image": True, "package": PACKAGE}}, "capability_missing"),
         (
             {
                 "issued_at": (datetime.now(timezone.utc) - timedelta(seconds=2)).isoformat(),
