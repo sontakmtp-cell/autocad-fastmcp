@@ -61,7 +61,6 @@ if ($LASTEXITCODE -ne 0) {
 
 & $DotNetPath publish $project `
     --configuration $Configuration `
-    --no-restore `
     --output $r25Root `
     -p:AutoCADReferencePath="$AutoCADReferencePath"
 if ($LASTEXITCODE -ne 0) {
