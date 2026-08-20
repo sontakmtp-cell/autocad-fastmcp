@@ -1,3 +1,6 @@
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Text.Json;
 using AutocadMcp.Host.Core;
 using Autodesk.AutoCAD.DatabaseServices;
@@ -16,6 +19,8 @@ internal sealed class AutoCadReadOnlyOperations(
     bool phase8TransformPackEnabled,
     bool phase8CheckpointV2Enabled) : IReadOnlyHostOperations
 {
+    private const int MaxPreviewPngBytes = 250_000;
+    private const int MinPreviewDimension = 128;
     private readonly AutoCadEntitySnapshotOperations _entityOperations = new(identities);
     private bool Phase8Enabled => phase8SourceEnabled;
 
@@ -66,6 +71,7 @@ internal sealed class AutoCadReadOnlyOperations(
         {
             "host.health" => GetHealth(),
             "drawing.observe.summary" => Observe(command),
+            "drawing.preview.png" => CapturePreview(command),
             "entity.snapshot.page" => _entityOperations.ReadPage(command),
             "document.events.summary" => _entityOperations.ReadEvents(command),
             _ => throw new ProtocolValidationException("capability_missing", "Operation is not registered.")
@@ -109,6 +115,7 @@ internal sealed class AutoCadReadOnlyOperations(
         {
             "host.health",
             "observe.summary",
+            "cad.observe.preview-image/1",
             "entity.snapshot.v2",
             "entity.geometry.arc/1",
             "entity.geometry.circle/1",
@@ -182,27 +189,8 @@ internal sealed class AutoCadReadOnlyOperations(
 
     private object Observe(CommandRequest command)
     {
-        var document = Application.DocumentManager.MdiActiveDocument
-            ?? throw new ProtocolValidationException("no_active_document", "No active drawing is open.");
-        var commandActive = GetCommandActive();
-        if ((commandActive & 8) != 0)
-        {
-            throw new ProtocolValidationException(
-                "modal_dialog_active",
-                "AutoCAD is waiting for a modal dialog.");
-        }
-        if (commandActive != 0)
-        {
-            throw new ProtocolValidationException("autocad_busy", "AutoCAD is executing another command.");
-        }
-
+        var document = RequireIdleActiveDocument(command);
         var identity = identities.Get(document);
-        var documentId = identity.DocumentId;
-        if (command.DocumentId is not null && command.DocumentId != documentId)
-        {
-            throw new ProtocolValidationException("active_document_changed", "The active document changed.");
-        }
-
         var includeLayers = !command.Arguments.TryGetProperty("include_layers", out var include) ||
             include.GetBoolean();
         var maxLayers = command.Arguments.TryGetProperty("max_layers", out var max)
@@ -225,15 +213,11 @@ internal sealed class AutoCadReadOnlyOperations(
             allLayers.Add(Bound(layer.Name, 255));
         }
         allLayers.Sort(StringComparer.OrdinalIgnoreCase);
-        if (!ReferenceEquals(Application.DocumentManager.MdiActiveDocument, document))
-        {
-            throw new ProtocolValidationException("active_document_changed", "The active document changed.");
-        }
-        identity.Revision.AssertRevision(revisionBefore.Revision, DateTimeOffset.UtcNow);
+        AssertDocumentUnchanged(document, identity, revisionBefore.Revision);
 
         return new
         {
-            document_id = documentId,
+            document_id = identity.DocumentId,
             document_name = Bound(Path.GetFileName(document.Name), 255),
             database_fingerprint = identity.DatabaseFingerprint,
             revision = revisionBefore,
@@ -246,6 +230,133 @@ internal sealed class AutoCadReadOnlyOperations(
             release_year = 2025,
             series = "R25.0"
         };
+    }
+
+    private object CapturePreview(CommandRequest command)
+    {
+        var document = RequireIdleActiveDocument(command);
+        var identity = identities.Get(document);
+        var revisionBefore = identity.Revision.Snapshot(DateTimeOffset.UtcNow);
+        var maxWidth = command.Arguments.TryGetProperty("max_width", out var width)
+            ? width.GetInt32()
+            : 640;
+        var maxHeight = command.Arguments.TryGetProperty("max_height", out var height)
+            ? height.GetInt32()
+            : 480;
+
+        try
+        {
+            var viewportNumber = Convert.ToInt32(Application.GetSystemVariable("CVPORT"));
+            var view = document.GraphicsManager.GetGsView(viewportNumber, true)
+                ?? throw new ProtocolValidationException(
+                    "preview_unavailable",
+                    "The active graphics view is unavailable.");
+            using var source = view.GetSnapshot(view.Viewport);
+            var encoded = EncodePreview(source, maxWidth, maxHeight);
+            AssertDocumentUnchanged(document, identity, revisionBefore.Revision);
+            return new
+            {
+                document_id = identity.DocumentId,
+                revision = revisionBefore,
+                mime_type = "image/png",
+                width = encoded.Width,
+                height = encoded.Height,
+                byte_count = encoded.Bytes.Length,
+                data_base64 = Convert.ToBase64String(encoded.Bytes)
+            };
+        }
+        catch (ProtocolValidationException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            throw new ProtocolValidationException(
+                "preview_unavailable",
+                $"Viewport preview capture failed: {exception.GetType().Name}.");
+        }
+    }
+
+    private Document RequireIdleActiveDocument(CommandRequest command)
+    {
+        var document = Application.DocumentManager.MdiActiveDocument
+            ?? throw new ProtocolValidationException("no_active_document", "No active drawing is open.");
+        var commandActive = GetCommandActive();
+        if ((commandActive & 8) != 0)
+        {
+            throw new ProtocolValidationException(
+                "modal_dialog_active",
+                "AutoCAD is waiting for a modal dialog.");
+        }
+        if (commandActive != 0)
+        {
+            throw new ProtocolValidationException("autocad_busy", "AutoCAD is executing another command.");
+        }
+
+        var documentId = identities.Get(document).DocumentId;
+        if (command.DocumentId is not null && command.DocumentId != documentId)
+        {
+            throw new ProtocolValidationException("active_document_changed", "The active document changed.");
+        }
+        return document;
+    }
+
+    private static (byte[] Bytes, int Width, int Height) EncodePreview(
+        Bitmap source,
+        int maxWidth,
+        int maxHeight)
+    {
+        var widthLimit = maxWidth;
+        var heightLimit = maxHeight;
+        while (true)
+        {
+            using var resized = ResizePreview(source, widthLimit, heightLimit);
+            using var stream = new MemoryStream();
+            resized.Save(stream, ImageFormat.Png);
+            var bytes = stream.ToArray();
+            if (bytes.Length <= MaxPreviewPngBytes)
+            {
+                return (bytes, resized.Width, resized.Height);
+            }
+            if (resized.Width <= MinPreviewDimension && resized.Height <= MinPreviewDimension)
+            {
+                throw new ProtocolValidationException(
+                    "preview_unavailable",
+                    "The bounded PNG preview is too large.");
+            }
+            widthLimit = Math.Max(MinPreviewDimension, widthLimit * 3 / 4);
+            heightLimit = Math.Max(MinPreviewDimension, heightLimit * 3 / 4);
+        }
+    }
+
+    private static Bitmap ResizePreview(Bitmap source, int maxWidth, int maxHeight)
+    {
+        var scale = Math.Min(
+            1.0,
+            Math.Min(maxWidth / (double)source.Width, maxHeight / (double)source.Height));
+        var width = Math.Max(1, (int)Math.Round(source.Width * scale));
+        var height = Math.Max(1, (int)Math.Round(source.Height * scale));
+        var result = new Bitmap(width, height, PixelFormat.Format24bppRgb);
+        using var graphics = Graphics.FromImage(result);
+        graphics.CompositingMode = CompositingMode.SourceCopy;
+        graphics.CompositingQuality = CompositingQuality.HighQuality;
+        graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+        graphics.SmoothingMode = SmoothingMode.HighQuality;
+        graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        graphics.DrawImage(source, new Rectangle(0, 0, width, height));
+        return result;
+    }
+
+    private static void AssertDocumentUnchanged(
+        Document document,
+        DocumentIdentity identity,
+        long expectedRevision)
+    {
+        if (!ReferenceEquals(Application.DocumentManager.MdiActiveDocument, document))
+        {
+            throw new ProtocolValidationException("active_document_changed", "The active document changed.");
+        }
+        identity.Revision.AssertRevision(expectedRevision, DateTimeOffset.UtcNow);
     }
 
     private static int GetCommandActive()
