@@ -35,7 +35,6 @@ from .contracts import (
 from .durable_services import DurableGatewayServices
 from .services import GatewayError
 
-PREVIEW_CAPABILITY = "cad.observe.preview-image/1"
 PREVIEW_ARTIFACT_PREFIX = "artifact-observe-"
 PREVIEW_MIME_TYPE = "image/png"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -153,8 +152,7 @@ async def _observe_with_preview(
         return await _ORIGINAL_OBSERVE(self, request, principal, correlation_id)
 
     device = await self._require_device(request.device_id, principal)
-    capabilities = set(device.get("capabilities", ()))
-    if "observe" not in capabilities or PREVIEW_CAPABILITY not in capabilities:
+    if "observe" not in set(device.get("capabilities", ())):
         raise GatewayError("capability_missing")
 
     payload: dict[str, Any] = {
