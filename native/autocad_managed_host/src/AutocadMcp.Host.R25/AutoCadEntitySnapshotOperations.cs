@@ -1,8 +1,10 @@
+using System.Diagnostics;
+using System.Reflection;
+using System.Text.Json;
 using AutocadMcp.Host.Core;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
-using System.Text.Json;
 using Application = Autodesk.AutoCAD.ApplicationServices.Core.Application;
 
 namespace AutocadMcp.Host.R25;
@@ -14,7 +16,8 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
         "entity.geometry.arc/1",
         "entity.geometry.circle/1",
         "entity.geometry.line/1",
-        "entity.geometry.polyline/1"
+        "entity.geometry.polyline/1",
+        "entity.properties.dimension/1"
     ];
 
     public object ReadPage(CommandRequest command)
@@ -56,12 +59,14 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
         var entities = new List<object>(request.Limit);
         var absoluteIndex = 0;
         var scanned = 0;
+        var detailErrorCount = 0;
         var exhausted = true;
         foreach (var space in spaces)
         {
             foreach (var objectId in space.Cast<ObjectId>())
             {
-                if (absoluteIndex++ < request.Cursor)
+                var entityIndex = absoluteIndex++;
+                if (entityIndex < request.Cursor)
                 {
                     continue;
                 }
@@ -71,15 +76,37 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
                     break;
                 }
                 scanned++;
-                if (transaction.GetObject(objectId, OpenMode.ForRead, false) is not Entity entity ||
-                    !Matches(entity, request))
+
+                Entity? entity = null;
+                try
                 {
-                    continue;
+                    if (transaction.GetObject(objectId, OpenMode.ForRead, false) is not Entity openedEntity)
+                    {
+                        continue;
+                    }
+                    entity = openedEntity;
+                    if (!Matches(entity, request))
+                    {
+                        continue;
+                    }
+                    var metadata = ToMetadata(
+                        entity,
+                        SpaceName(space),
+                        transaction,
+                        entityIndex);
+                    detailErrorCount += metadata.DetailErrorCount;
+                    entities.Add(metadata.Value);
                 }
-                entities.Add(ToMetadata(
-                    entity,
-                    SpaceName(space),
-                    transaction));
+                catch (Exception error) when (!IsFatal(error))
+                {
+                    detailErrorCount++;
+                    entities.Add(ToEntityErrorMetadata(
+                        objectId,
+                        entity,
+                        SpaceName(space),
+                        entityIndex,
+                        error));
+                }
             }
             if (!exhausted)
             {
@@ -100,6 +127,7 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
             limit = request.Limit,
             scanned_count = scanned,
             returned_count = entities.Count,
+            detail_error_count = detailErrorCount,
             scan_truncated = !exhausted && scanned >= request.MaxScan,
             source_capabilities = Phase10GeometryCapabilities,
             entities
@@ -203,18 +231,85 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
             (request.Layers.Count == 0 || request.Layers.Contains(entity.Layer));
     }
 
-    private static object ToMetadata(
+    private static EntityMetadataResult ToMetadata(
         Entity entity,
         string space,
-        Transaction transaction)
+        Transaction transaction,
+        int index)
     {
-        var projection = ProjectGeometry(entity);
-        var bounds = TryGetBounds(entity);
-        return new
+        var errors = new List<object>();
+        var handle = ReadValue(
+            index,
+            "Handle",
+            () => entity.Handle.ToString(),
+            $"UNAVAILABLE-{index}",
+            errors);
+        var objectName = ReadValue(
+            index,
+            "ObjectName",
+            () => entity.GetRXClass().Name ?? entity.GetType().Name,
+            entity.GetType().Name,
+            errors,
+            handle);
+        var type = ReadValue(
+            index,
+            "DXFType",
+            () => Bound(GetEntityType(entity), 64),
+            "UNKNOWN",
+            errors,
+            handle,
+            objectName);
+        var layer = ReadValue(
+            index,
+            "Layer",
+            () => Bound(entity.Layer, 255),
+            "<unavailable>",
+            errors,
+            handle,
+            objectName,
+            type);
+        var projection = ReadValue(
+            index,
+            "Geometry",
+            () => ProjectGeometry(
+                entity,
+                transaction,
+                index,
+                handle,
+                objectName,
+                type,
+                layer,
+                errors),
+            new GeometryProjection(null, "unavailable", "entity_read_failed", []),
+            errors,
+            handle,
+            objectName,
+            type);
+        var bounds = ReadValue<object?>(
+            index,
+            "GeometricExtents",
+            () => TryGetBounds(entity),
+            null,
+            errors,
+            handle,
+            objectName,
+            type);
+        var fingerprint = ReadValue(
+            index,
+            "Fingerprint",
+            () => ReadFingerprint(entity, transaction, bounds, projection, type, layer),
+            ErrorFingerprint(index, handle, type, layer, "fingerprint_unavailable"),
+            errors,
+            handle,
+            objectName,
+            type);
+
+        var value = new
         {
-            handle = entity.Handle.ToString(),
-            type = Bound(GetEntityType(entity), 64),
-            layer = Bound(entity.Layer, 255),
+            handle,
+            type,
+            object_name = objectName,
+            layer,
             space,
             bounds,
             geometry = projection.Geometry,
@@ -222,7 +317,45 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
             geometry_reason = projection.Reason,
             source_capabilities = projection.Capabilities,
             geometry_truncated = projection.Status == "truncated",
-            fingerprint = ReadFingerprint(entity, transaction, bounds, projection)
+            detail_errors = errors,
+            fingerprint
+        };
+        return new EntityMetadataResult(value, errors.Count);
+    }
+
+    private static object ToEntityErrorMetadata(
+        ObjectId objectId,
+        Entity? entity,
+        string space,
+        int index,
+        Exception error)
+    {
+        var handle = SafeHandle(entity, objectId, index);
+        var objectName = SafeObjectName(entity);
+        var type = SafeEntityType(entity);
+        var layer = SafeLayer(entity);
+        LogDetailError(index, handle, objectName, type, "entity", error);
+        var detailError = new
+        {
+            property = "entity",
+            error_type = Bound(error.GetType().Name, 128),
+            message = Bound(error.Message ?? "entity read failed", 512)
+        };
+        return new
+        {
+            handle,
+            type,
+            object_name = objectName,
+            layer,
+            space,
+            bounds = (object?)null,
+            geometry = new { detail_error = detailError },
+            geometry_status = "unavailable",
+            geometry_reason = "entity_read_failed",
+            source_capabilities = Array.Empty<string>(),
+            geometry_truncated = false,
+            detail_errors = new[] { detailError },
+            fingerprint = ErrorFingerprint(index, handle, type, layer, error.GetType().Name)
         };
     }
 
@@ -230,7 +363,9 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
         Entity entity,
         Transaction transaction,
         object? bounds,
-        GeometryProjection projection)
+        GeometryProjection projection,
+        string type,
+        string layer)
     {
         if (entity is Line or Circle or Polyline)
         {
@@ -238,15 +373,16 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
             {
                 return Phase8ManagedOperationPack.EntityFingerprint(entity, transaction);
             }
-            catch
+            catch (Exception error) when (!IsFatal(error))
             {
+                Trace.WriteLine($"DETAIL_OBSERVE_FINGERPRINT_FALLBACK handle={SafeHandle(entity, default, -1)} error={error}");
             }
         }
         var value = JsonSerializer.SerializeToElement(
             new
             {
-                entity_type = GetEntityType(entity),
-                layer = entity.Layer,
+                entity_type = type,
+                layer,
                 bounds,
                 geometry = projection.Geometry,
                 geometry_status = projection.Status,
@@ -256,23 +392,33 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
         return $"sha256:{CanonicalJson.Hash(value)}";
     }
 
-    private static GeometryProjection ProjectGeometry(Entity entity)
+    private static GeometryProjection ProjectGeometry(
+        Entity entity,
+        Transaction transaction,
+        int index,
+        string handle,
+        string objectName,
+        string type,
+        string layer,
+        List<object> errors)
     {
-        try
+        return entity switch
         {
-            return entity switch
-            {
-                Line line => ProjectLine(line),
-                Circle circle => ProjectCircle(circle),
-                Polyline polyline => ProjectPolyline(polyline),
-                Arc arc => ProjectArc(arc),
-                _ => Unsupported("entity_type_unsupported")
-            };
-        }
-        catch (Autodesk.AutoCAD.Runtime.Exception)
-        {
-            return new(null, "unavailable", "autodesk_read_failed", []);
-        }
+            Line line => ProjectLine(line),
+            Circle circle => ProjectCircle(circle),
+            Polyline polyline => ProjectPolyline(polyline),
+            Arc arc => ProjectArc(arc),
+            Dimension dimension => ProjectDimension(
+                dimension,
+                transaction,
+                index,
+                handle,
+                objectName,
+                type,
+                layer,
+                errors),
+            _ => Unsupported("entity_type_unsupported")
+        };
     }
 
     private static GeometryProjection ProjectLine(Line line)
@@ -366,6 +512,286 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
             "entity.geometry.arc/1");
     }
 
+    private static GeometryProjection ProjectDimension(
+        Dimension dimension,
+        Transaction transaction,
+        int index,
+        string handle,
+        string objectName,
+        string type,
+        string layer,
+        List<object> errors)
+    {
+        var properties = new Dictionary<string, object?>
+        {
+            ["ObjectName"] = objectName,
+            ["Handle"] = handle,
+            ["Layer"] = layer,
+            ["DimensionStyle"] = ReadFirstProperty(
+                dimension, transaction, index, handle, objectName, type, errors,
+                "DimensionStyleName", "DimensionStyle"),
+            ["Measurement"] = ReadFirstProperty(
+                dimension, transaction, index, handle, objectName, type, errors,
+                "Measurement"),
+            ["TextOverride"] = ReadFirstProperty(
+                dimension, transaction, index, handle, objectName, type, errors,
+                "DimensionText", "TextOverride"),
+            ["TextHeight"] = ReadFirstProperty(
+                dimension, transaction, index, handle, objectName, type, errors,
+                "TextHeight", "Dimtxt"),
+            ["TextPosition"] = ReadFirstProperty(
+                dimension, transaction, index, handle, objectName, type, errors,
+                "TextPosition"),
+            ["TextRotation"] = ReadFirstProperty(
+                dimension, transaction, index, handle, objectName, type, errors,
+                "TextRotation"),
+            ["Color"] = ReadFirstProperty(
+                dimension, transaction, index, handle, objectName, type, errors,
+                "ColorIndex"),
+            ["Visible"] = ReadFirstProperty(
+                dimension, transaction, index, handle, objectName, type, errors,
+                "Visible", "Visibility"),
+            ["Annotative"] = ReadFirstProperty(
+                dimension, transaction, index, handle, objectName, type, errors,
+                "Annotative")
+        };
+        if (errors.Count > 0)
+        {
+            properties["detail_errors"] = errors;
+        }
+        return Exact(properties, "entity.properties.dimension/1");
+    }
+
+    private static object? ReadFirstProperty(
+        object target,
+        Transaction transaction,
+        int index,
+        string handle,
+        string objectName,
+        string type,
+        List<object> errors,
+        params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var property = target.GetType().GetProperty(
+                propertyName,
+                BindingFlags.Instance | BindingFlags.Public);
+            if (property is null || property.GetIndexParameters().Length != 0)
+            {
+                continue;
+            }
+            try
+            {
+                return NormalizePropertyValue(property.GetValue(target), transaction);
+            }
+            catch (Exception error) when (!IsFatal(error))
+            {
+                AddDetailError(
+                    errors,
+                    index,
+                    handle,
+                    objectName,
+                    type,
+                    propertyName,
+                    error);
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static object? NormalizePropertyValue(object? value, Transaction transaction)
+    {
+        return value switch
+        {
+            null => null,
+            string text => Bound(text, 4096),
+            bool boolean => boolean,
+            byte number => number,
+            sbyte number => number,
+            short number => number,
+            ushort number => number,
+            int number => number,
+            uint number => number,
+            long number => number,
+            ulong number => number,
+            float number when float.IsFinite(number) => number,
+            double number when double.IsFinite(number) => number,
+            decimal number => number,
+            Point2d point when double.IsFinite(point.X) && double.IsFinite(point.Y) =>
+                new[] { point.X, point.Y },
+            Point3d point when IsFinite(point) =>
+                new[] { point.X, point.Y, point.Z },
+            Vector3d vector when IsFinite(vector) =>
+                new[] { vector.X, vector.Y, vector.Z },
+            ObjectId objectId => NormalizeObjectId(objectId, transaction),
+            Enum enumeration => enumeration.ToString(),
+            _ => Bound(Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty, 4096)
+        };
+    }
+
+    private static object? NormalizeObjectId(ObjectId objectId, Transaction transaction)
+    {
+        if (objectId.IsNull)
+        {
+            return null;
+        }
+        try
+        {
+            if (transaction.GetObject(objectId, OpenMode.ForRead, false) is SymbolTableRecord symbol)
+            {
+                return Bound(symbol.Name, 255);
+            }
+        }
+        catch (Exception error) when (!IsFatal(error))
+        {
+            Trace.WriteLine($"DETAIL_OBSERVE_OBJECT_ID_FALLBACK object_id={objectId} error={error}");
+        }
+        try
+        {
+            return objectId.Handle.ToString();
+        }
+        catch (Exception error) when (!IsFatal(error))
+        {
+            return Bound(objectId.ToString(), 255);
+        }
+    }
+
+    private static T ReadValue<T>(
+        int index,
+        string property,
+        Func<T> read,
+        T fallback,
+        List<object> errors,
+        string handle = "<unavailable>",
+        string objectName = "<unavailable>",
+        string type = "UNKNOWN")
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception error) when (!IsFatal(error))
+        {
+            AddDetailError(errors, index, handle, objectName, type, property, error);
+            return fallback;
+        }
+    }
+
+    private static void AddDetailError(
+        List<object> errors,
+        int index,
+        string handle,
+        string objectName,
+        string type,
+        string property,
+        Exception error)
+    {
+        LogDetailError(index, handle, objectName, type, property, error);
+        errors.Add(new
+        {
+            property,
+            error_type = Bound(error.GetType().Name, 128),
+            message = Bound(error.Message ?? "property read failed", 512)
+        });
+    }
+
+    private static void LogDetailError(
+        int index,
+        string handle,
+        string objectName,
+        string type,
+        string property,
+        Exception error)
+    {
+        Trace.WriteLine(
+            $"DETAIL_OBSERVE_ERROR index={index} handle={Bound(handle, 128)} " +
+            $"object_name={Bound(objectName, 128)} dxf_type={Bound(type, 64)} " +
+            $"property={Bound(property, 128)} error={error}");
+    }
+
+    private static string SafeHandle(Entity? entity, ObjectId objectId, int index)
+    {
+        try
+        {
+            if (entity is not null)
+            {
+                return entity.Handle.ToString();
+            }
+            if (!objectId.IsNull)
+            {
+                return objectId.Handle.ToString();
+            }
+        }
+        catch (Exception error) when (!IsFatal(error))
+        {
+            Trace.WriteLine($"DETAIL_OBSERVE_HANDLE_FALLBACK index={index} error={error}");
+        }
+        return $"UNAVAILABLE-{index}";
+    }
+
+    private static string SafeObjectName(Entity? entity)
+    {
+        if (entity is null)
+        {
+            return "<unavailable>";
+        }
+        try
+        {
+            return Bound(entity.GetRXClass().Name ?? entity.GetType().Name, 128);
+        }
+        catch (Exception error) when (!IsFatal(error))
+        {
+            return Bound(entity.GetType().Name, 128);
+        }
+    }
+
+    private static string SafeEntityType(Entity? entity)
+    {
+        if (entity is null)
+        {
+            return "UNKNOWN";
+        }
+        try
+        {
+            return Bound(GetEntityType(entity), 64);
+        }
+        catch (Exception error) when (!IsFatal(error))
+        {
+            return "UNKNOWN";
+        }
+    }
+
+    private static string SafeLayer(Entity? entity)
+    {
+        if (entity is null)
+        {
+            return "<unavailable>";
+        }
+        try
+        {
+            return Bound(entity.Layer, 255);
+        }
+        catch (Exception error) when (!IsFatal(error))
+        {
+            return "<unavailable>";
+        }
+    }
+
+    private static string ErrorFingerprint(
+        int index,
+        string handle,
+        string type,
+        string layer,
+        string reason)
+    {
+        var value = JsonSerializer.SerializeToElement(
+            new { index, handle, type, layer, reason },
+            HostProtocol.JsonOptions);
+        return $"sha256:{CanonicalJson.Hash(value)}";
+    }
+
     private static GeometryProjection Exact(object geometry, string capability) =>
         new(geometry, "exact", null, [capability]);
 
@@ -391,7 +817,7 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
                 }
                 : null;
         }
-        catch (Autodesk.AutoCAD.Runtime.Exception)
+        catch (Exception error) when (!IsFatal(error))
         {
             return null;
         }
@@ -402,6 +828,8 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
 
     private static bool IsFinite(Vector3d vector) =>
         double.IsFinite(vector.X) && double.IsFinite(vector.Y) && double.IsFinite(vector.Z);
+
+    private static bool IsFatal(Exception error) => error is OutOfMemoryException;
 
     private static int GetCommandActive()
     {
@@ -423,4 +851,6 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
         string Status,
         string? Reason,
         string[] Capabilities);
+
+    private sealed record EntityMetadataResult(object Value, int DetailErrorCount);
 }
