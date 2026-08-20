@@ -340,7 +340,7 @@ class ManagedDotNetCadReadPort:
     async def entity_snapshot(
         self,
         *,
-        limit: int = 512,
+        limit: int = MAX_PHASE10_SNAPSHOT_ENTITIES,
         expected_revision: int | None = None,
         document_id: str | None = None,
     ) -> CadPortResult:
@@ -355,13 +355,14 @@ class ManagedDotNetCadReadPort:
             entities: list[dict[str, Any]] = []
             cursor = 0
             revision: dict[str, Any] | None = None
+            detail_error_count = 0
             while len(entities) < limit:
                 arguments: dict[str, Any] = {
                     "cursor": cursor,
-                    "limit": min(200, limit - len(entities)),
+                    "limit": min(100, limit - len(entities)),
                     "max_scan": 20_000,
                     "space": "model",
-                    "types": ["LINE", "CIRCLE", "LWPOLYLINE", "ARC"],
+                    "types": [],
                 }
                 pinned_revision = (
                     revision["revision"]
@@ -377,10 +378,14 @@ class ManagedDotNetCadReadPort:
                 )
                 page_revision = page.get("revision")
                 page_entities = page.get("entities")
+                page_error_count = page.get("detail_error_count", 0)
                 if (
                     not isinstance(page_revision, dict)
                     or not isinstance(page_revision.get("revision"), int)
                     or not isinstance(page_entities, list)
+                    or isinstance(page_error_count, bool)
+                    or not isinstance(page_error_count, int)
+                    or page_error_count < 0
                 ):
                     raise RuntimeError("protocol_mismatch")
                 if revision is None:
@@ -388,6 +393,7 @@ class ManagedDotNetCadReadPort:
                 elif page_revision["revision"] != revision["revision"]:
                     raise RuntimeError("active_document_changed")
                 entities.extend(page_entities)
+                detail_error_count += page_error_count
                 next_cursor = page.get("next_cursor")
                 if next_cursor is None:
                     return CadPortResult(
@@ -397,6 +403,7 @@ class ManagedDotNetCadReadPort:
                             "revision": revision,
                             "entities": entities,
                             "returned_count": len(entities),
+                            "detail_error_count": detail_error_count,
                             "scan_truncated": False,
                         },
                     )
@@ -410,6 +417,7 @@ class ManagedDotNetCadReadPort:
                     "revision": revision,
                     "entities": entities,
                     "returned_count": len(entities),
+                    "detail_error_count": detail_error_count,
                     "next_cursor": cursor,
                     "scan_truncated": True,
                 },
@@ -431,6 +439,7 @@ class ManagedDotNetCadReadPort:
             "entity.geometry.circle/1",
             "entity.geometry.line/1",
             "entity.geometry.polyline/1",
+            "entity.properties.dimension/1",
             "cad.program.preview",
             "cad.program.commit",
             "cad.program.validate",
@@ -569,6 +578,7 @@ class ManagedDotNetCadReadPort:
         return capability in {
             "cad.validation.geometry.basic.v1",
             "cad.validation.document.revision.v1",
+            "cad.validation.layer.exists.v1",
             "cad.validation.entity.fingerprint.v1",
             "cad.validation.transform.result.v1",
             "cad.validation.rollback.eligibility.v1",
@@ -885,7 +895,7 @@ class ReloadingManagedDotNetCadReadPort:
     async def entity_snapshot(
         self,
         *,
-        limit: int = 512,
+        limit: int = MAX_PHASE10_SNAPSHOT_ENTITIES,
         expected_revision: int | None = None,
         document_id: str | None = None,
     ) -> CadPortResult:
