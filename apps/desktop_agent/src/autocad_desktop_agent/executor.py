@@ -359,8 +359,6 @@ class ReadCommandExecutor:
         revision = (
             str(detail_payload["revision"]["revision"])
             if detail_payload is not None
-            else str(summary_revision)
-            if summary_revision is not None
             else hashlib.sha256(
                 canonical_json(revision_source).encode("utf-8")
             ).hexdigest()
@@ -414,18 +412,7 @@ class ReadCommandExecutor:
                         ],
                     }
                     if detail_payload is not None
-                    else {
-                        **(
-                            {"document_id": summary_doc_id}
-                            if isinstance(summary_doc_id, str) and summary_doc_id
-                            else {}
-                        ),
-                        **(
-                            {"database_fingerprint": result.payload["database_fingerprint"]}
-                            if isinstance(result.payload.get("database_fingerprint"), str)
-                            else {}
-                        ),
-                    }
+                    else {}
                 ),
             },
             "entity_summary": {
