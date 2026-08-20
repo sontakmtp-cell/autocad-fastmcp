@@ -19,7 +19,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Create a bounded read-only CAD snapshot with stable revision and resource references.",
+    "description": "Create a bounded read-only CAD snapshot with stable revision and resource references. Set include_preview_image=true whenever the user asks to see, visually inspect, verify the appearance/layout, or otherwise needs an image of the current AutoCAD drawing. A successful preview is returned as an image/png artifact resource. Leave include_preview_image=false when only structured drawing/entity data is needed.",
     "input_schema_sha256": "d7a0857bb52b461eb3c19a0b26a005e660ad66c589327db3756cbc3f44b37799",
     "name": "cad_observe",
     "output_schema_sha256": "5145b975821d9a96ba3a0cd306ee4f0a26734ba4f958de26431574dac7aa234e",
