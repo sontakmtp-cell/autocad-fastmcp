@@ -2,6 +2,7 @@
 param(
     [switch]$Headless,
     [switch]$PairOnly,
+    [switch]$Source,
     [string]$ConfigPath = "",
     [string]$AgentExe = ""
 )
@@ -63,21 +64,24 @@ if ($config.telemetry_endpoint) {
     $env:AUTOCAD_MCP_TELEMETRY_TOKEN = [Text.Encoding]::UTF8.GetString($plain)
 }
 
-if (-not $env:AUTOCAD_MCP_OPERATION_PACK_ALLOWLIST) {
-    $env:AUTOCAD_MCP_PROGRAM_V1_CREATE_PACK_ENABLED = "0"
-    $env:AUTOCAD_MCP_PROGRAM_V1_TRANSFORM_PACK_ENABLED = "0"
-    $env:AUTOCAD_MCP_PROGRAM_V1_SOURCE_ENABLED = "0"
-    $env:AUTOCAD_MCP_CHECKPOINT_V2_ENABLED = "0"
+if (-not $env:AUTOCAD_MCP_PROGRAM_V1_SOURCE_ENABLED) {
+    $env:AUTOCAD_MCP_PROGRAM_V1_SOURCE_ENABLED = "1"
+}
+if (-not $env:AUTOCAD_MCP_PROGRAM_V1_CREATE_PACK_ENABLED) {
+    $env:AUTOCAD_MCP_PROGRAM_V1_CREATE_PACK_ENABLED = "1"
 }
 
-if (-not (Test-Path -LiteralPath $AgentExe -PathType Leaf)) {
+$agentRoot = Join-Path (Split-Path -Parent $PSScriptRoot) "apps\desktop_agent"
+$useSource = $Source -or ($env:AUTOCAD_AGENT_RUN_SOURCE -eq "1")
+
+if (-not $useSource -and -not (Test-Path -LiteralPath $AgentExe -PathType Leaf)) {
     $distExe = Join-Path (Split-Path -Parent $PSScriptRoot) "dist\phase5-agent\app\KythuatvangAutoCADAgent.exe"
     if (Test-Path -LiteralPath $distExe -PathType Leaf) {
         $AgentExe = $distExe
     }
 }
 
-if (Test-Path -LiteralPath $AgentExe -PathType Leaf) {
+if (-not $useSource -and (Test-Path -LiteralPath $AgentExe -PathType Leaf)) {
     $arguments = @()
     if ($PairOnly) { $arguments += "--pair" }
     elseif ($Headless) { $arguments += "--headless" }
@@ -90,8 +94,7 @@ if (Test-Path -LiteralPath $AgentExe -PathType Leaf) {
     exit $process.ExitCode
 }
 else {
-    $agentRoot = Join-Path (Split-Path -Parent $PSScriptRoot) "apps\desktop_agent"
-    $arguments = @("run", "--project", $agentRoot, "--no-sync", "autocad-desktop-agent")
+    $arguments = @("run", "--project", $agentRoot, "autocad-desktop-agent")
     if ($PairOnly) { $arguments += "--pair" }
     elseif ($Headless) { $arguments += "--headless" }
     & uv @arguments

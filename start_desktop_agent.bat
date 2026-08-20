@@ -2,12 +2,12 @@
 setlocal
 cd /d "%~dp0"
 
-echo Dang kiem tra va dong Desktop Agent cu neu dang chay...
+echo [1/2] Dang kiem tra va dong sach cac tien trinh Desktop Agent cu dang chay...
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$procs = Get-Process -Name 'KythuatvangAutoCADAgent' -ErrorAction SilentlyContinue; if ($procs) { Write-Host ('Dang dong Desktop Agent cu (PID: ' + ($procs.Id -join ', ') + ')...') -ForegroundColor Yellow; $procs | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Milliseconds 800 }"
+    "$agentProcs = Get-CimInstance Win32_Process | Where-Object { $_.Name -match 'KythuatvangAutoCADAgent' -or ($_.CommandLine -match 'autocad_desktop_agent|autocad-desktop-agent|run-phase5-agent|run-phase6-agent') }; foreach ($p in $agentProcs) { if ($p.ProcessId -ne $PID) { Write-Host ('[STOP] Dang dong tien trinh Agent (PID ' + $p.ProcessId + ': ' + $p.Name + ')...') -ForegroundColor Yellow; Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue } }; Start-Sleep -Milliseconds 600"
 
-echo Dang khoi dong Desktop Agent voi day du QUYEN DOC VA GHI (Managed Write)...
+echo [2/2] Dang khoi dong Desktop Agent (phien ban moi nhat, ho tro Managed Write / Phase 8)...
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$identityFile = Join-Path $env:LOCALAPPDATA 'Kythuatvang\AutoCADAgent\identity\device.json'; $deviceId = ''; if (Test-Path -LiteralPath $identityFile) { $idJson = Get-Content -LiteralPath $identityFile -Raw | ConvertFrom-Json; $deviceId = $idJson.device_id }; if (-not $deviceId) { $deviceId = 'autocad-lab-01' }; & '%~dp0scripts\run-phase6-agent.ps1' -AllowedDeviceId $deviceId -EnableManagedWrite"
+    "$identityFile = Join-Path $env:LOCALAPPDATA 'Kythuatvang\AutoCADAgent\identity\device.json'; $deviceId = ''; if (Test-Path -LiteralPath $identityFile) { $idJson = Get-Content -LiteralPath $identityFile -Raw | ConvertFrom-Json; $deviceId = $idJson.device_id }; if (-not $deviceId) { $deviceId = 'autocad-lab-01' }; & '%~dp0scripts\run-phase6-agent.ps1' -AllowedDeviceId $deviceId -EnableManagedWrite -Source %*"
 
 endlocal
