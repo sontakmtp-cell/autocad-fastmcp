@@ -3,6 +3,7 @@
     <AssemblyName>AutocadMcp.Host.R25</AssemblyName>
     <RootNamespace>AutocadMcp.Host.R25</RootNamespace>
     <PlatformTarget>x64</PlatformTarget>
+    <UseSystemDrawing>true</UseSystemDrawing>
     <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
     <AutoCADReferencePath Condition="'$(AutoCADReferencePath)' == ''">C:\Program Files\Autodesk\AutoCAD 2025</AutoCADReferencePath>
   </PropertyGroup>
