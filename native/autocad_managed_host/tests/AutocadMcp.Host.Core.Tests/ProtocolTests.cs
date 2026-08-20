@@ -68,6 +68,7 @@ public sealed class ProtocolTests
                 "cad.rollback.validate",
                 "document.events.summary",
                 "drawing.observe.summary",
+                "drawing.preview.png",
                 "entity.snapshot.page",
                 "host.health"
             ],
@@ -75,6 +76,21 @@ public sealed class ProtocolTests
         Assert.False(registry.Contains("assembly.load"));
         Assert.False(registry.Contains("command.raw"));
         Assert.False(registry.Contains("lisp.evaluate"));
+    }
+
+    [Fact]
+    public void PreviewCommand_EnforcesBoundedDimensions()
+    {
+        using var valid = JsonDocument.Parse(
+            """{"operation_id":"drawing.preview.png","operation_version":1,"document_id":"doc-test","arguments":{"max_width":640,"max_height":480}}""");
+        var request = EnvelopeValidator.ParseCommand(valid.RootElement);
+        Assert.Equal("drawing.preview.png", request.OperationId);
+
+        using var tooLarge = JsonDocument.Parse(
+            """{"operation_id":"drawing.preview.png","operation_version":1,"document_id":"doc-test","arguments":{"max_width":2048,"max_height":480}}""");
+        var error = Assert.Throws<ProtocolValidationException>(
+            () => EnvelopeValidator.ParseCommand(tooLarge.RootElement));
+        Assert.Equal("invalid_envelope", error.Code);
     }
 
     [Fact]
