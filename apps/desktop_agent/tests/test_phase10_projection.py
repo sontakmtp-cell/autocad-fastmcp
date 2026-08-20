@@ -44,6 +44,7 @@ class Phase10HostTransport:
                     "entity.geometry.circle/1",
                     "entity.geometry.polyline/1",
                     "entity.geometry.arc/1",
+                    "entity.properties.dimension/1",
                 ],
             }
             message_type = "handshake_result"
@@ -62,6 +63,7 @@ class Phase10HostTransport:
                     "revision": {"revision": 7},
                     "next_cursor": None,
                     "source_capabilities": ["entity.geometry.arc/1"],
+                    "detail_error_count": 0,
                     "entities": [{
                         "handle": "A1",
                         "type": "ARC",
@@ -92,7 +94,7 @@ class Phase10HostTransport:
         }
 
 
-async def test_agent_requests_and_forwards_tier_a_projection_up_to_lab_limit():
+async def test_agent_requests_all_entity_types_in_bounded_pages():
     transport = Phase10HostTransport()
     adapter = ManagedDotNetCadReadPort(
         transport,
@@ -107,6 +109,7 @@ async def test_agent_requests_and_forwards_tier_a_projection_up_to_lab_limit():
     assert result.payload["entities"][0]["geometry_status"] == "exact"
     assert result.payload["entities"][0]["geometry"]["end_angle_radians"] == 1.0
     assert result.payload["source_capabilities"] == ["entity.geometry.arc/1"]
+    assert result.payload["detail_error_count"] == 0
     manifest = adapter.manifest(
         RuntimeProbe(
             runtime_id="managed_dotnet",
@@ -122,9 +125,11 @@ async def test_agent_requests_and_forwards_tier_a_projection_up_to_lab_limit():
         "entity.geometry.circle/1",
         "entity.geometry.polyline/1",
         "entity.geometry.arc/1",
+        "entity.properties.dimension/1",
     }
     arguments = transport.requests[-1]["payload"]["arguments"]
-    assert arguments["types"] == ["LINE", "CIRCLE", "LWPOLYLINE", "ARC"]
+    assert arguments["types"] == []
+    assert arguments["limit"] == 100
     assert arguments["expected_revision"] == 7
 
 
