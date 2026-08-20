@@ -31,6 +31,8 @@ from .contracts import RuntimeProbe
 PROTOCOL = "cad.host/1"
 MAX_FRAME_BYTES = 1_048_576
 MAX_PHASE10_SNAPSHOT_ENTITIES = 5_000
+MAX_PREVIEW_IMAGE_BYTES = 250_000
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
 @dataclass(frozen=True)
@@ -337,6 +339,73 @@ class ManagedDotNetCadReadPort:
             return CadPortResult(False, error_code=code)
         return CadPortResult(True, payload=value)
 
+    async def preview_image(
+        self,
+        *,
+        document_id: str | None = None,
+        max_width: int = 640,
+        max_height: int = 480,
+    ) -> CadPortResult:
+        if (
+            isinstance(max_width, bool)
+            or isinstance(max_height, bool)
+            or not isinstance(max_width, int)
+            or not isinstance(max_height, int)
+            or not 128 <= max_width <= 1024
+            or not 128 <= max_height <= 1024
+        ):
+            return CadPortResult(False, error_code="capability_missing")
+        try:
+            handshake = await self._ensure_handshake()
+            if "cad.observe.preview-image/1" not in handshake.get("capabilities", []):
+                return CadPortResult(False, error_code="capability_missing")
+            result = await self._command(
+                "drawing.preview.png",
+                document_id=document_id,
+                arguments={"max_width": max_width, "max_height": max_height},
+            )
+            encoded = result.get("data_base64")
+            width = result.get("width")
+            height = result.get("height")
+            byte_count = result.get("byte_count")
+            if (
+                result.get("mime_type") != "image/png"
+                or not isinstance(encoded, str)
+                or not encoded
+                or isinstance(width, bool)
+                or not isinstance(width, int)
+                or width <= 0
+                or isinstance(height, bool)
+                or not isinstance(height, int)
+                or height <= 0
+                or isinstance(byte_count, bool)
+                or not isinstance(byte_count, int)
+                or not 0 < byte_count <= MAX_PREVIEW_IMAGE_BYTES
+            ):
+                raise RuntimeError("protocol_mismatch")
+            data = base64.b64decode(encoded, validate=True)
+            if (
+                len(data) != byte_count
+                or len(data) > MAX_PREVIEW_IMAGE_BYTES
+                or not data.startswith(PNG_SIGNATURE)
+            ):
+                raise RuntimeError("protocol_mismatch")
+        except Exception as error:
+            code = self._safe_error(error)
+            if code in {"managed_host_unavailable", "session_rejected"}:
+                self._handshake = None
+            return CadPortResult(False, error_code=code)
+        return CadPortResult(
+            True,
+            payload={
+                "mime_type": "image/png",
+                "width": width,
+                "height": height,
+                "byte_count": byte_count,
+                "data_base64": encoded,
+            },
+        )
+
     async def entity_snapshot(
         self,
         *,
@@ -434,6 +503,7 @@ class ManagedDotNetCadReadPort:
         handshake = self._handshake
         allowed = {
             "observe.summary",
+            "cad.observe.preview-image/1",
             "entity.snapshot.v2",
             "entity.geometry.arc/1",
             "entity.geometry.circle/1",
@@ -809,6 +879,7 @@ class ManagedDotNetCadReadPort:
             "autocad_busy",
             "modal_dialog_active",
             "active_document_changed",
+            "preview_unavailable",
             "document_changed",
             "stale_snapshot",
             "program_invalid",
@@ -891,6 +962,21 @@ class ReloadingManagedDotNetCadReadPort:
         if document_id is not None:
             kwargs["document_id"] = document_id
         return await self._call_with_reload("drawing_info", **kwargs)
+
+    async def preview_image(
+        self,
+        *,
+        document_id: str | None = None,
+        max_width: int = 640,
+        max_height: int = 480,
+    ) -> CadPortResult:
+        kwargs: dict[str, Any] = {
+            "max_width": max_width,
+            "max_height": max_height,
+        }
+        if document_id is not None:
+            kwargs["document_id"] = document_id
+        return await self._call_with_reload("preview_image", **kwargs)
 
     async def entity_snapshot(
         self,
