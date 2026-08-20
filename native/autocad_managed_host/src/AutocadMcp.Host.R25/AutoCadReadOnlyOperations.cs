@@ -247,7 +247,7 @@ internal sealed class AutoCadReadOnlyOperations(
         try
         {
             var viewportNumber = Convert.ToInt32(Application.GetSystemVariable("CVPORT"));
-            var view = document.GraphicsManager.GetGsView(viewportNumber, true)
+            var view = document.GraphicsManager.GetCurrentAcGsView(viewportNumber)
                 ?? throw new ProtocolValidationException(
                     "preview_unavailable",
                     "The active graphics view is unavailable.");
