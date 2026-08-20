@@ -2,11 +2,17 @@
 param(
     [switch]$Headless,
     [switch]$PairOnly,
-    [string]$ConfigPath = (Join-Path $env:LOCALAPPDATA "Kythuatvang\AutoCADAgent\agent-config.json"),
-    [string]$AgentExe = (Join-Path $PSScriptRoot "app\KythuatvangAutoCADAgent.exe")
+    [string]$ConfigPath = "",
+    [string]$AgentExe = ""
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($ConfigPath)) {
+    $ConfigPath = Join-Path $env:LOCALAPPDATA "Kythuatvang\AutoCADAgent\agent-config.json"
+}
+if ([string]::IsNullOrWhiteSpace($AgentExe) -and -not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
+    $AgentExe = Join-Path $PSScriptRoot "app\KythuatvangAutoCADAgent.exe"
+}
 if (-not ("System.Security.Cryptography.ProtectedData" -as [type])) {
     Add-Type -AssemblyName System.Security
 }
@@ -26,6 +32,12 @@ $env:AUTOCAD_AGENT_DEVICE_ID = ""
 $env:AUTOCAD_AGENT_DEVICE_NAME = [string]$config.device_name
 $env:AUTOCAD_AGENT_PACKAGE_PATH = [string]$config.package_path
 $env:AUTOCAD_AGENT_PACKAGE_SHA256 = [string]$config.package_sha256
+if (-not $env:AUTOCAD_MCP_RUNTIME_MODE) {
+    $env:AUTOCAD_MCP_RUNTIME_MODE = "auto"
+}
+if (-not $env:AUTOCAD_MCP_MANAGED_HOST_ENABLED) {
+    $env:AUTOCAD_MCP_MANAGED_HOST_ENABLED = "1"
+}
 $env:AUTOCAD_MCP_TELEMETRY_ENABLED = if ($config.telemetry_endpoint) { "1" } else { "0" }
 $env:AUTOCAD_MCP_TELEMETRY_ENDPOINT = [string]$config.telemetry_endpoint
 $env:AUTOCAD_MCP_TELEMETRY_RUNTIME_ID = if ($config.telemetry_runtime_id) {
@@ -51,11 +63,31 @@ if ($config.telemetry_endpoint) {
     $env:AUTOCAD_MCP_TELEMETRY_TOKEN = [Text.Encoding]::UTF8.GetString($plain)
 }
 
+if (-not $env:AUTOCAD_MCP_OPERATION_PACK_ALLOWLIST) {
+    $env:AUTOCAD_MCP_PROGRAM_V1_CREATE_PACK_ENABLED = "0"
+    $env:AUTOCAD_MCP_PROGRAM_V1_TRANSFORM_PACK_ENABLED = "0"
+    $env:AUTOCAD_MCP_PROGRAM_V1_SOURCE_ENABLED = "0"
+    $env:AUTOCAD_MCP_CHECKPOINT_V2_ENABLED = "0"
+}
+
+if (-not (Test-Path -LiteralPath $AgentExe -PathType Leaf)) {
+    $distExe = Join-Path (Split-Path -Parent $PSScriptRoot) "dist\phase5-agent\app\KythuatvangAutoCADAgent.exe"
+    if (Test-Path -LiteralPath $distExe -PathType Leaf) {
+        $AgentExe = $distExe
+    }
+}
+
 if (Test-Path -LiteralPath $AgentExe -PathType Leaf) {
     $arguments = @()
     if ($PairOnly) { $arguments += "--pair" }
     elseif ($Headless) { $arguments += "--headless" }
-    & $AgentExe @arguments
+    if ($arguments.Count -gt 0) {
+        $process = Start-Process -FilePath $AgentExe -ArgumentList $arguments -PassThru -Wait
+    }
+    else {
+        $process = Start-Process -FilePath $AgentExe -PassThru -Wait
+    }
+    exit $process.ExitCode
 }
 else {
     $agentRoot = Join-Path (Split-Path -Parent $PSScriptRoot) "apps\desktop_agent"
@@ -63,5 +95,5 @@ else {
     if ($PairOnly) { $arguments += "--pair" }
     elseif ($Headless) { $arguments += "--headless" }
     & uv @arguments
+    exit $LASTEXITCODE
 }
-exit $LASTEXITCODE

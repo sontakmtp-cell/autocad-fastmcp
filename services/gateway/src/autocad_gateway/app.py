@@ -1326,6 +1326,36 @@ def build_mcp_server(
                 **result,
             }
 
+        @mcp.tool(name="cad_get_skill", title="Get CAD skill manifest and schema",
+                  description="Get the full manifest, input schema, output schema and guidance for a skill.",
+                  annotations=_tool_annotations(idempotent=True), auth=auth_check)
+        async def cad_get_skill(
+            skill_id: str,
+            skill_version: str | None = None,
+            *,
+            ctx: Context,
+        ) -> dict[str, Any]:
+            del ctx
+            correlation_id = current_correlation_id(make_correlation_id)
+            manifest = workflow_service.catalog.resolve(skill_id, skill_version)
+            return {
+                "contract_version": "cad.mcp/1.6",
+                "correlation_id": correlation_id,
+                "skill_id": manifest.skill_id,
+                "version": manifest.version,
+                "title": manifest.title,
+                "summary": manifest.summary,
+                "domain": manifest.domain,
+                "tags": list(manifest.tags),
+                "risk_floor": manifest.risk_floor,
+                "required_scopes": list(manifest.required_scopes),
+                "required_capabilities": list(manifest.required_capabilities),
+                "required_operation_packs": list(manifest.required_operation_packs),
+                "input_schema": manifest.input_schema,
+                "output_schema": manifest.output_schema,
+                "validation_profiles": list(manifest.validation_profiles),
+            }
+
         @mcp.tool(name="cad_start_workflow", title="Start a CAD workflow",
                   description="Start one owner-scoped, digest-pinned workflow run.",
                   annotations=_tool_annotations(idempotent=False, read_only=False), auth=auth_check)

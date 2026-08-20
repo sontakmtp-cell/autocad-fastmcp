@@ -471,7 +471,7 @@ class AgentCore:
                 capabilities.append("cad.approval.device_local/1")
         capability_manifest = None
         packages = [self.package]
-        if self.runtime_broker is not None and self.config.program_v0_enabled:
+        if self.runtime_broker is not None:
             try:
                 selection = await self.runtime_broker.describe_managed_runtime()
             except Exception:
@@ -499,6 +499,13 @@ class AgentCore:
                         for item in product.capabilities
                         if item in mapping
                     )
+                    for item in product.capabilities:
+                        if (
+                            item.startswith("cad.program.v1.")
+                            or item.startswith("cad.op.")
+                            or item.startswith("cad.validation.")
+                        ):
+                            capabilities.append(item)
                     runtime = product.runtime
                     if (
                         runtime.package_id
@@ -724,6 +731,11 @@ class AgentCore:
         try:
             result = await self.executor.execute(command)
         except AgentExecutionError as error:
+            logger.warning(
+                "Read command %s failed with AgentExecutionError: %s",
+                command.command_id,
+                error.code,
+            )
             entry = self.ledger.transition(command.command_id, "failed", error_code=error.code)
             self._last_ids["safe_error_code"] = error.code
             terminal_state = {
@@ -734,8 +746,14 @@ class AgentCore:
                 "package_mismatch": RuntimeState.INCOMPATIBLE,
                 "dispatcher_not_loaded": RuntimeState.INCOMPATIBLE,
                 "dispatcher_timeout": RuntimeState.INCOMPATIBLE,
+                "active_document_changed": RuntimeState.READY,
             }.get(error.code, RuntimeState.INCOMPATIBLE)
-        except Exception:
+        except Exception as error:
+            logger.exception(
+                "Read command %s failed with unexpected exception: %s",
+                command.command_id,
+                error,
+            )
             entry = self.ledger.transition(command.command_id, "failed", error_code="backend_error")
             self._last_ids["safe_error_code"] = "backend_error"
             terminal_state = RuntimeState.INCOMPATIBLE

@@ -154,6 +154,8 @@ def test_invalid_feature_flag_fails_closed(monkeypatch):
 
 
 def test_phase8_operation_pack_versions_accept_contract_separator(monkeypatch):
+    monkeypatch.delenv("AUTOCAD_MCP_PROGRAM_V1_CREATE_PACK_ENABLED", raising=False)
+    monkeypatch.delenv("AUTOCAD_MCP_PROGRAM_V1_TRANSFORM_PACK_ENABLED", raising=False)
     monkeypatch.setenv("AUTOCAD_AGENT_GATEWAY_WS_URL", "wss://gateway.example/agent/ws")
     monkeypatch.setenv("AUTOCAD_AGENT_DEVICE_ID", "device-a")
     monkeypatch.setenv("AUTOCAD_AGENT_PACKAGE_SHA256", "a" * 64)

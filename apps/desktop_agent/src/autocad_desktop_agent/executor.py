@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+import inspect
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import PurePath, PureWindowsPath
 from typing import Any, Protocol
 
 from autocad_contracts import CommandMessage, canonical_json
+
+logger = logging.getLogger(__name__)
 
 
 class CadReadPort(Protocol):
@@ -108,6 +112,13 @@ class ReadCommandExecutor:
         if self._runtime_broker is None:
             return self._port, None
         selection = await self._runtime_broker.select_read_runtime()
+        logger.info(
+            "Selected CAD read runtime: %s (role=%s, degraded=%s, reason=%s)",
+            getattr(selection.evidence, "id", None),
+            getattr(selection.evidence, "role", None),
+            getattr(selection, "degraded", False),
+            getattr(selection, "degradation_reason", None),
+        )
         return selection.adapter, selection
 
     def validate_command(self, command: CommandMessage) -> None:
@@ -233,16 +244,20 @@ class ReadCommandExecutor:
         try:
             port, selection = await self._select_port()
         except Exception as error:
+            logger.warning("Failed to select read runtime: %s", error)
             raise AgentExecutionError(getattr(error, "code", "backend_error")) from error
         detail = command.payload["observation_level"] == "detail"
         entity_snapshot = getattr(port, "entity_snapshot", None)
         if detail and not callable(entity_snapshot):
+            logger.warning("Detail observation requested but port %s does not support entity_snapshot", port)
             raise AgentExecutionError("capability_missing")
         health = await port.health()
         if not health.ok:
+            logger.warning("Port health check failed: %s", health.error_code)
             raise AgentExecutionError(self._safe_code(health.error_code))
         result = await port.drawing_info()
         if not result.ok or not isinstance(result.payload, dict):
+            logger.warning("Port drawing_info failed: %s", result.error_code)
             raise AgentExecutionError(self._safe_code(result.error_code))
         runtime = getattr(selection, "evidence", None)
         managed_dotnet = getattr(runtime, "id", None) == "managed_dotnet"
@@ -253,6 +268,7 @@ class ReadCommandExecutor:
         detail_payload: dict[str, Any] | None = None
         if detail:
             summary_revision = None
+            summary_doc_id = result.payload.get("document_id")
             if managed_dotnet:
                 revision = result.payload.get("revision")
                 if (
@@ -261,14 +277,21 @@ class ReadCommandExecutor:
                     or not isinstance(revision.get("revision"), int)
                     or revision["revision"] <= 0
                 ):
+                    logger.warning("Invalid revision in summary payload: %s", revision)
                     raise AgentExecutionError("protocol_mismatch")
                 summary_revision = revision["revision"]
-            detail_result = (
-                await entity_snapshot(expected_revision=summary_revision)
-                if summary_revision is not None
-                else await entity_snapshot()
-            )
+            snapshot_kwargs: dict[str, Any] = {}
+            if summary_revision is not None:
+                snapshot_kwargs["expected_revision"] = summary_revision
+            try:
+                sig = inspect.signature(entity_snapshot)
+                if "document_id" in sig.parameters:
+                    snapshot_kwargs["document_id"] = summary_doc_id
+            except (ValueError, TypeError):
+                pass
+            detail_result = await entity_snapshot(**snapshot_kwargs)
             if not detail_result.ok or not isinstance(detail_result.payload, dict):
+                logger.warning("Entity snapshot failed: %s", detail_result.error_code)
                 raise AgentExecutionError(self._safe_code(detail_result.error_code))
             detail_payload = detail_result.payload
             if (
@@ -276,7 +299,15 @@ class ReadCommandExecutor:
                 and detail_payload.get("revision", {}).get("revision")
                 != summary_revision
             ):
+                logger.warning("Active document revision changed between summary and detail")
                 raise AgentExecutionError("active_document_changed")
+        logger.info(
+            "Read command %s executed successfully (level=%s, runtime=%s, entities=%d)",
+            command.command_id,
+            command.payload["observation_level"],
+            getattr(runtime, "id", "legacy"),
+            len(detail_payload.get("entities", [])) if detail_payload is not None else summary["entity_count"],
+        )
         revision_source = {
             "document_name": summary["document_name"],
             "entity_count": summary["entity_count"],
@@ -369,12 +400,21 @@ class ReadCommandExecutor:
                 ),
             },
         }
+        execution_package = (
+            {
+                "package_id": runtime.package_id,
+                "version": runtime.package_version,
+                "sha256": runtime.package_hash.removeprefix("sha256:"),
+            }
+            if managed_dotnet and getattr(runtime, "package_id", None)
+            else self.package
+        )
         return {
             "snapshot": snapshot,
             "execution_evidence": {
                 "agent_version": self.agent_version,
                 "runtime_state": "online_idle",
-                "package": self.package,
+                "package": execution_package,
                 **(
                     {
                         "runtime": runtime.model_dump(mode="json", exclude_none=True),

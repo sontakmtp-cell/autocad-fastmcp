@@ -39,15 +39,38 @@ public sealed class LocalPipeServer(
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            await using var pipe = new NamedPipeServerStream(
+            var pipe = new NamedPipeServerStream(
                 pipeName,
                 PipeDirection.InOut,
-                1,
+                NamedPipeServerStream.MaxAllowedServerInstances,
                 PipeTransmissionMode.Byte,
                 PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly,
                 HostProtocol.MaxFrameBytes,
                 HostProtocol.MaxFrameBytes);
-            await pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await pipe.WaitForConnectionAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                await pipe.DisposeAsync().ConfigureAwait(false);
+                break;
+            }
+            catch (Exception exception)
+            {
+                log?.Invoke($"WaitForConnectionAsync failed: {exception.GetType().Name}");
+                await pipe.DisposeAsync().ConfigureAwait(false);
+                continue;
+            }
+
+            _ = HandleClientAsync(pipe, cancellationToken);
+        }
+    }
+
+    private async Task HandleClientAsync(NamedPipeServerStream pipe, CancellationToken cancellationToken)
+    {
+        await using (pipe.ConfigureAwait(false))
+        {
             var session = sessionFactory();
             try
             {
@@ -67,7 +90,10 @@ public sealed class LocalPipeServer(
             {
                 log?.Invoke($"Local pipe session ended: {exception.GetType().Name}");
             }
-            // A disconnect ends the session. The Host never replays or retries a command.
+            catch (Exception exception)
+            {
+                log?.Invoke($"Local pipe session error: {exception.GetType().Name}: {exception.Message}");
+            }
         }
     }
 }

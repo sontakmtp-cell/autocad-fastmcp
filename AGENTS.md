@@ -64,6 +64,8 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## 6. Bản vẽ AutoCAD D:\AI\autocad-mcp\drawing33.dwg là bản vẽ nháp chuyên dùng cho mục đích kiểm thử, Agent có toàn quyền sử dụng bản vẽ này. Tài khoản và mật khẩu VM lưu trong .env ở root.
 
+## 7. Luôn kiểm tra xem đã có desktop agent nào đang chạy hay không trước khi khởi động desktop agent mới.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

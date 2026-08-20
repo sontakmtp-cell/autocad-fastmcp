@@ -973,7 +973,17 @@ internal static class Phase8ManagedOperationPack
                     "capability_missing",
                     "Entity type has no exact Phase 8 fingerprint.");
         }
-        var extents = entity.GeometricExtents;
+        Point3d minPoint = Point3d.Origin;
+        Point3d maxPoint = Point3d.Origin;
+        try
+        {
+            var extents = entity.GeometricExtents;
+            minPoint = extents.MinPoint;
+            maxPoint = extents.MaxPoint;
+        }
+        catch (Autodesk.AutoCAD.Runtime.Exception)
+        {
+        }
         var value = new JsonObject
         {
             ["entity_type"] = entity.GetRXClass().DxfName,
@@ -985,8 +995,8 @@ internal static class Phase8ManagedOperationPack
             ["color_index"] = entity.ColorIndex,
             ["bounds"] = new JsonObject
             {
-                ["min"] = PointJson(extents.MinPoint),
-                ["max"] = PointJson(extents.MaxPoint)
+                ["min"] = PointJson(minPoint),
+                ["max"] = PointJson(maxPoint)
             },
             ["geometry"] = geometry
         };

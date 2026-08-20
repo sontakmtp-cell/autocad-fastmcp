@@ -7,6 +7,7 @@ import base64
 import concurrent.futures
 import hashlib
 import hmac
+import inspect
 import json
 import os
 import secrets
@@ -311,12 +312,12 @@ class ManagedDotNetCadReadPort:
             )
         return CadPortResult(True, payload=details)
 
-    async def drawing_info(self) -> CadPortResult:
+    async def drawing_info(self, *, document_id: str | None = None) -> CadPortResult:
         try:
-            handshake = await self._ensure_handshake()
+            await self._ensure_handshake()
             result = await self._command(
                 "drawing.observe.summary",
-                document_id=handshake.get("active_document_id"),
+                document_id=document_id,
                 arguments={"include_layers": True, "max_layers": 256},
             )
             value = dict(result)
@@ -341,6 +342,7 @@ class ManagedDotNetCadReadPort:
         *,
         limit: int = 512,
         expected_revision: int | None = None,
+        document_id: str | None = None,
     ) -> CadPortResult:
         if (
             isinstance(limit, bool)
@@ -349,11 +351,10 @@ class ManagedDotNetCadReadPort:
         ):
             return CadPortResult(False, error_code="capability_missing")
         try:
-            handshake = await self._ensure_handshake()
+            await self._ensure_handshake()
             entities: list[dict[str, Any]] = []
             cursor = 0
             revision: dict[str, Any] | None = None
-            document_id = handshake.get("active_document_id")
             while len(entities) < limit:
                 arguments: dict[str, Any] = {
                     "cursor": cursor,
@@ -875,19 +876,28 @@ class ReloadingManagedDotNetCadReadPort:
     async def health(self) -> CadPortResult:
         return await self._call_with_reload("health")
 
-    async def drawing_info(self) -> CadPortResult:
-        return await self._call_with_reload("drawing_info")
+    async def drawing_info(self, *, document_id: str | None = None) -> CadPortResult:
+        kwargs: dict[str, Any] = {}
+        if document_id is not None:
+            kwargs["document_id"] = document_id
+        return await self._call_with_reload("drawing_info", **kwargs)
 
     async def entity_snapshot(
         self,
         *,
         limit: int = 512,
         expected_revision: int | None = None,
+        document_id: str | None = None,
     ) -> CadPortResult:
+        kwargs: dict[str, Any] = {
+            "limit": limit,
+            "expected_revision": expected_revision,
+        }
+        if document_id is not None:
+            kwargs["document_id"] = document_id
         return await self._call_with_reload(
             "entity_snapshot",
-            limit=limit,
-            expected_revision=expected_revision,
+            **kwargs,
         )
 
     async def program_command(
@@ -937,7 +947,22 @@ class ReloadingManagedDotNetCadReadPort:
             except (OSError, ValueError):
                 self._clear_adapter()
                 return CadPortResult(False, error_code="managed_host_unavailable")
-            result = await getattr(adapter, operation)(**kwargs)
+            func = getattr(adapter, operation)
+            call_kwargs = dict(kwargs)
+            try:
+                sig = inspect.signature(func)
+                call_kwargs = {
+                    k: v
+                    for k, v in kwargs.items()
+                    if k in sig.parameters
+                    or any(
+                        p.kind == inspect.Parameter.VAR_KEYWORD
+                        for p in sig.parameters.values()
+                    )
+                }
+            except (ValueError, TypeError):
+                pass
+            result = await func(**call_kwargs)
             if result.error_code not in {
                 "managed_host_unavailable",
                 "session_rejected",

@@ -17,9 +17,7 @@ internal sealed class AutoCadReadOnlyOperations(
     bool phase8CheckpointV2Enabled) : IReadOnlyHostOperations
 {
     private readonly AutoCadEntitySnapshotOperations _entityOperations = new(identities);
-    private bool Phase8Enabled =>
-        phase8SourceEnabled &&
-        (phase8CreatePackEnabled || phase8TransformPackEnabled);
+    private bool Phase8Enabled => phase8SourceEnabled;
 
     public Task<object> GetHandshakeEvidenceAsync(CancellationToken cancellationToken) =>
         scheduler.RunAsync<object>(GetHandshakeEvidence, cancellationToken);
@@ -121,6 +119,10 @@ internal sealed class AutoCadReadOnlyOperations(
             "cad.program.preview",
             "cad.program.commit",
             "cad.program.validate",
+            "cad.program.v1.preview",
+            "cad.program.v1.commit",
+            "cad.program.v1.compile",
+            "cad.program.v1.validate",
             "cad.recovery.receipt_query",
             "cad.rollback.checkpoint.lookup",
             "cad.rollback.preview",

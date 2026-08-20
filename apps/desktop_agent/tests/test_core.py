@@ -688,3 +688,79 @@ async def test_valid_cancel_uses_bound_ledger_entry(tmp_path):
     assert entry.cancel_requested is True
     assert [message.message_type for message in socket.messages] == ["result"]
     assert socket.messages[0].status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_session_advertises_managed_host_and_capabilities_when_broker_describes_runtime(
+    tmp_path,
+):
+    from autocad_contracts import CapabilityManifest
+
+    class FakeSessionSocket:
+        def __init__(self):
+            self.sent = []
+
+        async def send(self, data):
+            self.sent.append(data)
+
+        async def recv(self):
+            raise asyncio.CancelledError()
+
+        def __aiter__(self):
+            async def empty():
+                if False:
+                    yield ""
+
+            return empty()
+
+    class FakeBroker:
+        async def describe_managed_runtime(self):
+            manifest = CapabilityManifest.model_validate(
+                {
+                    "schema_version": "cad.capability/1",
+                    "registry_version": "cad.program/0.2",
+                    "cad_products": [
+                        {
+                            "product": "AutoCAD",
+                            "edition": "full",
+                            "release_year": 2025,
+                            "runtime": {
+                                "id": "managed_dotnet",
+                                "role": "primary",
+                                "host_family": "R25",
+                                "host_version": "0.8.0",
+                                "package_id": "autocad.managed_host.r25",
+                                "package_version": "0.8.0",
+                                "package_hash": f"sha256:{'b' * 64}",
+                            },
+                            "capabilities": [
+                                "observe.summary",
+                                "cad.program.preview",
+                                "cad.program.commit",
+                                "cad.program.v1.compile",
+                            ],
+                        }
+                    ],
+                }
+            )
+            return SimpleNamespace(manifest=manifest)
+
+    core, _ = make_core(tmp_path)
+    core.runtime_broker = FakeBroker()
+    socket = FakeSessionSocket()
+    try:
+        await core._run_session(socket, "secret")
+    except (asyncio.CancelledError, Exception):
+        pass
+
+    assert len(socket.sent) >= 1
+    hello = parse_agent_message(socket.sent[0])
+    assert hello.message_type == "hello"
+    package_ids = [pkg.package_id for pkg in hello.packages]
+    assert "autocad.lisp.drawing_info" in package_ids
+    assert "autocad.managed_host.r25" in package_ids
+    assert "cad.observe.detail-provenance/1" in hello.capabilities
+    assert "cad.program.v1.compile" in hello.capabilities
+    assert "program_preview" in hello.capabilities
+    assert "program_commit" in hello.capabilities
+

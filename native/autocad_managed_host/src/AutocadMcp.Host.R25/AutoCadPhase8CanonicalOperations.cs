@@ -14,16 +14,16 @@ internal sealed class AutoCadPhase8CanonicalOperations(
 {
     private readonly bool _sourceEnabled =
         Environment.GetEnvironmentVariable(
-            "AUTOCAD_MCP_PROGRAM_V1_SOURCE_ENABLED") == "1";
+            "AUTOCAD_MCP_PROGRAM_V1_SOURCE_ENABLED") != "0";
     private readonly bool _createPackEnabled =
         Environment.GetEnvironmentVariable(
-            "AUTOCAD_MCP_PROGRAM_V1_CREATE_PACK_ENABLED") == "1";
+            "AUTOCAD_MCP_PROGRAM_V1_CREATE_PACK_ENABLED") != "0";
     private readonly bool _transformPackEnabled =
         Environment.GetEnvironmentVariable(
-            "AUTOCAD_MCP_PROGRAM_V1_TRANSFORM_PACK_ENABLED") == "1";
+            "AUTOCAD_MCP_PROGRAM_V1_TRANSFORM_PACK_ENABLED") != "0";
     private readonly bool _checkpointV2Enabled =
         Environment.GetEnvironmentVariable(
-            "AUTOCAD_MCP_CHECKPOINT_V2_ENABLED") == "1";
+            "AUTOCAD_MCP_CHECKPOINT_V2_ENABLED") != "0";
     private readonly Phase8HostRuntimeEvidence _runtime =
         Phase8HostRuntimeEvidence.Create(
             HostConstants.HostVersion,

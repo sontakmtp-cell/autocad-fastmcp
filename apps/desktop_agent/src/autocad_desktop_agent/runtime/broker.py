@@ -41,7 +41,8 @@ class RuntimeBroker:
     async def select_read_runtime(self) -> BrokerSelection:
         requested = self._config.runtime_mode
         if requested == RuntimeMode.AUTO:
-            if self._config.managed_host_enabled and "managed_dotnet" in self._adapters:
+            has_managed = self._config.managed_host_enabled and "managed_dotnet" in self._adapters
+            if has_managed:
                 selection, reason = await self._try_adapter(
                     "managed_dotnet", requested.value
                 )
@@ -50,11 +51,11 @@ class RuntimeBroker:
             else:
                 reason = None
             return await self._select_compatibility(
-                requested_runtime="managed_dotnet" if self._config.managed_host_enabled else None,
-                degraded=self._config.managed_host_enabled,
+                requested_runtime="managed_dotnet" if has_managed else None,
+                degraded=has_managed,
                 reason=(
                     (reason or "managed_host_unavailable")
-                    if self._config.managed_host_enabled else None
+                    if has_managed else None
                 ),
             )
         if requested == RuntimeMode.MANAGED_DOTNET:

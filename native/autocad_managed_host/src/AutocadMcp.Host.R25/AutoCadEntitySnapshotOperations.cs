@@ -234,7 +234,13 @@ internal sealed class AutoCadEntitySnapshotOperations(DocumentIdentityRegistry i
     {
         if (entity is Line or Circle or Polyline)
         {
-            return Phase8ManagedOperationPack.EntityFingerprint(entity, transaction);
+            try
+            {
+                return Phase8ManagedOperationPack.EntityFingerprint(entity, transaction);
+            }
+            catch
+            {
+            }
         }
         var value = JsonSerializer.SerializeToElement(
             new

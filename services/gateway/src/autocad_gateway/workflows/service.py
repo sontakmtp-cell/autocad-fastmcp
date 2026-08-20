@@ -333,6 +333,8 @@ class WorkflowApplicationService:
                         manifest.required_operation_packs
                     ),
                     "risk_floor": manifest.risk_floor,
+                    "input_schema": manifest.input_schema,
+                    "output_schema": manifest.output_schema,
                     "manifest_uri": (
                         f"cad://skills/{manifest.skill_id}/versions/"
                         f"{manifest.version}/manifest"

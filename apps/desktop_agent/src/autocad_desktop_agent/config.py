@@ -74,9 +74,9 @@ class AgentConfig:
     heartbeat_seconds: int = 10
     reconnect_max_seconds: int = 30
     queue_size: int = 8
-    runtime_mode: RuntimeMode = RuntimeMode.AUTOLISP_COMPAT
-    managed_host_enabled: bool = False
-    allow_full_compat_fallback: bool = False
+    runtime_mode: RuntimeMode = RuntimeMode.AUTO
+    managed_host_enabled: bool = True
+    allow_full_compat_fallback: bool = True
     lt_runtime_enabled: bool = True
     program_v0_enabled: bool = False
     managed_write_enabled: bool = False
@@ -116,9 +116,12 @@ class AgentConfig:
             package_sha256=os.environ.get("AUTOCAD_AGENT_PACKAGE_SHA256", "").strip(),
             heartbeat_seconds=int(os.environ.get("AUTOCAD_AGENT_HEARTBEAT_SECONDS", "10")),
             runtime_mode=RuntimeMode(
-                os.environ.get("AUTOCAD_MCP_RUNTIME_MODE", "autolisp_compat").strip()
+                os.environ.get("AUTOCAD_MCP_RUNTIME_MODE", "auto").strip()
             ),
-            managed_host_enabled=_env_flag("AUTOCAD_MCP_MANAGED_HOST_ENABLED", False),
+            managed_host_enabled=_env_flag(
+                "AUTOCAD_MCP_MANAGED_HOST_ENABLED",
+                os.name == "nt",
+            ),
             allow_full_compat_fallback=_env_flag(
                 "AUTOCAD_MCP_ALLOW_FULL_COMPAT_FALLBACK",
                 False,
