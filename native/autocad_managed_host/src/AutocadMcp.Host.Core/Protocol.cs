@@ -12,7 +12,7 @@ namespace AutocadMcp.Host.Core;
 public static class HostProtocol
 {
     public const string Version = "cad.host/1";
-    public const int MaxFrameBytes = 64 * 1024;
+    public const int MaxFrameBytes = 1024 * 1024;
     public static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
@@ -311,6 +311,17 @@ public static class EnvelopeValidator
             _ = DocumentEventsRequest.Parse(arguments);
             return;
         }
+        if (operationId == "drawing.preview.png")
+        {
+            var allowedPreview = new HashSet<string> { "max_width", "max_height" };
+            if (arguments.EnumerateObject().Any(p => !allowedPreview.Contains(p.Name)))
+            {
+                throw new ProtocolValidationException("invalid_envelope", "Unknown preview argument.");
+            }
+            ValidatePreviewDimension(arguments, "max_width", 640);
+            ValidatePreviewDimension(arguments, "max_height", 480);
+            return;
+        }
 
         var allowed = operationId == "host.health"
             ? new HashSet<string>()
@@ -333,6 +344,17 @@ public static class EnvelopeValidator
             {
                 throw new ProtocolValidationException("invalid_envelope", "max_layers is outside the allowed range.");
             }
+        }
+    }
+
+    private static void ValidatePreviewDimension(JsonElement arguments, string name, int defaultValue)
+    {
+        var value = arguments.TryGetProperty(name, out var dimension)
+            ? dimension.GetInt32()
+            : defaultValue;
+        if (value is < 128 or > 1024)
+        {
+            throw new ProtocolValidationException("invalid_envelope", $"{name} is outside the allowed range.");
         }
     }
 
@@ -457,6 +479,7 @@ public sealed class OperationRegistry
     [
         "host.health",
         "drawing.observe.summary",
+        "drawing.preview.png",
         "entity.snapshot.page",
         "document.events.summary",
         "cad.program.preview",
