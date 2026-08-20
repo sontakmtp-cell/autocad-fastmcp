@@ -9,6 +9,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\AutocadMcp.Host.Core\AutocadMcp.Host.Core.csproj" />
+    <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
     <Reference Include="acmgd">
       <HintPath>$(AutoCADReferencePath)\acmgd.dll</HintPath>
       <Private>false</Private>
