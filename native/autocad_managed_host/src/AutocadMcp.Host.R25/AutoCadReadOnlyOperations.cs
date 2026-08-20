@@ -251,7 +251,12 @@ internal sealed class AutoCadReadOnlyOperations(
                 ?? throw new ProtocolValidationException(
                     "preview_unavailable",
                     "The active graphics view is unavailable.");
-            using var source = view.GetSnapshot(view.Viewport);
+            var screenSize = (Autodesk.AutoCAD.Geometry.Point2d)
+                Application.GetSystemVariable("SCREENSIZE");
+            var captureWidth = Math.Max(1, (int)Math.Round(screenSize.X));
+            var captureHeight = Math.Max(1, (int)Math.Round(screenSize.Y));
+            using var source = view.GetSnapshot(
+                new Rectangle(0, 0, captureWidth, captureHeight));
             var encoded = EncodePreview(source, maxWidth, maxHeight);
             AssertDocumentUnchanged(document, identity, revisionBefore.Revision);
             return new
