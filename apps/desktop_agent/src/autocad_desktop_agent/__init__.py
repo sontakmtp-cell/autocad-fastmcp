@@ -5,7 +5,9 @@
 __version__ = "0.1.0"
 
 from .observe_detail_transport import install_detail_observe_transport_limit
+from .preview_runtime_selection_compat import install_preview_runtime_selection_compat
 from .preview_transport_compat import install_preview_transport_compat
 
 install_detail_observe_transport_limit()
 install_preview_transport_compat()
+install_preview_runtime_selection_compat()
