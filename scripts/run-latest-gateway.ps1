@@ -23,12 +23,14 @@ param(
     [int]$Phase8RolloutPolicyEpoch = 1,
     [string]$Phase8RolloutPolicyDigest = $env:AUTOCAD_MCP_PHASE8_ROLLOUT_POLICY_DIGEST,
     [string]$CursorSigningSecret = $env:AUTOCAD_MCP_PHASE10_CURSOR_SIGNING_SECRET,
-    [int]$SceneRetentionHours = 24
+    [int]$SceneRetentionHours = 24,
+    [switch]$NoAutoResolveRuntimePins
 )
 
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $gatewayRoot = Join-Path $repoRoot "services\gateway"
+$agentRoot = Join-Path $repoRoot "apps\desktop_agent"
 
 foreach ($value in @($PublicBaseUrl, $OAuthIssuer, $OAuthJwksUri)) {
     $uri = [Uri]$value
@@ -54,27 +56,90 @@ if ([string]::IsNullOrWhiteSpace($Phase8OperationRegistryVersion)) {
     $Phase8OperationRegistryVersion = "cad.program/1.0-create-core"
 }
 
-$trustedValues = @{
-    "Phase8CompilerPackageHash" = $Phase8CompilerPackageHash
-    "Phase8PackageId" = $Phase8PackageId
-    "Phase8PackageVersion" = $Phase8PackageVersion
-    "Phase8PackageHash" = $Phase8PackageHash
-    "Phase8CapabilityManifestHash" = $Phase8CapabilityManifestHash
-    "Phase8OperationRegistryVersion" = $Phase8OperationRegistryVersion
-    "Phase8OperationRegistryHash" = $Phase8OperationRegistryHash
+function Get-MissingRuntimePins {
+    $values = @{
+        "Phase8CompilerPackageHash" = $Phase8CompilerPackageHash
+        "Phase8PackageId" = $Phase8PackageId
+        "Phase8PackageVersion" = $Phase8PackageVersion
+        "Phase8PackageHash" = $Phase8PackageHash
+        "Phase8CapabilityManifestHash" = $Phase8CapabilityManifestHash
+        "Phase8OperationRegistryHash" = $Phase8OperationRegistryHash
+    }
+    return @(
+        $values.GetEnumerator() |
+        Where-Object { [string]::IsNullOrWhiteSpace([string]$_.Value) } |
+        ForEach-Object { $_.Key }
+    )
 }
-$missing = @(
-    $trustedValues.GetEnumerator() |
-    Where-Object { [string]::IsNullOrWhiteSpace([string]$_.Value) } |
-    ForEach-Object { $_.Key }
-)
+
+$missing = @(Get-MissingRuntimePins)
+if ($missing.Count -gt 0 -and -not $NoAutoResolveRuntimePins) {
+    $resolver = Join-Path $PSScriptRoot "resolve-latest-runtime-pins.py"
+    if (-not (Test-Path -LiteralPath $resolver -PathType Leaf)) {
+        throw "Runtime pin resolver is missing: $resolver"
+    }
+
+    Write-Host "Resolving trusted runtime pins from the local Managed .NET R25 Host..." -ForegroundColor Cyan
+    try {
+        $pinOutput = @(
+            & uv run --project $agentRoot --no-sync python $resolver 2>&1
+        )
+        if ($LASTEXITCODE -ne 0) {
+            throw ($pinOutput -join [Environment]::NewLine)
+        }
+        $pinText = ($pinOutput -join [Environment]::NewLine).Trim()
+        $pins = $pinText | ConvertFrom-Json
+    }
+    catch {
+        throw (
+            "Could not auto-resolve trusted Phase 8 runtime pins from the local Managed Host. " +
+            "Make sure AutoCAD Mechanical 2025 is open, the current Managed R25 Host is loaded, " +
+            "and the Desktop Agent environment has been built. Resolver error: " + $_.Exception.Message
+        )
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Phase8CompilerPackageHash)) {
+        $Phase8CompilerPackageHash = [string]$pins.compiler_package_hash
+    }
+    if ([string]::IsNullOrWhiteSpace($Phase8RuntimeId)) {
+        $Phase8RuntimeId = [string]$pins.runtime_id
+    }
+    if ([string]::IsNullOrWhiteSpace($Phase8HostFamily)) {
+        $Phase8HostFamily = [string]$pins.host_family
+    }
+    if ([string]::IsNullOrWhiteSpace($Phase8HostVersion)) {
+        $Phase8HostVersion = [string]$pins.host_version
+    }
+    if ([string]::IsNullOrWhiteSpace($Phase8PackageId)) {
+        $Phase8PackageId = [string]$pins.package_id
+    }
+    if ([string]::IsNullOrWhiteSpace($Phase8PackageVersion)) {
+        $Phase8PackageVersion = [string]$pins.package_version
+    }
+    if ([string]::IsNullOrWhiteSpace($Phase8PackageHash)) {
+        $Phase8PackageHash = [string]$pins.package_hash
+    }
+    if ([string]::IsNullOrWhiteSpace($Phase8CapabilityManifestHash)) {
+        $Phase8CapabilityManifestHash = [string]$pins.capability_manifest_hash
+    }
+    if ([string]::IsNullOrWhiteSpace($Phase8OperationRegistryVersion)) {
+        $Phase8OperationRegistryVersion = [string]$pins.operation_registry_version
+    }
+    if ([string]::IsNullOrWhiteSpace($Phase8OperationRegistryHash)) {
+        $Phase8OperationRegistryHash = [string]$pins.operation_registry_hash
+    }
+
+    $missing = @(Get-MissingRuntimePins)
+}
+
 if ($missing.Count -gt 0) {
     throw (
         "Latest Gateway requires trusted Phase 8 runtime pins. Missing: " +
         ($missing -join ", ") +
-        ". Pass parameters or set the matching AUTOCAD_MCP_PHASE8_* environment variables."
+        ". Auto-resolution is unavailable or disabled; pass parameters or set the matching AUTOCAD_MCP_PHASE8_* environment variables."
     )
 }
+
 foreach ($digest in @(
     @{ Name = "Phase8CompilerPackageHash"; Value = $Phase8CompilerPackageHash },
     @{ Name = "Phase8PackageHash"; Value = $Phase8PackageHash },
@@ -93,9 +158,31 @@ if ($Phase8RolloutPolicyEpoch -lt 1) {
     throw "Phase8RolloutPolicyEpoch must be at least 1 for the latest compiler profile."
 }
 
-if ([string]::IsNullOrWhiteSpace($CursorSigningSecret) -or
-    [Text.Encoding]::UTF8.GetByteCount($CursorSigningSecret) -lt 32) {
-    throw "Phase 10 public scene access requires -CursorSigningSecret with at least 32 UTF-8 bytes."
+# Local canonical startup keeps a stable cursor-signing secret across restarts.
+# Production deployments may still inject AUTOCAD_MCP_PHASE10_CURSOR_SIGNING_SECRET.
+if ([string]::IsNullOrWhiteSpace($CursorSigningSecret)) {
+    $secretRoot = Join-Path $env:LOCALAPPDATA "Kythuatvang\AutoCADGateway"
+    $secretPath = Join-Path $secretRoot "latest-scene-cursor.secret"
+    New-Item -ItemType Directory -Force -Path $secretRoot | Out-Null
+    if (Test-Path -LiteralPath $secretPath -PathType Leaf) {
+        $CursorSigningSecret = (Get-Content -LiteralPath $secretPath -Raw).Trim()
+    }
+    else {
+        $rng = [Security.Cryptography.RandomNumberGenerator]::Create()
+        try {
+            $bytes = New-Object byte[] 48
+            $rng.GetBytes($bytes)
+            $CursorSigningSecret = [Convert]::ToBase64String($bytes)
+        }
+        finally {
+            $rng.Dispose()
+        }
+        Set-Content -LiteralPath $secretPath -Value $CursorSigningSecret -Encoding ASCII
+        Write-Host "Created persistent local Phase 10 cursor secret: $secretPath" -ForegroundColor DarkGray
+    }
+}
+if ([Text.Encoding]::UTF8.GetByteCount($CursorSigningSecret) -lt 32) {
+    throw "Phase 10 cursor signing secret must contain at least 32 UTF-8 bytes."
 }
 
 $allowed = @(
@@ -196,6 +283,7 @@ $env:AUTOCAD_MCP_PHASE10_CURSOR_SIGNING_SECRET = $CursorSigningSecret
 $env:AUTOCAD_MCP_PHASE10_SCENE_RETENTION_HOURS = [string]$SceneRetentionHours
 
 Write-Host "Gateway profile: latest (phase9_workflow + Phase 10 features)" -ForegroundColor Cyan
+Write-Host "Runtime pins: $Phase8PackageId $Phase8PackageVersion / $Phase8RuntimeId $Phase8HostFamily $Phase8HostVersion" -ForegroundColor DarkGray
 Write-Host "Public MCP: $($PublicBaseUrl.TrimEnd('/'))/mcp" -ForegroundColor Green
 Write-Host "Managed write: $(if ($EnableManagedWrite) { 'enabled with trusted approval' } else { 'disabled' })" -ForegroundColor Yellow
 & uv run --project $gatewayRoot --no-sync python -m autocad_gateway
