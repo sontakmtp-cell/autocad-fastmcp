@@ -28,6 +28,10 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# Canonical latest startup is fully configured by this launcher. Ignore any
+# ambient/local .env discovered by third-party packages so stale phase config
+# cannot alter or pollute the latest runtime.
+$env:PYTHON_DOTENV_DISABLED = "1"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $gatewayRoot = Join-Path $repoRoot "services\gateway"
 $agentRoot = Join-Path $repoRoot "apps\desktop_agent"
