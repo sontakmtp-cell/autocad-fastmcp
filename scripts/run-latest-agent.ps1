@@ -12,6 +12,9 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+# The canonical launcher owns runtime configuration. Prevent stale local .env
+# files from influencing the latest Agent or emitting parse warnings.
+$env:PYTHON_DOTENV_DISABLED = "1"
 
 if ($EnableManagedWrite) {
     if ([string]::IsNullOrWhiteSpace($AllowedDeviceId)) {
